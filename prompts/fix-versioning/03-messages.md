@@ -1,4 +1,4 @@
-# Messages — explicit halves, entries, the readers, and the batches
+# Messages — explicit halves, entries, the readers, the batches, the digest
 
 **Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
 text, or from a ULBridge body; answer the handful of facts a reader actually
@@ -824,8 +824,6 @@ impl FixMsg {
     pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>;
     /// Which source answered a facet, so a fallback is visible (P9-R18).
     pub fn lift_source(&self, facet: &str) -> Option<FixId>;
-    /// Which lane a side belongs to, or neither (P9-R13).
-    pub fn side_direction(&self) -> Option<FixDirection>;
 }
 ```
 
@@ -940,27 +938,31 @@ A quote states two prices and no side; an order states one price and a
 side. They are two shapes of one fact, and each can answer for the other —
 but only where the answer is forced, never where it is likely.
 
-- **P9-R13. Direction is an explicit table, never inferred from a
-  spelling.** A `const` list over the standard `SideCodeSet` says which
-  codes buy, which sell, and which do neither:
+- **P9-R13. Which codes take which lane is two `const` listings, and
+  nothing more.** Over the standard `SideCodeSet`:
 
-  | direction | codes |
+  | lane | codes |
   | --- | --- |
-  | buys | `Buy`, `BuyMinus` |
-  | sells | `Sell`, `SellPlus`, `SellShort`, `SellShortExempt`, `SellUndisclosed` |
+  | bid | `Buy`, `BuyMinus` |
+  | ask | `Sell`, `SellPlus`, `SellShort`, `SellShortExempt`, `SellUndisclosed` |
   | neither | `Cross`, `CrossShort`, `CrossShortExempt`, `Undisclosed`, `AsDefined`, `Opposite`, and every code not listed |
 
   A cross is both sides at once and `Opposite` means "whatever the other leg
-  was", so neither has a lane; a code the table does not name is `neither`,
-  never guessed. Direction is **not** taken from the symbolic name's
-  prefix — `SellShortExempt` starting with `Sell` is a fact about English,
-  and P4's Decided refuses that reasoning. Orchestra does not publish
-  direction, so this table is domain knowledge, written out where a reviewer
-  can check it.
+  was", so neither takes a lane; a code the listings do not name takes none,
+  never guessed. The lane is **not** taken from the symbolic name's prefix —
+  `SellShortExempt` starting with `Sell` is a fact about English, and P4's
+  Decided refuses that reasoning. Orchestra does not publish this, so the two
+  listings are domain knowledge, written out where a reviewer can check them.
+
+  They are consulted by P9-R14 and P9-R15 and exposed no other way: no
+  direction type, no accessor answering one. A caller that wants the lane
+  reads the `side` facet and matches the code, whose vocabulary the packed
+  datatype already publishes (P8-R4) — one more enum over values that
+  already have names would be a second spelling of the code set.
 - **P9-R14. A side and a price fill their lane — on an order, not on a
   fill.** A buy order at `P` is a party willing to pay `P`, which is a bid;
   a sell order at `P` is an offer. So where the message is an order and
-  carries `Price(44)` with a side whose direction is a lane, `bidpx` or
+  carries `Price(44)` with a side the listings give a lane, `bidpx` or
   `askpx` answers that price, and `OrderQty(38)` fills the matching size
   the same way. **`LastPx(31)` never projects**: a fill's price is a traded
   price, not a quote lane, and putting it on one would state a quote that
@@ -1019,10 +1021,15 @@ but only where the answer is forced, never where it is likely.
   which is what makes a lifted column quietly wrong on exactly the messages
   that matter — a multi-leg order, a two-sided quote, a trade with several
   parties.
-- **The direction table is explicit and short.** *Rejected:* deriving
-  buy/sell from the code's symbolic name, or from its wire value's ordering.
-  Both are guesses that would silently mis-lane a vendor's own side, and a
-  mis-laned side is a wrong price on the wrong book.
+- **Two listings, not a direction type.** *Rejected:* an enum answering
+  which way a side points, with an accessor on the message. It would be a
+  second vocabulary over a code set that already has one (P8-R4), and every
+  caller would have to learn it to ask a question the `side` facet already
+  answers.
+- **The listings are explicit and short.** *Rejected:* deriving buy/sell
+  from the code's symbolic name, or from its wire value's ordering. Both are
+  guesses that would silently mis-lane a vendor's own side, and a mis-laned
+  side is a wrong price on the wrong book.
 - **The table lives in the crate, not in the dictionary.** *Rejected:*
   storing lift rules as metadata on fields. A facet is a *consumer's*
   question, not a property of a FIX field, and putting it in the dictionary
@@ -1060,8 +1067,8 @@ but only where the answer is forced, never where it is likely.
     the reverse; `OrderQty` fills the matching size (P9-R14).
 15. An ExecutionReport with `LastPx` and a side answers neither lane
     (P9-R14) — the case that keeps a traded price off a book.
-16. A cross, an `Undisclosed` and an unlisted vendor side each answer no
-    lane (P9-R13).
+16. A cross, an `Undisclosed` and an unlisted vendor side each taking no
+    lane, so none of the three fills `bidpx` or `askpx` (P9-R13).
 17. A one-sided quote answers `Buy` from `BidPx` alone and `Sell` from
     `OfferPx` alone; a two-sided quote answers no side (P9-R15).
 18. A message stating both `BidPx` and a contradicting `Side` answers both
@@ -1140,7 +1147,7 @@ pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
   column consumer cannot survive.
 - **P10-R3. The default shape is three groups: what it is, what it means,
   what was sent.** (a) identity — `msgtype` as the packed datatype (P8),
-  `branch`, `version`; (b) one column per lifted facet (P9-R4), typed as
+  `branch`, `version`, and `msghash` (P11-R8); (b) one column per lifted facet (P9-R4), typed as
   that facet's field is typed at the message's version (P9-R8); (c)
   `entries`, a list of struct mirroring `FixEntry` — `tag`, `branch`, `key`,
   `value`. Nothing else is a column by default: a wide column per tag is a
@@ -1188,7 +1195,8 @@ pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
   with no pairs is a row with no entries (P7-R71), and the reader's `Result`
   is for I/O only. The output row count equals the input line count — that
   is what lets a capture be joined back to its source by position, and it is
-  why P10-R12 can zip rather than join.
+  why P10-R12 can zip rather than join. The one deliberate exception is
+  opt-in and says so where it is switched on (P11-R12).
 - **P10-R11. Dialect and version resolve once per stream.** The options
   carry them; where they are unset the first row that states a
   `BeginString` fills them and every later row inherits (P7-R42). Re-sniffing
@@ -1277,6 +1285,177 @@ cost. A second group for the write direction.
 
 ---
 
+## Phase 11 — `MsgHash`: one message, one digest, and adjacent dedup
+
+**Goal.** Give every message a 16-byte value digest that costs one walk and
+no allocation, carry it as a column, and drop the line a capture published
+twice.
+
+**Depends.** Phase 7 (entries), Phase 10 (the batch stream the digest becomes
+a column of and the iterator it filters).
+
+**Surface.** One custom field constant and its registration; a digest
+accessor on the message; one iterator adapter; one option. Tests, a
+benchmark group, the FIX page.
+
+**Never.** Store the digest on the message (N4). Add a second hash (N3): the
+crate ships xxh3-128 and a resumable state for it, and that is the one used.
+
+### Contract
+
+```rust
+impl FixMsg {
+    /// This message's value digest (P11-R3). Computed, never stored.
+    pub fn digest(&self) -> u128;
+}
+
+/// Drops each message whose digest equals the one before it.
+pub struct FixDedup<I> { /* inner, last: Option<u128>, dropped: u64 */ }
+
+impl<I: Iterator<Item = FixMsg>> FixDedup<I> {
+    pub fn new(inner: I) -> Self;
+    /// How many messages this adapter has dropped so far (P11-R12).
+    pub fn dropped(&self) -> u64;
+}
+```
+
+### Rules
+
+- **P11-R1. `MsgHash` is the crate's own field, on the crate's own branch.**
+  Tag `30001`, user-defined range (P2-R7), high in it rather than down in the
+  5000s where venues actually crowd. It is carried on the crate's branch, so
+  the packed identifier cannot collide with a venue's own 30001 — same tag,
+  different branch, different `FixId` (P2). It carries a tag, so it enters
+  the registry like any other field (L1), and it is registered once with the
+  standard dictionary rather than injected per message.
+- **P11-R2. Its datatype is `FixedSizeBinary(16)`, big-endian.** The crate
+  already has that datatype; a digest is not a string and must not become
+  one. Big-endian because a stored digest is compared and ordered as bytes,
+  and big-endian is the one layout where byte order and numeric order agree
+  on every machine — a little-endian digest sorts differently than it
+  compares, and someone eventually sorts it.
+- **P11-R3. The digest is xxh3-128 over the entries, in arrival order,
+  length-prefixed.** Each entry feeds the resumable state as: the tag as four
+  big-endian bytes; then the key bytes, **only** where the tag is `0` because
+  no field was named (P7); then the value's length as four big-endian bytes,
+  then the value's bytes. Length prefixes rather than separators, because a
+  value may contain any byte at all — `data` fields exist precisely for that
+  (P7-R72) — and a separator-framed digest would make two different messages
+  equal. Arrival order, never sorted: order carries meaning inside a
+  repeating group, and sorting would cost an allocation per message to
+  produce a *worse* answer.
+- **P11-R4. 128 bits, not 64.** A day of capture is comfortably 10^9
+  messages; the birthday bound puts a 64-bit digest into collision at around
+  10^9.6, so a 64-bit dedup key silently drops a real message roughly once
+  per large capture. At 128 bits the bound is not reachable by anything this
+  system will ever hold. Sixteen bytes per row is the price and it is stated
+  in the doc comment.
+- **P11-R5. Two entries are excluded, and only two.** `BodyLength(9)` and
+  `CheckSum(10)` are facts about the *frame*, not the message: both change
+  when the same message is re-serialized with a different separator or
+  converted to another version (P7-R31), and a digest that moved under
+  re-serialization would not identify anything. `MsgHash` excludes itself for
+  the same reason — a value cannot cover itself. Nothing else is excluded:
+  `SendingTime` and `MsgSeqNum` stay in, so two heartbeats a second apart are
+  two messages, which is exactly what a monitor needs them to be.
+- **P11-R6. Nothing is materialized to hash.** Entries feed the resumable
+  state as they are walked: no concatenated buffer, no re-serialized frame,
+  no `Vec` of anything, and the four-byte prefixes come from a stack array.
+  The cost is one walk plus the hash, and the state is a fixed-size struct —
+  hashing a million messages allocates nothing.
+- **P11-R7. The message computes and stores nothing** (N4, P9-R9). `digest()`
+  walks every call and two calls answer the same value because entries do not
+  change. A cached digest is a fact that a later edit makes a lie, and the
+  invalidation rule needed to prevent that costs more than the walk it saves.
+- **P11-R8. The digest is a column, because a batch is an output.**
+  `msghash` joins the identity group of the default batch shape (P10-R3) as a
+  `FixedSizeBinary(16)` column. That is not the storing N4 forbids: the
+  message still holds nothing, and a column consumer cannot re-derive the
+  digest without re-parsing every row — which is the whole reason the column
+  is worth its sixteen bytes.
+- **P11-R9. Dedup compares the previous digest and holds nothing else.** The
+  adapter keeps one `Option<u128>`, drops the next message whose digest equals
+  it, and forwards everything else. One `u128` of state whatever the stream's
+  length. **Never a set:** a set over a day's capture grows without bound,
+  which is the exact failure the byte-shaped batching of P10-R5 exists to
+  avoid, reintroduced one layer up.
+- **P11-R10. Adjacent only, and that is the whole rule.** A line a capture
+  tool published twice is adjacent and the second is dropped. Two identical
+  heartbeats an hour apart are two events and both survive. Non-adjacent
+  identity is a question about a *window* — how wide, measured how — and the
+  caller has that policy while this brief does not.
+- **P11-R11. A resend is not a duplicate.** A message replayed under
+  `PossDupFlag` carries a fresh `SendingTime`, so it has a different digest by
+  P11-R5, and it survives. That is correct and deliberate: dedup catches the
+  same bytes twice, the `resent` facet (P9-R4) catches the replay, and neither
+  is made to do the other's job. A dedup that also folded resends would drop
+  the recovery traffic a sequence-gap check reads.
+- **P11-R12. Dropping is opt-in and counted, never silent.** In the batch
+  reader it is an option, **off by default**, because with it on P10-R10's
+  row-in/row-out correspondence is deliberately surrendered and a batch no
+  longer aligns with its input by position; the doc comment states that loss
+  where a caller will read it. The carried-through columns of P10-R12 are
+  zipped *before* the filter, so a surviving row keeps its own arrival time
+  and not the dropped row's. `dropped()` answers how many went, because this
+  brief has refused to lose data quietly at every layer and an opt-in filter
+  is not an exception to that — it is the one place it has to be reported
+  instead.
+
+### Decided
+
+- **A field with a tag, not a property beside the message.** *Rejected:*
+  keeping the digest outside the dictionary as a bare accessor. Making it a
+  registered field means it lifts, columns, serializes and joins like every
+  other field with no special case anywhere, and the branch is what keeps a
+  crate-invented tag from colliding with a venue's.
+- **Excluding the frame fields, including the session fields.** *Rejected:*
+  excluding `SendingTime` and `MsgSeqNum` to make resends hash equal. It reads
+  like deduplication but it is a *semantic* judgement about which differences
+  do not count, and it makes two genuinely distinct heartbeats one message.
+  The frame fields are excluded on a different ground entirely: they are not
+  the message, they are how it was written down.
+- **Adjacent dedup, not a seen-set.** *Rejected:* a `HashSet<u128>` over the
+  stream. Unbounded memory over an unbounded stream, and wrong besides —
+  identical messages far apart are usually two real events.
+- **xxh3-128, not a cryptographic digest.** *Rejected:* a 16-byte hash from a
+  cryptographic family. This digest answers "same message?", never "signed by
+  whom?"; xxh3 is already a dependency, already vectorized, and roughly an
+  order of magnitude faster on the message-sized inputs this walks.
+
+### Tests
+
+1. Two messages with identical entries in identical order hashing equal; the
+   same entries in a different order hashing differently (P11-R3).
+2. `("1", "23")` and `("12", "3")` as adjacent entry values hashing
+   differently — the case a separator-framed digest gets wrong (P11-R3).
+3. A message re-serialized with a different separator, and the same message
+   after `convert_into` to another version, both hashing as before (P11-R5).
+4. Two messages differing only in `SendingTime` hashing differently
+   (P11-R5), and the resend of one surviving dedup while its exact
+   republication does not (P11-R11).
+5. Two rows whose keys named no field (tag `0`) with different keys and the
+   same value hashing differently (P11-R3).
+6. `digest()` twice answering identically and allocating nothing, in the
+   counting-allocator target (P11-R6, P11-R7).
+7. The `msghash` column present, sixteen bytes wide, and equal to
+   `digest()` big-endian for every row of the capture corpus (P11-R2,
+   P11-R8).
+8. A stream of `A A B A` yielding `A B A` with `dropped()` answering `1`
+   (P11-R9, P11-R10) — the trailing `A` is the case that proves it is not a
+   set.
+9. Dedup over a million-message stream with peak allocation flat, and over
+   an empty stream yielding nothing and dropping nothing (P11-R9).
+10. The batch reader with dedup off giving row-for-row correspondence
+    (P10-R10) and with it on giving fewer rows whose carried-through columns
+    are their own (P11-R12).
+
+**Bench.** `digest()` against re-serializing the message and hashing the
+bytes, so the cost of the walk-and-feed shape is visible; and the dedup
+adapter against passing the stream through untouched, so the filter's
+overhead is a number rather than a claim.
+
+---
+
 ## Handoff
 
 Deliberately left to the CBlock brief and stated
@@ -1292,7 +1471,13 @@ which needs no evaluator because the payload's own shape decides (P7-R75).
 (P10-R3), lifting's `None` is that column's null (P10-R9), and the
 monitoring facets are what a batch is ordered and joined by (P10-R12).
 
-**From Phase 10.** Nothing in this brief consumes it: batching is the
-outermost layer. Once a capture is the crate's batch reader, writing it to
-Parquet, IPC or a table format is configuration rather than code (P10-R1),
-which is the whole reason the shape is not FIX's own.
+**From Phase 10.** Phase 11 hangs off it twice: the digest is a column of
+the default shape (P11-R8), and dedup filters the same stream (P11-R12).
+Beyond that, batching is the outermost layer — once a capture is the crate's
+batch reader, writing it to Parquet, IPC or a table format is configuration
+rather than code (P10-R1), which is the whole reason the shape is not FIX's
+own.
+
+**From Phase 11.** Nothing in this brief consumes it. A digest column is
+what a downstream join, a replay check or a cross-capture reconciliation
+would key on, and all three are the caller's.
