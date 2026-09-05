@@ -1090,18 +1090,18 @@ tag, so the table's cost is visible.
 
 ---
 
-## Phase 10 — Arrow batches: a capture in, columns out
+## Phase 10 — records and batches: a capture in, columns out
 
-**Goal.** Turn a stream of rows into ordinary record batches and back, at a
-bounded, byte-shaped memory cost — so a day of capture becomes a Parquet
+**Goal.** Take a row as the crate's own record, turn a stream of them into
+ordinary record batches and back, at a bounded, byte-shaped memory cost — so a day of capture becomes a Parquet
 file with nothing in this brief knowing what Parquet is.
 
 **Depends.** Phase 7 (a built message and its readers), Phase 9 (the facets
 a column is made of).
 
 **Surface.** A batch module inside the FIX module: a reader constructed two
-ways, a writer, and a FIX options struct implementing the crate's record
-options trait. One new option on that shared trait (P10-R5). Tests, a
+ways, a record-shaped message constructor, a writer, and a FIX options struct
+implementing the crate's record options trait. One new option on that shared trait (P10-R5). Tests, a
 benchmark group, the counting-allocator target, the FIX page.
 
 **Never.** Add a FIX-specific streaming shape, a second parser, or a second
@@ -1128,6 +1128,13 @@ impl FixBatchReader {
 /// Batches back to the wire, streamed.
 pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
     -> Result<u64>;
+
+impl FixMsg {
+    /// One generic record in, one message out: the payload column read by the
+    /// readers of P7, every other named column read as a parameter (P10-R17).
+    pub fn from_record(registry: Arc<FixRegistry>, record: &Scalar,
+                       options: &FixOptions) -> Result<Self>;
+}
 ```
 
 ### Rules
@@ -1230,8 +1237,68 @@ pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
   the corpus is worth more than any assertion about an individual column,
   because the corpus is where the shapes that break parsers actually live.
 
+#### A row is a record, and its columns are the parameters
+
+- **P10-R16. `from_record` is the record-shaped constructor, and it delegates
+  to the byte readers rather than repeating them.** The crate already has a
+  generic record — a name-to-value map, one `Scalar` variant — and every
+  row-oriented reader in it produces one. Taking that shape means the FIX
+  parser accepts a row from any of them without a conversion at the boundary,
+  and the readers of P7 stay the one place bytes become fields (their
+  "never write a second parser").
+- **P10-R17. The columns that are parameters, by name.** Each is optional and
+  each names an argument the byte readers already take:
+
+  | column | supplies |
+  | --- | --- |
+  | the payload column, named by options | the bytes parsed |
+  | `branch` | the dialect (P7-R22) |
+  | `beginstring` | the source version (P7-R20) |
+  | `targetversion` | the target version (P7-R21) |
+  | `sep` | the separator |
+  | `direction` | the direction, stated (P11-R14) |
+
+  A record carrying only a payload column behaves exactly as the byte reader
+  behaves today, which is what makes this an entry point rather than a
+  second contract.
+- **P10-R18. Column, then option, then inference.** A column is the caller
+  speaking per row and an option is the caller speaking per stream, so both
+  outrank the inference the readers fall back on — and the column outranks
+  the option, because it is the more specific statement. The one deliberate
+  exception is the direction default, which P11-R15 puts *below* the reading
+  on purpose: it fills silence and nothing else. A column absent, null or
+  empty is silence, never an instruction, and is never an error.
+- **P10-R19. A column is read through the value contract, not re-parsed.** A
+  `direction` column already typed by its datatype (P8-R8) is taken as it
+  stands; a string column goes through the same code translation any value
+  goes through (P4-R5). No second conversion path exists for column values
+  (N3) — a column that will not convert is reported the way a value that
+  will not convert is reported (P7-R33) and the message still builds
+  (P7-R56).
+- **P10-R20. The streaming line reader is where these records come from.**
+  The crate's text line reader already streams a capture file into rows and
+  already turns its named captures into columns — a capture regex that pulls
+  a timestamp, a session or a direction out of the log line produces exactly
+  the columns P10-R17 reads. Pointing it at a capture and handing each row to
+  `from_record` is the whole integration: no FIX-specific file reader, no
+  second line splitter, no third place that knows what a log line looks like.
+- **P10-R21. `from_column` is `from_record` with one column named.** One
+  implementation. The column form stays because naming a payload column is
+  the common case, but it must not be a second body of code that drifts from
+  this one.
+- **P10-R22. A column that was a parameter is still carried through.** The
+  pass-through of P10-R12 does not consume what it read: a capture that
+  supplied its own `direction` still has that column downstream, because a
+  monitor reading the output needs to see the value it supplied, not infer
+  that it was used.
+
 ### Decided
 
+- **`from_record` over a widening argument list.** *Rejected:* another
+  constructor taking registry, bytes, separator, branch, two versions and a
+  direction as seven positional arguments. Every new per-row fact would widen
+  every call site, while a record absorbs it as a column and the readers keep
+  the signatures they have.
 - **The reader returns the crate's boxed batch reader.** *Rejected:* a
   `FixBatchStream` with its own `next_batch`. It would be one adapter away
   from every existing consumer, and the adapter is the bug: bounds, casts
@@ -1280,6 +1347,22 @@ pub fn write_fix(source: BatchReader, sink: impl Write, options: &FixOptions)
 12. A stream whose first line states no `BeginString` and whose second does:
     the version resolved once and inherited, and the first row's own version
     null rather than back-filled (P10-R11, N4).
+
+13. A record of payload alone building the message the byte reader builds
+    from the same bytes (P10-R16, P10-R17).
+14. A record whose `branch` and `beginstring` columns disagree with what the
+    body would infer: the columns win (P10-R18); the same record with those
+    columns null: inference wins, and nothing errors.
+15. An option and a column disagreeing: the column wins (P10-R18).
+16. A `direction` column stating `RECV` on a line whose prefix reads
+    `sending`: the column wins (P10-R18, P11-R14), and the column survives
+    into the output (P10-R22).
+17. A capture file through the line reader with a capture regex naming
+    `direction` and a timestamp, each row handed to `from_record`, against
+    the same file read as bytes — the same messages, plus the captured
+    columns (P10-R20).
+18. `from_column` and `from_record` answering identically on the same data,
+    asserted over the whole corpus rather than a case (P10-R21).
 
 **Bench.** Rows to batches at three row widths, against the same rows parsed
 to messages and discarded — so the column cost is separable from the parse
