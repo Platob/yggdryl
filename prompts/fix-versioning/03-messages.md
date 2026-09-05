@@ -699,7 +699,7 @@ impl FixMsg {
     pub fn party(&self, role: &str) -> Option<FixParty<'_>>;
     /// One regulatory timestamp by its type.
     pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>;
-    /// Which lane a side belongs to, or neither (P9-R10).
+    /// Which lane a side belongs to, or neither (P9-R13).
     pub fn side_direction(&self) -> Option<FixDirection>;
 }
 ```
@@ -731,14 +731,15 @@ impl FixMsg {
   | `secondary_id` | `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, `OrigClOrdID(41)` |
   | `exec_id` | `ExecID(17)` |
   | `symbol` | `Symbol(55)`, then `SecurityID(48)` with `SecurityIDSource(22)` |
-  | `side` | `Side(54)`, packed (P8-R2); else derived (P9-R12) |
+  | `side` | `Side(54)`, packed (P8-R2); else derived (P9-R15) |
   | `price` | `Price(44)`, `LastPx(31)` — by `MsgType` |
-  | `bid_px` | `BidPx(132)`; else derived (P9-R11) |
-  | `ask_px` | `OfferPx(133)`; else derived (P9-R11) |
-  | `bid_size` | `BidSize(134)`; else derived (P9-R11) |
-  | `ask_size` | `OfferSize(135)`; else derived (P9-R11) |
-  | `quantity` | `OrderQty(38)`, `LastQty(32)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
-  | `currency` | `Currency(15)` |
+  | `bid_px` | `BidPx(132)`; else derived (P9-R14) |
+  | `ask_px` | `OfferPx(133)`; else derived (P9-R14) |
+  | `bid_size` | `BidSize(134)`; else derived (P9-R14) |
+  | `ask_size` | `OfferSize(135)`; else derived (P9-R14) |
+  | `quantity` | `OrderQty(38)`, `LastQty(32)`, `Quantity(53)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
+  | `quantity_type` | `QtyType(854)`, then the deprecated `QuantityType(465)` (P9-R10) |
+  | `currency` | `Currency(15)`, then `SettlCurrency(120)` |
   | `transact_time` | `TransactTime(60)`, then `SendingTime(52)` |
   | `status` | `OrdStatus(39)`, `ExecType(150)`, `QuoteStatus(297)` |
 
@@ -770,13 +771,37 @@ impl FixMsg {
   unchanged, `entries` are unchanged, and two lifts of one message are the
   same walk twice with no cached state to go stale.
 
+#### A quantity carries its unit
+
+- **P9-R10. A facet prefers the source the specification has not
+  deprecated.** `QuantityType(465)` is superseded by `QtyType(854)`, and a
+  venue predating the change carries only the old one. A facet's sources are
+  therefore current-first, and the lineage already says which is which: a
+  source whose entry is `deprecated` at the message's version is tried only
+  after every source that is not (P3-R9). One rule, not a special case for
+  this pair — the specification does this repeatedly.
+- **P9-R11. A quantity is answered with its unit, never alone.**
+  `Quantity(53)` is "overall/total quantity", and `QtyType` says what of:
+  `1` shares, `2` bonds, `3` current face, `4` original face, `5` currency,
+  `6` contracts, `7` other, `8` par. Five of those eight are not a share
+  count, so a consumer summing `quantity` across messages without its type
+  adds shares to dollars. `lift()` yields `quantity_type` whenever it yields
+  `quantity` and the message states one; a number whose unit is unstated is
+  answered as exactly that, never assumed to be shares.
+- **P9-R12. A quantity in currency is denominated by the currency facet.**
+  Where `quantity_type` is `5`, the number is money, and `currency` — the
+  instrument's `Currency(15)`, else the `SettlCurrency(120)` it settles in —
+  is what it is money *of*. A reading, not a conversion: nothing is
+  re-denominated, and a message stating a currency quantity and no currency
+  answers the quantity alone (P9-R1).
+
 #### Enriching a side against its lane
 
 A quote states two prices and no side; an order states one price and a
 side. They are two shapes of one fact, and each can answer for the other —
 but only where the answer is forced, never where it is likely.
 
-- **P9-R10. Direction is an explicit table, never inferred from a
+- **P9-R13. Direction is an explicit table, never inferred from a
   spelling.** A `const` list over the standard `SideCodeSet` says which
   codes buy, which sell, and which do neither:
 
@@ -793,7 +818,7 @@ but only where the answer is forced, never where it is likely.
   and P4's Decided refuses that reasoning. Orchestra does not publish
   direction, so this table is domain knowledge, written out where a reviewer
   can check it.
-- **P9-R11. A side and a price fill their lane — on an order, not on a
+- **P9-R14. A side and a price fill their lane — on an order, not on a
   fill.** A buy order at `P` is a party willing to pay `P`, which is a bid;
   a sell order at `P` is an offer. So where the message is an order and
   carries `Price(44)` with a side whose direction is a lane, `bid_px` or
@@ -801,12 +826,12 @@ but only where the answer is forced, never where it is likely.
   the same way. **`LastPx(31)` never projects**: a fill's price is a traded
   price, not a quote lane, and putting it on one would state a quote that
   never existed. `MsgType` is what tells the two apart (P9-R3).
-- **P9-R12. One lane implies a side; two lanes imply nothing.** A quote
+- **P9-R15. One lane implies a side; two lanes imply nothing.** A quote
   carrying only `BidPx` is a party bidding, so `side` answers `Buy`; only
   `OfferPx`, and it answers `Sell`. A two-sided quote carries both lanes, so
   no single side is the message's — it answers `None`, which is P9-R1 again
   and is the case that makes this rule safe to have at all.
-- **P9-R13. Enrichment fills, never overwrites, and never writes.** A
+- **P9-R16. Enrichment fills, never overwrites, and never writes.** A
   derived answer is offered only where the message states nothing: a quote
   that carries `BidPx` *and* `Side` answers both as stated, and a
   disagreement between them is reported through `anomalies()` rather than
@@ -848,16 +873,24 @@ but only where the answer is forced, never where it is likely.
 9. `lift()` twice answers identically and mutates nothing (P9-R9).
 10. A facet whose source resolves to no field in the dictionary is skipped,
     not an error (P9-R4).
-11. A buy order with `Price` answers `bid_px` and no `ask_px`; a sell order
-    the reverse; `OrderQty` fills the matching size (P9-R11).
-12. An ExecutionReport with `LastPx` and a side answers neither lane
-    (P9-R11) — the case that keeps a traded price off a book.
-13. A cross, an `Undisclosed` and an unlisted vendor side each answer no
-    lane (P9-R10).
-14. A one-sided quote answers `Buy` from `BidPx` alone and `Sell` from
-    `OfferPx` alone; a two-sided quote answers no side (P9-R12).
-15. A message stating both `BidPx` and a contradicting `Side` answers both
-    as stated and reports the disagreement (P9-R13).
+11. `Quantity(53)` lifted as `quantity` with `QtyType(854)` as its unit; a
+    message carrying only the deprecated `QuantityType(465)` answering from
+    that instead, and one carrying both preferring `854` (P9-R10).
+12. A `quantity_type` of `5` read against `Currency(15)`, and against
+    `SettlCurrency(120)` when the first is absent; a currency quantity with
+    no currency stated answering the quantity alone (P9-R12).
+13. A quantity whose message states no type answering the quantity with no
+    unit, and saying so (P9-R11).
+14. A buy order with `Price` answers `bid_px` and no `ask_px`; a sell order
+    the reverse; `OrderQty` fills the matching size (P9-R14).
+15. An ExecutionReport with `LastPx` and a side answers neither lane
+    (P9-R14) — the case that keeps a traded price off a book.
+16. A cross, an `Undisclosed` and an unlisted vendor side each answer no
+    lane (P9-R13).
+17. A one-sided quote answers `Buy` from `BidPx` alone and `Sell` from
+    `OfferPx` alone; a two-sided quote answers no side (P9-R15).
+18. A message stating both `BidPx` and a contradicting `Side` answers both
+    as stated and reports the disagreement (P9-R16).
 
 **Bench.** `lift()` over an ExecutionReport against reading each facet by
 tag, so the table's cost is visible.
