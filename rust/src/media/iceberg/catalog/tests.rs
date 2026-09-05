@@ -783,12 +783,16 @@ fn table_writes_through_the_views_create_on_first_write() {
 /// that precedent, and the existence audit's whole point is the round trips
 /// that are no longer spent asking questions whose answers were stale.
 mod call_counts {
+    use std::any::Any;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{Catalog, taxi_schema};
     use crate::Result;
-    use crate::holder::fs::{FileInfo, FileInfos, FileSystem, Folder, MemoryFileSystem};
+    use crate::holder::fs::{
+        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, Folder,
+        MemoryFileSystem, OutputMetadata, RandomAccessReader,
+    };
 
     /// A memory filesystem that counts every vtable call reaching it.
     #[derive(Debug, Default)]
@@ -812,43 +816,106 @@ mod call_counts {
             self.inner.type_name()
         }
 
+        fn equals(&self, other: &dyn FileSystem) -> bool {
+            self.count();
+            other
+                .as_any()
+                .downcast_ref::<Self>()
+                .is_some_and(|other| std::ptr::eq(self, other))
+        }
+
+        fn normalize_path(&self, path: &str) -> Result<String> {
+            self.count();
+            self.inner.normalize_path(path)
+        }
+
         fn file_info(&self, path: &str) -> Result<FileInfo> {
             self.count();
             self.inner.file_info(path)
         }
 
-        fn list(&self, path: &str, recursive: bool) -> FileInfos {
+        fn list(&self, selector: &FileSelector) -> FileInfos {
             self.count();
-            self.inner.list(path, recursive)
+            self.inner.list(selector)
         }
 
-        fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+        fn create_dir(&self, path: &str, recursive: bool) -> Result<()> {
             self.count();
-            self.inner.read_range(path, offset, buffer)
+            self.inner.create_dir(path, recursive)
         }
 
-        fn write_full(&self, path: &str, bytes: &[u8]) -> Result<()> {
+        fn delete_dir(&self, path: &str) -> Result<()> {
             self.count();
-            self.inner.write_full(path, bytes)
+            self.inner.delete_dir(path)
         }
 
-        fn create_dir(&self, path: &str) -> Result<()> {
+        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> Result<()> {
             self.count();
-            self.inner.create_dir(path)
+            self.inner.delete_dir_contents(path, missing_dir_ok)
+        }
+
+        fn delete_root_dir_contents(&self) -> Result<()> {
+            self.count();
+            self.inner.delete_root_dir_contents()
         }
 
         fn delete_file(&self, path: &str) -> Result<()> {
             self.count();
             self.inner.delete_file(path)
         }
+
+        fn copy_file(&self, source: &str, target: &str) -> Result<()> {
+            self.count();
+            self.inner.copy_file(source, target)
+        }
+
+        fn move_file(&self, source: &str, target: &str) -> Result<()> {
+            self.count();
+            self.inner.move_file(source, target)
+        }
+
+        fn open_input_file(&self, path: &str) -> Result<Box<dyn RandomAccessReader>> {
+            self.count();
+            self.inner.open_input_file(path)
+        }
+
+        fn open_input_stream(&self, path: &str) -> Result<Box<dyn ByteReader>> {
+            self.count();
+            self.inner.open_input_stream(path)
+        }
+
+        fn open_output_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> Result<Box<dyn ByteWriter>> {
+            self.count();
+            self.inner.open_output_stream(path, metadata)
+        }
+
+        fn open_append_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> Result<Box<dyn ByteWriter>> {
+            self.count();
+            self.inner.open_append_stream(path, metadata)
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
     }
 
     /// A catalog over a counting warehouse, with the counter beside it.
     fn counted() -> (Arc<Counting>, Catalog<Folder>) {
         let filesystem = Arc::new(Counting::default());
-        let warehouse =
-            Folder::from_location(Arc::clone(&filesystem) as Arc<dyn FileSystem>, "warehouse")
-                .expect("a valid location");
+        let warehouse = Folder::from_path(
+            Arc::clone(&filesystem) as Arc<dyn FileSystem>,
+            "warehouse",
+            None,
+        )
+        .expect("a valid location");
         (filesystem, Catalog::new(warehouse))
     }
 
@@ -867,16 +934,13 @@ mod call_counts {
             .create("sales.orders", taxi_schema())
             .unwrap();
 
-        // One child resolution (the backend's own file_info), one presence
-        // answer, and the locate that *is* the open. Reading the numeric
-        // version hint names the document outright, so no metadata-directory
-        // listing runs. Before the audit, `get` ran `contains` - a full
-        // resolve-plus-locate - and then resolved and located again: double
-        // this.
+        // Raw child resolution is local. One presence answer and the locate
+        // that is the open reach the backend; the numeric version hint names
+        // the document directly, so no duplicate classification runs.
         let calls = cost(&filesystem, || {
             catalog.tables().get("sales.orders").unwrap();
         });
-        assert_eq!(calls, 9, "get on an existing table");
+        assert_eq!(calls, 6, "get on an existing table");
     }
 
     #[test]
@@ -887,33 +951,30 @@ mod call_counts {
             .create("sales.orders", taxi_schema())
             .unwrap();
 
-        // One child resolution, one presence answer (a file_info and, for a
-        // prefix with no marker, one listing), done: nothing is there, so no
-        // locate runs and no metadata is asked for.
+        // The child is derived from the retained raw path without a backend
+        // call. One file-info answer says it is absent, so no locate or
+        // metadata-directory listing runs.
         let calls = cost(&filesystem, || {
             catalog.tables().get("sales.nothing").unwrap_err();
         });
-        assert_eq!(calls, 3, "get on a missing table");
+        assert_eq!(calls, 1, "get on a missing table");
     }
 
     #[test]
     fn a_create_into_a_missing_ancestry_never_walks_the_ancestry() {
         let (filesystem, catalog) = counted();
 
-        // One resolution, one presence answer, then the create's own writes:
+        // One presence answer, then the create's direct stream operations:
         // the unique attempt, one same-version collision listing, the
-        // published document, the hint, and the attempt's removal. The
-        // ancestor namespaces are never probed, never listed, and never
-        // made in advance - the metadata write is what brings them into
-        // being. Before the audit this path ran `contains` (resolve + locate)
-        // and then `create_at` resolved again before writing.
+        // published document, the hint, and the attempt's removal. Raw child
+        // resolution and ancestor namespaces make no backend calls.
         let calls = cost(&filesystem, || {
             catalog
                 .tables()
                 .create("a.b.c.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(calls, 14, "create into three missing namespace levels");
+        assert_eq!(calls, 13, "create into three missing namespace levels");
 
         // And the table it made opens.
         catalog.tables().get("a.b.c.orders").unwrap();
@@ -931,7 +992,7 @@ mod call_counts {
                 .open_or_create("sales.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(absent, 14, "open_or_create when absent");
+        assert_eq!(absent, 13, "open_or_create when absent");
 
         // The present branch: one classification, whose locate already opened
         // the table - exactly what `get` costs, because it is the same
@@ -942,6 +1003,6 @@ mod call_counts {
                 .open_or_create("sales.orders", taxi_schema())
                 .unwrap();
         });
-        assert_eq!(present, 9, "open_or_create when present");
+        assert_eq!(present, 6, "open_or_create when present");
     }
 }

@@ -1165,10 +1165,25 @@ pub struct Text<H: IOBase>
   pub const fn into_text(self) -> Self
   pub fn into_text_with(self, options: TextOptions) -> Self
 
+### yggdryl::media::text::leading  [rust\src\media\text\leading.rs]
+pub enum LeadingFragment
+  pub const ALL: [Self; 3] = [Self::Keep, Self::Drop, Self::Error];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+
 ### yggdryl::media::text::options  [rust\src\media\text\options.rs]
 pub struct TextOptions
   pub with_rownum: Option<i64>
   pub fn new() -> Self
+  pub const fn framing(&self) -> bool
+  pub const fn set_framing(&mut self, framing: bool)
+  pub const fn with_framing(self, framing: bool) -> Self
+  pub const fn leading_fragment(&self) -> LeadingFragment
+  pub const fn set_leading_fragment(&mut self, treatment: LeadingFragment)
+  pub const fn with_leading_fragment(self, treatment: LeadingFragment) -> Self
+  pub const fn max_record_byte_size(&self) -> Option<u64>
+  pub const fn set_max_record_byte_size(&mut self, size: Option<u64>)
+  pub const fn with_max_record_byte_size(self, size: u64) -> Self
   pub fn rowheader(&self) -> Option<&str>
   pub fn set_rowheader(&mut self, rowheader: Option<&str>) -> Result<()>
   pub fn try_with_rowheader(self, rowheader: &str) -> Result<Self>

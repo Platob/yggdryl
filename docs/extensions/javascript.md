@@ -145,7 +145,9 @@ same core `joinpath` implementation as Rust's and Python's `/` idiom.
 `DataType.fromRegex(pattern, autotype)` redirects named-capture inference to
 that core. `TextOptions.withRownum` is `bigint | null`: `bigint` preserves the
 whole signed 64-bit range, while a JavaScript `number` is rejected rather than
-silently narrowed.
+silently narrowed. Logical text framing uses `framing`, `leadingFragment`, and
+`maxRecordByteSize`; their contract is defined in
+[plain-text records](../media.md#plain-text-records).
 
 ## Bytes and ranges
 

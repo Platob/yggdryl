@@ -145,17 +145,14 @@ export type PartitionFilters =
 /** Local mapped-object helper for declaring string-keyed object shapes. */
 export type ObjectMap<K extends PropertyKey, V> = { [P in K]: V }
 
-export type JsonLinesCodecFormat = 'json_lines' | 'json-lines' | 'jsonl' | 'ndjson'
+export type JsonLinesCodecFormat =
+  'json_lines' | 'json-lines' | 'jsonl' | 'ndjson'
 export type TomlCodecFormat = 'toml'
 export type SingleCodecFormat = 'json' | 'yaml' | 'yml' | TomlCodecFormat
 export type CodecFormat = SingleCodecFormat | JsonLinesCodecFormat
 export type JsonLinesPath = `${string}.jsonl` | `${string}.ndjson`
 export type CodecContent =
-  | string
-  | Buffer
-  | ArrayBuffer
-  | SharedArrayBuffer
-  | ArrayBufferView
+  string | Buffer | ArrayBuffer | SharedArrayBuffer | ArrayBufferView
 export type CodecReadable = AsyncIterable<CodecContent>
 /** String members are content; source locations are file URLs or descriptors. */
 export type CodecSyncSource = CodecContent | number | NodeURL
@@ -307,11 +304,7 @@ export type DataTypeKindOf<K extends DataTypeId> = DataTypeKindById[K]
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
-  | 'arrow'
-  | 'spark'
-  | 'polars'
-  | 'pandas'
-  | 'iceberg'
+  'arrow' | 'spark' | 'polars' | 'pandas' | 'iceberg'
 
 /** Required intent for a generic record-write entry point. */
 export type IOMode = 'overwrite' | 'append' | 'merge' | 'readonly' | 'random'
@@ -332,10 +325,7 @@ export interface PartitionSpecDocument {
 declare const yggdrylHintValue: unique symbol
 
 /** Cached runtime hint for one canonical JavaScript scalar view. */
-export interface JSValueHint<
-  K extends DataTypeId = DataTypeId,
-  V = unknown,
-> {
+export interface JSValueHint<K extends DataTypeId = DataTypeId, V = unknown> {
   /** The coarse family, exactly as `DataType.kind` reports it. */
   readonly kind: DataTypeKindOf<K>
   readonly constructor: Function | null
@@ -444,22 +434,38 @@ declare module './index' {
 
   interface Xxh32 {
     /** Fill default XXH32 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+    fillArrowBatch(
+      root: FieldLike,
+      batch: ArrowRecordBatch,
+      force?: boolean,
+    ): ArrowRecordBatch
   }
 
   interface Xxh64 {
     /** Fill default XXH64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+    fillArrowBatch(
+      root: FieldLike,
+      batch: ArrowRecordBatch,
+      force?: boolean,
+    ): ArrowRecordBatch
   }
 
   interface Xxh3 {
     /** Fill default XXH3-64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+    fillArrowBatch(
+      root: FieldLike,
+      batch: ArrowRecordBatch,
+      force?: boolean,
+    ): ArrowRecordBatch
   }
 
   interface Xxh128 {
     /** Fill default XXH3-128 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+    fillArrowBatch(
+      root: FieldLike,
+      batch: ArrowRecordBatch,
+      force?: boolean,
+    ): ArrowRecordBatch
   }
 }
 
@@ -483,15 +489,15 @@ export type TypedDataType<
   I = DefaultFieldInput<K, V>,
 > = Omit<DataType, keyof TypedDefaultMethods<K, V>> &
   TypedDefaultMethods<K, V> & {
-  /** The variant identity, exactly as the native `id` getter reports it. */
-  readonly id: K
-  /** The coarse family, exactly as the native `kind` getter reports it. */
-  readonly kind: DataTypeKindOf<K>
-  readonly [yggdrylValueType]: V
-  readonly [yggdrylInputType]: I
-  readonly __yggdrylValueType?: V
-  readonly __yggdrylInputType?: I
-}
+    /** The variant identity, exactly as the native `id` getter reports it. */
+    readonly id: K
+    /** The coarse family, exactly as the native `kind` getter reports it. */
+    readonly kind: DataTypeKindOf<K>
+    readonly [yggdrylValueType]: V
+    readonly [yggdrylInputType]: I
+    readonly __yggdrylValueType?: V
+    readonly __yggdrylInputType?: I
+  }
 
 /** A static variant/value view over the one native Field runtime class. */
 export type FieldOf<
@@ -501,17 +507,17 @@ export type FieldOf<
   I = DefaultFieldInput<K, V>,
 > = Omit<Field, keyof TypedDefaultMethods<K, V> | 'name' | 'dtype'> &
   TypedDefaultMethods<K, V> & {
-  readonly name: N
-  readonly dtype: TypedDataType<
-    K,
-    NonNullableDataTypeValue<K, V>,
-    NonNullableDataTypeValue<K, I>
-  >
-  readonly [yggdrylValueType]: V
-  readonly [yggdrylInputType]: I
-  readonly __yggdrylValueType?: V
-  readonly __yggdrylInputType?: I
-}
+    readonly name: N
+    readonly dtype: TypedDataType<
+      K,
+      NonNullableDataTypeValue<K, V>,
+      NonNullableDataTypeValue<K, I>
+    >
+    readonly [yggdrylValueType]: V
+    readonly [yggdrylInputType]: I
+    readonly __yggdrylValueType?: V
+    readonly __yggdrylInputType?: I
+  }
 
 export type NullField = FieldOf<'null', null>
 export type BooleanField = FieldOf<'boolean', boolean>
@@ -559,10 +565,30 @@ export type MicField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
 export type CfiField = FieldOf<'cfi', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
-export type ListViewField<V = unknown> = FieldOf<'list_view', V[], string, unknown>
-export type FixedSizeListField<V = unknown> = FieldOf<'fixed_size_list', V[], string, unknown>
-export type LargeListField<V = unknown> = FieldOf<'large_list', V[], string, unknown>
-export type LargeListViewField<V = unknown> = FieldOf<'large_list_view', V[], string, unknown>
+export type ListViewField<V = unknown> = FieldOf<
+  'list_view',
+  V[],
+  string,
+  unknown
+>
+export type FixedSizeListField<V = unknown> = FieldOf<
+  'fixed_size_list',
+  V[],
+  string,
+  unknown
+>
+export type LargeListField<V = unknown> = FieldOf<
+  'large_list',
+  V[],
+  string,
+  unknown
+>
+export type LargeListViewField<V = unknown> = FieldOf<
+  'large_list_view',
+  V[],
+  string,
+  unknown
+>
 export type StructField<V = readonly unknown[]> = FieldOf<'struct', V>
 export type UnionValue<V = unknown, I extends number = number> = Readonly<{
   typeId: I
@@ -570,7 +596,12 @@ export type UnionValue<V = unknown, I extends number = number> = Readonly<{
 }>
 export type UnionField<V = UnionValue> = FieldOf<'union', V>
 /** The dense Arrow Union with sequential type IDs, as one field type. */
-export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string, I>
+export type DenseUnionField<V = UnionValue, I = V> = FieldOf<
+  'union',
+  V,
+  string,
+  I
+>
 /** The self-describing semi-structured Variant datatype, as one field type. */
 export type VariantField = FieldOf<'variant', unknown>
 /** One 128-bit identifier; values read back as the hyphenated spelling. */
@@ -604,10 +635,14 @@ export interface FieldOptions {
   metadata?: FieldMetadataInput
 }
 
-type TypedFieldValue<F extends Field> = F extends { readonly [yggdrylValueType]: infer V }
+type TypedFieldValue<F extends Field> = F extends {
+  readonly [yggdrylValueType]: infer V
+}
   ? V
   : unknown
-type TypedFieldInput<F extends Field> = F extends { readonly [yggdrylInputType]: infer I }
+type TypedFieldInput<F extends Field> = F extends {
+  readonly [yggdrylInputType]: infer I
+}
   ? I
   : unknown
 type TypedDataTypeValue<T> = T extends { readonly [yggdrylValueType]: infer V }
@@ -627,21 +662,28 @@ type NullableSetting<O extends FieldOptionsInput> = O extends undefined
       ? N
       : true
     : true
-type NullableValue<V, O extends FieldOptionsInput> = true extends NullableSetting<O>
-  ? V | null
-  : V
-type DefaultFieldInput<K extends DataTypeId, V> =
-  K extends 'int8' | 'int16' | 'int32' | 'int64' | 'uint8' | 'uint16' | 'uint32' | 'uint64'
-    ? number | bigint
-    : K extends 'datetime64' | 'date32' | 'date64'
-      ? number | bigint | Date
-      : K extends 'time32' | 'time64' | 'duration32' | 'duration64'
+type NullableValue<V, O extends FieldOptionsInput> =
+  true extends NullableSetting<O> ? V | null : V
+type DefaultFieldInput<K extends DataTypeId, V> = K extends
+  | 'int8'
+  | 'int16'
+  | 'int32'
+  | 'int64'
+  | 'uint8'
+  | 'uint16'
+  | 'uint32'
+  | 'uint64'
+  ? number | bigint
+  : K extends 'datetime64' | 'date32' | 'date64'
+    ? number | bigint | Date
+    : K extends 'time32' | 'time64' | 'duration32' | 'duration64'
+      ? number | bigint
+      : K extends 'decimal32' | 'decimal64' | 'decimal128'
         ? number | bigint
-        : K extends 'decimal32' | 'decimal64' | 'decimal128'
-          ? number | bigint
-          : K extends 'binary' | 'fixed_size_binary' | 'large_binary' | 'binary_view'
-            ? Uint8Array | ArrayBuffer
-            : V
+        : K extends
+              'binary' | 'fixed_size_binary' | 'large_binary' | 'binary_view'
+          ? Uint8Array | ArrayBuffer
+          : V
 type NamedField<
   K extends DataTypeId,
   V,
@@ -681,9 +723,17 @@ export interface FieldsNamespace {
   time32(name: string, options: FieldOptions): Time32Field
   time64(name: string, unit?: string, options?: FieldOptions): Time64Field
   time64(name: string, options: FieldOptions): Time64Field
-  duration32(name: string, unit?: string, options?: FieldOptions): Duration32Field
+  duration32(
+    name: string,
+    unit?: string,
+    options?: FieldOptions,
+  ): Duration32Field
   duration32(name: string, options: FieldOptions): Duration32Field
-  duration64(name: string, unit?: string, options?: FieldOptions): Duration64Field
+  duration64(
+    name: string,
+    unit?: string,
+    options?: FieldOptions,
+  ): Duration64Field
   duration64(name: string, options: FieldOptions): Duration64Field
   interval(name: string, unit?: string, options?: FieldOptions): IntervalField
   interval(name: string, options: FieldOptions): IntervalField
@@ -699,7 +749,11 @@ export interface FieldsNamespace {
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
   ascii(name: string, options?: FieldOptions): AsciiField
-  fixedAscii(name: string, width: number, options?: FieldOptions): FixedAsciiField
+  fixedAscii(
+    name: string,
+    width: number,
+    options?: FieldOptions,
+  ): FixedAsciiField
   list<F extends Field>(
     name: string,
     item: F,
@@ -858,18 +912,24 @@ type StructInputValue<Fs extends readonly AnyField[]> = {
   readonly [I in keyof Fs]: Fs[I] extends Field ? TypedFieldInput<Fs[I]> : never
 }
 type UnionMembersValue<Ms extends readonly (readonly [number, AnyField])[]> = {
-  [P in keyof Ms]: Ms[P] extends readonly [infer I extends number, infer F extends AnyField]
+  [P in keyof Ms]: Ms[P] extends readonly [
+    infer I extends number,
+    infer F extends AnyField,
+  ]
     ? UnionValue<TypedFieldValue<F>, I>
     : never
 }[number]
 type UnionMembersInput<Ms extends readonly (readonly [number, AnyField])[]> = {
-  [P in keyof Ms]: Ms[P] extends readonly [infer I extends number, infer F extends AnyField]
+  [P in keyof Ms]: Ms[P] extends readonly [
+    infer I extends number,
+    infer F extends AnyField,
+  ]
     ? UnionValue<TypedFieldInput<F>, I>
     : never
 }[number]
 type TuplePositions<T extends readonly unknown[]> = Exclude<
   keyof T,
-  keyof readonly unknown[]
+  keyof (readonly unknown[])
 >
 type TuplePositionNumber<P> = P extends `${infer I extends number}` ? I : never
 type DenseUnionMembersValue<Fs extends readonly AnyField[]> =
@@ -888,94 +948,555 @@ type DenseUnionMembersInput<Fs extends readonly AnyField[]> =
           ? UnionValue<TypedFieldInput<Fs[P]>, TuplePositionNumber<P>>
           : never
       }[TuplePositions<Fs>]
-type MapKeyValue<F extends Field> = TypedFieldValue<F> extends Readonly<{
-  key: infer K
-  value: infer V
-}>
-  ? readonly [K, V]
-  : readonly [unknown, unknown]
-type MapInputKeyValue<F extends Field> = TypedFieldInput<F> extends Readonly<{
-  key: infer K
-  value: infer V
-}>
-  ? readonly [K, V]
-  : readonly [unknown, unknown]
+type MapKeyValue<F extends Field> =
+  TypedFieldValue<F> extends Readonly<{
+    key: infer K
+    value: infer V
+  }>
+    ? readonly [K, V]
+    : readonly [unknown, unknown]
+type MapInputKeyValue<F extends Field> =
+  TypedFieldInput<F> extends Readonly<{
+    key: infer K
+    value: infer V
+  }>
+    ? readonly [K, V]
+    : readonly [unknown, unknown]
 
 /** Literal-name/nullability overloads that infer exact Field tuples. */
 export interface FieldsNamespace {
-  null<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'null', null, N, O>
-  boolean<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'boolean', boolean, N, O>
-  int8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'int8', number, N, O>
-  int16<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'int16', number, N, O>
-  int32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'int32', number, N, O>
-  int64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'int64', bigint, N, O>
-  uint8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uint8', number, N, O>
-  uint16<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uint16', number, N, O>
-  uint32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uint32', number, N, O>
-  uint64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uint64', bigint, N, O>
-  float16<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float16', number, N, O>
-  float32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float32', number, N, O>
-  float64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'float64', number, N, O>
-  datetime64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, timezone?: string, options?: O): NamedField<'datetime64', bigint, N, O>
-  datetime64<const N extends string, const O extends FieldOptionsInput>(name: N, unit: string, options: O): NamedField<'datetime64', bigint, N, O>
-  date32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'date32', number, N, O>
-  date64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'date64', bigint, N, O>
-  time<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit: string, options?: O): NamedField<'time32', number, N, O> | NamedField<'time64', bigint, N, O>
-  time32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'time32', number, N, O>
-  time32<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'time32', number, N, O>
-  time64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'time64', bigint, N, O>
-  time64<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'time64', bigint, N, O>
-  duration32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'duration32', number, N, O>
-  duration32<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'duration32', number, N, O>
-  duration64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'duration64', bigint, N, O>
-  duration64<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'duration64', bigint, N, O>
-  interval<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, unit?: string, options?: O): NamedField<'interval', IntervalValue, N, O>
-  interval<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'interval', IntervalValue, N, O>
-  binary<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'binary', Uint8Array, N, O>
-  fixedSizeBinary<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, byteWidth: number, options?: O): NamedField<'fixed_size_binary', Uint8Array, N, O>
-  largeBinary<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'large_binary', Uint8Array, N, O>
-  binaryView<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'binary_view', Uint8Array, N, O>
-  utf8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'utf8', string, N, O>
-  largeUtf8<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'large_utf8', string, N, O>
-  utf8View<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'utf8_view', string, N, O>
-  ascii<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'ascii', string, N, O>
-  fixedAscii<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, width: number, options?: O): NamedField<'fixed_ascii', string, N, O>
-  list<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  listView<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  fixedSizeList<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, length: number, options?: O): NamedField<'fixed_size_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  largeList<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'large_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  largeListView<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, item: F, options?: O): NamedField<'large_list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  struct<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, children: Fs, options?: O): NamedField<'struct', StructValue<Fs>, N, O, StructInputValue<Fs>>
-  union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput = undefined>(name: N, members: Ms, mode?: 'sparse' | 'dense', options?: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
-  union<const N extends string, const Ms extends readonly (readonly [number, AnyField])[], const O extends FieldOptionsInput>(name: N, members: Ms, options: O): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
-  denseUnion<const N extends string, const Fs extends readonly AnyField[], const O extends FieldOptionsInput = undefined>(name: N, members: Fs, options?: O): NamedField<'union', DenseUnionMembersValue<Fs>, N, O, DenseUnionMembersInput<Fs>>
-  variant<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'variant', unknown, N, O>
-  uuid<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'uuid', string, N, O>
-  country<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'country', string, N, O>
-  currency<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'currency', string, N, O>
-  mic<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'mic', string, N, O>
-  cfi<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, options?: O): NamedField<'cfi', string, N, O>
-  geometry<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, options?: O): NamedField<'geometry', Uint8Array, N, O>
-  geometry<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geometry', Uint8Array, N, O>
-  geography<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, crs?: string, algorithm?: string, options?: O): NamedField<'geography', Uint8Array, N, O>
-  geography<const N extends string, const O extends FieldOptionsInput>(name: N, crs: string, options: O): NamedField<'geography', Uint8Array, N, O>
-  geography<const N extends string, const O extends FieldOptionsInput>(name: N, options: O): NamedField<'geography', Uint8Array, N, O>
-  dictionary<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput = undefined>(name: N, key: K, value: V, options?: O): NamedField<'dictionary', TypedDataTypeValue<V>, N, O, TypedDataTypeInput<V>>
-  decimal<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
-  decimal<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal128', bigint, N, O> | NamedField<'decimal256', bigint, N, O>
-  decimal32<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal32', bigint, N, O>
-  decimal32<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal32', bigint, N, O>
-  decimal64<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal64', bigint, N, O>
-  decimal64<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal64', bigint, N, O>
-  decimal128<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal128', bigint, N, O>
-  decimal128<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal128', bigint, N, O>
-  decimal256<const N extends string, const O extends FieldOptionsInput = undefined>(name: N, precision: number, scale?: number, options?: O): NamedField<'decimal256', bigint, N, O>
-  decimal256<const N extends string, const O extends FieldOptionsInput>(name: N, precision: number, options: O): NamedField<'decimal256', bigint, N, O>
-  map<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, entries: F, keysSorted?: boolean, options?: O): NamedField<'map', ReadonlyMap<MapKeyValue<F>[0], MapKeyValue<F>[1]>, N, O, ReadonlyMap<MapInputKeyValue<F>[0], MapInputKeyValue<F>[1]>>
-  map<const N extends string, F extends Field, const O extends FieldOptionsInput>(name: N, entries: F, options: O): NamedField<'map', ReadonlyMap<MapKeyValue<F>[0], MapKeyValue<F>[1]>, N, O, ReadonlyMap<MapInputKeyValue<F>[0], MapInputKeyValue<F>[1]>>
-  mapOf<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput = undefined>(name: N, key: K, value: V, keysSorted?: boolean, options?: O): NamedField<'map', ReadonlyMap<TypedDataTypeValue<K>, TypedDataTypeValue<V>>, N, O, ReadonlyMap<TypedDataTypeInput<K>, TypedDataTypeInput<V>>>
-  mapOf<const N extends string, K extends DataTypeInput, V extends DataTypeInput, const O extends FieldOptionsInput>(name: N, key: K, value: V, options: O): NamedField<'map', ReadonlyMap<TypedDataTypeValue<K>, TypedDataTypeValue<V>>, N, O, ReadonlyMap<TypedDataTypeInput<K>, TypedDataTypeInput<V>>>
-  runEndEncoded<const N extends string, F extends Field, const O extends FieldOptionsInput = undefined>(name: N, runEnds: Field, values: F, options?: O): NamedField<'run_end_encoded', TypedFieldValue<F>, N, O, TypedFieldInput<F>>
+  null<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'null', null, N, O>
+  boolean<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'boolean', boolean, N, O>
+  int8<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'int8', number, N, O>
+  int16<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'int16', number, N, O>
+  int32<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'int32', number, N, O>
+  int64<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'int64', bigint, N, O>
+  uint8<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'uint8', number, N, O>
+  uint16<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'uint16', number, N, O>
+  uint32<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'uint32', number, N, O>
+  uint64<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'uint64', bigint, N, O>
+  float16<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'float16', number, N, O>
+  float32<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'float32', number, N, O>
+  float64<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'float64', number, N, O>
+  datetime64<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    unit?: string,
+    timezone?: string,
+    options?: O,
+  ): NamedField<'datetime64', bigint, N, O>
+  datetime64<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    unit: string,
+    options: O,
+  ): NamedField<'datetime64', bigint, N, O>
+  date32<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'date32', number, N, O>
+  date64<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'date64', bigint, N, O>
+  time<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    unit: string,
+    options?: O,
+  ): NamedField<'time32', number, N, O> | NamedField<'time64', bigint, N, O>
+  time32<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    unit?: string,
+    options?: O,
+  ): NamedField<'time32', number, N, O>
+  time32<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'time32', number, N, O>
+  time64<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    unit?: string,
+    options?: O,
+  ): NamedField<'time64', bigint, N, O>
+  time64<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'time64', bigint, N, O>
+  duration32<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    unit?: string,
+    options?: O,
+  ): NamedField<'duration32', number, N, O>
+  duration32<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'duration32', number, N, O>
+  duration64<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    unit?: string,
+    options?: O,
+  ): NamedField<'duration64', bigint, N, O>
+  duration64<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'duration64', bigint, N, O>
+  interval<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    unit?: string,
+    options?: O,
+  ): NamedField<'interval', IntervalValue, N, O>
+  interval<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'interval', IntervalValue, N, O>
+  binary<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'binary', Uint8Array, N, O>
+  fixedSizeBinary<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    byteWidth: number,
+    options?: O,
+  ): NamedField<'fixed_size_binary', Uint8Array, N, O>
+  largeBinary<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_binary', Uint8Array, N, O>
+  binaryView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'binary_view', Uint8Array, N, O>
+  utf8<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'utf8', string, N, O>
+  largeUtf8<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_utf8', string, N, O>
+  utf8View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'utf8_view', string, N, O>
+  ascii<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'ascii', string, N, O>
+  fixedAscii<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_ascii', string, N, O>
+  list<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    item: F,
+    options?: O,
+  ): NamedField<'list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  listView<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    item: F,
+    options?: O,
+  ): NamedField<'list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  fixedSizeList<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    item: F,
+    length: number,
+    options?: O,
+  ): NamedField<
+    'fixed_size_list',
+    TypedFieldValue<F>[],
+    N,
+    O,
+    TypedFieldInput<F>[]
+  >
+  largeList<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    item: F,
+    options?: O,
+  ): NamedField<'large_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  largeListView<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    item: F,
+    options?: O,
+  ): NamedField<
+    'large_list_view',
+    TypedFieldValue<F>[],
+    N,
+    O,
+    TypedFieldInput<F>[]
+  >
+  struct<
+    const N extends string,
+    const Fs extends readonly AnyField[],
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    children: Fs,
+    options?: O,
+  ): NamedField<'struct', StructValue<Fs>, N, O, StructInputValue<Fs>>
+  union<
+    const N extends string,
+    const Ms extends readonly (readonly [number, AnyField])[],
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    members: Ms,
+    mode?: 'sparse' | 'dense',
+    options?: O,
+  ): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
+  union<
+    const N extends string,
+    const Ms extends readonly (readonly [number, AnyField])[],
+    const O extends FieldOptionsInput,
+  >(
+    name: N,
+    members: Ms,
+    options: O,
+  ): NamedField<'union', UnionMembersValue<Ms>, N, O, UnionMembersInput<Ms>>
+  denseUnion<
+    const N extends string,
+    const Fs extends readonly AnyField[],
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    members: Fs,
+    options?: O,
+  ): NamedField<
+    'union',
+    DenseUnionMembersValue<Fs>,
+    N,
+    O,
+    DenseUnionMembersInput<Fs>
+  >
+  variant<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'variant', unknown, N, O>
+  uuid<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'uuid', string, N, O>
+  country<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'country', string, N, O>
+  currency<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'currency', string, N, O>
+  mic<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'mic', string, N, O>
+  cfi<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'cfi', string, N, O>
+  geometry<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    crs?: string,
+    options?: O,
+  ): NamedField<'geometry', Uint8Array, N, O>
+  geometry<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'geometry', Uint8Array, N, O>
+  geography<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    crs?: string,
+    algorithm?: string,
+    options?: O,
+  ): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    crs: string,
+    options: O,
+  ): NamedField<'geography', Uint8Array, N, O>
+  geography<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    options: O,
+  ): NamedField<'geography', Uint8Array, N, O>
+  dictionary<
+    const N extends string,
+    K extends DataTypeInput,
+    V extends DataTypeInput,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    key: K,
+    value: V,
+    options?: O,
+  ): NamedField<
+    'dictionary',
+    TypedDataTypeValue<V>,
+    N,
+    O,
+    TypedDataTypeInput<V>
+  >
+  decimal<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    precision: number,
+    scale?: number,
+    options?: O,
+  ):
+    | NamedField<'decimal128', bigint, N, O>
+    | NamedField<'decimal256', bigint, N, O>
+  decimal<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    precision: number,
+    options: O,
+  ):
+    | NamedField<'decimal128', bigint, N, O>
+    | NamedField<'decimal256', bigint, N, O>
+  decimal32<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    precision: number,
+    scale?: number,
+    options?: O,
+  ): NamedField<'decimal32', bigint, N, O>
+  decimal32<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    precision: number,
+    options: O,
+  ): NamedField<'decimal32', bigint, N, O>
+  decimal64<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    precision: number,
+    scale?: number,
+    options?: O,
+  ): NamedField<'decimal64', bigint, N, O>
+  decimal64<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    precision: number,
+    options: O,
+  ): NamedField<'decimal64', bigint, N, O>
+  decimal128<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    precision: number,
+    scale?: number,
+    options?: O,
+  ): NamedField<'decimal128', bigint, N, O>
+  decimal128<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    precision: number,
+    options: O,
+  ): NamedField<'decimal128', bigint, N, O>
+  decimal256<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    precision: number,
+    scale?: number,
+    options?: O,
+  ): NamedField<'decimal256', bigint, N, O>
+  decimal256<const N extends string, const O extends FieldOptionsInput>(
+    name: N,
+    precision: number,
+    options: O,
+  ): NamedField<'decimal256', bigint, N, O>
+  map<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    entries: F,
+    keysSorted?: boolean,
+    options?: O,
+  ): NamedField<
+    'map',
+    ReadonlyMap<MapKeyValue<F>[0], MapKeyValue<F>[1]>,
+    N,
+    O,
+    ReadonlyMap<MapInputKeyValue<F>[0], MapInputKeyValue<F>[1]>
+  >
+  map<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput,
+  >(
+    name: N,
+    entries: F,
+    options: O,
+  ): NamedField<
+    'map',
+    ReadonlyMap<MapKeyValue<F>[0], MapKeyValue<F>[1]>,
+    N,
+    O,
+    ReadonlyMap<MapInputKeyValue<F>[0], MapInputKeyValue<F>[1]>
+  >
+  mapOf<
+    const N extends string,
+    K extends DataTypeInput,
+    V extends DataTypeInput,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    key: K,
+    value: V,
+    keysSorted?: boolean,
+    options?: O,
+  ): NamedField<
+    'map',
+    ReadonlyMap<TypedDataTypeValue<K>, TypedDataTypeValue<V>>,
+    N,
+    O,
+    ReadonlyMap<TypedDataTypeInput<K>, TypedDataTypeInput<V>>
+  >
+  mapOf<
+    const N extends string,
+    K extends DataTypeInput,
+    V extends DataTypeInput,
+    const O extends FieldOptionsInput,
+  >(
+    name: N,
+    key: K,
+    value: V,
+    options: O,
+  ): NamedField<
+    'map',
+    ReadonlyMap<TypedDataTypeValue<K>, TypedDataTypeValue<V>>,
+    N,
+    O,
+    ReadonlyMap<TypedDataTypeInput<K>, TypedDataTypeInput<V>>
+  >
+  runEndEncoded<
+    const N extends string,
+    F extends Field,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    runEnds: Field,
+    values: F,
+    options?: O,
+  ): NamedField<'run_end_encoded', TypedFieldValue<F>, N, O, TypedFieldInput<F>>
 }
 
 export declare const fields: FieldsNamespace
@@ -991,10 +1512,7 @@ export type AvroSchemaDocument =
 
 /** Any schema spelling normalized into the one native Avro schema graph. */
 export type AvroSchemaInput =
-  | AvroSchema
-  | Scalar
-  | CodecContent
-  | AvroSchemaDocument
+  AvroSchema | Scalar | CodecContent | AvroSchemaDocument
 
 /** Binary input for an Avro container or single-object datum. */
 export type AvroBytes = Exclude<CodecContent, string>
@@ -1037,7 +1555,10 @@ export interface AvroSchema {
   /** Encode one natural value with Avro single-object framing. */
   intoSingleObject(value: unknown): Buffer
   /** Decode one single-object datum through the shared native Scalar pivot. */
-  fromSingleObject<T = unknown>(input: AvroBytes, options?: AvroDecodeLimits | null): T
+  fromSingleObject<T = unknown>(
+    input: AvroBytes,
+    options?: AvroDecodeLimits | null,
+  ): T
   /** Return the canonical form for JavaScript's string protocol. */
   toString(): string
   /** Return the original document for JSON serialization. */
@@ -1047,7 +1568,7 @@ export interface AvroSchema {
 export declare const AvroSchema: {
   readonly prototype: AvroSchema
   /** Parse a natural value, native Scalar, JSON text, or JSON bytes. */
-  new(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
+  new (value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
   /** Parse any accepted schema representation. */
   from(value: AvroSchemaInput, options?: AvroDecodeLimits | null): AvroSchema
 }
@@ -1073,7 +1594,9 @@ export interface AvroBlock<T = unknown> {
 }
 
 /** A fused lazy iterator retaining one bounded native read window. */
-export interface AvroBlocks<T = unknown> extends IterableIterator<AvroBlock<T>> {
+export interface AvroBlocks<T = unknown> extends IterableIterator<
+  AvroBlock<T>
+> {
   /** Writer schema carried by the object-container header. */
   readonly schema: AvroSchema
   /** User metadata, excluding Avro's reserved header entries. */
@@ -1087,8 +1610,14 @@ export interface AvroBlocks<T = unknown> extends IterableIterator<AvroBlock<T>> 
 export interface Avro {
   readonly Schema: typeof AvroSchema
   /** Lazily yield still-compressed object-container blocks. */
-  blocks<T = unknown>(input: AvroBytes, options?: AvroDecodeOptions | null): AvroBlocks<T>
-  loads<T = unknown>(input: AvroBytes, options?: AvroDecodeOptions | null): AvroContainer<T>
+  blocks<T = unknown>(
+    input: AvroBytes,
+    options?: AvroDecodeOptions | null,
+  ): AvroBlocks<T>
+  loads<T = unknown>(
+    input: AvroBytes,
+    options?: AvroDecodeOptions | null,
+  ): AvroContainer<T>
   dumps(
     rows: Iterable<unknown>,
     schema: AvroSchemaInput,
@@ -1182,13 +1711,7 @@ export interface JsonLinesCodecOptions extends Omit<CodecOptions, 'format'> {
 
 /** The canonical resolution a native time, datetime, or duration counts in. */
 export type CodecTimeUnit =
-  | 's'
-  | 'ms'
-  | 'us'
-  | 'ns'
-  | 'year_month'
-  | 'day_time'
-  | 'month_day_nano'
+  's' | 'ms' | 'us' | 'ns' | 'year_month' | 'day_time' | 'month_day_nano'
 
 export interface CodecNodeWritable {
   write(chunk: Uint8Array, callback?: (error?: Error | null) => void): unknown
@@ -1220,8 +1743,16 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
   load<T = unknown>(source: CodecSyncSource, options?: O): T
   dumps(value: unknown, options?: CodecOptions): Buffer
   dump(value: unknown, options?: CodecOptions): Buffer
-  dump(value: unknown, destination: CodecWritable, options?: CodecOptions): Promise<void>
-  dump(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
+  dump(
+    value: unknown,
+    destination: CodecWritable,
+    options?: CodecOptions,
+  ): Promise<void>
+  dump(
+    value: unknown,
+    destination: CodecSyncDestination,
+    options?: CodecOptions,
+  ): void
   loadStream(
     stream: AsyncIterable<CodecContent>,
     options: O & { scalar: true },
@@ -1238,11 +1769,15 @@ export interface SingleDocumentCodec<O extends CodecOptions = CodecOptions> {
 }
 
 /** One-document operations plus JSON Lines/YAML collection operations. */
-export interface StructuredCodec<O extends CodecOptions = CodecOptions>
-  extends SingleDocumentCodec<O> {
+export interface StructuredCodec<
+  O extends CodecOptions = CodecOptions,
+> extends SingleDocumentCodec<O> {
   loadsAll(content: CodecContent, options: O & { scalar: true }): Scalar[]
   loadsAll<T = unknown>(content: CodecContent, options?: O): T[]
-  loadAll(source: CodecReadable, options: O & { scalar: true }): AsyncIterable<Scalar>
+  loadAll(
+    source: CodecReadable,
+    options: O & { scalar: true },
+  ): AsyncIterable<Scalar>
   loadAll<T = unknown>(source: CodecReadable, options?: O): AsyncIterable<T>
   loadAll(source: CodecSyncSource, options: O & { scalar: true }): Scalar[]
   loadAll<T = unknown>(source: CodecSyncSource, options?: O): T[]
@@ -1289,14 +1824,20 @@ export interface GenericCodec {
     source: CodecSyncSource,
     options: TemplateCodecOptions & { scalar: true },
   ): Scalar
-  from<T = unknown>(source: CodecReadable, options: JsonLinesCodecOptions): AsyncIterable<T>
-  from<T = unknown>(source: CodecReadable, options?: TemplateCodecOptions): Promise<T>
-  from<T = unknown>(source: CodecSyncSource, options: JsonLinesCodecOptions): T[]
-  from<T = unknown>(source: CodecSyncSource, options?: TemplateCodecOptions): T
-  into(
-    values: Iterable<unknown>,
+  from<T = unknown>(
+    source: CodecReadable,
     options: JsonLinesCodecOptions,
-  ): Buffer
+  ): AsyncIterable<T>
+  from<T = unknown>(
+    source: CodecReadable,
+    options?: TemplateCodecOptions,
+  ): Promise<T>
+  from<T = unknown>(
+    source: CodecSyncSource,
+    options: JsonLinesCodecOptions,
+  ): T[]
+  from<T = unknown>(source: CodecSyncSource, options?: TemplateCodecOptions): T
+  into(values: Iterable<unknown>, options: JsonLinesCodecOptions): Buffer
   into(
     values: Iterable<unknown>,
     destination: JsonLinesPath,
@@ -1313,8 +1854,16 @@ export interface GenericCodec {
     destination: CodecSyncDestination,
     options: JsonLinesCodecOptions,
   ): void
-  into(value: unknown, destination: CodecWritable, options?: CodecOptions): Promise<void>
-  into(value: unknown, destination: CodecSyncDestination, options?: CodecOptions): void
+  into(
+    value: unknown,
+    destination: CodecWritable,
+    options?: CodecOptions,
+  ): Promise<void>
+  into(
+    value: unknown,
+    destination: CodecSyncDestination,
+    options?: CodecOptions,
+  ): void
   fromStream(
     stream: AsyncIterable<CodecContent>,
     options: JsonLinesCodecOptions & { scalar: true },
@@ -1443,7 +1992,8 @@ export declare const codec: GenericCodec
 export type DigestAlgorithm = 'xxh32' | 'xxh64' | 'xxh3-64' | 'xxh3-128'
 
 /** Anything a digest reads bytes from. */
-export type DigestContent = Buffer | Uint8Array | ArrayBuffer | SharedArrayBuffer | string
+export type DigestContent =
+  Buffer | Uint8Array | ArrayBuffer | SharedArrayBuffer | string
 
 /** How one digest call is seeded, and - for XXH3 - which secret it uses. */
 export interface DigestOptions {
@@ -1499,7 +2049,9 @@ declare module './index' {
     showDiffs(other: DataType, withMetadata?: boolean): IterableIterator<string>
   }
   namespace DataType {
-    function fromArrow(value: DataType | string | ArrowStringCompatible): DataType
+    function fromArrow(
+      value: DataType | string | ArrowStringCompatible,
+    ): DataType
     function fromFields(fields: Iterable<Field>): DataType
     // The parenthesis disambiguates: bare `variant()` is the self-describing
     // Variant datatype; `variant(fields)` stays the dense-union sugar.
@@ -1651,10 +2203,7 @@ declare module './index' {
     /** Read an Apache Arrow Vector through native Arrow IPC. */
     function fromArrowArray(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow RecordBatch through native Arrow IPC. */
-    function fromArrowBatch(
-      value: ArrowRecordBatch,
-      field?: Field,
-    ): Scalar
+    function fromArrowBatch(value: ArrowRecordBatch, field?: Field): Scalar
     /** Read an Apache Arrow Table through native Arrow IPC. */
     function fromArrowTable(value: ArrowTable, field?: Field): Scalar
   }
@@ -1713,6 +2262,8 @@ declare module './index' {
 
   /** Iterating a handle lists its immediate children. */
   interface IOBase extends Iterable<IOBase>, Disposable {
+    openOutputStream(metadata?: OutputMetadata | null): ByteWriter
+    openAppendStream(metadata?: OutputMetadata | null): ByteWriter
     /** The storage role this handle currently addresses. */
     kind: string
     /** Whether this handle exposes either its byte or record surface. */
@@ -1722,7 +2273,10 @@ declare module './index' {
     /** Leaves beneath this one carrying every requested partition pair. */
     childrenWhere(filters: PartitionFilters, includePrivate?: boolean): Listing
     /** Stream bounded byte arrays from `position`, without collecting them. */
-    pstreamBytes(position?: number | null, batchSize?: number | null): ByteIterator
+    pstreamBytes(
+      position?: number | null,
+      batchSize?: number | null,
+    ): ByteIterator
     /** Add or reconfigure one native page cache and return this handle. */
     buffered(options?: BufferedOptions | null): IOBase
     /** Retain flat plain-text record options and return this handle. */
@@ -1748,20 +2302,27 @@ declare module './index' {
     /** Read a Parquet leaf's footer statistics without decoding rows. */
     readParquetStatistics(): ParquetFileStatistics
     /** Recompute one Parquet WKB column's bounds and geometry types. */
-    readParquetGeospatialStatistics(
-      column: string,
-    ): ParquetGeospatialStatistics
+    readParquetGeospatialStatistics(column: string): ParquetGeospatialStatistics
 
     /** Read the canonical non-null struct root `Field` of this resource. */
     readArrowField(options?: RecordOptionsInput | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowReader(options?: RecordOptionsInput | null): BatchReader
     /** Replace this resource's rows with one native reader. */
-    overwriteArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    overwriteArrowReader(
+      reader: BatchReader,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Append one native reader after this resource's rows. */
-    appendArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    appendArrowReader(
+      reader: BatchReader,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Merge one native reader by the non-empty `options.mergeByNames` keys. */
-    mergeArrowReader(reader: BatchReader, options?: RecordOptionsInput | null): void
+    mergeArrowReader(
+      reader: BatchReader,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Write one native reader using the required explicit mode. */
     writeArrowReader(
       reader: BatchReader,
@@ -1770,11 +2331,20 @@ declare module './index' {
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS table. */
-    overwriteArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    overwriteArrowTable(
+      table: ArrowTable,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Append one Apache Arrow JS table after this resource's rows. */
-    appendArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    appendArrowTable(
+      table: ArrowTable,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Merge one Apache Arrow JS table by the non-empty `options.mergeByNames` keys. */
-    mergeArrowTable(table: ArrowTable, options?: RecordOptionsInput | null): void
+    mergeArrowTable(
+      table: ArrowTable,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Write one Apache Arrow JS table using the required explicit mode. */
     writeArrowTable(
       table: ArrowTable,
@@ -1820,7 +2390,10 @@ declare module './index' {
       rows: AsyncIterable<StructRecord>,
       options?: RecordOptionsInput | null,
     ): Promise<void>
-    overwriteRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    overwriteRecords(
+      rows: RecordSource,
+      options?: RecordOptionsInput | null,
+    ): void
     /** Append plain objects or field-class instances after the stored rows. */
     appendRecords(
       rows: AsyncIterable<StructRecord>,
@@ -1909,7 +2482,10 @@ declare module './index' {
       options?: IcebergOptions | null,
     ): void
     /** Read the current snapshot, keeping the columns `field` names. */
-    scan(field?: SchemaInput | null, options?: IcebergOptions | null): BatchReader
+    scan(
+      field?: SchemaInput | null,
+      options?: IcebergOptions | null,
+    ): BatchReader
     /** Read the rows matching `filters`, keeping the columns `field` names. */
     scanWhere(
       filters?: PartitionFilters | null,
@@ -1924,16 +2500,32 @@ declare module './index' {
 
   interface Tables {
     /** Append rows to the named table, creating it on first write. */
-    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    append(
+      name: string,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): Table
     /** Replace the named table's rows, creating it on first write. */
-    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    overwrite(
+      name: string,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): Table
   }
 
   interface Catalog {
     /** Append rows to the named table, creating it on first write. */
-    append(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    append(
+      name: string,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): Table
     /** Replace the named table's rows, creating it on first write. */
-    overwrite(name: string, rows: IcebergSource, options?: IcebergOptions | null): Table
+    overwrite(
+      name: string,
+      rows: IcebergSource,
+      options?: IcebergOptions | null,
+    ): Table
   }
 
   namespace Timezone {
@@ -1960,7 +2552,8 @@ export type BatchSource =
 /** One row accepted by the record-specific write entry points. */
 // `& object` is what keeps a primitive out: every JavaScript value carries a
 // `constructor`, so a bare number structurally satisfies StructFieldInstance.
-export type StructRecord = Record<string, unknown> | (StructFieldInstance & object)
+export type StructRecord =
+  Record<string, unknown> | (StructFieldInstance & object)
 /** One record or a synchronous sequence of records. */
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
@@ -2043,7 +2636,8 @@ export declare const iceberg: Iceberg
  * declared root Struct field is what orders, types and validates it - in the
  * core, as every other row is.
  */
-export type FixValueInput = Scalar | Record<string, unknown> | readonly unknown[]
+export type FixValueInput =
+  Scalar | Record<string, unknown> | readonly unknown[]
 
 /**
  * The public `FixMsg` constructor, which widens the value the native class
@@ -2087,62 +2681,98 @@ export interface Fix {
 export declare const fix: Fix
 
 /** What an Arrow file system reports one path to be. */
-export type ArrowFileKind = 'file' | 'directory' | 'unknown' | 'not-found'
+export type ArrowFileKind = 'file' | 'directory' | 'not-found'
+
+/** Stable filesystem failure categories a custom handler may report. */
+export type FileSystemErrorCode =
+  | 'NotFound'
+  | 'PermissionDenied'
+  | 'AlreadyExists'
+  | 'NotADirectory'
+  | 'IsADirectory'
+  | 'DirectoryNotEmpty'
+  | 'Unsupported'
+  | 'Transport'
+
+export interface FileSystemError extends Error {
+  readonly code: FileSystemErrorCode
+}
+
+/** Selection passed unchanged to `FileSystemHandler.list`. */
+export interface FileSelector {
+  readonly baseDir: string
+  readonly recursive: boolean
+  readonly allowNotFound: boolean
+}
+
+/** Metadata forwarded to an output or append stream. */
+export type OutputMetadata =
+  Readonly<Record<string, string>> | ReadonlyMap<string, string>
+
+/** Stateful sequential input; each read returns only its requested chunk. */
+export interface ByteReader {
+  readonly closed: boolean
+  read(length: bigint): Uint8Array
+  tell(): bigint
+  close(): void
+  [Symbol.dispose]?(): void
+}
+
+/** Stateful input supporting positional reads without moving its cursor. */
+export interface RandomAccessReader extends ByteReader {
+  readAt(offset: bigint, length: bigint): Uint8Array
+  seek(offset: bigint, whence?: 'start' | 'current' | 'end'): bigint
+}
+
+/** Stateful output forwarding each write as it arrives. */
+export interface ByteWriter {
+  readonly closed: boolean
+  write(bytes: Uint8Array): bigint
+  tell(): bigint
+  flush(): void
+  close(): void
+  [Symbol.dispose]?(): void
+}
 
 /** What an Arrow file system handler reports about one path. */
 export interface ArrowFileInfo {
-  /**
-   * The location, as the file system itself names it. A `fileInfo` answer
-   * may omit it - the path that was asked about is what it means - while a
-   * `list` entry stands for a location of its own and must name it.
-   */
-  path?: string
-  /** `'file'`, `'directory'`, or `'unknown'` for a path holding nothing. */
+  /** The exact location as the filesystem names it. */
+  path: string
   kind: ArrowFileKind
-  /**
-   * The byte length. Produce a `bigint`: a length is 64-bit, and an object
-   * larger than 2^53 bytes is a real object. A `number` is read where it is
-   * exact, so a handler over `fs.Stats` needs no conversion.
-   */
-  size?: bigint | number
+  /** Exact byte length, when the backend reports one for a file. */
+  size?: bigint
+  /** UTC nanoseconds since the Unix epoch, when reported. */
+  mtimeNs?: bigint
 }
 
 /**
  * A file system Yggdryl reads and writes through, supplied by the caller.
  *
- * Arrow JS ships no file system, so this is the vtable `pyarrow.fs` already
- * implements, spelled in camelCase: implement it over a `Map`, `node:fs`, an
- * S3 client, or anything else, and `IOBase.fromFs` turns it into an
- * ordinary handle - globs, Hive partitions, IPC, Parquet, and Iceberg tables
- * included - with no code per backend.
+ * Arrow JS ships no filesystem, so this synchronous protocol is the public
+ * storage seam. Implement it over a `Map`, `node:fs`, an S3 client, or another
+ * backend, and `IOBase.fromFs` turns one opaque path into an ordinary handle.
  *
  * Every method is called synchronously, and only on the thread that supplied
  * the handler: a JavaScript value belongs to one isolate, so a handle built
- * from one cannot be read or written from a `Worker`. Absence is a normal
- * answer rather than a failure - a missing file reads nothing, a missing
- * directory lists empty, removing what is not there is done - and a handler
- * that throws instead is asked what is at the path before its failure is
- * surfaced, so `node:fs`'s own `ENOENT` needs no guarding.
+ * from one cannot be read or written from a `Worker`. `fileInfo` alone reports
+ * absence as `not-found`; strict opens and mutations throw a typed filesystem
+ * error. Operations are attempted once without a metadata pre-probe.
  */
 export interface FileSystemHandler {
-  /** This file system's own name, and the scheme its locations carry. */
-  readonly typeName?: string
-  /** What is at `path` right now. */
+  readonly typeName: string
+  equals(other: FileSystemHandler): boolean
+  normalizePath(path: string): string
   fileInfo(path: string): ArrowFileInfo
-  /** Every entry under `path`; `recursive` descends. */
-  list(path: string, recursive: boolean): readonly ArrowFileInfo[]
-  /**
-   * Bytes `[offset, offset + length)` of the file at `path`.
-   *
-   * `offset` is a `bigint` because a position in a file is 64-bit; `length`
-   * is a number because it is the size of one read. Returning fewer bytes is
-   * how the end of a file is reported, and nothing at all is how absence is.
-   */
-  readRange(path: string, offset: bigint, length: number): Uint8Array | null | undefined
-  /** Replace the file at `path` with exactly `bytes`. */
-  writeFull(path: string, bytes: Buffer): void
-  /** Create the directory at `path`; an existing one is success. */
-  createDir(path: string): void
-  /** Remove the file at `path`; a missing one is success. */
+  list(selector: FileSelector): Iterable<ArrowFileInfo>
+  createDir(path: string, recursive: boolean): void
+  deleteDir(path: string): void
+  deleteDirContents(path: string, missingDirOk: boolean): void
+  deleteRootDirContents(): void
   deleteFile(path: string): void
+  copyFile(source: string, target: string): void
+  move(source: string, target: string): void
+  openInputFile(path: string): RandomAccessReader
+  openInputStream(path: string): ByteReader
+  openOutputStream(path: string, metadata?: OutputMetadata): ByteWriter
+  openAppendStream(path: string, metadata?: OutputMetadata): ByteWriter
 }

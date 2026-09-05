@@ -1031,8 +1031,9 @@ Record methods select an explicit write intent or require `mode`. Configure
 field, selection, batch sizing, and merge keys on one `RecordOptions` value and
 pass it as `options=`.
 
-`TextOptions` additionally owns the pre-read row-header schema and optional
-row numbering described in [plain-text records](../media.md#plain-text-records).
+`TextOptions` additionally owns pre-read row-header schema, logical framing,
+leading-fragment treatment, per-record decoded-byte retention, and optional row
+numbering as described in [plain-text records](../media.md#plain-text-records).
 
 ## pandas and polars
 

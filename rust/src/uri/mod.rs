@@ -270,10 +270,15 @@ impl Uri {
     /// For `s3`, an authority or first path part ending in `.com` or `.io` is
     /// a hostname; any other first part is a bucket name.
     pub fn hostname(&self) -> Option<&str> {
-        if self.scheme == Scheme::S3 {
-            return self.s3_location().and_then(|location| location.hostname);
+        if let Some(location) = self.s3_location() {
+            return location.hostname;
         }
         (!self.authority.is_empty()).then(|| self.authority.host())
+    }
+
+    /// Return the S3 endpoint host and explicit port, excluding a virtual bucket.
+    pub fn s3_endpoint(&self) -> Option<&str> {
+        self.s3_location().and_then(|location| location.endpoint)
     }
 
     /// Return the S3 bucket name when this is an `s3` URI.
@@ -286,6 +291,12 @@ impl Uri {
     /// This borrows the region from the URI and performs no network lookup.
     pub fn region(&self) -> Option<&str> {
         self.s3_location().and_then(|location| location.region)
+    }
+
+    /// Return whether an S3 URI puts its bucket in the endpoint hostname.
+    pub fn is_s3_virtual(&self) -> bool {
+        self.s3_location()
+            .is_some_and(|location| location.virtual_addressing)
     }
 
     /// Return whether canonical syntax contains an authority marker.

@@ -2,7 +2,7 @@
 //!
 //! The memory legs compare an `fs` handle over [`MemoryFileSystem`]
 //! against the native [`Buffer`](yggdryl::holder::Buffer) - both hold their bytes
-//! in memory, so the difference is purely the vtable plus the staging. The
+//! in memory, so the difference is purely the vtable plus stream dispatch. The
 //! local legs compare an `fs` handle over [`LocalFileSystem`] against
 //! [`local::File`](yggdryl::holder::local::File), the memory-mapped local backend, on
 //! the same payload.
@@ -21,12 +21,12 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
 
     let bytes = payload();
 
-    // A whole-value read: one ranged fetch through the vtable, against the
-    // slice copy the native buffer does.
+    // A whole-value read: one sequential input stream through the vtable,
+    // against the slice copy the native buffer does.
     group.bench_function("read_all/fs_memory", |bencher| {
         let filesystem = memory();
         let mut handle =
-            FsFile::from_location(filesystem, "bench/read.bin").expect("a valid location");
+            FsFile::from_path(filesystem, "bench/read.bin", None).expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         // The whole value is black-boxed rather than its length: observing
@@ -61,7 +61,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     group.bench_function("pread_range/fs_memory", |bencher| {
         let filesystem = memory();
         let mut handle =
-            FsFile::from_location(filesystem, "bench/range.bin").expect("a valid location");
+            FsFile::from_path(filesystem, "bench/range.bin", None).expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         let mut target = vec![0_u8; 4096];
@@ -83,12 +83,12 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // A whole-value write. The wrapper stages and publishes exactly once on
-    // close, so the close is inside the measured region.
+    // A whole-value write forwarded through one output stream. Stream close
+    // is part of the filesystem operation and remains inside the measurement.
     group.bench_function("write_all/fs_memory", |bencher| {
         let filesystem = memory();
         bencher.iter(|| {
-            let mut handle = FsFile::from_location(filesystem.clone(), "bench/write.bin")
+            let mut handle = FsFile::from_path(filesystem.clone(), "bench/write.bin", None)
                 .expect("a valid location");
             handle
                 .write_all_bytes(black_box(&bytes))
@@ -111,7 +111,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     group.bench_function("read_all/fs_local", |bencher| {
         let location = local_location(&root, "read.bin");
         let mut handle =
-            FsFile::from_location(filesystem.clone(), &location).expect("a valid location");
+            FsFile::from_path(filesystem.clone(), &location, None).expect("a valid location");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.close().expect("the fixture publishes");
         // The whole value is black-boxed rather than its length: observing
@@ -147,7 +147,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
         let location = local_location(&root, "write.bin");
         bencher.iter(|| {
             let mut handle =
-                FsFile::from_location(filesystem.clone(), &location).expect("a valid location");
+                FsFile::from_path(filesystem.clone(), &location, None).expect("a valid location");
             handle
                 .write_all_bytes(black_box(&bytes))
                 .expect("a writable value");

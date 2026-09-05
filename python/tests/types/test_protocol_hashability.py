@@ -73,6 +73,12 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         record_options.safe = True
     with pytest.raises(TypeError, match="hashed"):
         text_options.rowheader = r"(?<id>\d+)"
+    with pytest.raises(TypeError, match="hashed"):
+        text_options.framing = True
+    with pytest.raises(TypeError, match="hashed"):
+        text_options.leading_fragment = "drop"
+    with pytest.raises(TypeError, match="hashed"):
+        text_options.max_record_byte_size = 1
 
 
 @pytest.mark.parametrize(
@@ -198,6 +204,9 @@ def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
     options.level = 6
     options.select_by_names = ["body"]
     options.filter_partitions = [("venue", "XNAS")]
+    options.framing = True
+    options.leading_fragment = "error"
+    options.max_record_byte_size = 2048
     options.rowheader = r"(?<id>\d+)"
     options.lstrip = r"^\s+"
     options.rstrip = r"\s+$"

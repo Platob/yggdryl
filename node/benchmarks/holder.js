@@ -6,9 +6,8 @@
 // in the same place twice: once through a Yggdryl handle over an Arrow file
 // system handler written against `node:fs`, and once through those same
 // `node:fs` calls directly. The direct row is the trusted baseline because it
-// is what the handler itself calls - so what the pair isolates is the six-call
-// boundary and the staging that whole-value publication requires, not the
-// speed of the file system underneath.
+// is what the handler itself calls - so what the pair isolates is the complete
+// filesystem/stream boundary, not the speed of the filesystem underneath.
 //
 // The ranged-read pair is the one worth reading twice. An Arrow file system
 // serves a range without fetching the whole object, and the wrapper is
@@ -29,9 +28,14 @@ const { IOBase } = require('yggdryl')
 
 // A byte round trip is far more work than a path lookup, so this target counts
 // in thousands rather than tens of thousands by default.
-const iterations = Number.parseInt(process.env.YGGDRYL_BENCH_ITERATIONS ?? '2000', 10)
+const iterations = Number.parseInt(
+  process.env.YGGDRYL_BENCH_ITERATIONS ?? '2000',
+  10,
+)
 if (!Number.isSafeInteger(iterations) || iterations <= 0) {
-  throw new RangeError('YGGDRYL_BENCH_ITERATIONS must be a positive safe integer')
+  throw new RangeError(
+    'YGGDRYL_BENCH_ITERATIONS must be a positive safe integer',
+  )
 }
 
 function benchmark(name, operation) {
@@ -43,42 +47,126 @@ function benchmark(name, operation) {
   console.log(`${name}: ${rate.toLocaleString('en-US')} operations/second`)
 }
 
-// The handler under measurement: the six calls, over `node:fs`, with nothing
-// clever in them. It is deliberately the same shape the tests use, so a
-// reader can check what is being timed against something that is checked.
+function input(location) {
+  const descriptor = fs.openSync(location, 'r')
+  let position = 0n
+  let closed = false
+  const readAt = (offset, length) => {
+    const bytes = Buffer.alloc(Number(length))
+    return bytes.subarray(
+      0,
+      fs.readSync(descriptor, bytes, 0, bytes.length, Number(offset)),
+    )
+  }
+  return {
+    read(length) {
+      const bytes = readAt(position, length)
+      position += BigInt(bytes.length)
+      return bytes
+    },
+    readAt,
+    seek(offset, whence) {
+      const base =
+        whence === 'current'
+          ? position
+          : whence === 'end'
+            ? fs.fstatSync(descriptor, { bigint: true }).size
+            : 0n
+      position = base + offset
+      return position
+    },
+    tell: () => position,
+    close() {
+      if (!closed) fs.closeSync(descriptor)
+      closed = true
+    },
+    get closed() {
+      return closed
+    },
+  }
+}
+
+function output(location, append) {
+  const descriptor = fs.openSync(location, append ? 'a' : 'w')
+  let position = append ? fs.fstatSync(descriptor, { bigint: true }).size : 0n
+  let closed = false
+  return {
+    write(bytes) {
+      const written = fs.writeSync(descriptor, bytes)
+      position += BigInt(written)
+      return BigInt(written)
+    },
+    tell: () => position,
+    flush: () => fs.fsyncSync(descriptor),
+    close() {
+      if (!closed) fs.closeSync(descriptor)
+      closed = true
+    },
+    get closed() {
+      return closed
+    },
+  }
+}
+
+const domain = {}
+
+// The complete synchronous handler under measurement, directly over node:fs.
 const handler = {
   typeName: 'local',
+  domain,
+  equals(other) {
+    return other?.domain === domain
+  },
+  normalizePath: path.normalize,
   fileInfo(location) {
-    const stats = fs.statSync(location, { throwIfNoEntry: false })
-    if (stats === undefined) return { path: location, kind: 'not-found' }
-    if (stats.isDirectory()) return { path: location, kind: 'directory' }
-    return { path: location, kind: 'file', size: BigInt(stats.size) }
-  },
-  list(location, recursive) {
-    return fs.readdirSync(location, { recursive, withFileTypes: true }).map((entry) => {
-      const full = path.join(entry.parentPath ?? entry.path, entry.name)
-      return entry.isDirectory()
-        ? { path: full, kind: 'directory' }
-        : { path: full, kind: 'file', size: BigInt(fs.statSync(full).size) }
+    const stats = fs.statSync(location, {
+      throwIfNoEntry: false,
+      bigint: true,
     })
-  },
-  readRange(location, offset, length) {
-    const buffer = Buffer.alloc(length)
-    const descriptor = fs.openSync(location, 'r')
-    try {
-      return buffer.subarray(0, fs.readSync(descriptor, buffer, 0, length, Number(offset)))
-    } finally {
-      fs.closeSync(descriptor)
+    if (stats === undefined) return { path: location, kind: 'not-found' }
+    if (stats.isDirectory())
+      return { path: location, kind: 'directory', mtimeNs: stats.mtimeNs }
+    return {
+      path: location,
+      kind: 'file',
+      size: stats.size,
+      mtimeNs: stats.mtimeNs,
     }
   },
-  writeFull(location, bytes) {
-    fs.writeFileSync(location, bytes)
+  list(selector) {
+    return fs
+      .readdirSync(selector.baseDir, {
+        recursive: selector.recursive,
+        withFileTypes: true,
+      })
+      .map((entry) => {
+        const full = path.join(entry.parentPath ?? entry.path, entry.name)
+        return this.fileInfo(full)
+      })
   },
-  createDir(location) {
-    fs.mkdirSync(location, { recursive: true })
+  createDir(location, recursive) {
+    fs.mkdirSync(location, { recursive })
   },
-  deleteFile(location) {
-    fs.rmSync(location, { force: true })
+  deleteDir: fs.rmdirSync,
+  deleteDirContents(location, missingDirOk) {
+    if (!fs.existsSync(location) && missingDirOk) return
+    for (const name of fs.readdirSync(location)) {
+      fs.rmSync(path.join(location, name), { recursive: true })
+    }
+  },
+  deleteRootDirContents() {
+    throw new Error('Unsupported: local root deletion')
+  },
+  deleteFile: fs.unlinkSync,
+  copyFile: fs.copyFileSync,
+  move: fs.renameSync,
+  openInputFile: input,
+  openInputStream: input,
+  openOutputStream(location) {
+    return output(location, false)
+  },
+  openAppendStream(location) {
+    return output(location, true)
   },
 }
 
@@ -116,8 +204,7 @@ const table = new arrow.Table({
 })
 const wrapperRecords = path.join(root, 'wrapper.arrows')
 const directRecords = path.join(root, 'direct.arrows')
-// Flushed, because a staged whole value is published on flush: an unflushed
-// fixture would leave the read rows below measuring an empty file.
+// Settle the fixture before measuring reads.
 const records = IOBase.fromFs(handler, wrapperRecords)
 records.overwriteArrowTable(table)
 records.flush()
@@ -131,8 +218,7 @@ const localFolder = new IOBase(lake)
 benchmark('fs/handle_from_path', () => IOBase.fromFs(handler, source))
 benchmark('local/handle_from_path', () => new IOBase(source))
 
-// Whole-value writes, which is the one write shape an Arrow file system has:
-// the wrapper stages and publishes exactly one `writeFull` per flush.
+// Output bytes are forwarded to the handler's writer as they arrive.
 benchmark('fs/write_bytes', () => {
   const sink = IOBase.fromFs(handler, wrapperSink)
   sink.writeBytes(payload)
@@ -145,18 +231,29 @@ benchmark('node:fs/read_bytes', () => fs.readFileSync(source))
 
 // The row that says whether a range stayed a range.
 benchmark('fs/read_range_4k', () => handle.readRangeBytes(0, RANGE_BYTES))
-benchmark('node:fs/read_range_4k', () => handler.readRange(source, 0n, RANGE_BYTES))
+benchmark('node:fs/read_range_4k', () => {
+  const stream = input(source)
+  try {
+    return stream.readAt(0n, BigInt(RANGE_BYTES))
+  } finally {
+    stream.close()
+  }
+})
 
 benchmark('fs/size', () => IOBase.fromFs(handler, source).size)
 benchmark('node:fs/size', () => fs.statSync(source).size)
 
 benchmark('fs/list_children', () => folder.iterdir())
 benchmark('local/list_children', () => localFolder.iterdir())
-benchmark('node:fs/list_children', () => fs.readdirSync(lake, { withFileTypes: true }))
+benchmark('node:fs/list_children', () =>
+  fs.readdirSync(lake, { withFileTypes: true }),
+)
 
 benchmark('fs/glob_parquet', () => folder.rglob('*.parquet'))
 benchmark('node:fs/glob_parquet', () =>
-  fs.readdirSync(lake, { recursive: true }).filter((name) => name.endsWith('.parquet')),
+  fs
+    .readdirSync(lake, { recursive: true })
+    .filter((name) => name.endsWith('.parquet')),
 )
 
 // Records: the wrapper against the same core code over a mapped local file.
@@ -165,7 +262,8 @@ benchmark('node:fs/glob_parquet', () =>
 const recordIterations = Math.max(1, Math.floor(iterations / 20))
 
 function recordBenchmark(name, operation) {
-  for (let index = 0; index < Math.min(recordIterations, 10); index += 1) operation()
+  for (let index = 0; index < Math.min(recordIterations, 10); index += 1)
+    operation()
   const started = performance.now()
   for (let index = 0; index < recordIterations; index += 1) operation()
   const elapsed = performance.now() - started

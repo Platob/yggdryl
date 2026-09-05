@@ -36,6 +36,22 @@ impl<'source> ByteStream<'source> {
         Self::from_source(ReaderSource(reader), batch_size)
     }
 
+    /// Stream one filesystem reader, retaining exactly that open handle.
+    pub fn from_fs_reader(
+        reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+        batch_size: usize,
+    ) -> Result<Self> {
+        Self::from_source(FileSystemSource { reader }, batch_size)
+    }
+
+    /// Stream one random-access filesystem reader after it has been positioned.
+    pub fn from_fs_random_reader(
+        reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+        batch_size: usize,
+    ) -> Result<Self> {
+        Self::from_source(RandomFileSystemSource { reader }, batch_size)
+    }
+
     pub(super) fn from_handle<H: IOBase + ?Sized>(
         handle: &'source H,
         position: u64,
@@ -224,6 +240,50 @@ impl<R: Read> ByteSource for ReaderSource<R> {
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 result => return result.map_err(Error::Io),
             }
+        }
+    }
+}
+
+struct FileSystemSource<'source> {
+    reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+}
+
+struct RandomFileSystemSource<'source> {
+    reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+}
+
+impl ByteSource for RandomFileSystemSource<'_> {
+    fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+        let read = self.reader.read(target)?;
+        if read == 0 && !self.reader.closed() {
+            self.reader.close()?;
+        }
+        Ok(read)
+    }
+}
+
+impl Drop for RandomFileSystemSource<'_> {
+    fn drop(&mut self) {
+        if !self.reader.closed() {
+            let _ = self.reader.close();
+        }
+    }
+}
+
+impl ByteSource for FileSystemSource<'_> {
+    fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+        let read = self.reader.read(target)?;
+        if read == 0 && !self.reader.closed() {
+            self.reader.close()?;
+        }
+        Ok(read)
+    }
+}
+
+impl Drop for FileSystemSource<'_> {
+    fn drop(&mut self) {
+        if !self.reader.closed() {
+            let _ = self.reader.close();
         }
     }
 }

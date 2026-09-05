@@ -48,12 +48,16 @@ impl Authority {
             .map(|(_, password)| password)
     }
 
+    /// Return the host and optional port without user information.
+    pub fn host_port(&self) -> &str {
+        self.as_str()
+            .rsplit_once('@')
+            .map_or(self.as_str(), |(_, host_port)| host_port)
+    }
+
     /// Return the host without user information, brackets, or a port.
     pub fn host(&self) -> &str {
-        let host_port = self
-            .as_str()
-            .rsplit_once('@')
-            .map_or(self.as_str(), |(_, host_port)| host_port);
+        let host_port = self.host_port();
         if let Some(bracketed) = host_port.strip_prefix('[') {
             return bracketed
                 .split_once(']')
@@ -62,6 +66,18 @@ impl Authority {
         host_port
             .rsplit_once(':')
             .map_or(host_port, |(host, _)| host)
+    }
+
+    /// Return the explicit numeric port, when one was written.
+    pub fn port(&self) -> Option<u16> {
+        let host_port = self.host_port();
+        let port = if let Some(bracketed) = host_port.strip_prefix('[') {
+            let close = bracketed.find(']')?;
+            bracketed[close + 1..].strip_prefix(':')?
+        } else {
+            host_port.rsplit_once(':')?.1
+        };
+        port.parse().ok()
     }
 
     /// Return a deterministic cross-language hash of the authority.
@@ -253,11 +269,21 @@ impl<'de> Deserialize<'de> for Authority {
 
 impl Uri {
     pub(super) fn s3_location(&self) -> Option<S3Location<'_>> {
-        if self.scheme != Scheme::S3 {
+        if !matches!(self.scheme.as_str(), "s3" | "s3a" | "s3n") {
             return None;
         }
 
         let mut path = self.path_segments();
+        if self.has_authority && !self.authority.is_empty() && self.authority.port().is_some() {
+            return Some(S3Location {
+                hostname: Some(self.authority.host()),
+                endpoint: Some(self.authority.host_port()),
+                bucket: path.next(),
+                region: None,
+                virtual_addressing: false,
+            });
+        }
+
         let first = if self.has_authority && !self.authority.is_empty() {
             self.authority.host()
         } else {
@@ -265,23 +291,32 @@ impl Uri {
         };
 
         if let Some(aws) = parse_aws_s3_hostname(first) {
+            let endpoint = aws
+                .bucket
+                .map_or(first, |bucket| &first[bucket.len() + 1..]);
             return Some(S3Location {
                 hostname: Some(first),
+                endpoint: Some(endpoint),
                 bucket: aws.bucket.or_else(|| path.next()),
                 region: aws.region,
+                virtual_addressing: aws.bucket.is_some(),
             });
         }
         if is_s3_hostname(first) {
             return Some(S3Location {
                 hostname: Some(first),
+                endpoint: Some(first),
                 bucket: path.next(),
                 region: None,
+                virtual_addressing: false,
             });
         }
         Some(S3Location {
             hostname: None,
+            endpoint: None,
             bucket: Some(first),
             region: None,
+            virtual_addressing: false,
         })
     }
 }
@@ -289,8 +324,10 @@ impl Uri {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct S3Location<'a> {
     pub(super) hostname: Option<&'a str>,
+    pub(super) endpoint: Option<&'a str>,
     pub(super) bucket: Option<&'a str>,
     pub(super) region: Option<&'a str>,
+    pub(super) virtual_addressing: bool,
 }
 
 #[derive(Clone, Copy, Debug)]

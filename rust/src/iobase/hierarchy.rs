@@ -19,6 +19,76 @@ pub(super) fn descend(base: &(impl IOBase + ?Sized), names: &[&str]) -> Result<O
     Ok(Some(holder))
 }
 
+/// Match a filesystem-backed tree against raw path text.
+///
+/// The diagnostic URL is deliberately absent here: filesystem paths may
+/// contain literal percent escapes, URI markers, and repeated separators.
+pub(super) fn bound_glob(
+    base: &(impl IOBase + ?Sized),
+    pattern: &str,
+    include_private: bool,
+) -> Result<crate::Listing> {
+    let bound = base
+        .bound_location()
+        .expect("the caller checked that this is a bound location");
+    let (fixed, remainder) = raw_glob_parts(pattern);
+    if remainder.is_none() {
+        let child = base.child_by_path(pattern)?;
+        let Some(child_bound) = child.bound_location() else {
+            return Ok(crate::Listing::empty());
+        };
+        let info = child_bound.filesystem().file_info(child_bound.path())?;
+        return Ok(if info.kind == crate::IOKind::Unknown {
+            crate::Listing::empty()
+        } else {
+            crate::Listing::new(std::iter::once(Ok(child)))
+        });
+    }
+    if !fixed.is_empty() {
+        let child = base.child_by_path(fixed)?;
+        return child.glob(remainder.expect("a patterned suffix"), include_private);
+    }
+
+    let root = bound.path().to_owned();
+    let pattern = pattern.to_owned();
+    let recursive = pattern.contains('/') || pattern.split('/').any(|part| part == "**");
+    Ok(base.ls(recursive, include_private).keeping(move |entry| {
+        entry
+            .bound_location()
+            .and_then(|entry| raw_relative(&root, entry.path()))
+            .is_some_and(|relative| crate::uri::pattern::matches_glob_text(relative, &pattern))
+    }))
+}
+
+fn raw_glob_parts(pattern: &str) -> (&str, Option<&str>) {
+    let mut start = 0;
+    for part in pattern.split('/') {
+        if Url::is_pattern(part) {
+            let fixed = pattern[..start]
+                .strip_suffix('/')
+                .unwrap_or(&pattern[..start]);
+            return (fixed, Some(&pattern[start..]));
+        }
+        start += part.len() + 1;
+    }
+    (pattern, None)
+}
+
+pub(crate) fn raw_relative<'path>(base: &str, path: &'path str) -> Option<&'path str> {
+    if base == path {
+        return Some("");
+    }
+    if base.is_empty() {
+        return Some(path);
+    }
+    let suffix = path.strip_prefix(base)?;
+    if base.ends_with('/') {
+        Some(suffix)
+    } else {
+        suffix.strip_prefix('/')
+    }
+}
+
 /// Answer whether a container reads as one table, without listing the tree.
 ///
 /// A folder reads as the table beneath it, so its leaves decide - and one leaf

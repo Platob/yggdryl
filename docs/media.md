@@ -3919,13 +3919,18 @@ From the same machine, the `avro` target's own groups
 ## Plain-text records
 
 
-A plain-text row starts with this schema:
+A plain-text source field is complete before any source bytes are read:
 
 | column | datatype | value |
 | --- | --- | --- |
 | `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
 | `rownum` | `int64` | present only when `with_rownum` is set; first value is exactly that setting |
-| `body` | `binary` | line bytes without the record terminator |
+| `body` | `binary` | required retained record bytes |
+| `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped |
+
+Named `rowheader` captures follow these columns. Their fields remain nullable
+in both physical-line and framed mode: an optional regex group or a kept
+leading fragment can have no value.
 
 Use `TextOptions` with the ordinary `read_arrow_reader` / `readArrowReader` or
 `read_records` / `readRecords` methods. `Text` retains those options for
@@ -3937,23 +3942,50 @@ the generic dispatch boundary:
 
 | option | contract |
 | --- | --- |
-| `rowheader` | byte regex searched once per line; named captures append nullable columns |
-| `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding body edge |
+| `rowheader` | byte regex searched once per physical line; in framed mode a match starts a record |
+| `framing` | join physical lines into logical records; default `false`, and enabling it requires `rowheader` |
+| `leading_fragment` / `leadingFragment` | `keep`, `drop`, or `error` for lines before the first framed header; default `keep` |
+| `max_record_byte_size` / `maxRecordByteSize` | retained decoded-body byte limit per record; unset is unlimited |
+| `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `with_rownum` / `withRownum` | optional signed 64-bit first row number; unset omits the column |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
-When `rowheader` matches, its complete match is removed from `body`. Edge
-stripping runs afterward. A line without a match keeps its body and receives
-null capture values.
+Rust selects `LeadingFragment::{Keep, Drop, Error}`; Python and JavaScript use
+the corresponding lowercase property values.
+
+Physical-line mode emits one row per physical line. In framed mode, a
+`rowheader` match closes the active record and starts the next one. Its complete
+match is removed only from that first line. Later nonmatching lines append to
+the same binary `body`, separated by one `\n`; LF, CRLF, and CR source
+terminators are therefore normalized without adding a trailing byte. EOF emits
+the active record even when the source has no final terminator. Framing state
+ends with each handle or folder leaf, so records never join across source
+objects.
+
+Before the first match, `keep` emits the complete leading fragment as one
+record with null captures, `drop` drains it, and `error` fails on its first
+physical line. A logical record's `rownum` is always its first physical line's
+number, including a kept fragment.
+
+Before optional prefix bounding, `body` contains the exact source bytes after
+first-line header removal and terminator normalization. Explicit `lstrip` and
+`rstrip` additionally remove their configured edge matches from each physical
+line before it is joined. `max_record_byte_size` emits the exact bounded prefix,
+drains the rest without retaining it, and reports the omitted byte count in
+nullable `dropped_byte_size`; zero is a valid empty-prefix bound. The bound
+counts the decoded body, including normalized separators. It is independent of
+`max_row_size` (total result rows) and `max_byte_size` (total Arrow result
+memory); neither existing option changes meaning.
 
 [`DataType::from_regex`](types.md#regular-expression-captures) recognizes
 captures constrained to booleans, signed 64-bit integers, finite floats, ISO
 dates, times, and datetimes. Broad captures such as `\S+` stay UTF-8. Set
 `autotype = false` to keep every capture as UTF-8. Because this examines the
-expression rather than sampled rows, an empty or unopened resource answers the
-same complete schema as a populated one.
+expression rather than sampled rows, empty, missing, compressed, local, and
+foreign Arrow-filesystem resources all answer the same complete schema before
+iteration.
 
 === "Rust"
 
@@ -3966,15 +3998,14 @@ same complete schema as a populated one.
     use yggdryl::Url;
 
     let text_source = Buffer::from_bytes(
-        b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n".to_vec(),
+        b"[INFO] id=7 first\r\n detail A\r[WARN] id=9 second\n detail B".to_vec(),
     )
     .with_media_type(Url::from_str("file:///app.log")?.media_type());
 
     let mut text_options = TextOptions::new();
     text_options.with_rownum = Some(1);
-    text_options.set_rowheader(Some(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"))?;
-    text_options.set_lstrip(Some(r"^\s+"))?;
-    text_options.set_rstrip(Some(r"\s+$"))?;
+    text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
+    text_options.set_framing(true);
     let text_source = text_source.into_text_with(text_options);
     let record_options = text_source.record_options()?;
 
@@ -3990,7 +4021,7 @@ same complete schema as a populated one.
             .downcast_ref::<Int64Array>()
             .unwrap()
             .values(),
-        &[1, 2],
+        &[1, 3],
     );
     assert_eq!(
         text_batch
@@ -3999,7 +4030,7 @@ same complete schema as a populated one.
             .downcast_ref::<BinaryArray>()
             .unwrap()
             .value(0),
-        b"first",
+        b"first\n detail A",
     );
     ```
 
@@ -4013,26 +4044,23 @@ same complete schema as a populated one.
 
     with tempfile.TemporaryDirectory() as directory:
         source = pathlib.Path(directory) / "app.log"
-        source.write_bytes(b"  [INFO] id=7 first  \r\n[WARN] id=9 second\n")
+        source.write_bytes(
+            b"[INFO] id=7 first\r\n detail A\r[WARN] id=9 second\n detail B"
+        )
 
         options = TextOptions()
         options.with_rownum = 1
-        options.rowheader = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
-        options.lstrip = r"^\s+"
-        options.rstrip = r"\s+$"
+        options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
+        options.framing = True
 
         handle = IOBase(source).into_text(options)
         rows = list(handle.read_records())
-        assert [row["rownum"] for row in rows] == [1, 2]
-        assert [row["body"] for row in rows] == [b"first", b"second"]
+        assert [row["rownum"] for row in rows] == [1, 3]
+        assert [row["body"] for row in rows] == [
+            b"first\n detail A",
+            b"second\n detail B",
+        ]
         assert [row["id"] for row in rows] == [7, 9]
-
-        target = IOBase(pathlib.Path(directory) / "copy.txt")
-        target.overwrite_records(
-            ({"body": row["body"]} for row in rows),
-            options=TextOptions(),
-        )
-        assert target.read_bytes() == b"first\nsecond\n"
     ```
 
 === "JavaScript"
@@ -4046,47 +4074,45 @@ same complete schema as a populated one.
 
     const textRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-text-'))
     const textSource = path.join(textRoot, 'app.log')
-    fs.writeFileSync(textSource, '  [INFO] id=7 first  \r\n[WARN] id=9 second\n')
+    fs.writeFileSync(
+      textSource,
+      '[INFO] id=7 first\r\n detail A\r[WARN] id=9 second\n detail B',
+    )
 
     const textOptions = new TextOptions()
     textOptions.withRownum = 1n
-    textOptions.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
-    textOptions.lstrip = '^\\s+'
-    textOptions.rstrip = '\\s+$'
+    textOptions.rowheader = '^\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+) '
+    textOptions.framing = true
 
     const textHandle = new IOBase(textSource).intoText(textOptions)
     const textRows = [...textHandle.readRecords()]
-    assert.deepEqual(textRows.map((row) => row.rownum), [1n, 2n])
+    assert.deepEqual(textRows.map((row) => row.rownum), [1n, 3n])
     assert.deepEqual(
       textRows.map((row) => Buffer.from(row.body).toString()),
-      ['first', 'second'],
+      ['first\n detail A', 'second\n detail B'],
     )
     assert.deepEqual(textRows.map((row) => row.id), [7n, 9n])
-
-    const textTarget = new IOBase(path.join(textRoot, 'copy.txt'))
-    textTarget.overwriteRecords(
-      textRows.map((row) => ({ body: row.body })),
-      new TextOptions(),
-    )
-    assert.equal(textTarget.readBytes().toString(), 'first\nsecond\n')
 
     fs.rmSync(textRoot, { recursive: true, force: true })
     ```
 
-Writes consume the non-null Binary `body` column and append the configured
-terminator. A body containing that terminator is refused. Overwrite and append
-use the generic media methods; keyed merge remains unsupported for plain text.
+Writes remain physical-line operations: they consume each non-null Binary
+`body`, append the configured terminator, and reject a body containing that
+terminator. Overwrite and append use the generic media methods; keyed merge
+remains unsupported for plain text.
 
 Content codings belong to the handle. Thus `app.log.gz` and a folder mixing
-plain and gzip leaves use the same options and stream decoded rows without
-retaining prior pages. The line splitter retains only the unfinished fragment
-needed across byte chunks.
+plain, gzip, and zstd leaves use the same options. Decoding, line splitting,
+framing, capped-prefix retention, and excess-byte draining all remain in one
+stream; they do not reopen a handle or retain prior pages.
 
 #### Measuring the boundary
 
-The three benchmark targets use the same generic record methods. Python also
-includes an equivalent `re` plus PyArrow baseline; JavaScript numbers include
-the copied IPC crossing required by Arrow JS.
+The Rust `text_record_framing` group compares physical-line and framed reads on
+the same short single-line corpus, multiline corpus, and one oversized logical
+record capped at 4 KiB. Fixtures are built outside timed loops. The Python
+target also includes an equivalent `re` plus PyArrow baseline; JavaScript
+numbers include the copied IPC crossing required by Arrow JS.
 
 ```console
 cargo bench -p yggdryl --bench text

@@ -8,61 +8,216 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { Field, IOBase, RecordOptions, fields, iceberg } = require('yggdryl')
+const {
+  Field,
+  IOBase,
+  RecordOptions,
+  TextOptions,
+  fields,
+  iceberg,
+} = require('yggdryl')
 
-// A caller's own storage, the way a Node program already holds one: a Map of
-// paths to bytes, reached through `this`. A directory here is a prefix, which
-// is what an object store means by one.
-function memory() {
+function failure(code, message) {
+  const error = new Error(`${code}: ${message}`)
+  error.code = code
+  return error
+}
+
+function bufferReader(bytes, randomAccess) {
+  let position = 0n
+  let closed = false
+  const open = () => {
+    if (closed) throw failure('Unsupported', 'stream is closed')
+  }
+  const reader = {
+    read(length) {
+      open()
+      const start = Number(position)
+      const value = bytes.subarray(start, start + Number(length))
+      position += BigInt(value.length)
+      return value
+    },
+    tell() {
+      return position
+    },
+    close() {
+      closed = true
+    },
+    get closed() {
+      return closed
+    },
+  }
+  if (randomAccess) {
+    reader.readAt = (offset, length) => {
+      open()
+      return bytes.subarray(Number(offset), Number(offset + length))
+    }
+    reader.seek = (offset, whence) => {
+      open()
+      const base =
+        whence === 'current'
+          ? position
+          : whence === 'end'
+            ? BigInt(bytes.length)
+            : 0n
+      const next = base + offset
+      if (next < 0n) throw failure('InvalidInput', 'negative seek')
+      position = next
+      return position
+    }
+  }
+  return reader
+}
+
+// A complete synchronous Arrow handler over a Map. Paths are opaque: there is
+// deliberately no trimming, URL parsing, or percent decoding here.
+function memory(domain = {}) {
   return {
     typeName: 'memory',
+    domain,
     files: new Map(),
-    fileInfo(location) {
-      const key = trimmed(location)
-      const stored = this.files.get(key)
-      if (stored !== undefined) {
-        return { path: key, kind: 'file', size: BigInt(stored.length) }
-      }
-      if (key === '' || this.under(key).length !== 0) {
-        return { path: key, kind: 'directory' }
-      }
-      // Arrow's own spelling of a path holding nothing yet.
-      return { path: key, kind: 'not-found' }
+    directories: new Set(['']),
+    metadata: new Map(),
+    equals(other) {
+      return other?.domain === this.domain
     },
-    list(location, recursive) {
-      const prefix = trimmed(location)
+    normalizePath(location) {
+      return location
+    },
+    fileInfo(location) {
+      const stored = this.files.get(location)
+      if (stored !== undefined) {
+        return { path: location, kind: 'file', size: BigInt(stored.length) }
+      }
+      if (this.directories.has(location) || this.under(location).length !== 0) {
+        return { path: location, kind: 'directory' }
+      }
+      return { path: location, kind: 'not-found' }
+    },
+    list(selector) {
+      const prefix = selector.baseDir
+      if (this.fileInfo(prefix).kind === 'not-found') {
+        if (selector.allowNotFound) return []
+        throw failure('NotFound', prefix)
+      }
       const nested = prefix === '' ? '' : `${prefix}/`
-      const directories = new Set()
-      const found = []
+      const entries = new Map()
       for (const name of this.under(prefix)) {
         const parts = name.slice(nested.length).split('/')
-        // Every prefix between here and the file is a directory, which is
-        // what an object store means by one.
         for (let depth = 1; depth < parts.length; depth += 1) {
-          if (recursive || depth === 1) {
-            directories.add(nested + parts.slice(0, depth).join('/'))
+          if (selector.recursive || depth === 1) {
+            const directory = nested + parts.slice(0, depth).join('/')
+            entries.set(directory, { path: directory, kind: 'directory' })
           }
         }
-        if (parts.length !== 1 && !recursive) continue
-        found.push({ path: name, kind: 'file', size: BigInt(this.files.get(name).length) })
+        if (parts.length === 1 || selector.recursive) {
+          entries.set(name, {
+            path: name,
+            kind: 'file',
+            size: BigInt(this.files.get(name).length),
+          })
+        }
       }
-      for (const name of directories) found.push({ path: name, kind: 'directory' })
-      return found
+      // The adapter, not the handler, owns deterministic ordering.
+      return [...entries.values()].reverse()
     },
-    readRange(location, offset, length) {
-      const stored = this.files.get(trimmed(location))
-      if (stored === undefined) return null
-      const start = Number(offset)
-      return stored.subarray(start, start + length)
+    createDir(location, recursive) {
+      if (!recursive && location.includes('/')) {
+        const parent = location.slice(0, location.lastIndexOf('/'))
+        if (this.fileInfo(parent).kind === 'not-found')
+          throw failure('NotFound', parent)
+      }
+      this.directories.add(location)
     },
-    writeFull(location, bytes) {
-      this.files.set(trimmed(location), Buffer.from(bytes))
+    deleteDir(location) {
+      if (this.under(location).length !== 0)
+        throw failure('DirectoryNotEmpty', location)
+      if (!this.directories.delete(location))
+        throw failure('NotFound', location)
     },
-    createDir() {
-      // A directory is a prefix, so there is nothing to create.
+    deleteDirContents(location, missingDirOk) {
+      const info = this.fileInfo(location)
+      if (info.kind === 'not-found') {
+        if (missingDirOk) return
+        throw failure('NotFound', location)
+      }
+      if (info.kind !== 'directory') throw failure('NotADirectory', location)
+      for (const name of this.under(location)) this.files.delete(name)
+      for (const name of [...this.directories]) {
+        if (name.startsWith(`${location}/`)) this.directories.delete(name)
+      }
+    },
+    deleteRootDirContents() {
+      this.files.clear()
+      this.directories = new Set([''])
     },
     deleteFile(location) {
-      this.files.delete(trimmed(location))
+      if (this.fileInfo(location).kind === 'directory')
+        throw failure('IsADirectory', location)
+      if (!this.files.delete(location)) throw failure('NotFound', location)
+    },
+    copyFile(source, target) {
+      const bytes = this.files.get(source)
+      if (bytes === undefined) throw failure('NotFound', source)
+      this.files.set(target, Buffer.from(bytes))
+    },
+    move(source, target) {
+      const bytes = this.files.get(source)
+      if (bytes === undefined) throw failure('NotFound', source)
+      this.files.set(target, Buffer.from(bytes))
+      this.files.delete(source)
+    },
+    openInputFile(location) {
+      const bytes = this.files.get(location)
+      if (bytes === undefined) throw failure('NotFound', location)
+      return bufferReader(bytes, true)
+    },
+    openInputStream(location) {
+      const bytes = this.files.get(location)
+      if (bytes === undefined) throw failure('NotFound', location)
+      return bufferReader(bytes, false)
+    },
+    openOutputStream(location, metadata) {
+      return this.writer(location, false, metadata)
+    },
+    openAppendStream(location, metadata) {
+      return this.writer(location, true, metadata)
+    },
+    writer(location, append, metadata) {
+      const chunks =
+        append && this.files.has(location) ? [this.files.get(location)] : []
+      let position = chunks.reduce(
+        (size, chunk) => size + BigInt(chunk.length),
+        0n,
+      )
+      let closed = false
+      const publish = () => {
+        this.files.set(location, Buffer.concat(chunks))
+        if (metadata !== undefined) this.metadata.set(location, { ...metadata })
+      }
+      return {
+        write(bytes) {
+          if (closed) throw failure('Unsupported', 'stream is closed')
+          chunks.push(Buffer.from(bytes))
+          position += BigInt(bytes.length)
+          return BigInt(bytes.length)
+        },
+        tell() {
+          return position
+        },
+        flush() {
+          if (closed) throw failure('Unsupported', 'stream is closed')
+          publish()
+        },
+        close() {
+          if (closed) return
+          publish()
+          closed = true
+        },
+        get closed() {
+          return closed
+        },
+      }
     },
     under(prefix) {
       const nested = prefix === '' ? '' : `${prefix}/`
@@ -71,53 +226,151 @@ function memory() {
   }
 }
 
-// The same six calls over `node:fs`. It throws where the vtable answers -
-// `ENOENT` rather than nothing - which is exactly what the boundary has to
-// turn back into the laziness contract.
-function local() {
+const localDomain = {}
+
+function localReader(location) {
+  const descriptor = fs.openSync(location, 'r')
+  let position = 0n
+  let closed = false
+  const readAt = (offset, length) => {
+    if (closed) throw failure('Unsupported', 'stream is closed')
+    const bytes = Buffer.alloc(Number(length))
+    const read = fs.readSync(descriptor, bytes, 0, bytes.length, Number(offset))
+    return bytes.subarray(0, read)
+  }
   return {
-    typeName: 'local',
-    fileInfo(location) {
-      const stats = fs.statSync(location, { throwIfNoEntry: false })
-      if (stats === undefined) return { path: location, kind: 'not-found' }
-      if (stats.isDirectory()) return { path: location, kind: 'directory' }
-      // A number is read where it is exact, so a handler need not reach for
-      // a bigint to report a small file.
-      return { path: location, kind: 'file', size: stats.size }
+    read(length) {
+      const bytes = readAt(position, length)
+      position += BigInt(bytes.length)
+      return bytes
     },
-    list(location, recursive) {
-      return fs
-        .readdirSync(location, { recursive, withFileTypes: true })
-        .map((entry) => {
-          const full = path.join(entry.parentPath ?? entry.path, entry.name)
-          return entry.isDirectory()
-            ? { path: full, kind: 'directory' }
-            : { path: full, kind: 'file', size: BigInt(fs.statSync(full).size) }
-        })
+    readAt,
+    seek(offset, whence) {
+      const base =
+        whence === 'current'
+          ? position
+          : whence === 'end'
+            ? fs.fstatSync(descriptor, { bigint: true }).size
+            : 0n
+      position = base + offset
+      return position
     },
-    readRange(location, offset, length) {
-      const buffer = Buffer.alloc(length)
-      const descriptor = fs.openSync(location, 'r')
-      try {
-        return buffer.subarray(0, fs.readSync(descriptor, buffer, 0, length, Number(offset)))
-      } finally {
-        fs.closeSync(descriptor)
-      }
+    tell() {
+      return position
     },
-    writeFull(location, bytes) {
-      fs.writeFileSync(location, bytes)
+    close() {
+      if (!closed) fs.closeSync(descriptor)
+      closed = true
     },
-    createDir(location) {
-      fs.mkdirSync(location, { recursive: true })
-    },
-    deleteFile(location) {
-      fs.rmSync(location, { force: true })
+    get closed() {
+      return closed
     },
   }
 }
 
-function trimmed(location) {
-  return location.replace(/^\/+|\/+$/g, '')
+function localWriter(location, append) {
+  const descriptor = fs.openSync(location, append ? 'a' : 'w')
+  let position = append ? fs.fstatSync(descriptor, { bigint: true }).size : 0n
+  let closed = false
+  return {
+    write(bytes) {
+      const written = fs.writeSync(descriptor, bytes)
+      position += BigInt(written)
+      return BigInt(written)
+    },
+    tell() {
+      return position
+    },
+    flush() {
+      fs.fsyncSync(descriptor)
+    },
+    close() {
+      if (!closed) fs.closeSync(descriptor)
+      closed = true
+    },
+    get closed() {
+      return closed
+    },
+  }
+}
+
+function local() {
+  return {
+    typeName: 'local',
+    domain: localDomain,
+    equals(other) {
+      return other?.domain === localDomain
+    },
+    normalizePath(location) {
+      return path.normalize(location)
+    },
+    fileInfo(location) {
+      const stats = fs.statSync(location, {
+        throwIfNoEntry: false,
+        bigint: true,
+      })
+      if (stats === undefined) return { path: location, kind: 'not-found' }
+      if (stats.isDirectory())
+        return { path: location, kind: 'directory', mtimeNs: stats.mtimeNs }
+      return {
+        path: location,
+        kind: 'file',
+        size: stats.size,
+        mtimeNs: stats.mtimeNs,
+      }
+    },
+    list(selector) {
+      let entries
+      try {
+        entries = fs.readdirSync(selector.baseDir, {
+          recursive: selector.recursive,
+          withFileTypes: true,
+        })
+      } catch (error) {
+        if (selector.allowNotFound && error.code === 'ENOENT') return []
+        throw error
+      }
+      return entries.map((entry) => {
+        const full = path.join(entry.parentPath ?? entry.path, entry.name)
+        return this.fileInfo(full)
+      })
+    },
+    createDir(location, recursive) {
+      fs.mkdirSync(location, { recursive })
+    },
+    deleteDir(location) {
+      fs.rmdirSync(location)
+    },
+    deleteDirContents(location, missingDirOk) {
+      if (!fs.existsSync(location)) {
+        if (missingDirOk) return
+        throw failure('NotFound', location)
+      }
+      for (const name of fs.readdirSync(location)) {
+        fs.rmSync(path.join(location, name), { recursive: true })
+      }
+    },
+    deleteRootDirContents() {
+      throw failure('Unsupported', 'local root deletion')
+    },
+    deleteFile(location) {
+      fs.unlinkSync(location)
+    },
+    copyFile(source, target) {
+      fs.copyFileSync(source, target)
+    },
+    move(source, target) {
+      fs.renameSync(source, target)
+    },
+    openInputFile: localReader,
+    openInputStream: localReader,
+    openOutputStream(location) {
+      return localWriter(location, false)
+    },
+    openAppendStream(location) {
+      return localWriter(location, true)
+    },
+  }
 }
 
 function scratch() {
@@ -135,11 +388,301 @@ function trades() {
   })
 }
 
+test('bound facts keep the original handler, raw path, and safe URI', () => {
+  const domain = {}
+  const handler = memory(domain)
+  const path = 'bucket/v=a%2Fb//x%25+y://z'
+  const uri = 's3://key:secret@bucket/v=a%2Fb//x%25+y://z?session_token=hidden'
+  const handle = IOBase.fromFs(handler, path, uri)
+
+  assert.equal(handle.filesystem, handler)
+  assert.equal(handle.path, path)
+  assert.equal(handle.uri, uri)
+  assert.ok(!handle.maskedUri.includes('secret'))
+  assert.ok(!handle.maskedUri.includes('hidden'))
+  assert.equal(
+    handle.joinpath('literal%2F+name').path,
+    `${path}/literal%2F+name`,
+  )
+  assert.equal(handle.parent.path, 'bucket/v=a%2Fb//x%25+y:/')
+
+  assert.equal(handle.sameLocation(IOBase.fromFs(memory(domain), path)), true)
+  assert.equal(handle.sameLocation(IOBase.fromFs(memory(), path)), false)
+  assert.equal(
+    handle.sameLocation(IOBase.fromFs(handler, `${path}/other`)),
+    false,
+  )
+})
+
+test('S3 URI forms resolve before Arrow JS reports its missing backend', () => {
+  for (const uri of [
+    's3://bucket/v=a%2Fb',
+    's3a://bucket/key',
+    's3://key:secret@bucket/key',
+    's3://key:secret@minio:9000/bucket/key',
+    's3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1',
+    's3://bucket.s3.eu-west-1.amazonaws.com/key',
+  ]) {
+    assert.throws(
+      () => IOBase.fromUri(uri),
+      (error) => {
+        assert.match(error.message, /does not support S3 filesystem URI/)
+        assert.ok(!error.message.includes('secret'))
+        return true
+      },
+    )
+  }
+})
+
+test('file info preserves bigint size and nanosecond mtime', () => {
+  const handler = memory()
+  handler.fileInfo = (path) => ({
+    path,
+    kind: 'file',
+    size: 9_007_199_254_740_993n,
+    mtimeNs: 1_725_000_000_000_000_001n,
+  })
+  const info = IOBase.fromFs(handler, 'huge').info()
+  assert.equal(info.size, 9_007_199_254_740_993n)
+  assert.equal(info.mtimeNs, 1_725_000_000_000_000_001n)
+})
+
+test('handler streams are stateful, bounded, and explicitly closed', () => {
+  const handler = memory()
+  handler.files.set('source', Buffer.from('abcdefghij'))
+  const calls = { info: 0, input: 0 }
+  const fileInfo = handler.fileInfo
+  handler.fileInfo = function countedInfo(...args) {
+    calls.info += 1
+    return fileInfo.apply(this, args)
+  }
+  const openInputStream = handler.openInputStream
+  handler.openInputStream = function countedInput(...args) {
+    calls.input += 1
+    return openInputStream.apply(this, args)
+  }
+  const source = IOBase.fromFs(handler, 'source')
+
+  const sequential = source.openInputStream()
+  assert.equal(sequential.tell(), 0n)
+  const chunks = []
+  while (true) {
+    const chunk = sequential.read(3n)
+    if (chunk.length === 0) break
+    chunks.push(chunk)
+  }
+  assert.equal(Buffer.concat(chunks).toString(), 'abcdefghij')
+  assert.equal(sequential.tell(), 10n)
+  sequential.close()
+  sequential.close()
+  assert.equal(sequential.closed, true)
+  assert.deepEqual(calls, { info: 0, input: 1 })
+
+  const random = source.openInputFile()
+  assert.equal(random.readAt(5n, 3n).toString(), 'fgh')
+  assert.equal(random.tell(), 0n)
+  assert.equal(random.seek(2n), 2n)
+  assert.equal(random.read(2n).toString(), 'cd')
+  random.close()
+
+  const target = IOBase.fromFs(handler, 'target')
+  const output = target.openOutputStream(
+    new Map([['content-type', 'application/test']]),
+  )
+  assert.equal(output.write(Buffer.from('abc')), 3n)
+  assert.equal(output.write(Buffer.from('def')), 3n)
+  output.flush()
+  output.close()
+  output.close()
+  assert.equal(output.closed, true)
+  assert.equal(handler.files.get('target').toString(), 'abcdef')
+  assert.deepEqual(handler.metadata.get('target'), {
+    'content-type': 'application/test',
+  })
+})
+
+test('listings are sorted and selectors reach the handler intact', () => {
+  const handler = memory()
+  handler.files.set('root/z', Buffer.from('z'))
+  handler.files.set('root/a', Buffer.from('a'))
+  const selectors = []
+  const list = handler.list
+  handler.list = function recording(selector) {
+    selectors.push({ ...selector })
+    return list.call(this, selector)
+  }
+  const root = IOBase.fromFs(handler, 'root')
+  assert.deepEqual(
+    [...root.ls()].map((entry) => entry.path),
+    ['root/a', 'root/z'],
+  )
+  assert.deepEqual(selectors[0], {
+    baseDir: 'root',
+    recursive: false,
+    allowNotFound: true,
+  })
+})
+
+test('same-filesystem copy and move use one native operation and no streams', () => {
+  const handler = memory()
+  handler.files.set('source', Buffer.from('payload'))
+  const calls = { copy: 0, move: 0, input: 0, output: 0 }
+  for (const [name, key] of [
+    ['copyFile', 'copy'],
+    ['move', 'move'],
+    ['openInputStream', 'input'],
+    ['openOutputStream', 'output'],
+  ]) {
+    const method = handler[name]
+    handler[name] = function counted(...args) {
+      calls[key] += 1
+      return method.apply(this, args)
+    }
+  }
+
+  const source = IOBase.fromFs(handler, 'source')
+  const copied = IOBase.fromFs(handler, 'copied')
+  assert.equal(source.copyInto(copied), 7n)
+  assert.deepEqual(calls, { copy: 1, move: 0, input: 0, output: 0 })
+
+  const moved = IOBase.fromFs(handler, 'moved')
+  assert.equal(copied.moveInto(moved).sameLocation(moved), true)
+  assert.deepEqual(calls, { copy: 1, move: 1, input: 0, output: 0 })
+})
+
+test('handler equality failures abort identity, copy, and move', () => {
+  const handler = memory()
+  handler.files.set('source', Buffer.from('kept'))
+  handler.files.set('target', Buffer.from('original'))
+  const calls = { copy: 0, move: 0, input: 0, output: 0 }
+  for (const [name, key] of [
+    ['copyFile', 'copy'],
+    ['move', 'move'],
+    ['openInputStream', 'input'],
+    ['openOutputStream', 'output'],
+  ]) {
+    const method = handler[name]
+    handler[name] = function counted(...args) {
+      calls[key] += 1
+      return method.apply(this, args)
+    }
+  }
+  handler.equals = () => {
+    throw failure('PermissionDenied', 'filesystem equality was refused')
+  }
+  const source = IOBase.fromFs(handler, 'source')
+  const target = IOBase.fromFs(handler, 'target')
+  const identicalPath = IOBase.fromFs(handler, 'source')
+  for (const operation of [() => source.sameLocation(identicalPath)]) {
+    assert.throws(operation, (error) => {
+      assert.equal(error.code, 'PermissionDenied')
+      return true
+    })
+  }
+  for (const operation of [
+    () => source.copyInto(target),
+    () => source.moveInto(target),
+  ]) {
+    assert.throws(operation, (error) => {
+      assert.equal(error.code, 'PermissionDenied')
+      return true
+    })
+  }
+  assert.deepEqual(calls, { copy: 0, move: 0, input: 0, output: 0 })
+  assert.equal(handler.files.get('source').toString(), 'kept')
+  assert.equal(handler.files.get('target').toString(), 'original')
+})
+
+test('cross-filesystem copy never publishes missing or partial input', () => {
+  const sourceHandler = memory()
+  const targetHandler = memory()
+  targetHandler.files.set('target', Buffer.from('original'))
+  let outputs = 0
+  const output = targetHandler.openOutputStream
+  targetHandler.openOutputStream = function counted(...args) {
+    outputs += 1
+    return output.apply(this, args)
+  }
+
+  assert.throws(
+    () =>
+      IOBase.fromFs(sourceHandler, 'missing').copyInto(
+        IOBase.fromFs(targetHandler, 'target'),
+      ),
+    (error) => {
+      assert.equal(error.code, 'NotFound')
+      return true
+    },
+  )
+  assert.equal(outputs, 0)
+  assert.equal(targetHandler.files.get('target').toString(), 'original')
+
+  sourceHandler.files.set('source', Buffer.from('partial payload'))
+  sourceHandler.openInputStream = () => {
+    let reads = 0
+    return {
+      read() {
+        reads += 1
+        if (reads === 1) return Buffer.from('partial')
+        throw failure('Transport', 'source disconnected')
+      },
+      tell: () => 0n,
+      close() {},
+      get closed() {
+        return false
+      },
+    }
+  }
+  assert.throws(
+    () =>
+      IOBase.fromFs(sourceHandler, 'source').copyInto(
+        IOBase.fromFs(targetHandler, 'target'),
+      ),
+    (error) => {
+      assert.equal(error.code, 'Transport')
+      return true
+    },
+  )
+  assert.equal(targetHandler.files.get('target').toString(), 'original')
+  assert.equal(
+    [...targetHandler.files.keys()].some((name) =>
+      name.includes('.yggdryl-transfer-'),
+    ),
+    false,
+  )
+})
+
+test('directory lifecycle operations remain distinct', () => {
+  const handler = memory()
+  handler.createDir('root', true)
+  handler.files.set('root/child', Buffer.from('x'))
+  const root = IOBase.fromFs(handler, 'root')
+
+  assert.throws(() => root.deleteDir(), /DirectoryNotEmpty/)
+  assert.throws(() => root.deleteFile(), /IsADirectory/)
+  root.deleteDirContents(false)
+  assert.equal(root.info().kind, 'directory')
+  root.deleteDir()
+  assert.equal(root.info().kind, 'not-found')
+
+  handler.files.set('kept', Buffer.from('x'))
+  assert.throws(
+    () => root.deleteRootDirContents(),
+    (error) => {
+      assert.equal(error.code, 'Unsupported')
+      return true
+    },
+  )
+  assert.equal(handler.files.has('kept'), true)
+  IOBase.fromFs(handler, '').deleteRootDirContents()
+  assert.equal(handler.files.size, 0)
+})
+
 test('a handler-backed handle is an ordinary handle', () => {
   const handle = IOBase.fromFs(memory(), 'bucket/trades.parquet')
 
   // The file system's own name is the scheme its locations carry.
-  assert.equal(handle.toString(), 'memory://bucket/trades.parquet')
+  assert.equal(handle.toString(), 'memory://bound/bucket/trades.parquet')
   assert.equal(handle.name, 'trades.parquet')
   assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
 
@@ -161,78 +704,80 @@ test('the constructor infers a file system first argument', () => {
 
   // A file system with nowhere to resolve, and a location with a file system
   // that is not one, are both refused by name.
-  assert.throws(() => new IOBase(handler), /a path on the file system as the second argument/)
-  assert.throws(() => new IOBase('some/path', 'another'), /Arrow file system handler to resolve/)
+  assert.throws(
+    () => new IOBase(handler),
+    /a path on the file system as the second argument/,
+  )
+  assert.throws(
+    () => new IOBase('some/path', 'another'),
+    /Arrow file system handler to resolve/,
+  )
 })
 
 test('a handler missing a method is refused by that method', () => {
   const partial = { ...memory() }
-  delete partial.readRange
+  delete partial.openInputFile
 
-  assert.throws(
-    () => IOBase.fromFs(partial, 'bucket/key.bin'),
-    /readRange\(path, offset, length\)/,
-  )
-  assert.throws(() => IOBase.fromFs({}, 'bucket/key.bin'), /fileInfo\(path\)/)
+  assert.throws(() => IOBase.fromFs(partial, 'bucket/key.bin'), /openInputFile/)
+  assert.throws(() => IOBase.fromFs({}, 'bucket/key.bin'), /typeName/)
   // A method that is not callable is no method at all.
   assert.throws(
     () => IOBase.fromFs({ ...memory(), list: 'everything' }, 'bucket/key.bin'),
-    /list\(path, recursive\)/,
+    /list/,
   )
 })
 
-test('bytes round trip, and a write publishes when the handle is flushed', () => {
+test('bytes round trip through forwarding output and append streams', () => {
   const handler = memory()
-  const handle = IOBase.fromFs(handler, 'bucket/staged.bin')
+  const handle = IOBase.fromFs(handler, 'bucket/streamed.bin')
 
-  // Positional writes are pieces of a value, so they stage: an Arrow file
-  // system replaces whole files rather than writing ranges, and must never be
-  // handed a half-written one.
+  // A missing file starts with output and a write at its end uses append.
   handle.pwrite(0, Buffer.from('pend'))
   handle.pwrite(4, Buffer.from('ing'))
-  assert.ok(!handler.files.has('bucket/staged.bin'))
-  // The handle itself reads what it staged, and says a file is there now.
+  assert.equal(handler.files.get('bucket/streamed.bin').toString(), 'pending')
   assert.equal(handle.readText(), 'pending')
   assert.ok(handle.isFile())
 
   handle.flush()
-  assert.equal(handler.files.get('bucket/staged.bin').toString(), 'pending')
+  assert.equal(handler.files.get('bucket/streamed.bin').toString(), 'pending')
 
-  // A whole-value write needs no scope at all: it is one replacement, so it
-  // publishes when it finishes.
-  const whole = IOBase.fromFs(handler, 'bucket/whole.bin')
-  whole.writeText('published')
-  assert.equal(handler.files.get('bucket/whole.bin').toString(), 'published')
+  // The high-level write completes and closes its output stream.
+  const overwrite = IOBase.fromFs(handler, 'bucket/overwrite.bin')
+  overwrite.writeText('published')
+  assert.equal(
+    handler.files.get('bucket/overwrite.bin').toString(),
+    'published',
+  )
 
-  // Positional access needs no mode here either, and the ranged read maps
-  // straight onto one `readRange`.
-  assert.equal(handle.pwrite(0, Buffer.from('PENDING')), 7)
-  handle.flush()
+  // A backend that cannot support an arbitrary positional write says so.
+  assert.throws(
+    () => handle.pwrite(0, Buffer.from('PENDING')),
+    /does not support/,
+  )
+  handle.writeText('PENDING')
   assert.equal(handle.readRangeBytes(0, 3).toString(), 'PEN')
   assert.equal(handle.appendBytes(Buffer.from('!')), 7)
   handle.flush()
-  assert.equal(handler.files.get('bucket/staged.bin').toString(), 'PENDING!')
+  assert.equal(handler.files.get('bucket/streamed.bin').toString(), 'PENDING!')
 
   handle.unlink()
   handle.flush()
   assert.equal(handle.readBytes().length, 0)
 })
 
-test('a size crosses as a bigint and as an exact number', (t) => {
+test('a size crosses as an exact bigint', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   fs.writeFileSync(path.join(root, 'sized.bin'), 'symbol,price')
 
-  // The `node:fs` handler reports a plain number, the memory one a bigint;
-  // both are the same length to the core.
+  // Both handlers preserve the filesystem's 64-bit size.
   assert.equal(IOBase.fromFs(local(), path.join(root, 'sized.bin')).size, 12)
 
   const handler = memory()
   handler.files.set('bucket/sized.bin', Buffer.from('symbol,price'))
   assert.equal(IOBase.fromFs(handler, 'bucket/sized.bin').size, 12)
 
-  // A length no length can be is refused rather than truncated. The write is
-  // what asks: it loads the stored value before staging over it.
+  // A length no length can be is refused rather than truncated.
   const lying = {
     ...memory(),
     fileInfo: (location) => ({ path: location, kind: 'file', size: -1n }),
@@ -247,8 +792,14 @@ test('folders list, glob, and carry the file system', () => {
   const handler = memory()
   for (const year of ['2024', '2025']) {
     for (const month of ['01', '02']) {
-      handler.files.set(`lake/year=${year}/month=${month}/part-0.parquet`, Buffer.from('PAR1'))
-      handler.files.set(`lake/year=${year}/month=${month}/notes.txt`, Buffer.from('notes'))
+      handler.files.set(
+        `lake/year=${year}/month=${month}/part-0.parquet`,
+        Buffer.from('PAR1'),
+      )
+      handler.files.set(
+        `lake/year=${year}/month=${month}/notes.txt`,
+        Buffer.from('notes'),
+      )
     }
   }
   const lake = IOBase.fromFs(handler, 'lake')
@@ -265,7 +816,10 @@ test('folders list, glob, and carry the file system', () => {
   const leaf = lake.joinpath('year=2024', 'month=01', 'part-0.parquet')
   assert.equal(leaf.readText(), 'PAR1')
   assert.equal(leaf.parent.name, 'month=01')
-  assert.equal(leaf.toString(), 'memory://lake/year=2024/month=01/part-0.parquet')
+  assert.equal(
+    leaf.toString(),
+    'memory://bound/lake/year=2024/month=01/part-0.parquet',
+  )
   assert.deepEqual(leaf.partitions, [
     { column: 'year', value: '2024' },
     { column: 'month', value: '01' },
@@ -282,9 +836,12 @@ test('a missing location reads empty rather than throwing', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
 
-  // `node:fs` throws `ENOENT` where the vtable answers with nothing, so this
-  // is the boundary turning a handler's failure back into the contract.
-  const absent = IOBase.fromFs(local(), path.join(root, 'nowhere', 'absent.arrows'))
+  // The local handler maps `ENOENT` to an empty listing only because this
+  // selector explicitly allows a missing base directory.
+  const absent = IOBase.fromFs(
+    local(),
+    path.join(root, 'nowhere', 'absent.arrows'),
+  )
   assert.ok(!absent.exists())
   assert.equal(absent.size, 0)
   assert.equal(absent.readBytes().length, 0)
@@ -292,16 +849,24 @@ test('a missing location reads empty rather than throwing', (t) => {
   // Removing what was never there is what was asked for.
   absent.unlink()
 
-  // A write creates the file and the parents it needs.
-  const nested = IOBase.fromFs(local(), path.join(root, 'deep', 'nested', 'trades.txt'))
+  // Parent creation is explicit; the output operation creates only the file.
+  IOBase.fromFs(local(), path.join(root, 'deep', 'nested')).createDir(true)
+  const nested = IOBase.fromFs(
+    local(),
+    path.join(root, 'deep', 'nested', 'trades.txt'),
+  )
   nested.writeText('AAPL')
   nested.flush()
-  assert.equal(fs.readFileSync(path.join(root, 'deep', 'nested', 'trades.txt'), 'utf8'), 'AAPL')
+  assert.equal(
+    fs.readFileSync(path.join(root, 'deep', 'nested', 'trades.txt'), 'utf8'),
+    'AAPL',
+  )
 })
 
 test('records round trip through the wrapper, in both encodings', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  IOBase.fromFs(local(), path.join(root, 'lake')).createDir(true)
 
   for (const name of ['trades.arrows', 'trades.parquet']) {
     const handle = IOBase.fromFs(local(), path.join(root, 'lake', name))
@@ -348,7 +913,8 @@ test('records round trip over storage that is only a Map', () => {
   assert.ok(handler.files.has('bucket/trades.arrows'))
   assert.equal(handle.readArrowField().dtype.length, 2)
   assert.equal(
-    IOBase.fromFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable().numRows,
+    IOBase.fromFs(handler, 'bucket/trades.arrows').readArrowReader().intoTable()
+      .numRows,
     2,
   )
 
@@ -365,11 +931,48 @@ test('records round trip over storage that is only a Map', () => {
   )
 })
 
-test("a handler that throws surfaces its own message", () => {
+test('handler-backed framed text resets at every leaf', () => {
+  const handler = memory()
+  handler.files.set(
+    'bucket/logs/a.txt',
+    Buffer.from('[INFO] first\ncontinuation from a'),
+  )
+  handler.files.set(
+    'bucket/logs/b.txt',
+    Buffer.from('leading fragment from b\n[WARN] second'),
+  )
+
+  const options = new TextOptions()
+  options.framing = true
+  options.rowheader = '^\\[(?<level>[A-Z]+)\\] '
+  options.batchRowSize = 1
+
+  const table = IOBase.fromFs(handler, 'bucket/logs')
+    .readArrowReader(options)
+    .intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => [field.name, field.nullable]),
+    [
+      ['url', false],
+      ['body', false],
+      ['level', true],
+    ],
+  )
+  assert.deepEqual(
+    [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
+    ['first\ncontinuation from a', 'leading fragment from b', 'second'],
+  )
+  assert.deepEqual([...table.getChild('level')], ['INFO', null, 'WARN'])
+})
+
+test('a handler that throws surfaces its own message', () => {
   const refusing = {
     ...memory(),
     fileInfo: (location) => ({ path: location, kind: 'file', size: 8n }),
-    readRange() {
+    openInputStream() {
+      throw new Error('the bucket refused the request: 403 Forbidden')
+    },
+    openInputFile() {
       throw new Error('the bucket refused the request: 403 Forbidden')
     },
   }
@@ -385,7 +988,7 @@ test("a handler that throws surfaces its own message", () => {
     },
   }
   assert.throws(
-    () => IOBase.fromFs(failing, 'bucket/key.bin').writeText('AAPL'),
+    () => IOBase.fromFs(failing, 'bucket/key.bin').info(),
     /the credential chain is empty/,
   )
 
@@ -396,17 +999,76 @@ test("a handler that throws surfaces its own message", () => {
   }
   assert.throws(
     () => IOBase.fromFs(inventing, 'bucket/key.bin').writeText('AAPL'),
-    /memory, file, directory, table, namespace, catalog, unknown/,
+    /file.*directory.*not-found/,
   )
+})
+
+test('filesystem error codes and sticky stream failures survive the boundary', () => {
+  for (const code of [
+    'NotFound',
+    'PermissionDenied',
+    'AlreadyExists',
+    'NotADirectory',
+    'IsADirectory',
+    'DirectoryNotEmpty',
+    'Unsupported',
+    'Transport',
+  ]) {
+    const handler = memory()
+    handler.deleteFile = () => {
+      throw failure(code, `reported ${code}`)
+    }
+    assert.throws(
+      () => IOBase.fromFs(handler, 'path').deleteFile(),
+      (error) => {
+        assert.equal(error.code, code)
+        assert.match(error.message, new RegExp(code))
+        return true
+      },
+    )
+  }
+
+  const handler = memory()
+  let closes = 0
+  handler.openOutputStream = () => ({
+    write() {
+      throw failure('PermissionDenied', 'write refused')
+    },
+    tell: () => 0n,
+    flush() {},
+    close() {
+      closes += 1
+    },
+    get closed() {
+      return closes !== 0
+    },
+  })
+  const writer = IOBase.fromFs(handler, 'target').openOutputStream()
+  for (const operation of [
+    () => writer.write(Buffer.from('x')),
+    () => writer.close(),
+    () => writer.close(),
+  ]) {
+    assert.throws(operation, (error) => {
+      assert.equal(error.code, 'PermissionDenied')
+      return true
+    })
+  }
+  assert.equal(closes, 1)
+  assert.equal(writer.closed, true)
 })
 
 test('an Iceberg table lives on a file system a caller wrote', () => {
   const handler = memory()
   const warehouse = IOBase.fromFs(handler, 'warehouse/trades')
   const schema = iceberg.assignFieldIds(
-    fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
-      nullable: false,
-    }),
+    fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8')],
+      {
+        nullable: false,
+      },
+    ),
   )
 
   const table = iceberg.Table.create(warehouse, schema)
@@ -426,20 +1088,17 @@ test('an Iceberg table lives on a file system a caller wrote', () => {
   assert.ok(stored.some((name) => name.endsWith('.parquet')))
 })
 
-test('a scope publishes the staged value it wrote', () => {
+test('a scope closes an output stream', () => {
   const handler = memory()
 
-  // `using` binds to this, and it is what hands a staged whole value to a
-  // file system that replaces files rather than writing ranges. The symbol
-  // is called directly because the `using` *declaration* is newer than the
-  // Node this suite runs on, while the protocol it calls is not.
+  // The symbol is called directly because the `using` declaration is newer
+  // than the oldest Node this suite runs on.
   {
     const handle = IOBase.fromFs(handler, 'bucket/scoped.bin')
-    handle.pwrite(0, Buffer.from('AAPL'))
-    // Still staged: the handler has not been asked to store anything yet.
-    assert.equal(handler.files.has('bucket/scoped.bin'), false)
-    assert.equal(typeof handle[Symbol.dispose], 'function')
-    handle[Symbol.dispose]()
+    const output = handle.openOutputStream()
+    output.write(Buffer.from('AAPL'))
+    assert.equal(typeof output[Symbol.dispose], 'function')
+    output[Symbol.dispose]()
   }
 
   assert.deepEqual(
@@ -449,7 +1108,7 @@ test('a scope publishes the staged value it wrote', () => {
   assert.equal(IOBase.fromFs(handler, 'bucket/scoped.bin').readText(), 'AAPL')
 })
 
-test('open and close bracket the staged state without creating anything', () => {
+test('open and close do not create an untouched handle', () => {
   const handler = memory()
   const handle = IOBase.fromFs(handler, 'bucket/absent.bin')
 
@@ -459,8 +1118,8 @@ test('open and close bracket the staged state without creating anything', () => 
   assert.equal(handler.files.has('bucket/absent.bin'), false)
 
   handle.writeText('later')
-  assert.equal(handle.opened(), true)
-  assert.equal(handle.closed(), false)
+  assert.equal(handle.opened(), false)
+  assert.equal(handle.closed(), true)
   handle.close()
   assert.equal(handle.opened(), false)
   assert.equal(handle.closed(), true)
@@ -478,7 +1137,10 @@ test('mkdir creates the container on the same file system', () => {
   child.writeText('AAPL')
   child.close()
 
-  assert.equal(Buffer.from(handler.files.get('bucket/lake/part-0.bin')).toString(), 'AAPL')
+  assert.equal(
+    Buffer.from(handler.files.get('bucket/lake/part-0.bin')).toString(),
+    'AAPL',
+  )
   assert.equal(fs.existsSync('bucket/lake'), false)
 })
 
@@ -486,9 +1148,13 @@ test('a table hands back a root on its own file system', () => {
   const handler = memory()
   const warehouse = IOBase.fromFs(handler, 'warehouse/trades')
   const schema = iceberg.assignFieldIds(
-    fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
-      nullable: false,
-    }),
+    fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8')],
+      {
+        nullable: false,
+      },
+    ),
   )
 
   const table = iceberg.Table.create(warehouse, schema)

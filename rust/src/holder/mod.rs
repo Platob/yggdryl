@@ -60,7 +60,7 @@ pub enum Holder {
     /// A foreign-filesystem location that resolves to whatever it turns out
     /// to be.
     FsPath(crate::holder::fs::Path),
-    /// A staged whole-value file on a foreign filesystem.
+    /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::holder::fs::File),
     /// Any of the others, read through a page cache.
     ///
@@ -484,6 +484,10 @@ impl IOBase for Holder {
 
     fn url(&self) -> Option<&Url> {
         self.as_io().url()
+    }
+
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.as_io().bound_location()
     }
 
     fn media_type(&self) -> &MediaType {

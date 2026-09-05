@@ -1,5 +1,6 @@
 //! Iceberg schemas, metadata, manifests, partitions, and whole tables.
 
+use std::any::Any;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -7,6 +8,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 
 use crate::IOBase;
+use crate::holder::fs::{
+    ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, OutputMetadata,
+    RandomAccessReader,
+};
 use crate::holder::local::Folder;
 use crate::{DataType, Field, Scalar};
 
@@ -296,14 +301,13 @@ fn table_metadata_state_is_read_only_through_complete_accessors() {
 /// An Arrow filesystem that publishes one version hint and then reports that
 /// same write as failed.
 ///
-/// Object stores can acknowledge a whole-value replacement late: by the time
-/// the transport error reaches the caller, a fresh handle may already see the
-/// new metadata document and hint. This fixture makes that state deterministic
-/// without teaching the table about a test-only storage hook.
+/// An object store can report an output-stream close failure after the bytes
+/// are already visible. This fixture makes that state deterministic without
+/// teaching the table about a test-only storage hook.
 #[derive(Debug, Default)]
 struct PublishedHintFailure {
     inner: crate::holder::fs::MemoryFileSystem,
-    fail_next_hint: AtomicBool,
+    fail_next_hint: Arc<AtomicBool>,
 }
 
 impl PublishedHintFailure {
@@ -317,23 +321,111 @@ impl crate::holder::fs::FileSystem for PublishedHintFailure {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::holder::fs::FileInfo> {
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::holder::fs::FileInfos {
-        self.inner.list(path, recursive)
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
     }
 
-    fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
-        self.inner.read_range(path, offset, buffer)
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
     }
 
-    fn write_full(&self, path: &str, bytes: &[u8]) -> crate::Result<()> {
-        self.inner.write_full(path, bytes)?;
-        if path.ends_with("/version-hint.text")
-            && self.fail_next_hint.swap(false, Ordering::Relaxed)
-        {
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let writer = self.inner.open_output_stream(path, metadata)?;
+        if path.ends_with("/version-hint.text") {
+            Ok(Box::new(PublishedHintWriter {
+                inner: writer,
+                fail_next_hint: Arc::clone(&self.fail_next_hint),
+            }))
+        } else {
+            Ok(writer)
+        }
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct PublishedHintWriter {
+    inner: Box<dyn ByteWriter>,
+    fail_next_hint: Arc<AtomicBool>,
+}
+
+impl ByteWriter for PublishedHintWriter {
+    fn write(&mut self, bytes: &[u8]) -> crate::Result<usize> {
+        self.inner.write(bytes)
+    }
+
+    fn tell(&self) -> u64 {
+        self.inner.tell()
+    }
+
+    fn flush(&mut self) -> crate::Result<()> {
+        self.inner.flush()
+    }
+
+    fn close(&mut self) -> crate::Result<()> {
+        self.inner.close()?;
+        if self.fail_next_hint.swap(false, Ordering::Relaxed) {
             return Err(crate::Error::Io(std::io::Error::other(
                 "injected acknowledgement failure after publishing the version hint",
             )));
@@ -341,12 +433,16 @@ impl crate::holder::fs::FileSystem for PublishedHintFailure {
         Ok(())
     }
 
-    fn create_dir(&self, path: &str) -> crate::Result<()> {
-        self.inner.create_dir(path)
+    fn closed(&self) -> bool {
+        self.inner.closed()
     }
 
-    fn delete_file(&self, path: &str) -> crate::Result<()> {
-        self.inner.delete_file(path)
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
     }
 }
 
@@ -360,8 +456,8 @@ impl crate::holder::fs::FileSystem for PublishedHintFailure {
 #[derive(Debug, Default)]
 struct SameVersionWinner {
     inner: crate::holder::fs::MemoryFileSystem,
-    armed: AtomicBool,
-    injections: AtomicUsize,
+    armed: Arc<AtomicBool>,
+    injections: Arc<AtomicUsize>,
 }
 
 impl SameVersionWinner {
@@ -387,35 +483,113 @@ impl crate::holder::fs::FileSystem for SameVersionWinner {
         self.inner.type_name()
     }
 
-    fn file_info(&self, path: &str) -> crate::Result<crate::holder::fs::FileInfo> {
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
         self.inner.file_info(path)
     }
 
-    fn list(&self, path: &str, recursive: bool) -> crate::holder::fs::FileInfos {
-        self.inner.list(path, recursive)
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
     }
 
-    fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
-        self.inner.read_range(path, offset, buffer)
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
     }
 
-    fn write_full(&self, path: &str, bytes: &[u8]) -> crate::Result<()> {
-        self.inner.write_full(path, bytes)?;
-        if !path.contains("/metadata/00002-")
-            || !path.ends_with(".metadata.json")
-            || !self.armed.swap(false, Ordering::Relaxed)
-        {
-            return Ok(());
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let writer = self.inner.open_output_stream(path, metadata)?;
+        if path.contains("/metadata/00002-") && path.ends_with(".metadata.json") {
+            Ok(Box::new(SameVersionWriter {
+                inner: writer,
+                filesystem: self.inner.clone(),
+                path: path.to_owned(),
+                bytes: Vec::new(),
+                armed: Arc::clone(&self.armed),
+                injections: Arc::clone(&self.injections),
+            }))
+        } else {
+            Ok(writer)
         }
+    }
 
-        let mut document: serde_json::Value = serde_json::from_slice(bytes)?;
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct SameVersionWriter {
+    inner: Box<dyn ByteWriter>,
+    filesystem: crate::holder::fs::MemoryFileSystem,
+    path: String,
+    bytes: Vec<u8>,
+    armed: Arc<AtomicBool>,
+    injections: Arc<AtomicUsize>,
+}
+
+impl SameVersionWriter {
+    fn inject_winner(&self) -> crate::Result<()> {
+        let mut document: serde_json::Value = serde_json::from_slice(&self.bytes)?;
         let properties = document
             .as_object_mut()
             .and_then(|metadata| metadata.get_mut("properties"))
             .and_then(serde_json::Value::as_object_mut)
-            .ok_or_else(|| Self::invalid("expected generated metadata properties"))?;
+            .ok_or_else(|| SameVersionWinner::invalid("expected generated metadata properties"))?;
         if properties.remove("loser").is_none() {
-            return Err(Self::invalid(
+            return Err(SameVersionWinner::invalid(
                 "expected the attempted metadata to carry the loser's intent",
             ));
         }
@@ -424,29 +598,82 @@ impl crate::holder::fs::FileSystem for SameVersionWinner {
             serde_json::Value::String("visible".to_owned()),
         );
 
-        let (directory, candidate) = path
+        let (directory, candidate) = self
+            .path
             .rsplit_once('/')
-            .ok_or_else(|| Self::invalid("expected a metadata directory"))?;
+            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
         let first = "00002-00000000-0000-0000-0000-000000000000.metadata.json";
         let second = "00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json";
         let competitor = if candidate == first { second } else { first };
-        self.inner.write_full(
+        write_filesystem_bytes(
+            &self.filesystem,
             &format!("{directory}/{competitor}"),
             &serde_json::to_vec(&document)?,
         )?;
-        self.inner
-            .write_full(&format!("{directory}/version-hint.text"), b"2")?;
+        write_filesystem_bytes(
+            &self.filesystem,
+            &format!("{directory}/version-hint.text"),
+            b"2",
+        )?;
         self.injections.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
+}
 
-    fn create_dir(&self, path: &str) -> crate::Result<()> {
-        self.inner.create_dir(path)
+impl ByteWriter for SameVersionWriter {
+    fn write(&mut self, bytes: &[u8]) -> crate::Result<usize> {
+        let written = self.inner.write(bytes)?;
+        self.bytes.extend_from_slice(&bytes[..written]);
+        Ok(written)
     }
 
-    fn delete_file(&self, path: &str) -> crate::Result<()> {
-        self.inner.delete_file(path)
+    fn tell(&self) -> u64 {
+        self.inner.tell()
     }
+
+    fn flush(&mut self) -> crate::Result<()> {
+        self.inner.flush()
+    }
+
+    fn close(&mut self) -> crate::Result<()> {
+        self.inner.close()?;
+        if self.armed.swap(false, Ordering::Relaxed) {
+            self.inject_winner()?;
+        }
+        Ok(())
+    }
+
+    fn closed(&self) -> bool {
+        self.inner.closed()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+fn write_filesystem_bytes(
+    filesystem: &dyn FileSystem,
+    path: &str,
+    bytes: &[u8],
+) -> crate::Result<()> {
+    let mut writer = filesystem.open_output_stream(path, None)?;
+    let mut position = 0;
+    while position < bytes.len() {
+        let written = writer.write(&bytes[position..])?;
+        if written == 0 {
+            return Err(crate::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "filesystem fixture stream stopped before the complete value was written",
+            )));
+        }
+        position += written;
+    }
+    writer.close()
 }
 
 /// Build a scratch directory unique to this test and this process.
@@ -3872,7 +4099,7 @@ fn a_metadata_only_commit_writes_a_version_and_a_failure_leaves_none() {
 fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
     let filesystem = Arc::new(PublishedHintFailure::default());
     let folder =
-        crate::holder::fs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,
@@ -3908,7 +4135,7 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
     let folder =
-        crate::holder::fs::Folder::from_location(filesystem.clone(), "bucket/table").unwrap();
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
     let mut table = Table::create(
         folder.clone(),
         FormatVersion::V2,

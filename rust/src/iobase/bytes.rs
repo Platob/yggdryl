@@ -138,7 +138,7 @@ macro_rules! delegate_iobase {
     // The whole contract, lifecycle included: the wrapper changes nothing.
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular, is_io);
     };
 
@@ -150,7 +150,7 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind);
     };
 
@@ -211,6 +211,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, url) => {
         fn url(&self) -> Option<&$crate::Url> {
             $crate::IOBase::url(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, bound_location) => {
+        fn bound_location(&self) -> Option<&$crate::holder::fs::BoundLocation> {
+            $crate::IOBase::bound_location(&self.$handle)
         }
     };
 
@@ -514,6 +520,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn url(&self) -> Option<&Url> {
         self.as_ref().url()
+    }
+
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.as_ref().bound_location()
     }
 
     fn media_type(&self) -> &MediaType {

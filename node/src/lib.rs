@@ -44,8 +44,8 @@ pub use fix::{
     JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry, fix_global_registry,
     fix_install_global_registry, fix_standard_branch_native, fix_standard_tag_limit_native,
 };
-pub use holder::fs::ArrowFileInfo;
-pub use iobase::JsIOBase;
+pub use holder::fs::{ArrowFileInfo, FileSelector};
+pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
 pub use media::avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,

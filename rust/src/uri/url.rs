@@ -158,6 +158,11 @@ impl Url {
         self.0.hostname()
     }
 
+    /// Return the S3 endpoint host and explicit port, excluding a virtual bucket.
+    pub fn s3_endpoint(&self) -> Option<&str> {
+        self.0.s3_endpoint()
+    }
+
     /// Return the S3 bucket name when this is an `s3` URL.
     pub fn bucket(&self) -> Option<&str> {
         self.0.bucket()
@@ -166,6 +171,11 @@ impl Url {
     /// Infer an AWS region from a recognized S3 hostname.
     pub fn region(&self) -> Option<&str> {
         self.0.region()
+    }
+
+    /// Return whether this S3 URL puts its bucket in the endpoint hostname.
+    pub fn is_s3_virtual(&self) -> bool {
+        self.0.is_s3_virtual()
     }
 
     /// Return the concrete URL path.

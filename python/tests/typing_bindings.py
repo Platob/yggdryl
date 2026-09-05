@@ -597,6 +597,9 @@ record_match_key: list[str] = record_options.merge_by_names
 record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 text_record_options = TextOptions()
+text_record_options.framing = True
+text_record_options.leading_fragment = "drop"
+text_record_options.max_record_byte_size = 4096
 text_record_options.rowheader = r"\[(?<level>[A-Z]+)\]"
 text_record_options.with_rownum = 1
 text_record_options.lstrip = r"^\s+"
@@ -604,6 +607,11 @@ text_record_options.rstrip = r"\s+$"
 text_record_options.linesep = memoryview(b"\r\n")
 text_record_options.autotype = True
 text_record_options.timezone = Timezone.UTC
+text_framing: bool = text_record_options.framing
+text_leading_fragment: Literal["keep", "drop", "error"] = (
+    text_record_options.leading_fragment
+)
+text_max_record_byte_size: int | None = text_record_options.max_record_byte_size
 text_header: str | None = text_record_options.rowheader
 text_lstrip: str | None = text_record_options.lstrip
 text_rstrip: str | None = text_record_options.rstrip

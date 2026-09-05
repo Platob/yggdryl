@@ -9,10 +9,10 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::media::IORecordOptions;
 use crate::{DataType, Error, Field, Level, Metadata, Result, Timezone};
 
-use super::LineSep;
+use super::{LeadingFragment, LineSep};
 
 /// Reserved columns emitted before decoded row-header captures.
-pub(crate) const BASE_COLUMNS: [&str; 3] = ["url", "rownum", "body"];
+pub(crate) const BASE_COLUMNS: [&str; 4] = ["url", "rownum", "body", "dropped_byte_size"];
 
 /// A regex whose source, rather than its compiled automaton, is value identity.
 #[derive(Clone, Debug)]
@@ -62,11 +62,12 @@ impl PartialOrd for Expression {
 
 /// Settings for text rows reached through the ordinary record-media methods.
 ///
-/// Each physical line is one row. `rowheader`, when set, is searched once in the
-/// line; its named captures become nullable columns and its complete match is
-/// removed from `body`. `lstrip` and `rstrip` then remove a match only when it
-/// touches the corresponding edge. With `autotype`, capture datatypes are
-/// inferred from the regex syntax before the resource is read.
+/// Physical-line mode emits one row per line. With `framing` enabled,
+/// `rowheader` starts a logical record and following nonmatching lines join its
+/// body with normalized `\n` separators. Named captures remain nullable and the
+/// complete header match is removed only from the first physical line.
+/// `lstrip` and `rstrip` remove edge matches, and `autotype` infers capture
+/// datatypes from regex syntax before the resource is read.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextOptions {
     /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
@@ -95,6 +96,9 @@ pub struct TextOptions {
     pub filter_partitions: Vec<(String, String)>,
     /// First emitted row number; `None` omits the `rownum` column.
     pub with_rownum: Option<i64>,
+    framing: bool,
+    leading_fragment: LeadingFragment,
+    max_record_byte_size: Option<u64>,
     rowheader: Option<Expression>,
     lstrip: Option<Expression>,
     rstrip: Option<Expression>,
@@ -122,6 +126,9 @@ impl TextOptions {
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
             with_rownum: None,
+            framing: false,
+            leading_fragment: LeadingFragment::Keep,
+            max_record_byte_size: None,
             rowheader: None,
             lstrip: None,
             rstrip: None,
@@ -130,6 +137,60 @@ impl TextOptions {
             timezone: None,
             captures: Vec::new(),
         }
+    }
+
+    /// Return whether physical lines are framed into logical records.
+    #[must_use]
+    pub const fn framing(&self) -> bool {
+        self.framing
+    }
+
+    /// Enable or disable logical-record framing.
+    pub const fn set_framing(&mut self, framing: bool) {
+        self.framing = framing;
+    }
+
+    /// Return these options with logical-record framing changed.
+    #[must_use]
+    pub const fn with_framing(mut self, framing: bool) -> Self {
+        self.set_framing(framing);
+        self
+    }
+
+    /// Return how a leading nonmatching fragment is handled while framing.
+    #[must_use]
+    pub const fn leading_fragment(&self) -> LeadingFragment {
+        self.leading_fragment
+    }
+
+    /// Set how framing handles physical lines before the first header.
+    pub const fn set_leading_fragment(&mut self, treatment: LeadingFragment) {
+        self.leading_fragment = treatment;
+    }
+
+    /// Return these options with a different leading-fragment treatment.
+    #[must_use]
+    pub const fn with_leading_fragment(mut self, treatment: LeadingFragment) -> Self {
+        self.set_leading_fragment(treatment);
+        self
+    }
+
+    /// Return the retained decoded-body byte limit for each emitted record.
+    #[must_use]
+    pub const fn max_record_byte_size(&self) -> Option<u64> {
+        self.max_record_byte_size
+    }
+
+    /// Set or clear the retained decoded-body byte limit for each record.
+    pub const fn set_max_record_byte_size(&mut self, size: Option<u64>) {
+        self.max_record_byte_size = size;
+    }
+
+    /// Return these options with a decoded-body byte limit for each record.
+    #[must_use]
+    pub const fn with_max_record_byte_size(mut self, size: u64) -> Self {
+        self.set_max_record_byte_size(Some(size));
+        self
     }
 
     /// Borrow the row-header regex source.
@@ -145,7 +206,7 @@ impl TextOptions {
     /// # Errors
     ///
     /// Returns an error for malformed syntax or a named capture colliding with
-    /// `url`, `rownum`, or `body` under ASCII case folding.
+    /// a source or diagnostic column under ASCII case folding.
     pub fn set_rowheader(&mut self, rowheader: Option<&str>) -> Result<()> {
         let expression = rowheader
             .map(|source| Expression::new(source, "$.rowheader"))
@@ -177,7 +238,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from url, rownum, and body, got {:?}",
+                        "expected named captures distinct from url, rownum, body, and dropped_byte_size, got {:?}",
                         capture.name()
                     ),
                 });
@@ -313,6 +374,18 @@ impl TextOptions {
             .map(|expression| &expression.compiled)
     }
 
+    pub(crate) fn require_framing_rowheader(&self) -> Result<()> {
+        if self.framing && self.rowheader.is_none() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.rowheader"),
+                reason: SmolStr::new_static(
+                    "logical-record framing requires a rowheader expression",
+                ),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) fn lstrip_regex(&self) -> Option<&Regex> {
         self.lstrip.as_ref().map(|expression| &expression.compiled)
     }
@@ -327,12 +400,15 @@ impl TextOptions {
 
     /// Build the decoder's source field without reading the resource.
     pub(crate) fn source_field(&self) -> Result<Field> {
-        let mut fields = Vec::with_capacity(3 + self.captures.len());
+        let mut fields = Vec::with_capacity(4 + self.captures.len());
         fields.push(DataType::Utf8.required_field("url"));
         if self.with_rownum.is_some() {
             fields.push(DataType::Int64.required_field("rownum"));
         }
         fields.push(DataType::Binary.required_field("body"));
+        if self.max_record_byte_size.is_some() {
+            fields.push(DataType::UInt64.nullable_field("dropped_byte_size"));
+        }
         fields.extend(self.captures.iter().map(|capture| {
             let dtype = if self.autotype {
                 match (capture.dtype(), self.timezone) {

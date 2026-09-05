@@ -181,6 +181,34 @@ export declare class ByteIterator {
 }
 export type JsByteIterator = ByteIterator
 
+/** A stateful sequential filesystem input stream. */
+export declare class ByteReader {
+  /** Read at most `length` bytes from the current stream position. */
+  read(length: bigint): Uint8Array
+  /** Return the current byte position. */
+  tell(): bigint
+  /** Close the stream. Repeated closes are idempotent. */
+  close(): void
+  /** Whether the stream has been closed. */
+  get closed(): boolean
+}
+export type JsFsByteReader = ByteReader
+
+/** A stateful filesystem output or append stream. */
+export declare class ByteWriter {
+  /** Forward one byte chunk and return the number written. */
+  write(bytes: Uint8Array): bigint
+  /** Return the current byte position. */
+  tell(): bigint
+  /** Flush forwarded writes without closing the stream. */
+  flush(): void
+  /** Close the stream. Repeated closes are idempotent. */
+  close(): void
+  /** Whether the stream has been closed. */
+  get closed(): boolean
+}
+export type JsFsByteWriter = ByteWriter
+
 /**
  * A warehouse folder of namespaces of Iceberg tables.
  *
@@ -1481,13 +1509,10 @@ export declare class IOBase {
   /**
    * Describe a resource on any Arrow file system a caller supplies.
    *
-   * This is the explicit spelling of what the constructor infers, and it is
-   * the whole surface a foreign file system needs. Arrow JS ships none, so
-   * `filesystem` is the vtable `pyarrow.fs` implements, written as a plain
-   * object in camelCase: `typeName`, `fileInfo`, `list`, `readRange`,
-   * `writeFull`, `createDir`, `deleteFile`. A `Map`, `node:fs`, an S3
-   * client, or a caching layer over one reaches those same six calls, so
-   * none of them needs code of its own here.
+   * Arrow JS ships no filesystem implementation, so `filesystem` implements
+   * the public synchronous `FileSystemHandler` protocol in camelCase. The
+   * handler owns normalization, metadata, listing, lifecycle operations,
+   * native copy and move, and four stateful stream constructors.
    *
    * ```js
    * const handle = IOBase.fromFs(handler, 'bucket/key.parquet')
@@ -1499,20 +1524,40 @@ export declare class IOBase {
    * record methods work exactly as they do on a local file. Per the
    * laziness contract nothing is opened, created, or read here.
    *
-   * A write publishes when the handle is flushed, because an Arrow file
-   * system replaces whole files rather than writing ranges - so a file
-   * another reader will open is flushed before it is handed over.
-   *
    * The handler is called synchronously, on the JavaScript thread that
    * supplied it and no other: a handle built here cannot be read from a
    * `Worker`, because a JavaScript value belongs to one isolate and this
    * boundary refuses rather than pretending otherwise.
    */
-  static fromFs(filesystem: FileSystemInput, path: string): IOBase
+  static fromFs(filesystem: FileSystemInput, path: string, uri?: string | undefined | null): IOBase
+  /**
+   * Resolve a filesystem URI once through the core URI boundary.
+   *
+   * Local URIs use the native local Arrow filesystem implementation. Arrow
+   * JS supplies no S3 backend, so a valid S3 URI reports `Unsupported`
+   * without exposing credentials; callers with an S3 implementation bind it
+   * explicitly with [`Self::from_fs`].
+   */
+  static fromUri(uri: string, options?: Record<string, any> | undefined | null): IOBase
   /** Describe an in-memory resource holding `data`. */
   static fromBytes(data?: Uint8Array | undefined | null): IOBase
   /** The location this handle addresses. */
   get url(): JsUrl | null
+  /**
+   * The exact caller-supplied filesystem handler, when this is a
+   * JavaScript-handler-backed location.
+   */
+  get filesystem(): object | null
+  /** The exact opaque path supplied to the bound filesystem. */
+  get path(): string | null
+  /** The exact optional URI spelling supplied by the caller. */
+  get uri(): string | null
+  /** A credential-free form suitable for diagnostics and logs. */
+  get maskedUri(): string | null
+  /** Inspect the exact bound path without suppressing backend failures. */
+  info(): ArrowFileInfo
+  /** Whether both handles share a filesystem equality domain and exact path. */
+  sameLocation(other: IOBase): boolean
   /** The final path component, as `path.basename`. */
   get name(): string
   /** The media type of the bytes here. */
@@ -1676,6 +1721,18 @@ export declare class IOBase {
    * entry point that also takes a string.
    */
   appendBytes(data: Uint8Array): number
+  /** Explicitly normalize this path according to its filesystem. */
+  normalizePath(): string
+  /** Create this bound directory with the requested recursive semantics. */
+  createDir(recursive: boolean): void
+  /** Delete this empty directory itself. */
+  deleteDir(): void
+  /** Delete descendants while retaining this directory. */
+  deleteDirContents(missingDirOk: boolean): void
+  /** Explicitly clear the filesystem root while retaining that root. */
+  deleteRootDirContents(): void
+  /** Delete this exact file; a directory is an error. */
+  deleteFile(): void
   /**
    * Create this resource as a container, as `fs.mkdirSync`.
    *
@@ -1740,14 +1797,21 @@ export declare class IOBase {
    * Publish and release everything [`Self::open`] cached.
    *
    * The handle stays usable afterwards; a later operation re-materializes.
-   * This is what publishes a written file at its exact length, and on a
-   * backend that replaces whole files - any Arrow file system - it is what
-   * hands the staged value over, so a file another reader will open is
-   * written inside a scope.
+   * Filesystem stream handles expose their own explicit `close()` methods.
    */
   close(): void
+  /** Open this bound path as a strict random-access input file. */
+  openInputFile(): RandomAccessReader
+  /** Open this bound path as a strict sequential input stream. */
+  openInputStream(): ByteReader
+  /** Open a truncating output stream and forward optional metadata exactly. */
+  openOutputStream(metadata?: Record<string, string> | undefined | null): ByteWriter
+  /** Open an append stream and forward optional metadata exactly. */
+  openAppendStream(metadata?: Record<string, string> | undefined | null): ByteWriter
   /** Copy every byte here into `target`, returning the count. */
-  copyInto(target: IOBase): number
+  copyInto(target: IOBase): bigint
+  /** Move this file into `target`, using the backend operation when equal. */
+  moveInto(target: IOBase): IOBase
   /**
    * The content coding this resource's name declares, or `null` for none.
    *
@@ -2370,6 +2434,23 @@ export declare class ProtocolField {
   toJSON(): any
 }
 export type JsProtocolField = ProtocolField
+
+/** A stateful random-access filesystem input file. */
+export declare class RandomAccessReader {
+  /** Read at most `length` bytes from the current file position. */
+  read(length: bigint): Uint8Array
+  /** Read at most `length` bytes at `offset` without moving the position. */
+  readAt(offset: bigint, length: bigint): Uint8Array
+  /** Seek relative to `start`, `current`, or `end` and return the position. */
+  seek(offset: bigint, whence?: string | undefined | null): bigint
+  /** Return the current byte position. */
+  tell(): bigint
+  /** Close the file. Repeated closes are idempotent. */
+  close(): void
+  /** Whether the file has been closed. */
+  get closed(): boolean
+}
+export type JsFsRandomAccessReader = RandomAccessReader
 
 /** The settings one record read or write takes. */
 export declare class RecordOptions {
@@ -3235,7 +3316,7 @@ export declare class Tables {
 }
 export type JsTables = Tables
 
-/** Flat settings for physical-line `text/plain` records. */
+/** Flat settings for physical-line or framed `text/plain` records. */
 export declare class TextOptions {
   /** Build default plain-text record settings. */
   constructor()
@@ -3297,6 +3378,18 @@ export declare class TextOptions {
   get withRownum(): bigint | null
   /** Set or clear the exact signed 64-bit starting row number. */
   set withRownum(value: bigint | undefined | null)
+  /** Return whether physical lines are framed into logical records. */
+  get framing(): boolean
+  /** Enable or disable logical-record framing. */
+  set framing(framing: boolean)
+  /** Return the canonical treatment for a leading unmatched fragment. */
+  get leadingFragment(): 'keep' | 'drop' | 'error'
+  /** Set how framing handles physical lines before the first header. */
+  set leadingFragment(value: 'keep' | 'drop' | 'error')
+  /** Return the retained decoded-body byte limit for each logical record. */
+  get maxRecordByteSize(): number | null
+  /** Set or clear the retained decoded-body byte limit for each logical record. */
+  set maxRecordByteSize(value: number | undefined | null)
   /** The regex searched for a row header in each physical line. */
   get rowheader(): string | null
   /** Compile or clear the row-header regex. */
@@ -3877,29 +3970,16 @@ export declare class Xxh64 {
 }
 export type JsXxh64 = Xxh64
 
-/**
- * What a file system handler reports about one path.
- *
- * The shape `pyarrow.fs.FileInfo` carries, in the spellings the core already
- * publishes: `kind` is an [`IOKind`] name and `size` a 64-bit length, so a
- * value larger than a JavaScript number holds still crosses exactly.
- */
+/** Arrow-compatible information for one exact path. */
 export interface ArrowFileInfo {
-  /**
-   * The location, as the file system itself names it. Omitted, it is the
-   * path that was asked about - which is what a handler echoes anyway.
-   */
-  path?: string
-  /**
-   * `'file'`, `'directory'`, or `'unknown'` for a path holding nothing
-   * yet. Arrow spells that last one `'not-found'`, and so may a handler.
-   */
+  /** Exact opaque path reported by the filesystem. */
+  path: string
+  /** Resource kind: `file`, `directory`, or `not-found`. */
   kind: string
-  /**
-   * The byte length, as a `bigint`; a `number` is read when it is exact.
-   * Anything but a file has none.
-   */
-  size?: bigint | number
+  /** Exact file size, omitted for directories and missing paths. */
+  size?: bigint
+  /** Optional UTC modification time in nanoseconds since the Unix epoch. */
+  mtimeNs?: bigint
 }
 
 /** Resource limits shared by every Avro decode entry point. */
@@ -3966,6 +4046,16 @@ export interface FieldSummaryView {
   lowerBound?: Buffer
   /** Serialized maximum across the manifest's files. */
   upperBound?: Buffer
+}
+
+/** Options for one filesystem listing. */
+export interface FileSelector {
+  /** Opaque directory path supplied to the filesystem. */
+  baseDir: string
+  /** Whether descendants below direct children are included. */
+  recursive: boolean
+  /** Whether a missing base directory produces an empty listing. */
+  allowNotFound: boolean
 }
 
 /**
