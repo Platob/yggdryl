@@ -11,8 +11,8 @@ use super::registry::control_byte;
 use super::store::shard_of;
 use crate::holder::local::Folder;
 use crate::{
-    DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, MimeType, Scalar,
-    Version,
+    DataType, Error, Field, FixBranch, FixId, FixKey, FixLineageEntry, FixMsg, FixPedigree,
+    FixRegistry, MimeType, Scalar, Version,
 };
 
 /// The venue dictionary every branched case is written against.
@@ -2076,4 +2076,274 @@ fn a_message_rejects_a_root_whose_branch_is_corrupt() {
         matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:branch"),
         "{error}"
     );
+}
+
+/// The worked case: tag 32 is `LastShares` typed `int` in 4.0, `LastShares`
+/// typed `Qty` from 4.2, and `LastQty` from 4.3 on.
+fn last_qty() -> Field {
+    let mut field = DataType::from_str("decimal64(18,8)")
+        .unwrap()
+        .nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).unwrap();
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
+                .with_name("LastShares")
+                .with_dtype("int"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_name("LastShares")
+                .with_dtype("Qty"),
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None))
+                .with_name("LastQty")
+                .with_dtype("Qty"),
+        ])
+        .unwrap();
+    field
+}
+
+fn version(text: &str) -> Version {
+    text.parse().unwrap()
+}
+
+#[test]
+fn a_lineage_answers_the_name_and_datatype_of_every_version_it_holds() {
+    let field = last_qty();
+    let view = field.as_fix();
+
+    assert_eq!(view.since(), Some(version("2.7")));
+    assert_eq!(view.until(), None);
+    assert_eq!(view.name_at(version("4.2")), Some("LastShares"));
+    assert_eq!(view.name_at(version("4.3")), Some("LastQty"));
+    assert_eq!(view.name_at(version("5.0SP2")), Some("LastQty"));
+    // A version older than the first entry states nothing, so the caller
+    // falls back to the field's own name.
+    assert_eq!(view.name_at(version("2.6")), None);
+
+    assert_eq!(
+        view.dtype_at(version("4.0")).unwrap(),
+        Some(DataType::Int32)
+    );
+    assert_eq!(
+        view.dtype_at(version("4.4")).unwrap(),
+        Some(DataType::from_str("decimal64(18,8)").unwrap())
+    );
+}
+
+#[test]
+fn two_entries_at_one_version_order_by_extension_pack() {
+    let mut field = DataType::Utf8.nullable_field("BasisPoints");
+    field.as_fix_mut().set_tag(9999).unwrap();
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), Some(309)))
+                .with_name("BasisPoints"),
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), Some(204)))
+                .with_name("Superseded"),
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None)).with_name("Base"),
+        ])
+        .unwrap();
+
+    let dated: Vec<_> = field
+        .as_fix()
+        .lineage()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            (entry.ep(), entry.name().unwrap())
+        })
+        .collect();
+    assert_eq!(
+        dated,
+        [
+            (None, "Base"),
+            (Some(204), "Superseded"),
+            (Some(309), "BasisPoints"),
+        ]
+    );
+    // The newest reading is the last written, so resolution is a scan that
+    // stops rather than a sort.
+    assert_eq!(
+        field.as_fix().name_at(version("5.0SP2")),
+        Some("BasisPoints")
+    );
+}
+
+#[test]
+fn a_lineage_rewrites_the_aliases_it_implies_and_a_query_by_either_answers() {
+    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
+
+    let aliases: Vec<_> = registry
+        .field_by_tag(32)
+        .unwrap()
+        .as_fix()
+        .aliases()
+        .collect();
+    assert_eq!(aliases, ["LastShares"]);
+    assert_eq!(registry.field("LastShares").unwrap().name(), "LastQty");
+    assert_eq!(registry.field("LastQty").unwrap().name(), "LastQty");
+}
+
+#[test]
+fn a_version_filters_the_read_and_the_registry_stays_version_agnostic() {
+    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
+
+    // The dictionary holds the tag whatever version is asked for; only the
+    // read is filtered.
+    assert_eq!(
+        registry.field_at(version("4.2"), 32).unwrap().name(),
+        "LastQty"
+    );
+    let refused = registry.field_at(version("2.6"), 32).unwrap_err();
+    assert!(refused.to_string().contains("2.6"), "{refused}");
+    assert!(registry.get_field_at(version("2.6"), 32).is_none());
+
+    assert_eq!(
+        registry.versions(),
+        [version("2.7"), version("4.2"), version("4.3")]
+    );
+    assert_eq!(
+        registry.newest(),
+        Some(FixPedigree::new(version("4.3"), None))
+    );
+    // "FIX Latest" is the real pedigree the dictionary carries, never a
+    // sentinel at the top of the value space.
+    assert_ne!(registry.newest().unwrap().version(), Version::MAX);
+}
+
+#[test]
+fn a_removed_entry_ends_the_field_and_a_field_with_no_lineage_answers_everywhere() {
+    let mut retired = DataType::Utf8.nullable_field("Retired");
+    retired.as_fix_mut().set_tag(9998).unwrap();
+    retired
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.0"), None)).with_name("Retired"),
+            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).remove(),
+        ])
+        .unwrap();
+    let view = retired.as_fix();
+    assert_eq!(view.until(), Some(version("4.4")));
+    assert!(view.defined_at(version("4.3")));
+    assert!(!view.defined_at(version("4.4")));
+    assert!(!view.defined_at(version("5.0SP2")));
+
+    let undated = tagged("Symbol", 55);
+    let view = undated.as_fix();
+    assert_eq!(view.since(), None);
+    assert_eq!(view.until(), None);
+    assert_eq!(view.name_at(version("4.2")), None);
+    assert_eq!(view.dtype_at(version("4.2")).unwrap(), None);
+    // No history is no filter, so an undated dictionary resolves as before.
+    assert!(view.defined_at(version("4.2")));
+    assert!(view.defined_at(Version::MIN));
+}
+
+#[test]
+fn a_lineage_disagreeing_with_its_own_field_is_refused_naming_both_sides() {
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).unwrap();
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastShares")
+        ])
+        .unwrap_err();
+    let rendered = error.to_string();
+    assert!(rendered.contains("LastShares"), "{rendered}");
+    assert!(rendered.contains("LastQty"), "{rendered}");
+    // A refusal leaves the field exactly as it was.
+    assert_eq!(field.as_fix().lineage().count(), 0);
+    assert_eq!(field.as_fix().aliases().count(), 0);
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_dtype("int")
+        ])
+        .unwrap_err();
+    let rendered = error.to_string();
+    assert!(rendered.contains("int32"), "{rendered}");
+    assert!(rendered.contains("utf8"), "{rendered}");
+}
+
+#[test]
+fn two_entries_sharing_one_pedigree_are_refused() {
+    let mut field = DataType::Utf8.nullable_field("Twice");
+    field.as_fix_mut().set_tag(9997).unwrap();
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
+        ])
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, .. } if *target == "fix lineage"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("EP1"), "{error}");
+}
+
+#[test]
+fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
+    let field = last_qty();
+    let stored = field
+        .as_metadata()
+        .get("fix:lineage")
+        .expect("the lineage is stored")
+        .to_owned();
+    assert_eq!(
+        stored,
+        concat!(
+            r#"{"entries":["#,
+            r#"{"since":"2.7","name":"LastShares","type":"int"},"#,
+            r#"{"since":"4.2","name":"LastShares","type":"Qty"},"#,
+            r#"{"since":"4.3","name":"LastQty","type":"Qty"}]}"#,
+        )
+    );
+
+    // Rewriting what was read back produces the same text.
+    let entries: Vec<_> = field
+        .as_fix()
+        .lineage()
+        .map(|entry| entry.unwrap())
+        .collect();
+    let mut rebuilt = DataType::from_str("decimal64(18,8)")
+        .unwrap()
+        .nullable_field("LastQty");
+    rebuilt.as_fix_mut().set_tag(32).unwrap();
+    rebuilt.as_fix_mut().set_lineage(&entries).unwrap();
+    assert_eq!(
+        rebuilt.as_metadata().get("fix:lineage"),
+        Some(stored.as_str())
+    );
+
+    // Keys follow the document's declared order, so a reordered one is
+    // refused rather than mis-scanned.
+    let reordered = r#"{"entries":[{"name":"LastShares","since":"2.7"}]}"#;
+    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    edited.set_metadata([("fix:lineage", reordered)]).unwrap();
+    let error = edited.as_fix().dtype_at(version("4.2")).unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, position, .. }
+            if *target == "fix lineage" && *position == reordered.find(r#""since""#).unwrap()),
+        "{error}"
+    );
+    // A read that cannot parse answers nothing rather than a wrong answer.
+    assert_eq!(edited.as_fix().name_at(version("4.2")), None);
+    assert_eq!(edited.as_fix().since(), None);
+}
+
+#[test]
+fn an_empty_lineage_removes_the_document_and_the_aliases_it_derived() {
+    let mut field = last_qty();
+    assert_eq!(field.as_fix().aliases().count(), 1);
+
+    field.as_fix_mut().set_lineage(&[]).unwrap();
+    assert_eq!(field.as_metadata().get("fix:lineage"), None);
+    assert_eq!(field.as_metadata().get("fix:aliases"), None);
+    assert_eq!(field.as_fix().since(), None);
 }

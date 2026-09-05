@@ -1,5 +1,6 @@
 mod common;
 
+pub mod lineage;
 pub mod mutate;
 pub mod resolve;
 pub mod store;

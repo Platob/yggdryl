@@ -9,16 +9,16 @@
 //! built rarely and resolved constantly, so that `O(n)` insertion trade is
 //! deliberate.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::iter::FusedIterator;
 
 use smol_str::format_smolstr;
 
-use super::{FixBranch, FixId, FixKey};
+use super::{FixBranch, FixId, FixKey, FixPedigree};
 use crate::xxhash::Xxh64;
-use crate::{Error, Field, MimeType, Result};
+use crate::{Error, Field, MimeType, Result, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
@@ -285,6 +285,72 @@ impl FixRegistry {
     /// Returns whether a generic key reaches a field.
     pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool {
         self.get_field(key).is_some()
+    }
+
+    /// Returns the field a key reaches, filtered to one FIX version.
+    ///
+    /// The registry itself stays version-agnostic: it holds every tag ever
+    /// defined, and a version is a filter on the read, which is what "defined
+    /// in one version, available in the others" means. There is no
+    /// registry-wide default version; a caller who wants one holds a
+    /// [`Version`] beside the registry.
+    ///
+    /// A field with no lineage answers exactly as [`Self::get_field`] does,
+    /// so an undated dictionary behaves as it always has. A field the lineage
+    /// says did not exist at `at` answers nothing, including one a later
+    /// version removed.
+    pub fn get_field_at<'key>(&self, at: Version, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key)
+            .filter(|field| field.as_fix().defined_at(at))
+    }
+
+    /// Returns the field a key reaches at one FIX version, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same absence [`Self::field`] raises, naming the version,
+    /// when no field reaches the key or the one that does is not defined at
+    /// `at`.
+    pub fn field_at<'key>(&self, at: Version, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_field_at(at, key)
+            .ok_or_else(|| absent(format_args!("{key} at FIX {at}")))
+    }
+
+    /// Returns every FIX version some field in this dictionary is dated at,
+    /// ascending.
+    ///
+    /// Derived rather than stored, so a dictionary cannot claim a version no
+    /// field is dated in.
+    pub fn versions(&self) -> Vec<Version> {
+        let mut versions: BTreeSet<Version> = BTreeSet::new();
+        for field in &self.fields {
+            let mut walk = field.as_fix().lineage();
+            while let Some(entry) = walk.next_ok() {
+                versions.insert(entry.since());
+            }
+        }
+        versions.into_iter().collect()
+    }
+
+    /// Returns the newest pedigree this dictionary holds.
+    ///
+    /// This is the whole of what "FIX Latest" means for a given dictionary:
+    /// the greatest version-and-extension-pack pair any lineage carries.
+    /// "Latest" is a moving label for the newest published version plus the
+    /// extension packs since, so it is resolved here rather than stored as a
+    /// version, and never as [`Version::MAX`] - a sentinel compares wrongly
+    /// against a field genuinely dated at the newest version and goes stale
+    /// the moment an extension pack lands.
+    pub fn newest(&self) -> Option<FixPedigree> {
+        let mut newest: Option<FixPedigree> = None;
+        for field in &self.fields {
+            let mut walk = field.as_fix().lineage();
+            while let Some(entry) = walk.next_ok() {
+                newest = newest.max(Some(entry.pedigree()));
+            }
+        }
+        newest
     }
 
     /// Returns the branch for `id`.

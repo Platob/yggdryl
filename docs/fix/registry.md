@@ -16,6 +16,7 @@
 | Identity | The `FixId`, and separately the branch plus folded canonical name; two fields share neither, nor an alternate identifier, nor an alias |
 | Conflict | The same key twice in one tier of one branch -> typed conflict naming both fields and the branch; overlap across tiers or branches is legal |
 | Order | `iter` and `next_field_after` walk ascending packed identifiers, tag-major then by branch digest |
+| Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Inference | `infer_bytes_protocol` / `infer_text_protocol` and `infer_bytes_msgtype` / `infer_text_msgtype` classify one line without parsing a message |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
 | Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
@@ -279,6 +280,97 @@ Every lookup has an optional form and a failing twin. The twin raises a typed ab
 | `next_field_after` | the cursor each binding advances with; the same order as `iter` |
 | `len` / `is_empty` | the one field vector counted |
 
+## Versions are a filter on the read
+
+A FIX field outlives the version that introduced it and is renamed and retyped on the way, so one registry holds every tag ever defined and a version filters the read. `fix:lineage` is the field's own history, oldest first, and `since`, `until` and deprecation are derived from it rather than stored beside it. Rust only.
+
+| call | answers |
+| --- | --- |
+| `FixField::lineage()` | every entry, oldest first, as borrowed slices of the stored document |
+| `FixField::since()` | the first entry's version |
+| `FixField::until()` | the version of the entry that removed the field, when one did |
+| `FixField::defined_at(Version)` | whether the field exists then; a field with no lineage exists at every version |
+| `FixField::name_at(Version)` | the newest spelling at or before that version |
+| `FixField::dtype_at(Version)` | the newest datatype at or before it, resolved through the schema grammar |
+| `FixFieldMut::set_lineage(&[FixLineageEntry])` | writes the document, checks it against the field, and rewrites `fix:aliases` from it |
+| `FixRegistry::get_field_at(Version, key)` / `field_at` | the key's field, or nothing when the lineage says it did not exist |
+| `FixRegistry::versions()` | every version some field is dated at, ascending |
+| `FixRegistry::newest()` | the greatest `FixPedigree` any lineage carries |
+
+A `FixPedigree` is a `Version` and an optional extension pack, because the specification dates a change either way. Entries order on the pair, version first, so `5.0SP2` at EP204 precedes `5.0SP2` at EP309 instead of eleven years landing in one bucket.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixLineageEntry, FixPedigree, FixRegistry, Version};
+
+    let mut last_qty = DataType::decimal64(18, 8)?.nullable_field("LastQty");
+    last_qty.as_fix_mut().set_tag(32)?;
+    last_qty.as_fix_mut().set_lineage(&[
+        FixLineageEntry::new(FixPedigree::new("2.7".parse()?, None))
+            .with_name("LastShares")
+            .with_dtype("int"),
+        FixLineageEntry::new(FixPedigree::new("4.3".parse()?, None))
+            .with_name("LastQty")
+            .with_dtype("Qty"),
+    ])?;
+
+    // The history answers the name and the datatype of any version.
+    let view = last_qty.as_fix();
+    assert_eq!(view.since(), Some("2.7".parse::<Version>()?));
+    assert_eq!(view.name_at("4.2".parse()?), Some("LastShares"));
+    assert_eq!(view.name_at("5.0SP2".parse()?), Some("LastQty"));
+    assert_eq!(view.dtype_at("4.0".parse()?)?, Some(DataType::Int32));
+    // A version older than the first entry is a version the field had not
+    // been defined in, which is not the same as having no history at all.
+    assert!(!view.defined_at("2.6".parse()?));
+
+    // The writer derives the aliases, so a query by an old spelling resolves.
+    assert_eq!(view.aliases().collect::<Vec<_>>(), ["LastShares"]);
+    let registry = FixRegistry::from_fields([last_qty])?;
+    assert_eq!(registry.field("LastShares")?.name(), "LastQty");
+
+    // The dictionary holds the tag whatever version is asked for; only the
+    // read is filtered, and "the newest it holds" is a real pedigree.
+    assert_eq!(registry.field_at("4.2".parse()?, 32)?.name(), "LastQty");
+    assert!(registry.get_field_at("2.6".parse()?, 32).is_none());
+    assert_eq!(registry.newest(), Some(FixPedigree::new("4.3".parse()?, None)));
+    assert_ne!(registry.newest().unwrap().version(), Version::MAX);
+    ```
+
+### The document
+
+`fix:lineage` is one canonically rendered JSON document: an `entries` array, entries sorted oldest first, keys within an entry in the order below, no whitespace. Every key beyond `since` is optional, because most versions change nothing and an entry stating only a version means "present, unchanged". `since` leads because it is what every read keys on, so a version filter compares it and stops.
+
+| key | holds |
+| --- | --- |
+| `since` | the version, required |
+| `ep` | the extension pack that dated the change |
+| `name` | the spelling from that version on |
+| `type` | the FIX datatype name from that version on, in the spelling the grammar already resolves |
+| `deprecated` | `true` where the specification deprecated the field |
+| `removed` | `true` where it removed it, which ends the field's life |
+| `doc` | the specification's wording as of that version |
+
+The read is a borrowed scan rather than a parse, so `name_at` over a dated dictionary allocates nothing. It is safe only because the rendering is canonical and checked on the way in: a reader knows which key can come next, so a hand-edited document with reordered or repeated keys is refused with its byte position instead of mis-read.
+
+### Two derivations belong to the writer
+
+`set_lineage` refuses a newest entry that disagrees with the field's own name or datatype, naming both sides, so the lineage is the authority and the field cannot drift from it. It then rewrites `fix:aliases` from the historical spellings, so an old name resolves through the index that already exists. Both are the writer's rather than a caller's, which is what makes them undriftable.
+
+### Edges
+
+- A field with no lineage answers `None` everywhere and `defined_at` is true at every version: no history is no filter, so an undated dictionary resolves as it always has.
+- A field whose earliest entry postdates the version asked for is not defined then. A field introduced in 2.7 did not exist in 2.6.
+- A malformed document answers nothing rather than something wrong. `lineage()` and `dtype_at` report it with a byte position; `since`, `until`, `name_at` and `defined_at` answer as though the field had no history, and neither path allocates.
+- Two entries sharing one pedigree are refused: two statements about one dated point cannot both be the field's.
+- An empty slice removes the document and the aliases it derived.
+- `set_lineage` is atomic. A refusal leaves the field exactly as it was, aliases included.
+- The registry stays version-agnostic. There is no registry-wide default version; a caller who wants one holds a `Version` beside the registry.
+- "FIX Latest" is a moving label and is never stored as a version. `newest()` resolves it to the real pedigree the dictionary carries, never `Version::MAX`, which would compare wrongly against a field genuinely dated at the newest version.
+- FIXT.1.1 is not modelled: session tags carry the application version that first defined them.
+- The lineage carries enough to rename and retype a field between versions. The expression-driven normalization layer — conditions, lookups and value mappings — is not here and needs an evaluator.
+
 ## Insert, update and remove
 
 Both mutations build the result first and check every key it would claim, so a refusal writes nothing.
@@ -461,7 +553,10 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` plus an alphanum
     cargo test -p yggdryl --lib fix::tests
     cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
+    cargo test -p yggdryl --lib -- fix::tests::a_lineage fix::tests::a_version_filters fix::tests::a_removed_entry fix::tests::two_entries
+    cargo test -p yggdryl --test allocations a_fix_lineage_read
     cargo bench -p yggdryl --bench fix -- fix/resolve
+    cargo bench -p yggdryl --bench fix -- fix/lineage
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```
 
@@ -489,12 +584,31 @@ The timing runs report release builds on one Windows x86_64 host, so they are bo
 
 | assertion | scope |
 | --- | --- |
-| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration |
+| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration, every lineage read including a refused document |
+
+### A version-filtered read
+
+`fix/lineage`, over a field carrying three entries in a dictionary of 400 dated ones. Release build, one Windows x86_64 host, twenty samples; the host's own baselines moved by up to 1.8x between runs, so the ratios are the measurement and the absolute figures are a scale.
+
+| case | median | against |
+| --- | --- | --- |
+| `get_field` on an undated key | 8.2 ns | the unfiltered read |
+| `get_field_at` on a dated key | 519 ns | 63x the unfiltered read |
+| `since` | 208 ns | one entry |
+| `defined_at` | 458 ns | three entries |
+| `name_at` | 494 ns | three entries |
+| `dtype_at` | 964 ns | three entries plus building a `DataType` |
+| one `fix:` property lookup | 103 ns | the floor every `fix:` accessor pays |
+| one `Version` parse | 36 ns | paid per entry the scan reaches |
+| `newest` / `versions` | 204 us / 218 us | every lineage in the dictionary, walked once |
+
+Two facts the table is for. A single-entry read is about half fixed cost - one `fix:` metadata lookup plus one version parse - and the scan itself is roughly 110 ns per entry, so a lineage is cheap to hold and not free to ask. And `newest` and `versions` walk every field, so they are answered once and held, never per row.
 
 Criterion takes ten samples with short warm-up and measurement windows in this phase.
 
 ```bash
 cargo bench -p yggdryl --bench fix -- fix/resolve --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+cargo bench -p yggdryl --bench fix -- fix/lineage --warm-up-time 0.2 --measurement-time 0.5 --sample-size 20
 python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
 YGGDRYL_BENCH_ITERATIONS=5000 npm run --prefix node bench:fix
 ```

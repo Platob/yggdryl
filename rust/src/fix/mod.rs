@@ -16,6 +16,7 @@
 //! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
 //! | description | `fix:description` | text | the specification's own wording |
+//! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //!
 //! Nesting needs no second type: a component is a Struct field whose
 //! children are its members, a repeating group is a List field whose item is
@@ -44,6 +45,23 @@
 //! seeded, ASCII-folded XXH64 digests. Every digest hit is rechecked against
 //! the field, so a collision is a miss on read and a typed conflict on
 //! mutation. A separate sorted position vector makes iteration tag-major.
+//!
+//! # Versions
+//!
+//! The registry is version-agnostic: it holds every tag ever defined, and a
+//! version is a filter on the read, which is what "defined in one version,
+//! available in the others" means. [`FixField::lineage`](crate::FixField)
+//! carries what a field was called and typed at each version; `since`,
+//! `until` and deprecation derive from it rather than sit beside it, and
+//! [`FixRegistry::field_at`] filters one read by it. There is no
+//! registry-wide default version, and "FIX Latest" is never stored as one:
+//! [`FixRegistry::newest`] resolves it to the real pedigree the dictionary
+//! carries.
+//!
+//! The lineage carries enough to rename and retype a field between versions.
+//! The expression-driven normalization layer - conditions, lookups and value
+//! mappings - is not here and needs an evaluator; "transcoding" names both
+//! and only the lineage-driven half lives in this module.
 //!
 //! Names fold ASCII case once, on the way in, so a query spelled in any case
 //! finds the field and the answer is always the canonical spelling. A tag
@@ -130,8 +148,10 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 
 use crate::{Error, Result, Version};
 
+mod document;
 mod field;
 mod global;
+mod lineage;
 mod msg;
 mod registry;
 mod store;
@@ -139,6 +159,7 @@ mod store;
 mod tests;
 
 pub use field::FixAliases;
+pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
 pub use registry::{FixFieldIter, FixRegistry};
 

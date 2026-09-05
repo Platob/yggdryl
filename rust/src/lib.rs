@@ -58,7 +58,10 @@ pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
-pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixRegistry};
+pub use fix::{
+    FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixLineage, FixLineageEntry, FixMsg,
+    FixPedigree, FixRegistry,
+};
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};

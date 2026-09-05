@@ -27,8 +27,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use yggdryl::{
-    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar, Timezone,
-    Version,
+    DataType, Field, FixBranch, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
+    MediaType, MimeType, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -358,6 +358,73 @@ fn a_fix_registry_lookup_allocates_nothing() {
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());
+    });
+}
+
+#[test]
+fn a_fix_lineage_read_allocates_nothing() {
+    // Every spelling a lineage answers is a slice of the field's own stored
+    // document, so a version filter costs the walk and nothing else. Only
+    // `dtype_at` allocates, because building a `DataType` is what it answers.
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).expect("a static tag");
+    let entries = [
+        FixLineageEntry::new(FixPedigree::new(
+            "2.7".parse::<Version>().expect("a version"),
+            None,
+        ))
+        .with_name("LastShares")
+        .with_dtype("int"),
+        FixLineageEntry::new(FixPedigree::new(
+            "4.2".parse::<Version>().expect("a version"),
+            Some(204),
+        ))
+        .with_name("LastShares")
+        .with_dtype("Qty")
+        .with_doc("Quantity of shares bought or sold on this fill."),
+        FixLineageEntry::new(FixPedigree::new(
+            "4.3".parse::<Version>().expect("a version"),
+            None,
+        ))
+        .with_name("LastQty")
+        .with_dtype("utf8"),
+    ];
+    field
+        .as_fix_mut()
+        .set_lineage(&entries)
+        .expect("a lineage agreeing with its field");
+
+    let view = field.as_fix();
+    let newest = "5.0SP2".parse::<Version>().expect("a version");
+    let old = "4.2".parse::<Version>().expect("a version");
+
+    free("lineage walk", || {
+        let _ = black_box(view.lineage().count());
+    });
+    free("since", || {
+        let _ = black_box(view.since());
+    });
+    free("until", || {
+        let _ = black_box(view.until());
+    });
+    free("defined_at", || {
+        let _ = black_box(view.defined_at(old));
+    });
+    free("name_at old", || {
+        let _ = black_box(view.name_at(old));
+    });
+    free("name_at newest", || {
+        let _ = black_box(view.name_at(newest));
+    });
+    // A document the scan refuses costs no allocation either: the byte
+    // position is carried by the borrowed cursor, not by a rendered copy.
+    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    edited
+        .set_metadata([("fix:lineage", r#"{"entries":[{"name":"x","since":"2.7"}]}"#)])
+        .expect("a hand-edited document");
+    let refused = edited.as_fix();
+    free("name_at refused", || {
+        let _ = black_box(refused.name_at(old));
     });
 }
 

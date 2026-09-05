@@ -12,8 +12,9 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::lineage::{FixLineage, FixLineageEntry};
 use super::{FixBranch, FixId};
-use crate::{Error, FixField, FixFieldMut, Result};
+use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
 
 /// The dictionary a field belongs to; absent means the standard one.
 const BRANCH: &str = "branch";
@@ -29,6 +30,8 @@ const TAGS: &str = "tags";
 const ALIASES: &str = "aliases";
 /// The specification's own wording.
 const DESCRIPTION: &str = "description";
+/// What this field was called and typed at each version it lived through.
+const LINEAGE: &str = "lineage";
 /// What separates the elements of a list-valued property.
 const SEPARATOR: char = ',';
 
@@ -145,6 +148,113 @@ impl<'field> FixField<'field> {
         self.get(DESCRIPTION)
     }
 
+    /// Walks what this field was called and typed at each version, oldest
+    /// first.
+    ///
+    /// The iterator is lazy and allocates nothing: every spelling is a slice
+    /// of the stored document, which the field already owns. An absent
+    /// property yields nothing, which is what a field the dictionary has
+    /// never dated answers.
+    pub fn lineage(&self) -> FixLineage<'field> {
+        FixLineage::over(self.get(LINEAGE))
+    }
+
+    /// Returns the version this field was first defined at.
+    ///
+    /// Derived from the first entry rather than stored beside it, the way
+    /// [`FixId`] is derived from a branch and a tag. A field with no lineage,
+    /// and a malformed document, both answer `None`: a version filter that
+    /// cannot read a history must not act as though the field had none it
+    /// disagreed with.
+    pub fn since(&self) -> Option<Version> {
+        self.lineage().next_ok().map(FixLineageEntry::since)
+    }
+
+    /// Returns the version this field was removed at, when one removed it.
+    ///
+    /// A version that stops naming a field has removed it, and the generator
+    /// writes that entry; a reader never infers one.
+    pub fn until(&self) -> Option<Version> {
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.is_removed() {
+                return Some(entry.since());
+            }
+        }
+        None
+    }
+
+    /// Returns whether this field exists at `at`.
+    ///
+    /// A field with no lineage is defined at every version: the dictionary
+    /// states no history to filter it by, which is how a registry that has
+    /// never been dated behaves today.
+    pub fn defined_at(&self, at: Version) -> bool {
+        let mut dated = false;
+        let mut defined = false;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            // Seeing any entry is what says the field has a history to be
+            // filtered by, including one whose every entry postdates `at`:
+            // a field introduced in 2.7 did not exist in 2.6.
+            dated = true;
+            if entry.since() > at {
+                break;
+            }
+            defined = !entry.is_removed();
+        }
+        !dated || defined
+    }
+
+    /// Returns the spelling this field carries at `at`.
+    ///
+    /// The newest entry at or before `at` that states a name wins, because an
+    /// entry stating only a version means "present, unchanged". A field with
+    /// no lineage answers `None`, and the caller reads the field's own name.
+    pub fn name_at(&self, at: Version) -> Option<&'field str> {
+        self.newest_at(at, FixLineageEntry::name)
+    }
+
+    /// Returns the datatype this field carries at `at`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when a stored FIX datatype name
+    /// resolves to nothing, and [`Error::Parse`] naming the byte position
+    /// when the document is malformed.
+    pub fn dtype_at(&self, at: Version) -> Result<Option<DataType>> {
+        let mut newest = None;
+        for entry in self.lineage() {
+            let entry = entry?;
+            if entry.since() > at {
+                break;
+            }
+            if let Some(dtype) = entry.dtype() {
+                newest = Some(dtype);
+            }
+        }
+        newest.map(DataType::from_str).transpose()
+    }
+
+    /// The newest value at or before `at` that an entry states.
+    fn newest_at<T>(
+        &self,
+        at: Version,
+        read: impl Fn(FixLineageEntry<'field>) -> Option<T>,
+    ) -> Option<T> {
+        let mut newest = None;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.since() > at {
+                break;
+            }
+            if let Some(value) = read(entry) {
+                newest = Some(value);
+            }
+        }
+        newest
+    }
+
     /// Name the full key a stored value failed under, and what it should be.
     fn invalid(&self, name: &str, expected: &str, actual: &str) -> Error {
         Error::InvalidMetadataValue {
@@ -200,7 +310,7 @@ impl FixFieldMut<'_> {
         match self.set_tag(tag) {
             Ok(()) => Ok(()),
             Err(error) => {
-                self.restore_branch(prior);
+                self.restore(BRANCH, prior);
                 Err(error)
             }
         }
@@ -320,6 +430,120 @@ impl FixFieldMut<'_> {
         self.store(DESCRIPTION, value)
     }
 
+    /// Records what this field was called and typed at each version.
+    ///
+    /// Entries are sorted oldest first and rendered canonically, so one
+    /// history has one stored text however it was built. Two derivations are
+    /// the writer's rather than a caller's, which is what keeps them from
+    /// drifting:
+    ///
+    /// - the newest entry must agree with the field's own name and datatype,
+    ///   so the lineage is the authority and the field cannot contradict it;
+    /// - `fix:aliases` is rewritten from the historical spellings, so a query
+    ///   by an old name resolves through the index that already exists.
+    ///
+    /// An empty slice removes both the lineage and the aliases it derived.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when two entries share a pedigree, and a
+    /// typed conflict naming both sides when the newest entry disagrees with
+    /// the field's own name or datatype. Either leaves the field unchanged.
+    pub fn set_lineage(&mut self, entries: &[FixLineageEntry<'_>]) -> Result<()> {
+        if entries.is_empty() {
+            let prior = self.remove(LINEAGE);
+            if let Err(error) = self.set_aliases::<[&str; 0], &str>([]) {
+                self.restore(LINEAGE, prior);
+                return Err(error);
+            }
+            return Ok(());
+        }
+        let rendered = FixLineage::render(entries)?;
+        let newest = entries
+            .iter()
+            .max_by_key(|entry| entry.pedigree())
+            .copied()
+            .ok_or_else(|| self.rejected(LINEAGE, "expected at least one entry".into()))?;
+        let field = self.as_field();
+        if let Some(name) = newest.name() {
+            if name != field.name() {
+                return Err(self.disagreement("name", name, field.name()));
+            }
+        }
+        if let Some(dtype) = newest.parse_dtype()? {
+            if dtype != *field.dtype() {
+                return Err(self.disagreement(
+                    "datatype",
+                    &dtype.to_string(),
+                    &field.dtype().to_string(),
+                ));
+            }
+        }
+        // One write for the document, one for the aliases it derives, and the
+        // first is unwound when the second refuses.
+        let prior = self.insert(LINEAGE, rendered)?;
+        match self.derive_aliases() {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.restore(LINEAGE, prior);
+                Err(error)
+            }
+        }
+    }
+
+    /// Rewrite `fix:aliases` from the historical spellings the lineage holds.
+    ///
+    /// The field's own name is not an alias of itself, and a spelling the
+    /// aliases already carry is written once, so the derivation is stable
+    /// under repetition.
+    fn derive_aliases(&mut self) -> Result<()> {
+        let view = self.as_protocol();
+        let canonical = view.as_field().name();
+        let mut aliases: Vec<&str> = Vec::new();
+        for entry in view.lineage() {
+            let Some(name) = entry?.name() else {
+                continue;
+            };
+            if name.eq_ignore_ascii_case(canonical)
+                || aliases.iter().any(|held| held.eq_ignore_ascii_case(name))
+            {
+                continue;
+            }
+            aliases.push(name);
+        }
+        // The borrow of the document ends with the view, and the setter needs
+        // the field mutably, so the spellings are copied out first.
+        let aliases: Vec<SmolStr> = aliases.into_iter().map(SmolStr::new).collect();
+        self.set_aliases(&aliases)
+    }
+
+    /// Name both sides of a lineage that contradicts the field carrying it.
+    fn disagreement(&self, what: &str, stated: &str, held: &str) -> Error {
+        Error::conflict(
+            "fix lineage",
+            "fix field",
+            format_smolstr!(
+                "the newest lineage entry states {what} {stated:?}, the field holds {held:?}"
+            ),
+        )
+    }
+
+    /// Put back what an insert or a remove answered.
+    ///
+    /// The value was read out of this very field, so re-inserting it cannot
+    /// fail validation; a failure here would be reported instead of the one
+    /// being unwound, which is why the result is dropped.
+    fn restore(&mut self, name: &str, prior: Option<String>) {
+        match prior {
+            Some(value) => {
+                let _ = self.insert(name, value);
+            }
+            None => {
+                self.remove(name);
+            }
+        }
+    }
+
     /// Write one property, dropping the prior value a generic insert answers.
     fn store(&mut self, name: &str, value: impl Into<String>) -> Result<()> {
         self.insert(name, value)?;
@@ -333,22 +557,6 @@ impl FixFieldMut<'_> {
             Ok(self.remove(BRANCH))
         } else {
             self.insert(BRANCH, branch.name())
-        }
-    }
-
-    /// Put back what [`Self::put_branch`] answered.
-    ///
-    /// The value was read out of this very field, so re-inserting it cannot
-    /// fail validation; a failure here would be reported instead of the one
-    /// being unwound, which is why the result is dropped.
-    fn restore_branch(&mut self, prior: Option<String>) {
-        match prior {
-            Some(value) => {
-                let _ = self.insert(BRANCH, value);
-            }
-            None => {
-                self.remove(BRANCH);
-            }
         }
     }
 

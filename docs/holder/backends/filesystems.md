@@ -30,8 +30,9 @@ Pass the filesystem and its opaque path separately.
         File, FileSystem, MemoryFileSystem, OutputMetadata,
     };
 
-    # fn main() -> yggdryl::Result<()> {
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    // A memory filesystem starts empty, where a real bucket already exists.
+    filesystem.create_dir("bucket", true)?;
     let file = File::from_path(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -43,8 +44,6 @@ Pass the filesystem and its opaque path separately.
     let mut output = file.open_output_stream(Some(&metadata))?;
     output.write(b"literal")?;
     output.close()?;
-    # Ok(())
-    # }
     ```
 
 === "Python"

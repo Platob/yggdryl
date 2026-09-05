@@ -157,6 +157,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
 | `description` | `fix:description` | text | the specification's wording |
+| `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
 
 ## Identity is a branch and a tag
 
