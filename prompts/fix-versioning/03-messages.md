@@ -1,10 +1,11 @@
 # Messages — explicit halves, entries, and the readers
 
 **Goal.** Build a typed, lossless `FixMsg` from key/value pairs, from FIX
-text, or from a ULBridge body.
+text, or from a ULBridge body — then answer the handful of facts a reader
+actually asks it for.
 
 **Depends.** Phase 2 (identifier and branch table), Phase 3 (version),
-Phase 6 (a dictionary to resolve against).
+Phase 6 (a dictionary), Phase 8 (packed side and message type, for Phase 9).
 
 > Read `00-contract.md` first: `N1`–`N7`, `L1`–`L2`, precedence, done-when.
 
@@ -508,6 +509,139 @@ half-probe rows.
 **Allocations.** A 30-pair tag-keyed build of short values allocates the
 three reserved vectors and nothing per entry (P7-R54, P7-R55).
 
+
+---
+
+## Phase 9 — lifting: the fields a reader actually asks for
+
+**Goal.** Answer the handful of facts every consumer wants — who, what, how
+much, when — without each one re-walking groups and components.
+
+**Depends.** Phase 7 (a built message), Phase 8 (packed side and message
+type).
+
+**Surface.** A lift module inside the FIX module: the rules table and the
+accessors over it. Tests, a benchmark group, the FIX page.
+
+**Never.** Store a lifted value on the message (N4). Every answer is derived
+on demand from the row that is already there.
+
+### Contract
+
+```rust
+/// One lifted facet: where it may come from, in priority order.
+pub struct FixLift { facet: &'static str, sources: &'static [FixSource] }
+
+impl FixMsg {
+    /// The one value a facet names, or `None` when the message does not
+    /// answer it unambiguously.
+    pub fn lifted(&self, facet: &str) -> Option<&Scalar>;
+    /// Every facet this message answers, for a batch writer.
+    pub fn lift(&self) -> impl Iterator<Item = (&'static str, &Scalar)>;
+    /// The party bearing one role, which is how a party is addressed.
+    pub fn party(&self, role: &str) -> Option<FixParty<'_>>;
+    /// One regulatory timestamp by its type.
+    pub fn trd_reg_timestamp(&self, kind: &str) -> Option<&Scalar>;
+}
+```
+
+### Rules
+
+- **P9-R1. A lift answers only when the answer is unambiguous.** This is the
+  whole design. yggfin states it three ways from production: *one occurrence
+  is one value, and one value is what a column can answer with*; *a tag that
+  repeats belongs to a repeating group, so no occurrence is the line's*; *a
+  multi-leg order has no one symbol, and saying so is the honest column*. So
+  two candidate occurrences answer `None`, never the first — and a caller
+  that wants a specific one addresses it (`party`, `trd_reg_timestamp`).
+- **P9-R2. The rules are a table, not code per facet.** A `FixLift` is a
+  facet name and an ordered list of sources; a source is a tag, a path, or a
+  group selector. Resolution takes the first source the message answers.
+  Adding a facet is a row.
+- **P9-R3. Rules may be conditioned on `MsgType`, and on nothing else.** A
+  price means different things in an ExecutionReport and a Quote, and the
+  message type is the one fact that says which. No venue conditions, no
+  branch conditions, no value conditions — those are the expression layer
+  this brief keeps out (P3-R12).
+- **P9-R4. The facets, drawn from the Orchestra registry rather than
+  invented.**
+
+  | facet | sources, in order |
+  | --- | --- |
+  | `id` | `ClOrdID(11)`, `OrderID(37)`, `QuoteID(117)`, `TradeID(1003)` — by `MsgType` (P9-R3) |
+  | `secondary_id` | `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, `OrigClOrdID(41)` |
+  | `exec_id` | `ExecID(17)` |
+  | `symbol` | `Symbol(55)`, then `SecurityID(48)` with `SecurityIDSource(22)` |
+  | `side` | `Side(54)`, packed (P8-R2) |
+  | `price` | `Price(44)`, `LastPx(31)`, `BidPx(132)` / `OfferPx(133)` — by `MsgType` |
+  | `quantity` | `OrderQty(38)`, `LastQty(32)`, `CumQty(14)`, `LeavesQty(151)` — by `MsgType` |
+  | `currency` | `Currency(15)` |
+  | `transact_time` | `TransactTime(60)`, then `SendingTime(52)` |
+  | `status` | `OrdStatus(39)`, `ExecType(150)`, `QuoteStatus(297)` |
+
+  A source that resolves to no field in the dictionary is skipped, not an
+  error: a facet is a best answer, not a schema.
+- **P9-R5. Parties are addressed by role, never by position.** The Parties
+  group is counter `NoPartyIDs(453)` over `PartyID(448)`,
+  `PartyIDSource(447)`, `PartyRole(452)`, `PartyRoleQualifier(2376)` and the
+  nested `PtysSubGrp`. Every message carries several occurrences, so
+  `lifted("party")` is meaningless and is not a facet: `party(role)` walks
+  the occurrences, matches `PartyRole` through the code translation (P4-R5),
+  and answers the one bearing it — or `None` when none or several do.
+- **P9-R6. Regulatory timestamps are addressed by type.**
+  `NoTrdRegTimestamps(768)` over `TrdRegTimestamp(769)`,
+  `TrdRegTimestampType(770)`, `TrdRegTimestampOrigin(771)`, plus the desk and
+  NBBO members later versions added. `trd_reg_timestamp(kind)` matches the
+  type through the same code translation, so a caller asks for
+  `"ExecutionTime"` and not for `1`.
+- **P9-R7. A lift never reaches into a repeating group for a scalar facet.**
+  A `price` inside a leg or an underlying is that leg's, not the message's.
+  Facet sources address the flat level only; anything deeper is reached by
+  path (P7-R25) or by the two role-addressed accessors.
+- **P9-R8. Lifting is version-aware for free.** It addresses tags, and the
+  message's own fields already carry the names and types its version gave
+  them (P7-R17), so a 4.2 message lifts `quantity` from tag 32 whether that
+  tag is called `LastShares` or `LastQty`.
+- **P9-R9. Nothing is enriched into the row.** `lift()` yields borrowed
+  values for a batch writer to place in its own columns; the message is
+  unchanged, `entries` are unchanged, and two lifts of one message are the
+  same walk twice with no cached state to go stale.
+
+### Decided
+
+- **Ambiguity answers nothing.** *Rejected:* taking the first occurrence,
+  which is what makes a lifted column quietly wrong on exactly the messages
+  that matter — a multi-leg order, a two-sided quote, a trade with several
+  parties.
+- **The table lives in the crate, not in the dictionary.** *Rejected:*
+  storing lift rules as metadata on fields. A facet is a *consumer's*
+  question, not a property of a FIX field, and putting it in the dictionary
+  would make every generated shard carry one reader's opinion.
+
+### Tests
+
+1. Each facet in P9-R4 lifted from a message that answers it, and `None`
+   from one that does not.
+2. Two occurrences of a facet source answering `None`, not the first
+   (P9-R1) — the multi-leg order is the case to write.
+3. `MsgType` conditioning: `price` from `LastPx` in an ExecutionReport and
+   from `Price` in a NewOrderSingle (P9-R3).
+4. `party("ExecutingBroker")` answering the right occurrence out of four;
+   `None` when the role is absent and when two occurrences share it
+   (P9-R5).
+5. A role given as `1` and as its symbolic name reaching the same party
+   (P9-R5, P4-R5).
+6. `trd_reg_timestamp("ExecutionTime")` by name and by code (P9-R6).
+7. A price inside a leg not lifted as the message's `price` (P9-R7).
+8. A 4.2 message lifting `quantity` from tag 32 named `LastShares`, and a
+   newest one from tag 32 named `LastQty` (P9-R8).
+9. `lift()` twice answers identically and mutates nothing (P9-R9).
+10. A facet whose source resolves to no field in the dictionary is skipped,
+    not an error (P9-R4).
+
+**Bench.** `lift()` over an ExecutionReport against reading each facet by
+tag, so the table's cost is visible.
+
 ---
 
 ## Handoff
@@ -520,3 +654,6 @@ value mappings, which needs an evaluator (P3-R12) — note that the
 lineage-driven half of transcoding *is* done here, in `convert_into`
 (P7-R59); and parsing `NAME=VALUE` pairs nested inside `XmlData(213)`
 (P7-R52).
+
+**From Phase 9.** Nothing in this brief consumes it: lifting is the outermost
+layer, and a batch writer or a column projection is the next thing that would.

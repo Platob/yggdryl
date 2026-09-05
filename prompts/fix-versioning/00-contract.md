@@ -1,16 +1,16 @@
 # FIX versioning — the contract every phase obeys
 
-Seven phases across three prompt files. Each phase is complete work: it
+Nine phases across three prompt files. Each phase is complete work: it
 compiles, its tests pass, its docs are written, the repository ships.
 
 | file | phases | what |
 | --- | --- | --- |
 | `01-foundations.md` | 1, 2 | the `Version` value and its datatype; `FixId` packed into an `i64`, with the branch table |
-| `02-dictionary.md` | 3, 4, 5, 6 | `fix:lineage`; code sets and spelling translation; the one merge; the generator |
-| `03-messages.md` | 7 | the registry's explicit halves, `FixEntry`, `from_pairs`, the three text readers |
+| `02-dictionary.md` | 3, 4, 5, 6, 8 | `fix:lineage`; code sets and spelling translation; the one merge; the generator; the `Side` and `MsgType` datatypes |
+| `03-messages.md` | 7, 9 | the registry's explicit halves, `FixEntry`, `from_pairs`, the three text readers; lifting |
 
-**Order.** `1 → 3 → 4 → 5`; `1 + 3 + 4 → 6`; `2 + 3 + 6 → 7`. Phase 2 blocks
-on nobody.
+**Order.** `1 → 3 → 4 → 5`; `1 + 3 + 4 → 6`; `4 + 6 → 8`; `2 + 3 + 6 → 7`;
+`7 + 8 → 9`. Phase 2 blocks on nobody.
 
 ## How to run
 
