@@ -122,7 +122,7 @@ jobs:
           --config-file python/pyproject.toml
           python/yggdryl
           python/tests/typing_bindings.py
-          python/tests/typing_fields.py
+          python/tests/types/typing_fields.py
 
   spark-interop:
     # The Iceberg exchange with Apache Spark, the format's reference
@@ -156,7 +156,7 @@ jobs:
       # tree - the other modules' imports (pandas, typing_extensions) are the
       # default job's business, not this one's.
       - name: Exchange tables with Spark
-        run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
+        run: python -m pytest python/tests/media/test_spark_interop.py -m spark_interop
 
   node:
     name: Node.js binding

@@ -204,7 +204,8 @@ opaque_array!(crate::types::nested::RunEndEncodedTypeMarker);
 impl Field {
     /// Casts between same-width signed and unsigned Arrow integers by bits.
     ///
-    /// This is deliberately separate from [`ArrowCast::cast_arrow_array`],
+    /// This is deliberately separate from
+    /// [`ArrowCast::cast_arrow_array`](crate::types::cast::ArrowCast::cast_arrow_array),
     /// which preserves the numeric value and therefore rejects values outside
     /// the target integer's range. A bit cast instead maps every bit pattern:
     /// `u32::MAX` becomes `-1_i32`, and the reverse cast restores `u32::MAX`.
