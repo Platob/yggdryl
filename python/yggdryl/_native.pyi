@@ -442,7 +442,7 @@ class Scalar:
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "large_utf8", "utf8_view", "ascii", "fixed_ascii",
-        "country", "currency", "mic", "cfi", "uuid", "enum", "bytes",
+        "country", "currency", "mic", "cfi", "uuid", "version", "enum", "bytes",
         "fixed_size_binary", "large_binary", "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
         "duration32", "duration64", "interval", "sequence", "mapping", "record",

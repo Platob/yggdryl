@@ -49,8 +49,8 @@ type, with Arrow itself kept out of the value model.
     assert.ok(DataType.fromJSON(value.toJSON()).equals(value))
     ```
 
-There are 56 variants: one per Arrow logical type, plus Variant, the geospatial pair, the UUID, the
-six ASCII widths, and the four registered codes, which cross Arrow as extension-typed storage.
+There are 57 variants: one per Arrow logical type, plus Variant, the geospatial pair, UUID, Version,
+the six ASCII widths, and the four registered codes, which cross Arrow as extension-typed storage.
 The parser accepts the Arrow,
 SQL, Hive, and Spark spellings of all of them - `bigint`, `varchar(255)`, `array<string>`,
 `row(...)`, `double precision` - and normalizes to one canonical form, so `to_string` is a
@@ -1159,6 +1159,65 @@ layout, a UUID canonicalizes toward its 36-character lowercase hyphenated spelli
 what a reader means by an identifier. The 32-digit bare-hex text, upper case, and the sixteen stored
 bytes are all accepted on the way in and rewrite to that one spelling; anything else is refused by
 the one rule that field validation, Arrow ingest, and every cast tier all call.
+
+### Versions
+
+`Version` is a generic, numerically ordered value. Its native layout is exactly 16 bytes: required
+`u8` major, nullable `u8` minor, and a nullable fixed 14-byte patch/qualifier tail. Parsing trims
+trailing numeric zeroes and canonicalizes appended, dot-introduced, and hyphen-introduced
+qualifiers. Hyphens are pre-release; the other forms are post-release, so `5.0-rc1 < 5 < 5.0SP1`
+and `SP2 < SP10`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Version};
+
+    let version = "5.0.SP1".parse::<Version>()?;
+    assert_eq!(version.to_string(), "5.0SP1");
+    assert_eq!(std::mem::size_of::<Version>(), 16);
+
+    let field = Field::new("version", DataType::Version, false);
+    assert_eq!(field.scalar("5.0.SP1")?, Scalar::from(version));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    dtype = DataType("version")
+    field = types.version("version", nullable=False)
+    value = json.loads('"5.0.SP1"', field=field, cls=Scalar)
+    assert dtype.kind == "text"
+    assert value.as_py() == "5.0SP1"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const dtype = new DataType('version')
+    const value = json.loads('"5.0.SP1"', {
+      field: fields.version('version', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(dtype.kind, 'text')
+    assert.equal(value.asJs(), '5.0SP1')
+    ```
+
+Arrow stores the canonical spelling as `Utf8` and preserves the datatype through the
+`yggdryl.version` extension name. Arrow string sorting remains lexicographic; `Version::cmp` is the
+version-ordering contract. Inputs whose first two components exceed `u8`, later components exceed
+`u16`, or whose canonical patch tail exceeds 14 ASCII bytes are refused at the first bad byte.
+
+On an AMD Ryzen 5 150 with Rust 1.96.1, the release benchmark
+`cargo bench -p yggdryl --bench types -- version --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10`
+measured parse at 35.1 ns and compare at 49.3 ns. These deliberately light two-case measurements
+cover only the two hot operations this value owns.
 
 ### Regular-expression captures
 
@@ -2857,7 +2916,7 @@ restored from the path, and Iceberg builds an identity spec from them; that whol
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and the fifty-five aliases beside it are `TypedField<K>`, one `Field` plus a
+`Int64Field` and the fifty-six aliases beside it are `TypedField<K>`, one `Field` plus a
 zero-sized sealed marker, `repr(transparent)` and exactly the size of the field it holds. The
 marker constrains the variant only: a decimal's precision, a datetime's unit, a list's child all
 stay in the wrapped field, so the typed view never duplicates schema state. `try_as_typed`
@@ -2869,7 +2928,7 @@ Aliases with a statically known datatype get a `new(name, nullable)` that cannot
 `from_parts(name, nullable, metadata)`; parameterized ones take the datatype through `try_new`. In
 Python and JavaScript the aliases are static views over the same native class: `yggdryl.types.int64`
 returns an ordinary `Field`, typed as `Int64Field` for a checker only. Watch the default -
-`nullable` defaults to `True` in Python and to `false` in JavaScript.
+`nullable` defaults to `True` in Python and `true` in JavaScript.
 
 [Variant, geometry, and geography](types.md#variant-geometry-and-geography) follow the same
 pattern: `yggdryl::types::VariantField` is parameterless and gets the static `new(name, nullable)`,
@@ -2886,6 +2945,8 @@ too: `CountryField`, `CurrencyField`, `MicField`, and `CfiField` get the static 
 datatype rather than the ASCII width that would hold the same bytes.
 [The UUID](types.md#the-uuid) is parameterless in the same way: `UuidField` gets the static
 `new`, and the bindings spell it `fields.uuid`.
+[Versions](types.md#versions) follow that parameterless shape through `VersionField`,
+`types.version`, and `fields.version`.
 
 ### Converting to one native field
 

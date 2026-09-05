@@ -134,11 +134,15 @@ pub enum DataTypeId {
     Geometry,
     /// Geospatial features on the surface of a sphere or spheroid.
     Geography,
+    /// A canonical, numerically ordered software or protocol version.
+    ///
+    /// Appended last because [`Self::as_u8`] is a wire contract.
+    Version,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 54] = [
+    pub const ALL: [Self; 55] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -193,6 +197,7 @@ impl DataTypeId {
         Self::Variant,
         Self::Geometry,
         Self::Geography,
+        Self::Version,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -266,6 +271,7 @@ impl DataTypeId {
             Self::Variant => "variant",
             Self::Geometry => "geometry",
             Self::Geography => "geography",
+            Self::Version => "version",
         }
     }
 
@@ -318,7 +324,7 @@ impl DataTypeId {
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Bytes
             }
-            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View => DataTypeKind::Text,
+            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View | Self::Version => DataTypeKind::Text,
             Self::Ascii
             | Self::FixedAscii
             // A registered code is fixed-width ASCII text with an identity,
@@ -553,7 +559,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 54);
+        assert_eq!(DataTypeId::ALL.len(), 55);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,
@@ -642,6 +648,7 @@ mod tests {
         assert_eq!(DataTypeId::Map.as_u8(), 49);
         assert_eq!(DataTypeId::Geometry.as_u8(), 52);
         assert_eq!(DataTypeId::Geography.as_u8(), 53);
+        assert_eq!(DataTypeId::Version.as_u8(), 54);
     }
 
     #[test]

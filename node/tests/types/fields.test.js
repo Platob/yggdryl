@@ -150,6 +150,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['uuid', fields.uuid('value')],
+    ['version', fields.version('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -172,7 +173,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 52)
+  assert.equal(byId.size, 53)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -224,6 +225,8 @@ test('the ascii factories build the variable form and one fixed width', () => {
   assert.equal(fields.fixedAscii('iso', 2).dtype.asciiWidth, 2)
   assert.equal(fields.uuid('id').dtype.id, 'uuid')
   assert.equal(fields.uuid('id', { nullable: false }).nullable, false)
+  assert.equal(fields.version('release').dtype.id, 'version')
+  assert.equal(fields.version('release', { nullable: false }).defaultJSValue(), '0')
   // A fixed width past the packed integer is still storage, so it builds.
   assert.equal(fields.fixedAscii('isin', 64).dtype.asciiWidth, 64)
   assert.equal(fields.fixedAscii('code', 12).nullable, true)

@@ -103,7 +103,7 @@ pub use types::{
 pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields,
+    TemporalType, TextType, UnionFields, Version, VersionField, VersionScalar, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

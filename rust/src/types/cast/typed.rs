@@ -117,6 +117,7 @@ typed_array!(
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(crate::types::text::Utf8Type, arrow_array::StringArray);
+typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
 typed_array!(
     crate::types::text::LargeUtf8Type,
     arrow_array::LargeStringArray

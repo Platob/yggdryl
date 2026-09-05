@@ -120,27 +120,24 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // Every ASCII datatype - the variable form, a width, and the four
-    // registered codes - carries a value rule `PyArrow` knows nothing of, and
-    // a width and a UUID store as fixed-width bytes `PyArrow` would refuse to
-    // build from a value of any other length. The core that owns both answers
-    // for all of them.
-    if dtype.is_ascii() || matches!(dtype, CoreDataType::Uuid) {
-        return ascii_arrow_scalar(py, value, dtype, safe);
+    // ASCII, UUID, and Version carry value rules `PyArrow` does not own.
+    // Route them through the core once rather than letting Python's storage
+    // shape silently bypass padding, parsing, or canonicalization.
+    if dtype.is_ascii() || matches!(dtype, CoreDataType::Uuid | CoreDataType::Version) {
+        return core_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
 }
 
-/// Stores one value into an ASCII or UUID datatype through the core boundary.
+/// Store one custom scalar through the core boundary.
 ///
-/// `PyArrow` builds a fixed-width binary only from exactly `width` bytes and
-/// validates no ASCII rule at all, so the core that owns the padding, the
-/// value contract and the width refusal answers instead: a Python value
-/// crosses as a `Scalar` and takes that contract, a `PyArrow` scalar takes
-/// the cast plan. Both run under a nullable field so `None` stays a null
-/// scalar; the caller's own field decides nullability.
-pub(crate) fn ascii_arrow_scalar<'py>(
+/// `PyArrow` does not own ASCII padding, UUID parsing, or Version
+/// canonicalization. A Python value therefore crosses as a `Scalar` and takes
+/// the core value contract; a `PyArrow` scalar takes the core cast plan. Both
+/// run under a nullable field so `None` stays null; the caller's field decides
+/// final nullability.
+pub(crate) fn core_arrow_scalar<'py>(
     py: Python<'py>,
     value: &Bound<'py, PyAny>,
     dtype: &CoreDataType,
@@ -434,6 +431,7 @@ impl PyDataType {
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "uuid" => CoreDataType::Uuid,
+            "version" => CoreDataType::Version,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"

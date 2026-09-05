@@ -127,7 +127,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 58] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 55] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -1854,6 +1854,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type VariantField = TypedField<nested::Variant>;
   pub type UuidField = TypedField<nested::Uuid>;
+  pub type VersionField = TypedField<version::VersionType>;
   pub type GeometryField = TypedField<geospatial::Geometry>;
   pub type GeographyField = TypedField<geospatial::Geography>;
   pub type FieldRef = Arc<ArrowField>;
@@ -2037,6 +2038,15 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
 pub const fn uuid() -> Self
   pub fn uuid_packed(&self, value: &[u8]) -> Result<u128>
   pub fn uuid_value(&self, packed: u128) -> Result<SmolStr>
+
+### yggdryl::types::version  [rust\src\types\version\mod.rs]
+pub struct Version
+  pub const MAX_PARTS: usize = 4;
+  pub const MIN: Self
+  pub const MAX: Self
+  pub struct VersionType
+  pub type VersionScalar = TypedScalar<VersionType>;
+  pub type VersionField = TypedField<VersionType>;
 
 ### yggdryl::types::integer  [rust\src\types\integer\dtypes.rs]
 pub const fn is_integer(&self) -> bool
@@ -2431,7 +2441,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>

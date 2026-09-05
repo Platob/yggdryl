@@ -18,6 +18,8 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
+use std::fmt;
+use std::fmt::Write as _;
 use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -26,6 +28,7 @@ use std::sync::Arc;
 
 use yggdryl::{
     DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar, Timezone,
+    Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -119,6 +122,43 @@ fn costs(what: &str, each: usize, work: impl FnMut()) {
         each * 1_000,
         "{what} did not cost {each} per read over a thousand"
     );
+}
+
+#[derive(Default)]
+struct StackText {
+    bytes: [u8; 32],
+    len: usize,
+}
+
+impl fmt::Write for StackText {
+    fn write_str(&mut self, value: &str) -> fmt::Result {
+        let end = self.len.checked_add(value.len()).ok_or(fmt::Error)?;
+        let target = self.bytes.get_mut(self.len..end).ok_or(fmt::Error)?;
+        target.copy_from_slice(value.as_bytes());
+        self.len = end;
+        Ok(())
+    }
+}
+
+#[test]
+fn version_parse_compare_and_render_allocate_nothing() {
+    assert_eq!(std::mem::size_of::<Version>(), 16);
+    free("parsing an inline version", || {
+        black_box("5.0SP10".parse::<Version>().expect("a static version"));
+    });
+
+    let left = "5.0SP2".parse::<Version>().expect("a static version");
+    let right = "5.0SP10".parse::<Version>().expect("a static version");
+    free("comparing inline versions", || {
+        black_box(left.cmp(&right));
+    });
+
+    let mut rendered = StackText::default();
+    free("rendering an inline version", || {
+        rendered.len = 0;
+        write!(&mut rendered, "{right}").expect("the stack buffer is wide enough");
+        black_box(&rendered.bytes[..rendered.len]);
+    });
 }
 
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.

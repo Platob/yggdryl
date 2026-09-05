@@ -18,6 +18,7 @@ criterion_group!(
     datatype::temporal::time_builder_benchmarks,
     datatype::temporal::time_unit_benchmarks,
     datatype::value::value_benchmarks,
+    datatype::version::version_benchmarks,
     datatype::parser::parser_benchmarks,
     datatype::nested::value_benchmarks,
     datatype::default::default_and_compatibility_benchmarks,

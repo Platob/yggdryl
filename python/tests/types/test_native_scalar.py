@@ -141,6 +141,11 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
             "uuid",
             "uuid",
         ),
+        (
+            json.loads('"5.0.SP1"', field=Field("value", "version", False), cls=Scalar),
+            "version",
+            "text",
+        ),
         (Scalar.from_py(b"bytes"), "binary", "bytes"),
         (Scalar.from_py({"id": 1}), "map", "nested"),
     ]
@@ -369,6 +374,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             ),
         ),
         ("string", "naïve"),
+        ("version", "5.0SP1"),
         ("bytes", b"\x00\xff"),
         ("geospatial", b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 0.0, 0.0)),
         ("date32", (1, "d", "NAIVE")),

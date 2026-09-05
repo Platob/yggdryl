@@ -19,7 +19,7 @@ use crate::enums::{
 use crate::fix::{FixTag, branch_from_py, id_from_py};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
-    arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
 use crate::uri::{PyUrl, core_url_from_value};
@@ -458,16 +458,19 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar =
-            if self.inner.dtype().is_ascii() || matches!(self.inner.dtype(), CoreDataType::Uuid) {
-                ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
-            } else {
-                // Project the complete Field so registered extension metadata can
-                // be rehydrated by PyArrow before selecting its scalar target type.
-                let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
-                let target = arrow_field.getattr("type")?;
-                arrow_scalar_to_pyarrow_type(py, value, target, safe)?
-            };
+        let scalar = if self.inner.dtype().is_ascii()
+            || matches!(
+                self.inner.dtype(),
+                CoreDataType::Uuid | CoreDataType::Version
+            ) {
+            core_arrow_scalar(py, value, self.inner.dtype(), safe)?
+        } else {
+            // Project the complete Field so registered extension metadata can
+            // be rehydrated by PyArrow before selecting its scalar target type.
+            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+            let target = arrow_field.getattr("type")?;
+            arrow_scalar_to_pyarrow_type(py, value, target, safe)?
+        };
         if !self.inner.is_nullable() && !scalar.getattr("is_valid")?.extract::<bool>()? {
             return Err(PyValueError::new_err(format!(
                 "field {:?} is not nullable",

@@ -205,6 +205,7 @@ export type DataTypeId =
   | 'mic'
   | 'cfi'
   | 'uuid'
+  | 'version'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -281,6 +282,7 @@ interface DataTypeKindById {
   mic: 'ascii'
   cfi: 'ascii'
   uuid: 'uuid'
+  version: 'text'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -571,6 +573,8 @@ export type DenseUnionField<V = UnionValue, I = V> = FieldOf<'union', V, string,
 export type VariantField = FieldOf<'variant', unknown>
 /** One 128-bit identifier; values read back as the hyphenated spelling. */
 export type UuidField = FieldOf<'uuid', string>
+/** One canonical, numerically ordered version. */
+export type VersionField = FieldOf<'version', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -743,6 +747,7 @@ export interface FieldsNamespace {
   ): DenseUnionField
   variant(name: string, options?: FieldOptions): VariantField
   uuid(name: string, options?: FieldOptions): UuidField
+  version(name: string, options?: FieldOptions): VersionField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField

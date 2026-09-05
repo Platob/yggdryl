@@ -114,6 +114,7 @@ impl JsDataType {
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "uuid" => CoreDataType::Uuid,
+            "version" => CoreDataType::Version,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"

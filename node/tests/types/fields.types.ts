@@ -15,6 +15,7 @@ import {
   type TimeField,
   type DateTime64Field,
   type VariantField,
+  type VersionField,
 } from '../..'
 
 const id: Int32Field = fields.int32('id', { nullable: false })
@@ -41,6 +42,7 @@ const longDuration: Duration64Field = fields.duration64('long', 'us', {
   nullable: false,
 })
 const payload: VariantField = fields.variant('payload', { nullable: false })
+const release: VersionField = fields.version('release', { nullable: false })
 const payloadId: 'variant' = payload.dtype.id
 const shape: GeometryField = fields.geometry('shape', { nullable: false })
 const shapeKind: 'geospatial' = shape.dtype.kind
@@ -66,6 +68,7 @@ void noteId
 void sized
 void nullableCode
 void payloadId
+void release
 void shapeKind
 void projectedShape
 void region

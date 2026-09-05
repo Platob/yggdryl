@@ -180,6 +180,16 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
+        DataType::Version => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::Version(version) => Ok(Some(version.to_string())),
+                    other => Err(invalid_value("version", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
                 .iter()
@@ -406,6 +416,12 @@ pub(crate) fn value_from_array(
                 fixed.value(index),
             )?)))
         }
+        DataType::Version => Scalar::Version(
+            downcast::<StringArray>(array)?
+                .value(index)
+                .parse()
+                .map_err(crate::arrow::Error::from)?,
+        ),
         // Fixed storage reads back trimmed: the padding is the layout, not
         // the text. Variable storage holds the bytes it was given.
         DataType::FixedAscii(width) => {

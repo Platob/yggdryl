@@ -32,6 +32,8 @@ enum DefaultPlan {
     PointEmpty,
     /// The nil identifier, sixteen zero bytes in its hyphenated spelling.
     Uuid,
+    /// The minimum canonical version.
+    Version,
 }
 
 struct Planned {
@@ -231,6 +233,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Mic
             | DataType::Cfi
             | DataType::Uuid
+            | DataType::Version
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -306,6 +309,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
         // spelling like every other UUID value.
         D::Uuid => scalar(DefaultPlan::Uuid, false),
+        D::Version => scalar(DefaultPlan::Version, false),
         D::FixedSizeBinary(width) => {
             let width = usize::try_from(*width)
                 .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
@@ -620,6 +624,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::PointEmpty => crate::types::Geometry::new(POINT_EMPTY_WKB.as_slice())
             .map(|value| Scalar::Geospatial(crate::types::Geospatial::Geometry(value))),
         DefaultPlan::Uuid => Ok(Scalar::Uuid(crate::types::Uuid::new(0))),
+        DefaultPlan::Version => Ok(Scalar::Version(crate::Version::MIN)),
     }
 }
 
@@ -696,6 +701,9 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
                 .and_then(|bytes| crate::types::uuid_parse(bytes).ok())
                 .is_some_and(|stored| stored == [0_u8; 16]),
         },
+        DefaultPlan::Version => {
+            matches!(value, Scalar::Version(version) if version == &crate::Version::MIN)
+        }
     }
 }
 
