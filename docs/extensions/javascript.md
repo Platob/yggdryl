@@ -1,115 +1,30 @@
 # JavaScript
 
-A Node-API view of the same values the Rust core holds, with conventional JavaScript casing and protocols.
+The Node-API package: what it adds on top of the [core](../index.md), and how each
+layer's values cross the JavaScript boundary.
 
-```javascript
-const { DataType, Field, Url } = require('yggdryl')
-const assert = require('node:assert/strict')
-
-const schema = new Field(
-  'row',
-  DataType.fromFields([new Field('id', 'int64', false)]),
-  false,
-)
-
-assert.equal(schema.dtype.kind, 'nested')
-assert.equal(String(Url.fromPath('C:/market data/trades.arrows')),
-  'file:///C:/market%20data/trades.arrows')
-```
-
-This page documents the JavaScript boundary only: what the package adds on top of the core, and how
-it converts what you hand it. The behaviour itself is documented once, on the
-[core pages](../index.md).
-
-## Build from the repository
-
-```console
-npm install --prefix node
-npm run --prefix node build:debug
-npm test --prefix node
-```
-
-`npm test` runs `node --test tests/*.test.js` and then `tsc --noEmit`, so the shipped `.d.ts`
-declarations are checked against the tests that use them.
-
-## What it exposes
+## Contract
 
 | Name | Documented in |
 | --- | --- |
-| `DataType` | [datatype](../types.md) |
-| `Field`, `fields` | [field](../types.md) |
-| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression.md) |
-| `Uri`, `Url`, `Urn` | [uri](../uri.md) |
-| `IOBase` | [io](../holder.md) |
-| `BatchReader`, `RecordOptions` | [io](../holder.md), [ipc](../media.md), [parquet](../media.md) |
-| `iceberg` | [iceberg](../media.md) |
-| `fix` | [fix](../fix.md) |
-| `MimeType`, `MediaType`, `Timezone` | [enums](../types.md) |
-| `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text.md) and the format pages |
-| `avro` | [Avro](../media.md) schema, container, single-object, and batch media |
-| `gzip`, `zlib`, `zstd` | [gzip](../coding.md), [zlib](../coding.md), [zstd](../coding.md) |
-| `xxhash`, `Digest` | [xxhash](../xxhash.md) |
+| `DataType` | [datatype](../types/datatype.md) |
+| `Field`, `fields` | [field](../types/field.md) |
+| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression/index.md) |
+| `Uri`, `Url`, `Urn` | [uri](../uri/index.md) |
+| `IOBase` | [holder](../holder/index.md) |
+| `BatchReader`, `RecordOptions` | [records](../holder/iobase/records.md), [options](../media/options.md) |
+| `iceberg` | [iceberg](../media/iceberg/index.md) |
+| `fix` | [fix](../fix/index.md) |
+| `MimeType`, `MediaType`, `Timezone` | [enums](../types/scalar.md) |
+| `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text/index.md) |
+| `avro` | [Avro](../media/avro.md) |
+| `gzip`, `zlib`, `zstd` | [coding](../coding/index.md) |
+| `xxhash`, `Digest` | [xxhash](../xxhash/index.md) |
 
-Each coding namespace carries the whole-buffer pair - `loads` and `dumps`, plus `loadsRaw` and
-`dumpsRaw` on `zlib` - over `Buffer`, reading and writing exactly what `node:zlib` does. Their
-streaming `reader`/`writer` and the transparent handle wrappers stay Rust-only: both are built on
-Rust's `Read`/`Write`, which has no JavaScript spelling here. A handle still applies the coding its
-name declares without being told, and `IOBase.codec` is what asks it which one that is.
+## Use
 
-## Digests
-
-`xxhash` carries the four one-shot functions, the four resumable states, and `Digest`;
-`IOBase.readDigest` and `Scalar.digest` redirect to the same native path. XXH32 answers a
-`number` - a 32-bit value always fits one exactly - and the wider algorithms answer
-`bigint`, because they do not.
-
-```javascript
-const assert = require('node:assert/strict')
-const { Scalar, xxhash } = require('yggdryl')
-
-const payload = Buffer.from('abc')
-assert.equal(xxhash.xxh32(payload), 0x32d153ff)
-assert.equal(xxhash.xxh3(payload), 0x78af5f94892f3950n)
-assert.equal(xxhash.xxh3('abc'), xxhash.xxh3(new Uint8Array(payload)))
-
-const digest = xxhash.digest(payload, 'xxh3-64')
-assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')
-assert.ok(xxhash.Digest.from(digest.toString()).equals(digest))
-assert.equal(Scalar.fromJs('AAPL').digest().value(), Scalar.fromJs('AAPL').stableHash())
-```
-
-`Digest` follows the convention every immutable wrapper here follows: `equals`, `compare`,
-`stableHash`, `clone`, `toString`, and `toJSON`, because JavaScript cannot overload equality
-or hashing. A `Buffer` or `Uint8Array` is hashed in place; an `ArrayBuffer` is narrowed to a
-`Buffer` window first, and a `string` is encoded as UTF-8. The streaming `reader`/`writer`
-pair and the `Hashed<H>` handle stay Rust-only, for the same `Read`/`Write` reason the
-codings do.
-
-## A filesystem is whatever answers seven calls
-
-Arrow JS ships no filesystem, so where Python hands the core a `pyarrow.fs.FileSystem` that already
-exists, JavaScript supplies the vtable itself: a plain object whose methods are Arrow's own
-`FileSystem` calls in camelCase - `fileInfo`, `list`, `readRange`, `writeFull`, `createDir`,
-`deleteFile`, plus a `typeName`. `IOBase.fromFs(handler, path)` turns one into an ordinary
-handle, so a `Map`, `node:fs`, an S3 client, or a caching layer over any of them becomes storage
-the rest of the package can read and write. [`fs`](../holder.md) documents the backend and
-shows a complete handler.
-
-Two things belong to this boundary rather than to the backend. Sizes cross as `bigint`, because a
-64-bit length is what an object store reports and a JavaScript number cannot hold one exactly - an
-exact `number` is accepted, since a handler over `fs.Stats` already has one. And the handler is
-called **synchronously, on the thread that supplied it**: Node-API's only cross-thread call is
-asynchronous, while every method here has to answer in the middle of a native read, so a
-handler-backed handle refuses a `Worker` by name instead of pretending. A worker that needs its own
-view builds its own handler; only the location string has to travel.
-
-`using` binds to `open`/`close`, which is what publishes a staged whole value - the shape every
-Arrow filesystem writes in.
-
-## Inference at the boundary
-
-Every constructor accepts the obvious JavaScript spelling of its argument and converts once, in
-Rust. Prefer the generic `from` entry points: they dispatch on what they were handed.
+Every constructor accepts the obvious JavaScript spelling of its argument and
+converts once, in Rust. Prefer the generic `from` entry points.
 
 ```javascript
 const { DataType, Field, MediaType, MimeType, Uri, Url } = require('yggdryl')
@@ -131,55 +46,15 @@ assert.equal(
 )
 ```
 
-There is no JavaScript-side parser: `DataType.from` and its siblings call the matching native
-constructor. JavaScript has no object `/` operator protocol, so generic URI path
-composition uses variadic `Uri.joinPath`; every component is normalized by the
-same core `joinpath` implementation as Rust's and Python's `/` idiom.
-
-`DataType.fromRegex(pattern, autotype)` redirects named-capture inference to
-that core. `TextOptions.withRownum` is `bigint | null`: `bigint` preserves the
-whole signed 64-bit range, while a JavaScript `number` is rejected rather than
-silently narrowed.
-
-## Bytes and ranges
-
-`readRangeBytes` and `appendBytes` are the core's `read_range_bytes` and `append_bytes`, camelCased
-at the boundary and nothing more; [io](../holder.md#whole-values) states what they do. Over each sits one
-inferring entry point: `readRange` chooses the answer's type from its options, and `append` chooses
-how to read the byte source it was handed.
-
-```javascript
-const assert = require('node:assert/strict')
-const { IOBase } = require('yggdryl')
-
-const handle = IOBase.fromBytes(Buffer.from('symbol,price\n'))
-
-// `{ text: true }` selects the answer's type; omitting it answers a Buffer.
-assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
-assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
-
-// `append` takes a string, any view, and an ArrayBuffer as well as a Buffer.
-assert.equal(handle.append('AAPL,1\n'), 13)
-assert.equal(handle.append(new Uint8Array([77, 83, 70, 84, 10])), 20)
-assert.equal(handle.append(new DataView(Uint8Array.from([78, 86, 68, 65, 10]).buffer)), 25)
-assert.equal(handle.append(Uint8Array.from([73, 78, 84, 67, 10]).buffer), 30)
-assert.equal(handle.readRange(13, 7, { text: true }), 'AAPL,1\n')
-
-// A range it cannot decode is refused, not silently substituted.
-assert.throws(() => IOBase.fromBytes(Buffer.from([0xff])).readRange(0, 1, { text: true }))
-```
-
-`readRange` rejects an unknown option and a non-boolean `text`, the way `readScalar` rejects its
-own, and checks `length` as strictly as `offset` rather than rounding it. `append` reads any typed
-array or `DataView` over its own window - a `Buffer` is one - an `ArrayBuffer`, and a string,
-encoding text as UTF-8 exactly as `writeText` does, and returns the byte offset it landed at.
+There is no JavaScript-side parser: `DataType.from`, `DataType.fromRegex`, and
+their siblings call the matching native constructor. Variadic `Uri.joinPath`
+replaces the `/` operator idiom, normalizing through the same core `joinpath`.
 
 ## One native field from a class or value
 
-JavaScript follows the [canonical field-conversion contract](../types.md#converting-to-one-native-field)
-with `intoField(value, name?)` and the class-level `intoStructField` spelling. The canonical class
-form is an actual static getter; `intoField` validates its native non-null Struct result and memoizes
-that result per class. Other class member forms are rejected.
+`intoField(value, name?)` and the class-level `intoStructField` static getter
+follow the canonical [field](../types/field.md) conversion contract. The getter
+result is validated as a non-null Struct field and memoized per class.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -202,15 +77,12 @@ assert.equal(renamed.name, 'quote')
 assert.equal(root.name, 'Quote')
 ```
 
-The converter also accepts a native `Field` or field expression. Invalid roots are rejected before
-they cross into a table operation: `intoStructField` must resolve to a native Struct field whose
-root is non-null.
+The converter also accepts a native `Field` or a field expression.
 
 ## Scalars cross as their natural shape
 
-A JavaScript value becomes the nearest native scalar, and comes back as the nearest JavaScript value
-to that. No class name travels beside the data, so a shape the core does not have arrives as the
-shape it was lowered to.
+A JavaScript value becomes the nearest native scalar, and comes back as the
+nearest JavaScript value to that. No class name travels beside the data.
 
 ```javascript
 const { yaml } = require('yggdryl')
@@ -251,10 +123,8 @@ assert.equal(decoded.id, 2n ** 100n)
 | `Uri`, `Url`, `Urn` | canonical string | `string` |
 | `Scalar` | itself | `Date` when one holds it exactly, otherwise `Scalar` |
 
-These are the losses, and they are deliberate: a `Set` comes back a list, a `URL` and a `RegExp`
-come back strings, a class instance comes back a plain object, a `Map` of text keys comes back a
-plain object, and `undefined` comes back `null`. Reconstructing any of them takes one line of your
-own code and needs no cooperation from the codec:
+The losses are deliberate, and reconstructing any of them needs no cooperation
+from the codec.
 
 ```javascript
 const { yaml } = require('yggdryl')
@@ -274,23 +144,16 @@ assert.ok(order instanceof Order)
 assert.deepEqual(new Set(decoded.venues), new Set(['XPAR']))
 ```
 
-Nothing in a document can make this binding name a class, look one up, or run a constructor,
-because there is no name in the document to look up. A `bigint` wider than 128 bits has no exact
-native integer and is refused rather than rounded, and reading back a `Date`, a `Buffer`, or a
-`Map` never depends on a method the caller can replace: the encoder reads those off the intrinsic
-prototypes.
+No name in a document can make this binding look one up or run a constructor.
+`Date`, `Buffer`, and `Map` are read off the intrinsic prototypes, so no
+replaceable method decides them.
 
 ## Scalar families
 
-`Scalar.float(value, width = 64)` selects 16, 32, or 64 bits.
-`decimal(coefficient, scale = 0)` selects the narrowest exact decimal. Date and
-time widths follow the unit; duration follows the count; Arrow datetime is
-always 64-bit. Exact `kind` values survive field-directed transport.
-
-Temporal factories use `(count, unit, timezone)`. `date` defaults to days; an
-omitted timezone becomes `NAIVE`. Time and duration accept only `NAIVE`, while
-datetime also accepts a timezone name or `Timezone`. Schemaless text writes
-natural ISO strings; `loads(..., { field })` restores the declared exact type.
+`Scalar.float(value, width = 64)` selects 16, 32, or 64 bits, and
+`decimal(coefficient, scale = 0)` selects the narrowest exact decimal. Temporal
+factories take `(count, unit, timezone)`, `date` defaults to days, and an
+omitted timezone becomes `NAIVE`.
 
 ```javascript
 const { Timezone, Scalar, json } = require('yggdryl')
@@ -312,42 +175,17 @@ assert.ok(
 ```
 
 `kind`, `count`, `unit`, `zone`, `unscaled`, and `scale` expose the matching
-payload. `asBytes`/`asUtf8` borrow scalar content; `asJsonBytes` and
+payload. `asBytes`/`asUtf8` borrow scalar content, while `asJsonBytes` and
 `asJsonUtf8` use the core natural JSON writer.
 
 ## Native value protocols and checked arithmetic
 
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
-when the Rust core has a complete value identity. This includes `Scalar`,
-`Expression`, `Statement`, `avro.Schema`, `iceberg.PartitionSpec`,
-`iceberg.DataFile`, and `iceberg.ScanPlan`; other domain wrappers expose the
-same methods wherever their core identity is complete. `compare` uses the
-core's total order, and equal values always return the same deterministic
-`stableHash()` `bigint`. JavaScript has no object hash protocol, so
-`stableHash()` is explicit and `===` remains reference identity. Operational
-readers, iterators, and handles do not invent a value identity from hidden
-state.
-
-`Scalar` equality, order, and hashing normalize equivalent decimal and temporal
-resolutions. Avro schema identity retains logical types, defaults, aliases, and
-extension attributes; `fingerprint()` alone follows Parsing Canonical Form.
-`iceberg.IcebergOptions` has the same four methods over its current explicit
-configuration, so a detached clone stops comparing equal after either copy is
-mutated.
-
-JavaScript cannot overload arithmetic operators, so `Scalar` exposes the
-checked core operations as `add`, `subtract`, `multiply`, `divide`,
-`remainder`, `negate`, and `absolute`. Each binary method accepts either a
-native `Scalar` or a JavaScript value inferred once through `Scalar.fromJs`, and
-returns a native `Scalar`. Numeric operations preserve widths and promote only
-as the core defines; exact decimal division uses the smallest terminating
-scale. Supported datetime/duration pairs use the same checked path. Text and
-containers are never silently concatenated or coerced.
-
-`Expression` exposes `add`, `subtract`, `multiply`, `divide`, `remainder`, and
-`negate` as lazy tree builders. An `Expression` operand stays native, a string
-is parsed as expression text, and any other JavaScript value is inferred once
-as a literal.
+where the core identity is complete, including `Scalar`, `Expression`,
+`Statement`, `avro.Schema`, `iceberg.PartitionSpec`, `iceberg.DataFile`, and
+`iceberg.ScanPlan`. JavaScript cannot overload equality, hashing, or arithmetic,
+so `Scalar` exposes checked `add`, `subtract`, `multiply`, `divide`,
+`remainder`, `negate`, and `absolute`.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -369,17 +207,16 @@ assert.throws(
 )
 ```
 
-Invalid operand kinds throw `TypeError` with
-`ERR_YGGDRYL_INVALID_ARITHMETIC`. Overflow, division by zero, and non-terminating
-exact decimal division throw `RangeError` with distinct
-`ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`, and
-`ERR_YGGDRYL_INEXACT_ARITHMETIC` codes.
+`Expression` exposes the same arithmetic names as lazy tree builders over a
+native operand, parsed expression text, or an inferred literal. `Scalar`
+equality, order, and hashing normalize equivalent decimal and temporal
+resolutions.
 
 ## fromJs and asJs
 
-`Scalar.fromJs` and `Scalar.prototype.asJs` are the conversion pair. Every `load` and `dump` crosses
-them - `dumps` is `fromJs` with bytes on the far side, `loads` is `asJs` - so calling them directly
-is how you see what a value becomes before any format is involved.
+`Scalar.fromJs` and `Scalar.prototype.asJs` are the conversion pair every
+`loads` and `dumps` crosses. Calling them directly shows what a value becomes
+before any format is involved.
 
 ```javascript
 const { Scalar, json } = require('yggdryl')
@@ -397,16 +234,13 @@ assert.equal(tree.get('legs').at(0).get('id').asJs(), 1)
 assert.equal(tree.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
 ```
 
-`length`, iteration, `at`, `get`, `has`, and `path` return exact native child
-values; `set` and `remove` return a rebuilt value without mutating the source.
-`fromJs` and `asJs` accept nullable `{ maxDepth }` for language traversal in
-the inclusive range 1 to 48. Input-byte, node, and document limits apply to
-codec loads, where a text parser actually runs.
+`length`, iteration, `at`, `get`, `has`, and `path` return exact native
+children, while `set` and `remove` rebuild without mutating the source. Both
+accept nullable `{ maxDepth }` for language traversal.
 
 ## Field metadata is a Map
 
-`Field` implements the `Map` protocol over its metadata, so ordinary idioms work and the ordering is
-the native one.
+`Field` implements the `Map` protocol over its metadata, in the native ordering.
 
 ```javascript
 const { Field } = require('yggdryl')
@@ -424,14 +258,9 @@ field.delete('venue')
 assert.ok(!field.has('venue'))
 ```
 
-Typed identifiers and typed HTTP values (`dictionaryId`, `contentType`, `etag`, and the rest) are
-accessors rather than map keys, because they are validated. Rust splits that list by whose
-vocabulary it is - the `http:` headers live on `field.as_http()` there, while `parquet_field_id` and
-the straight `alias`/`comment`/`display`/`location` keys stay on `Field` - so a JavaScript name that
-reads `contentType` is `as_http().content_type()` on the other side.
-
-One protocol's properties are a `Map` of their own, and it is a live view of the same field rather
-than a copy of part of it.
+Typed identifiers and typed HTTP values (`dictionaryId`, `contentType`, `etag`)
+are validated accessors rather than map keys. Each well-known protocol is a
+getter whose properties are a live `Map` view of the same field.
 
 ```javascript
 const { Field } = require('yggdryl')
@@ -455,21 +284,11 @@ assert.equal(field.iceberg.delete('doc'), true)
 assert.equal(field.iceberg.size, 0)
 ```
 
-Every well-known protocol is a getter - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
-the rest - and `field.protocol(name)` takes one that is only known at runtime. There is no `https`
-getter, because HTTPS shares the canonical `http:` namespace. Rust spells the same accessors
-`as_iceberg()` / `as_iceberg_mut()`, and two of them differ by more than the prefix: `arrow` is
-`as_arrow_properties` and `fieldProperties` is `as_field_properties`, because `as_arrow` and
-`as_field` already mean something else on a Rust field.
+`field.protocol(name)` takes a scheme known only at runtime. There is no `https`
+getter, because HTTPS shares the canonical `http:` namespace.
 
-!!! note "Rust-only"
-    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
-    carrying its protocol's typed vocabulary, and each dereferencing to the whole `Field` it borrows
-    - have no JavaScript counterpart yet. `field.iceberg` answers the generic property `Map` above,
-    and the validated HTTP values remain accessors on the field itself.
-
-A schema also says which of its columns a path spells out, which is what a partitioned write and an
-Iceberg spec both read.
+A schema also says which of its columns a path spells out, which a partitioned
+write and an Iceberg spec both read.
 
 ```javascript
 const { DataType, Field } = require('yggdryl')
@@ -489,10 +308,56 @@ assert.equal(schema.dtype.getFieldByPath('year').isPartition, true)
 assert.equal(schema.withoutPartitionFields().dtype.length, 1)
 ```
 
+## A filesystem is whatever answers seven calls
+
+Arrow JS ships no filesystem, so JavaScript supplies the vtable itself.
+`IOBase.fromFs(handler, path)` turns a plain object into an ordinary handle.
+
+- Methods are Arrow's own `FileSystem` calls in camelCase: `fileInfo`, `list`,
+  `readRange`, `writeFull`, `createDir`, `deleteFile`, plus a `typeName`.
+- Sizes cross as `bigint`, because a 64-bit length is what an object store
+  reports; an exact `number` is accepted too.
+- `using` binds to `open`/`close`, which publishes a staged whole value.
+
+[Filesystems](../holder/backends/filesystems.md) documents the backend and shows
+a complete handler.
+
+## Bytes and ranges
+
+`readRangeBytes` and `appendBytes` are the core's `read_range_bytes` and
+`append_bytes`, camelCased and nothing more. Over each sits one inferring entry
+point: `readRange` chooses the answer's type from its options, and `append`
+chooses how to read its byte source.
+
+```javascript
+const assert = require('node:assert/strict')
+const { IOBase } = require('yggdryl')
+
+const handle = IOBase.fromBytes(Buffer.from('symbol,price\n'))
+
+// `{ text: true }` selects the answer's type; omitting it answers a Buffer.
+assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
+assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
+
+// `append` takes a string, any view, and an ArrayBuffer as well as a Buffer.
+assert.equal(handle.append('AAPL,1\n'), 13)
+assert.equal(handle.append(new Uint8Array([77, 83, 70, 84, 10])), 20)
+assert.equal(handle.append(new DataView(Uint8Array.from([78, 86, 68, 65, 10]).buffer)), 25)
+assert.equal(handle.append(Uint8Array.from([73, 78, 84, 67, 10]).buffer), 30)
+assert.equal(handle.readRange(13, 7, { text: true }), 'AAPL,1\n')
+
+// A range it cannot decode is refused, not silently substituted.
+assert.throws(() => IOBase.fromBytes(Buffer.from([0xff])).readRange(0, 1, { text: true }))
+```
+
+`append` reads any typed array or `DataView` over its own window, an
+`ArrayBuffer`, and a string encoded as UTF-8, and returns the byte offset it
+landed at. [Bytes](../holder/iobase/bytes.md) states what the primitives do.
+
 ## Arrow
 
-Apache Arrow JS values cross the boundary as copied IPC. The package is explicit about that: this is
-not a zero-copy bridge.
+Apache Arrow JS values cross the boundary as copied IPC. This is not a zero-copy
+bridge.
 
 ```javascript
 const { DataType } = require('yggdryl')
@@ -502,16 +367,16 @@ const scalar = DataType.from('int64').defaultArrowScalar()
 assert.equal(String(scalar), '0')
 ```
 
-`defaultJSValue`, `defaultJSHint`, and `defaultArrowScalar` are schema-directed projections of the
-native default planner; the JavaScript layer caches identity but never decides what a default is.
+`defaultJSValue`, `defaultJSHint`, and `defaultArrowScalar` are schema-directed
+projections of the native default planner. The JavaScript layer caches identity
+but never decides what a default is.
 
 ## Records: explicit intent and representation
 
-`BatchReader` is the primitive record shape: `readArrowReader` returns one and each
-`overwriteArrowReader`/`appendArrowReader`/`mergeArrowReader` call consumes one, exactly as
-[`IOMedia`](../holder.md) does in Rust. `BatchReader.from` accepts whatever a caller already holds -
-another reader, an Apache Arrow JS `Table` or `RecordBatch`, an array of batches, or Arrow IPC bytes -
-and iterating one yields Arrow JS record batches.
+`BatchReader` is the primitive record shape: `readArrowReader` returns one, and
+each `overwriteArrowReader`/`appendArrowReader`/`mergeArrowReader` call consumes
+one. `BatchReader.from` accepts another reader, an Arrow JS `Table` or
+`RecordBatch`, an array of batches, or Arrow IPC bytes.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -538,30 +403,13 @@ assert.equal(handle.columnSize, 1)
 assert.ok(reader.consumed)
 ```
 
-Each batch crosses as its own self-contained Arrow IPC stream, so its schema travels with it and
-Arrow JS needs no separate handshake. That per-batch header is what a copied boundary costs, and it
-is stated here rather than hidden. `intoIpc` drains the reader into one stream and `intoTable` into one
-Arrow JS table, for the cases where a caller does want everything at once.
+Each batch crosses as its own self-contained Arrow IPC stream, so its schema
+travels with it and Arrow JS needs no separate handshake. `intoIpc` drains the
+reader into one stream and `intoTable` into one Arrow JS table.
 
-`isIo()` asks the core whether the handle exposes either its byte or record surface; a container
-holding neither returns false. `rowSize` and `columnSize` describe the whole logical media, not the
-last projection, filter, or row limit used to read it. They are lazy metadata getters: formats with
-a cheap row count answer without decoding rows, successful values are cached while `open()` holds
-the media metadata, a write through the handle invalidates them, and `close()` makes the next access
-compute fresh. JavaScript stores no parallel schema or count. Counts beyond the exact integer range
-saturate at `Number.MAX_SAFE_INTEGER`.
-
-The encoding is never named by a call: `recordOptions()` derives it from the handle's media type, and
-`RecordOptions` carries the shared settings plus the Parquet-only ones, which read as `null` on an
-encoding that has none.
-
-`RecordOptions` exposes `equals`, `compare`, `stableHash`, and `clone` by
-delegating to the complete core value. Identity includes the encoding variant,
-every shared setting, and every Avro, Parquet, IPC, or Text-specific setting.
-For Text, declared regex source and extractor settings participate; compiled
-regex caches and derived fields do not. A clone is detached, so changing it
-does not mutate or re-hash the source options. JavaScript `===` remains object
-identity and `stableHash()` is the explicit deterministic `bigint`.
+`recordOptions()` derives the encoding from the handle's media type, so no call
+names it. `RecordOptions` exposes `equals`, `compare`, `stableHash`, and `clone`
+over the complete core value, every encoding-specific setting included.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -593,17 +441,16 @@ assert.equal(stream.withCommitRowSize(10_000).commitRowSize, 10_000)
 
 ### Pick the shape you have and the intent you mean
 
-The explicit method name carries both facts:
+The explicit method name carries both facts.
 
-| Input | Overwrite | Append | Key-matched merge |
 | --- | --- | --- | --- |
 | native `BatchReader` | `overwriteArrowReader` | `appendArrowReader` | `mergeArrowReader` |
 | Arrow JS `Table` | `overwriteArrowTable` | `appendArrowTable` | `mergeArrowTable` |
 | Arrow JS `RecordBatch` | `overwriteArrowBatch` | `appendArrowBatch` | `mergeArrowBatch` |
 | plain objects or field-class instances | `overwriteRecords` | `appendRecords` | `mergeRecords` |
 
-When mode comes from configuration, each shape also has one dispatcher. The
-canonical order is input, required mode, then the one optional settings value:
+When mode comes from configuration, each shape also has one dispatcher, taking
+input, required mode, then the one optional settings value.
 
 ```text
 writeArrowReader(reader, mode, options?)
@@ -612,16 +459,9 @@ writeArrowBatch(batch, mode, options?)
 writeRecords(records, mode, options?)
 ```
 
-`mode` is `'overwrite'`, `'append'`, or `'merge'`. It is validated before a
-one-shot reader, Arrow exporter, synchronous iterator, or asynchronous iterator
-is touched. The dispatcher does not guess either fact: the method still names
-the representation and the argument explicitly names intent.
-
-The reader method accepts only a native `BatchReader`; use `BatchReader.from(value)` when you want
-to explicitly convert Arrow IPC bytes or another supported Arrow representation. Table and batch
-methods validate their named shape, infer a native `Field`, and redirect to the matching reader
-primitive. Arrow JS has no C Data consumer, so those two adapters copy one IPC stream at the
-boundary. That is the only materialization they add.
+`mode` is `'overwrite'`, `'append'`, or `'merge'`, validated before any reader,
+exporter, or iterator is touched. Table and batch methods validate their named
+shape, infer a native `Field`, and copy one IPC stream at the boundary.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -654,20 +494,12 @@ assert.equal(handle.readArrowReader().intoTable().numRows, 4)
 handle.writeArrowTable(extra, 'append')
 ```
 
-Intent is authoritative. `mergeByNames` supplies keys only: overwrite and append reject it, while
-merge requires it to be non-empty. This validation happens before a one-shot reader is consumed,
-before a table or batch is IPC-encoded, and before a record iterable is pulled.
-
 ### Records and field classes
 
-Plain objects infer one struct field through Arrow JS. A class instance whose constructor exposes a
-static `intoStructField` getter uses that native field; the accessor result is validated and cached
-once per class. Static methods and stored static Fields are rejected. An explicit `options.field`
-always wins.
-Records are pulled in bounded chunks of `options.batchRowSize` rows, or 1,024 rows when it is unset.
-When `commitRowSize` is set, chunks also end exactly at the next publication boundary and at a
-global `maxRowSize` boundary. The first chunk fixes the Arrow JS physical schema and later chunks
-use those same column types.
+Plain objects infer one struct field through Arrow JS, while a class instance
+uses its static `intoStructField` getter, validated and cached once per class.
+Records are pulled in bounded chunks of `options.batchRowSize` rows, or 1,024
+rows when it is unset.
 
 ```javascript
 const { Field, IOBase, MimeType, fields } = require('yggdryl')
@@ -693,32 +525,15 @@ handle.appendRecords([new Trade({ id: 2n, venue: 'XNYS' })])
 const typed = [...handle.readRecords(Trade)]
 ```
 
-For a synchronous iterable, the native `BatchReader` pulls one copied IPC chunk only when the Rust
-write asks for it, so the whole source is never held. With no `commitRowSize`, one logical write
-publishes once at end of input. A synchronous Rust write cannot await an async JavaScript iterator,
-so an unbounded async write spools the same bounded copied IPC chunks to one private temporary file,
-replays that file through one native reader, and removes it on success or failure. This bounds RAM
-without claiming zero-copy.
-
-With a positive `commitRowSize`, an async record write does not spool. It alternates one awaited IPC
-chunk with one synchronous push into an opaque Rust session. The session owns the global row/byte
-limits, fixed leaf/folder/table target, and incomplete cadence; overwrite publishes its first
-cadence as overwrite and later cadences as append, while append and merge retain their intent. A
-failure after a complete cadence leaves that prefix visible and drops only the incomplete one. A
-non-dividing pair such as `batchRowSize = 1024` and `commitRowSize = 1500` pulls 1024 then 476 records,
-so record 1501 is never converted before the 1500-row prefix is published.
-
-`maxRowSize = 0` or `maxByteSize = 0` is a deterministic synchronous exception: append is a no-op,
-overwrite publishes an explicitly declared empty `options.field`, and merge with a limit is
-rejected. None of these paths inspects the ignored source. Otherwise async record calls return
-`Promise<void>`; synchronous record input and all Arrow methods return `void`.
-
-An empty record iterable carries no inferable columns and therefore requires `options.field`.
+A synchronous Rust write cannot await an async JavaScript iterator, so an
+unbounded async write spools bounded IPC chunks to one private temporary file.
+With a positive `commitRowSize` it does not spool: overwrite publishes its first
+cadence as overwrite and later cadences as append.
 
 ## Iceberg is a namespace
 
-The table format sits on top of the record encodings in the core, so it is one name here rather than
-a handful of top-level classes.
+The table format sits on top of the record encodings in the core, so it is one
+name here rather than a handful of top-level classes.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -748,30 +563,16 @@ assert.equal(table.scan().intoTable().numRows, 2)
 fs.rmSync(path.dirname(root), { recursive: true, force: true })
 ```
 
-`iceberg.Table`, `iceberg.Catalog`, `iceberg.IcebergOptions`,
-`iceberg.PartitionSpec`, `iceberg.PartitionField`, `iceberg.Snapshot`,
-`iceberg.SnapshotRef`, `iceberg.ManifestFile`, `iceberg.DataFile`,
-`iceberg.ScanPlan`, and `iceberg.Compaction` are the
-classes; `iceberg.assignFieldIds`, `iceberg.canPromote`,
-`iceberg.schemaFromJson`, and `iceberg.schemaIntoJson` are the functions.
-These immutable result values expose `equals`, `compare`, `stableHash`, and
-`clone` over their complete Rust-core identity. Snapshot v1 `manifests`, v3 lineage and
-encryption key, manifest encryption and partition summaries, and complete
-data-file metadata stay available rather than being dropped at the boundary.
-`ScanPlan` is a bounded immutable report whose complete
-identity, in comparison order, is `(recordCount, filesPlanned, filesSkipped,
-manifestsRead, manifestsSkipped)`; physical scan tasks and paths are not part
-of that public report. A 64-bit identifier crosses as a `bigint` so a snapshot
-id past 2^53 is exact.
+`iceberg.Table`, `Catalog`, `IcebergOptions`, `PartitionSpec`, `PartitionField`,
+`Snapshot`, `SnapshotRef`, `ManifestFile`, `DataFile`, `ScanPlan`, and
+`Compaction` are the classes. `assignFieldIds`, `canPromote`, `schemaFromJson`,
+and `schemaIntoJson` are the functions.
 
 ## An Iceberg table end to end
 
-A warehouse is one `iceberg.Catalog` over a folder, and a dotted name is all a writer needs: the
-first append creates the table from the rows' own schema. Every rows argument here is widened by
-`BatchReader.from` exactly as it is on `IOBase`, so an Apache Arrow JS table appends directly. A
-column change is a chain recorded on `updateSchema()` and committed once, `compact()` rewrites
-undersized files as one `replace` snapshot and reports what it rewrote, and `scanAt` reads any
-retained snapshot - named by a `bigint` or an exact `number` - as a complete table.
+A warehouse is one `iceberg.Catalog` over a folder, and a dotted name is all a
+writer needs. Every rows argument is widened by `BatchReader.from`, so an Apache
+Arrow JS table appends directly.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -815,73 +616,56 @@ assert.deepEqual(
 fs.rmSync(warehouse, { recursive: true, force: true })
 ```
 
-The walk is the same in every language: the [iceberg](../media.md) page shows each of these
-steps beside its Rust and Python form.
+The walk is the same in every language: the
+[iceberg](../media/iceberg/index.md) pages show each step beside its Rust and
+[Python](python.md) form.
+
+## Digests
+
+`xxhash` carries the four one-shot functions, the four resumable states, and
+`Digest`; `IOBase.readDigest` and `Scalar.digest` reach the same native path.
+XXH32 answers a `number`, and the wider algorithms answer `bigint`.
+
+```javascript
+const assert = require('node:assert/strict')
+const { Scalar, xxhash } = require('yggdryl')
+
+const payload = Buffer.from('abc')
+assert.equal(xxhash.xxh32(payload), 0x32d153ff)
+assert.equal(xxhash.xxh3(payload), 0x78af5f94892f3950n)
+assert.equal(xxhash.xxh3('abc'), xxhash.xxh3(new Uint8Array(payload)))
+
+const digest = xxhash.digest(payload, 'xxh3-64')
+assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')
+assert.ok(xxhash.Digest.from(digest.toString()).equals(digest))
+assert.equal(Scalar.fromJs('AAPL').digest().value(), Scalar.fromJs('AAPL').stableHash())
+```
+
+`Digest` follows the convention every immutable wrapper here follows: `equals`,
+`compare`, `stableHash`, `clone`, `toString`, and `toJSON`. A `Buffer` or
+`Uint8Array` is hashed in place, an `ArrayBuffer` is narrowed to a `Buffer`
+window, and a `string` is encoded as UTF-8.
 
 ## FIX is a namespace
 
-`fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`, `fix.installGlobalRegistry()` and the two
-constants `fix.STANDARD_BRANCH` (`'standard'`) and `fix.STANDARD_TAG_LIMIT` (`5000`) are the whole
-surface; the `fix:` vocabulary itself is six accessor pairs on the `field.fix` protocol view -
-`branch`, `id`, `tag`, `tags`, `aliases`, `description` - and reading or writing one on any other
-protocol's view is a `TypeError` naming that view's scheme. Resolution, folding, merging, sharding
-and validation are the core's, documented on the [fix](../fix.md) page. What follows is only what
-the crossing adds.
+`fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`,
+`fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH` (`'standard'`), and
+`fix.STANDARD_TAG_LIMIT` (`5000`) are the whole surface. The `fix:` vocabulary
+is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
+`aliases`, `description`.
 
-**Keys.** A tag is a `number` and a name or a dotted path is a `string`, coerced once per call.
-A tag is checked exactly: a fractional value or one outside `i32` throws rather than being narrowed
-into a different tag, which is the silent-truncation bug this boundary exists to prevent. Anything
-that is neither - a `bigint`, an object, `null` - is a `TypeError` naming what was given.
-`registry.get(key)`, `registry.has(key)`, `registry.getField(key)`, `registry.field(key)`,
-`registry.remove(key)`, `message.get(key)` and `message.at(key)` all take that same pair, and in all
-of them a number is a tag and a string a name or dotted path **in the standard branch** - a
-colon-bearing string is a name, never an identifier. The message's failing half is `at` rather than
-the core's `value`, because `value` is the property holding the whole message value.
-
-**Branches and identifiers.** Both cross as `string` and are parsed once at the boundary through
-the core's own `FixBranch::from_str` and `FixId::from_str`, so no class exists for either in
-JavaScript. `field.fix.branch` reads `'standard'` when the key is absent and assigning
-`'standard'` removes the key; `field.fix.id` is the `'branch:tag'` text, `null` exactly when
-`fix:tag` is absent, and assigning one moves both halves at once - the only ordering-safe way to
-move a field between dictionaries. `registry.getFieldById` / `fieldById` take that text, and
-`getFieldByName` / `fieldByName` and `getFieldByPath` / `fieldByPath` take the branch as their
-**leading argument**, because a name is unique per branch and not registry-wide.
-`getFieldByTag` / `fieldByTag` mean the standard branch exactly. A spelling that is not a branch or
-an identifier throws the native parse failure - never a miss - and a non-string is the Node-API
-conversion error. `message.branch` answers the dictionary the message is spelled in, derived from
-the root field, and `message.getById` / `byId` name one dictionary exactly and do not tier.
-
-**Locations.** `FixRegistry.fromHandle` and `registry.writeInto` take what every folder-shaped
-entry point takes - an `IOBase` handle, a `Url`, or the string naming one - through the same
-coercion `new iceberg.Catalog(warehouse)` uses. Naming a folder that is not there is not an error:
-it loads as the empty registry and creates nothing, and a write creates the folder and its parents
-under `primitive/<branch>/` and `nested/<branch>/`. A root still holding the retired `records/`
-folder throws, never an empty load.
-
-**Errors.** A native refusal crosses unchanged, carrying the message the Rust error produced:
-absence from `fieldById`, `fieldByTag`, `fieldByName`, `fieldByPath`, `field` and every `FixMsg`
-failing half, a conflicting insert, a datatype disagreement in a merge, a malformed `fix:` property
-or a malformed branch or identifier, a shard that does not parse, an unresolved process default.
-The `get`-prefixed twins answer `null` instead - but only for a key that parses; a malformed branch
-or identifier throws from both halves. Only the two boundary refusals - a key that is neither a tag
-nor a name, and the typed vocabulary asked of another protocol's view - arrive as a `TypeError`,
-because those are argument mistakes rather than answers.
-
-**Mutation.** `insert`, `update`, `remove` and `removeById` need the registry unshared: once a
-`FixMsg` links it, it is installed as the process default, or an unfinished `keys()` walk holds it,
-a mutation throws rather than changing a dictionary underneath something that already resolved
-against it. A walk stops sharing when it is drained or when a `for...of` `break` returns it;
-`registry.clone()` is the independently mutable deep copy. `remove` reads a string as a
-standard-branch name, so `removeById(id)` is how a vendor field leaves the dictionary - the
-JavaScript spelling of the core's `remove(&FixId)`.
-
-**Values.** Both wrappers implement the JavaScript value protocols over their native state:
-`equals`, `stableHash()` as a `bigint`, `clone()`, `toString()` and `toJSON()`. Iterating a registry
-walks its fields in ascending canonical-identifier order - branch-major, then by tag - and iterating
-a message walks its `[name, value]` pairs in the root's declared order, both over the core's own
-lazy cursor, so nothing is collected crossing the boundary. `FixMsg`'s constructor is the one
-widening gate: a plain object is read through `Scalar.fromJs` as the record its Struct root
-declares, and the core alone types, orders and validates it.
+| Crossing | Rule |
+| --- | --- |
+| tag key | a `number`, coerced once and checked exactly |
+| name or dotted-path key | a `string`, in the standard branch; a colon-bearing string is a name |
+| branch, identifier | `string`, parsed once through `FixBranch::from_str` and `FixId::from_str` |
+| `getFieldByName`/`fieldByName`, `getFieldByPath`/`fieldByPath` | take the branch as their leading argument |
+| `getFieldByTag`/`fieldByTag` | mean the standard branch exactly |
+| `field.fix.id` | the `'branch:tag'` text, `null` exactly when `fix:tag` is absent |
+| `field.fix.branch` | `'standard'` when the key is absent; assigning `'standard'` removes it |
+| `FixRegistry.fromHandle`, `registry.writeInto` | an `IOBase`, a `Url`, or the string naming one |
+| iteration | registry by ascending canonical identifier, message in the root's declared order |
+| `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -962,10 +746,66 @@ assert.equal(message.byId('standard:55').asJs(), 'AAPL')
 assert.equal(message.getById('cme:5001'), null)
 ```
 
-## Errors
+`FixMsg`'s constructor is the one widening gate: a plain object is read through
+`Scalar.fromJs`, and the core alone types, orders, and validates it. Resolution,
+folding, merging, and sharding are the core's, on the [fix](../fix/index.md) pages.
 
-A native error crosses unchanged and arrives as a `TypeError` or `RangeError` carrying the message
-the Rust error produced, including its path or byte offset.
+## Edges
+
+- A native refusal -> a `TypeError` or `RangeError` carrying the Rust message,
+  including its path or byte offset.
+- Coding and xxHash streaming `reader`/`writer`, the transparent handle
+  wrappers, and `Hashed<H>` -> Rust-only, built on Rust `Read`/`Write`.
+- `gzip`, `zlib`, `zstd` -> `loads`/`dumps` over `Buffer`, plus `loadsRaw`/`dumpsRaw`
+  on `zlib`, reading and writing exactly what `node:zlib` does.
+- A named handle -> applies the coding its name declares; `IOBase.codec` asks
+  which one that is.
+- `TextOptions.withRownum` given a `number` -> rejected, never silently
+  narrowed; it is `bigint | null`.
+- A handler-backed handle in a `Worker` -> refused by name, because the handler
+  is called synchronously on the thread that supplied it.
+- `readRange` with an unknown option or a non-boolean `text` -> rejected;
+  `length` is checked as strictly as `offset` rather than rounded.
+- A range that cannot decode as text -> refused, not silently substituted.
+- A class member form other than the static `intoStructField` getter -> rejected;
+  it must resolve to a native Struct field whose root is non-null.
+- A `bigint` wider than 128 bits -> refused rather than rounded.
+- `time` and `duration` -> accept only `NAIVE`, while `datetime` also accepts a
+  timezone name or a `Timezone`.
+- Schemaless text -> natural ISO strings; `loads(..., { field })` restores the
+  declared exact type.
+- An invalid operand kind -> `TypeError` with `ERR_YGGDRYL_INVALID_ARITHMETIC`.
+- Overflow, division by zero, non-terminating exact decimal division ->
+  `RangeError` with `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`,
+  `ERR_YGGDRYL_DIVISION_BY_ZERO`, and `ERR_YGGDRYL_INEXACT_ARITHMETIC`.
+- `{ maxDepth }` -> the inclusive range 1 to 48; input-byte, node, and document
+  limits apply to codec loads, where a text parser runs.
+- Rust per-protocol view types (`HttpField`, `IcebergField`, and the sixteen
+  others) -> no JavaScript counterpart; `field.iceberg` answers the generic `Map`.
+- `rowSize`, `columnSize` -> lazy, cached while `open()` holds the media
+  metadata, invalidated by a write, recomputed after `close()`, and saturating
+  at `Number.MAX_SAFE_INTEGER`.
+- `isIo()` on a container exposing neither surface -> `false`.
+- A setting one encoding has -> `null` on the others, never invented.
+- `mergeByNames` -> rejected by overwrite and append, required non-empty by
+  merge, before any reader, table, batch, or iterable is touched.
+- `maxRowSize = 0` or `maxByteSize = 0` -> a deterministic synchronous
+  exception: append is a no-op, overwrite publishes the declared empty
+  `options.field`, and merge with a limit is rejected.
+- An empty record iterable -> requires `options.field`, having no inferable columns.
+- A failure after a complete commit cadence -> that prefix stays visible and
+  only the incomplete one is dropped.
+- Async record calls -> `Promise<void>`; synchronous record input and every
+  Arrow method -> `void`.
+- A snapshot id past 2^53 -> exact, because 64-bit identifiers cross as `bigint`.
+- A tag that is fractional or outside `i32` -> throws rather than narrowing into
+  a different tag; a `bigint`, object, or `null` key -> `TypeError`.
+- Registry mutation while a `FixMsg`, the process default, or an unfinished
+  `keys()` walk holds it -> throws; `registry.clone()` is the mutable deep copy.
+- FIX absence -> the native refusal from `fieldById` and its siblings, `null`
+  from the `get`-prefixed twins, but only for a key that parses.
+- A FIX folder that is not there -> loads as the empty registry and creates
+  nothing; a root still holding the retired `records/` folder throws.
 
 ```javascript
 const { DataType } = require('yggdryl')
@@ -973,3 +813,41 @@ const assert = require('node:assert/strict')
 
 assert.throws(() => DataType.from('decimal(0,0)'), /precision/)
 ```
+
+## Commands
+
+=== "JavaScript"
+
+    ```bash
+    npm install --prefix node
+    npm run --prefix node build:debug
+    npm test --prefix node
+    node --test "node/tests/types/*.test.js" node/tests/enums.test.js
+    node --test "node/tests/holder/*.test.js"
+    node --test "node/tests/media/*.test.js" node/tests/entrypoints.test.js
+    node --test "node/tests/text/*.test.js"
+    node --test "node/tests/uri/*.test.js"
+    node --test "node/tests/expression/*.test.js"
+    node --test "node/tests/xxhash/*.test.js"
+    node --test "node/tests/fix/*.test.js"
+    npm run --prefix node typecheck
+    python scripts/check_docs_examples.py --lang javascript
+    ```
+
+    `npm test` runs the suite and then `tsc --noEmit`, so the shipped `.d.ts`
+    declarations are checked against the tests that use them.
+
+    ```bash
+    npm run --prefix node bench:types
+    npm run --prefix node bench:types:defaults
+    npm run --prefix node bench:holder
+    npm run --prefix node bench:holder:io
+    npm run --prefix node bench:coding
+    npm run --prefix node bench:media
+    npm run --prefix node bench:media:text -- --records 5000 --iterations 3
+    npm run --prefix node bench:text
+    npm run --prefix node bench:xxhash
+    npm run --prefix node bench:fix
+    ```
+
+    Every benchmark reads its iteration count from `YGGDRYL_BENCH_ITERATIONS`.

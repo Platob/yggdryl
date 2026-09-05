@@ -10,11 +10,11 @@
 | Variants | `Ipc`, `Parquet`, `Avro` |
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
-| Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation rules are documented once in [Records](../holder/iobase/records.md) |
+| Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |
 | Settings | one shared [`RecordOptions`](options.md) behind every encoding |
 | Plain text | no wrapper; every `IOBase` reaches it through `IOMedia` and [`RecordOptions`](options.md) |
 | Content coding | the handle's business, not the encoding's |
-| Errors | an encoding with no implementation in this build is reported, never guessed at |
+| Errors | an encoding with no implementation in this build is reported, never guessed |
 | Bindings | Rust only; Python and JavaScript reach an encoding through the handle |
 
 ## Use
@@ -94,7 +94,7 @@ Choosing the encoding is the only thing that changes.
 
 ## Content coding
 
-A name that declares an encoding and a coding gives the same calls and different bytes underneath.
+The handle owns the coding: the same calls, different bytes underneath.
 
 === "Rust"
 
@@ -130,7 +130,7 @@ A name that declares an encoding and a coding gives the same calls and different
 
 ## Unimplemented encodings
 
-The error names the media type that was found and the ones that would have worked.
+The error names the media type found and the ones that would have worked.
 
 === "Rust"
 
@@ -152,7 +152,6 @@ The error names the media type that was found and the ones that would have worke
 - `text/csv` on `Media::open` -> error naming the found media type; no encoding is guessed.
 - Encoding already known -> `Media::ipc` and `Media::parquet` name a variant directly.
 - Handle name not trustworthy -> `Media::open_as` takes an explicit `MimeType`.
-- `trades.arrows.gz` -> the same calls, an IPC stream behind gzip framing.
 - Plain text -> no variant; `IOMedia` and [`RecordOptions`](options.md) on any handle.
 - `--lib media::tests` -> the enum's own module only; `media::ipc::tests` needs its own filter.
 
@@ -179,7 +178,7 @@ The error names the media type that was found and the ones that would have worke
 
 ## Performance
 
-`io_write_stateful/media_ipc` drives the generic enum over its IPC variant with a 4,096-row, four-column fixture. Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23).
+`io_write_stateful/media_ipc` drives the enum over its IPC variant with a 4,096-row, four-column fixture. Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23).
 
 | operation through `Media::Ipc` | estimate | throughput |
 | --- | ---: | ---: |
@@ -187,7 +186,7 @@ The error names the media type that was found and the ones that would have worke
 | append | 424 us | 9.67M rows/s |
 | keyed merge (upsert) | 6.41 ms | 639k rows/s |
 
-Criterion prepares the stored side for append and keyed merge outside the timer. Sub-millisecond estimates carry allocator variance and are regression anchors; the enum redirects to the same IPC implementation.
+Criterion prepares the stored side for append and merge outside the timer. Sub-millisecond estimates are regression anchors; the enum redirects to the same IPC implementation.
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/media_ipc

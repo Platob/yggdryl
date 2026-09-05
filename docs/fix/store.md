@@ -397,7 +397,7 @@ One local Windows x86_64 release run of the Criterion target, point estimates, o
 | `write_into`, two branches (1034 fields, 14 shards) | 150 ms |
 | explicit-location autoload of the seed (URL parse, folder, load) | 2.82 ms |
 
-`from_handle` scales with the number of shards rather than with the fields in them, and the split moved the seed load from 2.06 ms to 2.87 ms. The storage rows are filesystem-bound and move by tens of percent between runs.
+`from_handle` scales with shard count, not with the fields in them; the split moved the seed load from 2.06 ms to 2.87 ms. The storage rows are filesystem-bound and move by tens of percent between runs.
 
 ```bash
 cargo bench -p yggdryl --bench fix -- fix/store
