@@ -84,13 +84,13 @@ parameter_or_default: str | int = query_parameters.get("absent", 0)
 parameter_values: tuple[str, ...] = query_parameters.get_all("as of")
 parameter_keys: list[str] = list(query_parameters.keys())
 parameter_items: list[tuple[str, str]] = list(query_parameters.items())
-parameter_map: dict[str, str] = query_parameters.to_dict()
+parameter_map: dict[str, str] = query_parameters.into_dict()
 query_parameters["symbol"] = "AAPL"
 query_parameters.append("symbol", "MSFT")
 query_parameters.update({"venue": "XNAS"}, region="eu")
 popped_parameter: str | None = query_parameters.pop("region", None)
 del query_parameters["symbol"]
-query_text: str | None = query_parameters.to_query()
+query_text: str | None = query_parameters.into_query()
 file_url.set_query(query_text)
 assert query_parameters.decode
 assert len(query_parameters) >= 0

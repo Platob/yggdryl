@@ -65,13 +65,24 @@ const fn is_parameter_byte(byte: u8) -> bool {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Parameters<'uri> {
     pairs: Vec<(Cow<'uri, str>, Cow<'uri, str>)>,
     decoded: bool,
 }
 
 impl<'uri> Parameters<'uri> {
+    /// An empty view, spelling no pairs at all.
+    ///
+    /// Writing one back clears the query, which is what "no parameters" means.
+    #[must_use]
+    pub const fn new(decode: bool) -> Self {
+        Self {
+            pairs: Vec::new(),
+            decoded: decode,
+        }
+    }
+
     /// Read one query's pairs, decoding their escapes when asked.
     ///
     /// A pair carrying no `=` has an empty value, and empty pairs - the `&&` in
@@ -81,7 +92,7 @@ impl<'uri> Parameters<'uri> {
     ///
     /// Returns a parse error when `decode` is set and an escape does not stand
     /// for UTF-8.
-    pub fn parse(query: &'uri str, decode: bool) -> Result<Self> {
+    pub fn from_query(query: &'uri str, decode: bool) -> Result<Self> {
         let mut pairs = Vec::new();
         for pair in query.split('&').filter(|pair| !pair.is_empty()) {
             let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
@@ -227,7 +238,7 @@ impl<'uri> Parameters<'uri> {
     ///
     /// A decoding view encodes each key and value; a raw view already holds
     /// the query's own text and joins it unchanged.
-    pub fn to_query(&self) -> Option<SmolStr> {
+    pub fn into_query(&self) -> Option<SmolStr> {
         if self.pairs.is_empty() {
             return None;
         }

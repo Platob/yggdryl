@@ -173,7 +173,7 @@ mod parameters {
     #[test]
     fn editing_replaces_the_first_pair_and_drops_the_rest() {
         let mut parameters =
-            Parameters::parse("symbol=AAPL&venue=XNAS&symbol=MSFT", false).unwrap();
+            Parameters::from_query("symbol=AAPL&venue=XNAS&symbol=MSFT", false).unwrap();
 
         assert_eq!(
             parameters.insert("symbol", "TSLA").unwrap().as_deref(),
@@ -197,12 +197,12 @@ mod parameters {
 
         assert_eq!(parameters.insert("region", "us").unwrap(), None);
         assert_eq!(
-            parameters.to_query().as_deref(),
+            parameters.into_query().as_deref(),
             Some("venue=XNAS&region=us")
         );
 
         parameters.clear();
-        assert_eq!(parameters.to_query(), None);
+        assert_eq!(parameters.into_query(), None);
     }
 
     #[test]
@@ -224,19 +224,19 @@ mod parameters {
 
     #[test]
     fn a_raw_view_refuses_text_the_query_syntax_cannot_carry() {
-        let mut parameters = Parameters::parse("symbol=AAPL", false).unwrap();
+        let mut parameters = Parameters::from_query("symbol=AAPL", false).unwrap();
 
         for (key, value) in [("as of", "x"), ("note", "a&b"), ("note", "a=b")] {
             let error = parameters.insert(key, value).unwrap_err().to_string();
             assert!(!error.is_empty(), "{key}={value}");
         }
-        assert_eq!(parameters.to_query().as_deref(), Some("symbol=AAPL"));
+        assert_eq!(parameters.into_query().as_deref(), Some("symbol=AAPL"));
 
         // The same text is accepted by a decoding view, which encodes it.
-        let mut decoded = Parameters::parse("symbol=AAPL", true).unwrap();
+        let mut decoded = Parameters::from_query("symbol=AAPL", true).unwrap();
         decoded.insert("as of", "a&b").unwrap();
         assert_eq!(
-            decoded.to_query().as_deref(),
+            decoded.into_query().as_deref(),
             Some("symbol=AAPL&as%20of=a%26b")
         );
     }
@@ -250,8 +250,7 @@ mod parameters {
         assert_eq!(url.to_string(), "https://example.com/a/b?symbol=MSFT#part");
 
         // An empty view clears the component; setting it back restores it.
-        url.set_parameters(&Parameters::parse("", false).unwrap())
-            .unwrap();
+        url.set_parameters(&Parameters::new(false)).unwrap();
         assert_eq!(url.to_string(), "https://example.com/a/b#part");
         assert!(url.query(false).unwrap().is_none());
 
@@ -298,7 +297,7 @@ mod parameters {
 
         let mut edited = decoded.into_owned();
         edited.insert("ab", "3").unwrap();
-        assert_eq!(edited.to_query().as_deref(), Some("ab=3"));
+        assert_eq!(edited.into_query().as_deref(), Some("ab=3"));
     }
 
     #[test]

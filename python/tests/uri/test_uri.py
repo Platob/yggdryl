@@ -366,13 +366,13 @@ def test_parameters_read_the_query_as_its_pairs() -> None:
         ("symbol", "MSFT"),
         ("flag", ""),
     ]
-    assert parameters.to_dict() == {"symbol": "AAPL", "venue": "XNAS", "flag": ""}
+    assert parameters.into_dict() == {"symbol": "AAPL", "venue": "XNAS", "flag": ""}
     assert repr(parameters).startswith("Parameters({")
 
     with pytest.raises(KeyError):
         parameters["absent"]
 
-    assert Url("https://example.com/t").parameters().to_query() is None
+    assert Url("https://example.com/t").parameters().into_query() is None
     assert not Url("https://example.com/t?").parameters()
 
 
@@ -393,7 +393,7 @@ def test_parameters_write_through_to_the_url() -> None:
         del parameters["symbol"]
 
     parameters.update({"region": "eu"}, depth="10")
-    assert parameters.to_query() == "venue=XNAS&region=eu&depth=10"
+    assert parameters.into_query() == "venue=XNAS&region=eu&depth=10"
     assert parameters.pop("region") == "eu"
     assert parameters.pop("region", None) is None
     with pytest.raises(KeyError):

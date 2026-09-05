@@ -357,7 +357,7 @@ impl Uri {
     /// Returns a parse error when `decode` is set and an escape does not stand
     /// for UTF-8.
     pub fn parameters(&self, decode: bool) -> Result<Parameters<'_>> {
-        Parameters::parse(self.query.as_deref().unwrap_or_default(), decode)
+        Parameters::from_query(self.query.as_deref().unwrap_or_default(), decode)
     }
 
     /// Replace the query with the pairs `parameters` holds.
@@ -369,7 +369,7 @@ impl Uri {
     ///
     /// Returns the validation failure of the query the pairs spell.
     pub fn set_parameters(&mut self, parameters: &Parameters<'_>) -> Result<()> {
-        self.set_query(parameters.to_query().as_deref())
+        self.set_query(parameters.into_query().as_deref())
     }
 
     /// Replace the query text, or clear it with `None`.

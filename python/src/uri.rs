@@ -1653,7 +1653,8 @@ impl PyParameters {
     }
 
     /// Return the pairs as a `dict`, keeping the first value of a repeated key.
-    fn to_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+    #[allow(clippy::wrong_self_convention)]
+    fn into_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
         for (key, value) in self.pairs(py)?.iter() {
             if !dict.contains(key)? {
@@ -1664,8 +1665,9 @@ impl PyParameters {
     }
 
     /// Return the query component these pairs spell, or `None` when empty.
-    fn to_query(&self, py: Python<'_>) -> PyResult<Option<String>> {
-        Ok(self.pairs(py)?.to_query().map(Into::into))
+    #[allow(clippy::wrong_self_convention)]
+    fn into_query(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        Ok(self.pairs(py)?.into_query().map(Into::into))
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
