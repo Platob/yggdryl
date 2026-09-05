@@ -410,21 +410,21 @@ def test_scalar_defaults_share_exact_arrow_and_python_projection(
 
 def test_field_default_nullability_comes_from_native_core() -> None:
     # `decimal(18, 4)` is a decimal64, whose Arrow type id a PyArrow below 19
-    # cannot import at all, so the narrow-decimal half runs only where the
-    # release can spell it. `default_pyvalue` crosses no Arrow boundary, so it
-    # is asserted either way.
-    nullable = Field("amount", DataType.decimal(18, 4), nullable=True)
-    required = Field("amount", DataType.decimal(18, 4), nullable=False)
-
-    assert nullable.default_pyvalue() is None
-    assert required.default_pyvalue() == Decimal("0.0000")
-
+    # cannot import at all. `default_pyvalue` is no way around that: it builds
+    # the same PyArrow scalar `default_arrow_scalar` does and then converts it,
+    # so both cross the boundary and the whole narrow-decimal half runs only
+    # where the release can spell one.
     if hasattr(pa, "decimal64"):
+        nullable = Field("amount", DataType.decimal(18, 4), nullable=True)
+        required = Field("amount", DataType.decimal(18, 4), nullable=False)
+
         nullable_scalar = nullable.default_arrow_scalar()
         required_scalar = required.default_arrow_scalar()
         assert nullable_scalar.type == pa.decimal64(18, 4)
         assert not nullable_scalar.is_valid
+        assert nullable.default_pyvalue() is None
         assert required_scalar.as_py() == Decimal("0.0000")
+        assert required.default_pyvalue() == Decimal("0.0000")
 
     null_type = DataType("null")
     assert not null_type.default_arrow_scalar().is_valid
