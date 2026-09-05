@@ -15,7 +15,7 @@ from .types import (
     field,
 )
 from .types.scalar import scalar
-from .uri import Uri, Url, Urn
+from .uri import Parameters, Uri, Url, Urn
 
 __all__ = [
     "AsciiEnum",
@@ -28,6 +28,7 @@ __all__ = [
     "IOCursor",
     "MediaType",
     "MimeType",
+    "Parameters",
     "ProtocolField",
     "RecordOptions",
     "Scalar",

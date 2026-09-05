@@ -62,7 +62,10 @@ pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixReg
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
-pub use iobase::{DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty, skip_absent};
+pub use iobase::{
+    DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
+    skip_absent,
+};
 pub use iocursor::{Cursor, IOCursor};
 pub use iofile::IOFile;
 pub use iofolder::IOFolder;
@@ -107,7 +110,8 @@ pub use types::{
 };
 pub use union_mode::UnionMode;
 pub use uri::{
-    Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
+    Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, Url,
+    UrlParents, Urn,
 };
 pub use xxhash::{DigestFieldNames, DigestFields};
 

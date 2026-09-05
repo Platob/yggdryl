@@ -20,6 +20,7 @@ mod authority;
 mod extensions;
 mod glob;
 mod hive;
+mod parameters;
 mod parser;
 mod path;
 pub(crate) mod pattern;
@@ -28,6 +29,8 @@ mod urn;
 
 pub use authority::Authority;
 pub use extensions::Extensions;
+pub use parameters::Parameters;
+pub(crate) use parser::percent_decode;
 pub use path::{Parents, PathSegments, UriParents, UriPath};
 pub use url::{Url, UrlParents};
 pub use urn::Urn;
@@ -236,10 +239,10 @@ impl Uri {
                 "a path without authority must not start with two slashes",
             ));
         }
-        if let Some(query) = self.query() {
+        if let Some(query) = self.query.as_deref() {
             validate_component(query, "uri query", 0, is_query_fragment_byte)?;
         }
-        if let Some(fragment) = self.fragment() {
+        if let Some(fragment) = self.fragment.as_deref() {
             validate_component(fragment, "uri fragment", 0, is_query_fragment_byte)?;
         }
         Ok(())
@@ -310,13 +313,94 @@ impl Uri {
     }
 
     /// Return query text without `?`, if it was present.
-    pub fn query(&self) -> Option<&str> {
-        self.query.as_deref()
+    ///
+    /// `decode` chooses which text: the query's own bytes, or the text its
+    /// percent escapes stand for. Decoding borrows unless an escape is there
+    /// to decode, and it decodes the component as text - `%26` becomes a
+    /// literal `&`, not a new pair - so [`parameters`](Self::parameters) is
+    /// what reads a query as its pairs.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when `decode` is set and an escape does not stand
+    /// for UTF-8.
+    pub fn query(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.query
+            .as_deref()
+            .map(|query| decoded_component(query, decode, "uri query"))
+            .transpose()
+    }
+
+    /// Return the path as text, decoding its escapes when asked.
+    ///
+    /// The path keeps its own syntax: `%2F` inside a segment decodes to a
+    /// literal `/` in the returned text rather than to a segment boundary, so
+    /// [`path_segments`](Self::path_segments) stays the way to walk structure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when `decode` is set and an escape does not stand
+    /// for UTF-8.
+    pub fn path_text(&self, decode: bool) -> Result<Cow<'_, str>> {
+        self.path.text(decode)
+    }
+
+    /// Address the query as the `key=value` pairs it spells.
+    ///
+    /// The view borrows this URI, so it reads without copying the query, and
+    /// [`set_parameters`](Self::set_parameters) is what writes an edited view
+    /// back. A URI with no query answers with an empty view rather than an
+    /// error, because "no pairs" is what no query means.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when `decode` is set and an escape does not stand
+    /// for UTF-8.
+    pub fn parameters(&self, decode: bool) -> Result<Parameters<'_>> {
+        Parameters::parse(self.query.as_deref().unwrap_or_default(), decode)
+    }
+
+    /// Replace the query with the pairs `parameters` holds.
+    ///
+    /// A view holding no pair clears the query. An error leaves the URI
+    /// unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the validation failure of the query the pairs spell.
+    pub fn set_parameters(&mut self, parameters: &Parameters<'_>) -> Result<()> {
+        self.set_query(parameters.to_query().as_deref())
+    }
+
+    /// Replace the query text, or clear it with `None`.
+    ///
+    /// The value is the component itself, without `?`. An error leaves the URI
+    /// unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the text is not a valid query component.
+    pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
+        let mut candidate = self.clone();
+        candidate.query = query.map(SmolStr::from);
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
     }
 
     /// Return fragment text without `#`, if it was present.
-    pub fn fragment(&self) -> Option<&str> {
-        self.fragment.as_deref()
+    ///
+    /// `decode` reads as it does on [`query`](Self::query).
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when `decode` is set and an escape does not stand
+    /// for UTF-8.
+    pub fn fragment(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.fragment
+            .as_deref()
+            .map(|fragment| decoded_component(fragment, decode, "uri fragment"))
+            .transpose()
     }
 
     /// Iterate over non-empty path segments without allocating.

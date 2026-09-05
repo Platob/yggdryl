@@ -19,6 +19,7 @@ from yggdryl import (
     IOBase,
     MediaType,
     MimeType,
+    Parameters,
     ProtocolField,
     RecordOptions,
     Statement,
@@ -69,6 +70,31 @@ joined_uri: Uri = file_uri.joinpath("archive", Path("events.parquet"))
 divided_uri: Uri = file_uri / "child"
 path: str = file_uri.into_path()
 path_protocol: str = os.fspath(file_url)
+
+# Components answer raw text or the text their escapes stand for, and the query
+# answers as the pairs it spells.
+raw_query: str | None = file_url.query()
+decoded_query: str | None = file_url.query(decode=True)
+decoded_fragment: str | None = file_url.fragment(True)
+decoded_path: str = file_url.path_text(decode=True)
+query_parameters: Parameters = file_url.parameters(decode=True)
+parameter_value: str = query_parameters.setdefault("as of", "2026-01-02")
+parameter_or_none: str | None = query_parameters.get("absent")
+parameter_or_default: str | int = query_parameters.get("absent", 0)
+parameter_values: tuple[str, ...] = query_parameters.get_all("as of")
+parameter_keys: list[str] = list(query_parameters.keys())
+parameter_items: list[tuple[str, str]] = list(query_parameters.items())
+parameter_map: dict[str, str] = query_parameters.to_dict()
+query_parameters["symbol"] = "AAPL"
+query_parameters.append("symbol", "MSFT")
+query_parameters.update({"venue": "XNAS"}, region="eu")
+popped_parameter: str | None = query_parameters.pop("region", None)
+del query_parameters["symbol"]
+query_text: str | None = query_parameters.to_query()
+file_url.set_query(query_text)
+assert query_parameters.decode
+assert len(query_parameters) >= 0
+assert ("venue" in query_parameters) or True
 
 urn: Urn = Uri("urn:isbn:9780131103627").into_urn()
 uri_again: Uri = urn.into_uri()

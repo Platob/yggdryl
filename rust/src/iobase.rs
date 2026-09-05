@@ -47,6 +47,17 @@ use crate::holder::Holder;
 /// Default byte-stream batch size used by core readers and language bindings.
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
 
+/// Default number of bytes one transport fetch asks the backing store for.
+///
+/// [`DEFAULT_STREAM_BATCH_SIZE`] shapes what a reader hands *out*; this shapes
+/// what a reader asks *for*. The two are deliberately different sizes: a
+/// decoder pulls in its own small increments - a gzip stream reads 32 KiB at a
+/// time - and against an object store every one of those pulls is a round trip.
+/// Buffering the transport at this size turns a gigabyte-scale scan from tens
+/// of thousands of requests into a few hundred, without changing the decoded
+/// batch shape or the memory a read holds beyond one window per open stream.
+pub const DEFAULT_FETCH_BYTE_SIZE: usize = 1024 * 1024;
+
 /// Bytes copied per step when moving between two handles.
 const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 

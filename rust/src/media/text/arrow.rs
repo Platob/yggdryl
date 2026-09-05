@@ -1,6 +1,6 @@
 //! `text/plain` rows through the shared Scalar/Arrow record boundary.
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -103,7 +103,7 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     counting.set_max_record_byte_size(Some(0));
     let codings = handle.media_type().encodings().to_vec();
     let raw: Box<dyn Read + '_> =
-        Box::new(handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?);
+        Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
     let source = NonemptyDecodedReader::new(raw, codings);
     let records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
     let mut rows = 0_u64;
@@ -134,6 +134,17 @@ fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
     let mut buffer = Buffer::new();
     handle.copy_into(&mut buffer)?;
     Ok(Holder::buffer(buffer))
+}
+
+/// Buffer one transport at the fetch window every decoded read pulls through.
+///
+/// A decoder asks its source for its own internal window - 32 KiB for gzip -
+/// and on a remote store each of those asks is a round trip. This is the only
+/// place the text reader touches the transport, so it is the one place that
+/// has to hold a window big enough to make a scan cost requests proportional
+/// to the object's size rather than to the decoder's appetite.
+fn fetched<R: Read>(source: R) -> BufReader<R> {
+    BufReader::with_capacity(crate::DEFAULT_FETCH_BYTE_SIZE, source)
 }
 
 /// One lazily opened filesystem stream retained for the complete decode.
@@ -172,13 +183,15 @@ impl BoundReader {
                 return Err(std::io::Error::other(error));
             }
         };
-        let mut stream = BoundStream::new(stream);
-        let mut first = [0_u8; 1];
-        if stream.read(&mut first)? == 0 {
+        let mut stream = fetched(BoundStream::new(stream));
+        // One fetch answers the emptiness question and is the first window the
+        // decoder reads from, so an empty object costs no extra request and a
+        // present one is not probed a byte at a time.
+        if stream.fill_buf()?.is_empty() {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(first).chain(stream));
+        let mut reader: Box<dyn Read + Send> = Box::new(stream);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader_send(reader);
         }
@@ -249,16 +262,16 @@ impl NonemptySendDecodedReader {
     }
 
     fn initialize(&mut self) -> std::io::Result<bool> {
-        let Some(mut source) = self.source.take() else {
+        let Some(source) = self.source.take() else {
             self.done = true;
             return Ok(false);
         };
-        let mut first = [0_u8; 1];
-        if source.read(&mut first)? == 0 {
+        let mut source = fetched(source);
+        if source.fill_buf()?.is_empty() {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + Send> = Box::new(std::io::Cursor::new(first).chain(source));
+        let mut reader: Box<dyn Read + Send> = Box::new(source);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader_send(reader);
         }
@@ -307,17 +320,16 @@ impl<'source> NonemptyDecodedReader<'source> {
     }
 
     fn initialize(&mut self) -> std::io::Result<bool> {
-        let Some(mut source) = self.source.take() else {
+        let Some(source) = self.source.take() else {
             self.done = true;
             return Ok(false);
         };
-        let mut first = [0_u8; 1];
-        if source.read(&mut first)? == 0 {
+        let mut source = fetched(source);
+        if source.fill_buf()?.is_empty() {
             self.done = true;
             return Ok(false);
         }
-        let mut reader: Box<dyn Read + 'source> =
-            Box::new(std::io::Cursor::new(first).chain(source));
+        let mut reader: Box<dyn Read + 'source> = Box::new(source);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader(reader);
         }
@@ -1066,8 +1078,8 @@ pub(crate) fn append_arrow_reader(
         let mut encoder = codec.writer_with_level(&mut encoded, options.level());
         let mut suffix = Vec::new();
         if !handle.is_empty() {
-            let source = handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)?;
-            let mut decoder = codec.reader(source);
+            let source = handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?;
+            let mut decoder = codec.reader(fetched(source));
             let mut chunk = vec![0; crate::DEFAULT_STREAM_BATCH_SIZE];
             loop {
                 let read = decoder.read(&mut chunk)?;

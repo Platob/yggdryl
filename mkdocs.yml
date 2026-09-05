@@ -186,6 +186,7 @@ nav:
     - uri/index.md
     - Path: uri/path.md
     - URL and URN: uri/url-urn.md
+    - Query parameters: uri/parameters.md
     - Patterns: uri/patterns.md
   - Arrow:
     - arrow/index.md

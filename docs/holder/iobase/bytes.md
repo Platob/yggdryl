@@ -124,7 +124,16 @@ The bindings expose the same lazy iterator with a 65,536-byte default batch.
     assert.equal(cursor.tell(), 3)
     ```
 
-`ByteStream` implements `std::io::Read`; it never opens a coded handle, decoding straight from the encoded source and retaining no decoded pages.
+`ByteStream` implements `std::io::Read`; it never opens a coded handle, decoding straight from the encoded source and retaining no decoded pages. A `Read` call is capped at the stream's `batch_size`, so that argument is what a record read asks the store for.
+
+### Fetch window
+
+`DEFAULT_STREAM_BATCH_SIZE` (64 KiB) shapes what a reader hands *out*; `DEFAULT_FETCH_BYTE_SIZE` (1 MiB) shapes what it asks *for*. The two differ because a decoder pulls in its own small increments - a gzip stream reads 32 KiB at a time - and against an object store every pull is a round trip. Compressed record reads buffer the transport at the fetch window, so a scan costs requests proportional to the object, not to the decoder's appetite: one open, one ask per window, and the emptiness test rides the first window instead of a one-byte request.
+
+| Read of a 1 GiB `.log.gz` | Asks of the store |
+| --- | --- |
+| decoder-sized pulls | ~32768 |
+| one fetch window each | ~1024 |
 
 ## Built from what you already hold
 
