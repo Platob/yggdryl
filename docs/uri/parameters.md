@@ -121,7 +121,7 @@ A decoding view answers with the text the escapes stand for, and encodes what it
 ## Edges
 
 - No query at all -> an empty view, not an error; writing an empty view clears the component.
-- `?flag` -> one pair with an empty value; `parameters["flag"] == ""`.
+- `?flag` -> one pair with an empty value; `parameters["flag"] == ""`. Written back it spells `flag=`, because a pair is written as one.
 - `?a=1&&b=2` -> two pairs; an empty pair is not one.
 - `%2F` in a key or value -> a literal `/`; the query has no structure a separator could change.
 - `%FF` -> a raw view reads it; a decoding view refuses it, because it stands for no UTF-8 text.

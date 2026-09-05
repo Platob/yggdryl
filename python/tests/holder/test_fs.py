@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip as stdlib_gzip
 import io
 import pathlib
 from typing import Any
@@ -611,3 +612,79 @@ class TestTables:
         # Every byte of that table went through the caller's own handler.
         assert any(name.endswith(".metadata.json") for name in handler.files)
         assert any(name.endswith(".parquet") for name in handler.files)
+
+
+class _CountingSource(io.BytesIO):
+    """A backend stream that records the size of every read asked of it."""
+
+    def __init__(self, data: bytes, reads: list[int]) -> None:
+        super().__init__(data)
+        self._reads = reads
+
+    def readinto(self, buffer: Any) -> int:  # type: ignore[override]
+        self._reads.append(len(buffer))
+        return super().readinto(buffer)
+
+    def read(self, size: int | None = -1) -> bytes:
+        self._reads.append(len(self.getvalue()) if size is None or size < 0 else size)
+        return super().read(size)
+
+
+class CountingHandler(MemoryHandler):
+    """``MemoryHandler`` that records what each read asks the backend for."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[int] = []
+
+    def open_input_stream(self, path: str) -> pa.NativeFile:
+        key = path.strip("/")
+        self.input_stream_opens.append(key)
+        if key not in self.files:
+            raise FileNotFoundError(path)
+        return pa.PythonFile(_CountingSource(self.files[key], self.reads), mode="r")
+
+
+def _log_payload(lines: int) -> tuple[bytes, int]:
+    """Log text gzip cannot shrink away, so the object spans fetch windows."""
+    alphabet = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    state = 0x2545F491
+    body = bytearray()
+    for index in range(lines):
+        body += b"[INFO] id=%d " % index
+        for _ in range(1024):
+            state ^= (state << 13) & 0xFFFFFFFF
+            state ^= state >> 17
+            state ^= (state << 5) & 0xFFFFFFFF
+            body.append(alphabet[state % len(alphabet)])
+        body += b"\n"
+    return bytes(body), lines
+
+
+def test_a_compressed_log_is_read_one_fetch_window_at_a_time() -> None:
+    """A foreign filesystem is asked for windows, not for decoder-sized reads.
+
+    A gzip stream pulls 32 KiB at a time, and on an object store - or across
+    this binding, where every read is a call into Python - that is what a scan
+    would cost without a window between the transport and the decoder.
+    """
+    plain, lines = _log_payload(2_000)
+    handler = CountingHandler()
+    handler.files["logs/app.log.gz"] = stdlib_gzip.compress(plain)
+    encoded_size = len(handler.files["logs/app.log.gz"])
+    assert encoded_size > 1024 * 1024, encoded_size
+
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
+
+    handle = IOBase.from_fs(pafs.PyFileSystem(handler), "logs/app.log.gz")
+    table = handle.read_arrow_reader(options=options).read_all()
+
+    assert table.num_rows == lines
+    assert handler.input_stream_opens == ["logs/app.log.gz"]
+    assert handler.input_file_opens == []
+    # One ask per window, not one per decoder pull, and no one-byte probe.
+    windows = -(-encoded_size // (1024 * 1024))
+    assert len(handler.reads) <= windows + 1, handler.reads
+    assert min(handler.reads) > 64 * 1024, handler.reads
