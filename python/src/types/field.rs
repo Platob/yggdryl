@@ -1452,6 +1452,24 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::FIELD)
     }
 
+    /// Returns the live row-digest property view.
+    #[getter]
+    fn digest(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::DIGEST)
+    }
+
+    /// Returns the live generic field-identity property view.
+    #[getter]
+    fn identity(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::IDENTITY)
+    }
+
+    /// Returns the live generic partition-field property view.
+    #[getter]
+    fn partition(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PARTITION)
+    }
+
     /// Returns the live Amazon S3 property view.
     #[getter]
     fn s3(slf: Py<Self>) -> PyProtocolField {
@@ -1486,6 +1504,42 @@ impl PyField {
     #[getter]
     fn pandas(slf: Py<Self>) -> PyProtocolField {
         PyProtocolField::new(slf, CoreScheme::PANDAS)
+    }
+
+    /// Returns the effective row-digest components in declaration order.
+    #[getter]
+    fn digest_fields(&self) -> Vec<Self> {
+        self.inner
+            .digest_fields()
+            .cloned()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the names of the effective row-digest components.
+    #[getter]
+    fn digest_field_names(&self) -> Vec<&str> {
+        self.inner.digest_field_names().collect()
+    }
+
+    /// Returns how many fields contribute to each row digest.
+    #[getter]
+    fn digest_field_len(&self) -> usize {
+        self.inner.digest_field_len()
+    }
+
+    /// Returns whether any child explicitly declares the digest-component role.
+    #[getter]
+    fn has_digest_components(&self) -> bool {
+        self.inner.has_digest_components()
+    }
+
+    /// Returns this struct root holding only its effective digest components.
+    fn only_digest_fields(&self) -> PyResult<Self> {
+        self.inner
+            .only_digest_fields()
+            .map(Self::from_inner)
+            .map_err(value_error)
     }
 
     /// Returns whether this field carries the values a path spells out.

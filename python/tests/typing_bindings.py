@@ -30,6 +30,7 @@ from yggdryl import (
     Scalar,
     types,
     fix,
+    xxhash,
 )
 from yggdryl.coding import gzip, zlib, zstd
 from yggdryl.media import avro, iceberg
@@ -160,6 +161,15 @@ cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
+filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
+    Field(
+        "rows",
+        DataType.from_fields([Field("value", "int64")]),
+        nullable=False,
+    ),
+    source_batch,
+    force=True,
+)
 default_dtype_value: object = DataType("int32").default_pyvalue()
 default_field_value: object = field.default_pyvalue()
 default_dtype_hint: object = DataType("int32").default_pyhint()
@@ -413,6 +423,9 @@ location: Url | None = field.location
 property_value: str | None = field.get_property("postgres", "type")
 properties: list[tuple[str, str]] = list(field.property_iter("postgres"))
 iceberg_properties: ProtocolField = field.iceberg
+digest_properties: ProtocolField = field.digest
+identity_properties: ProtocolField = field.identity
+partition_properties: ProtocolField = field.partition
 postgres_properties: ProtocolField = field.protocol("POSTGRES")
 protocol_scheme: str = iceberg_properties.scheme
 protocol_prefix: str = iceberg_properties.prefix
@@ -429,6 +442,17 @@ protocol_present: bool = "doc" in iceberg_properties
 protocol_len: int = len(iceberg_properties)
 del iceberg_properties["doc"]
 iceberg_properties.clear()
+
+digest_root: Field = Field(
+    "row",
+    DataType.from_fields([types.int32("id", nullable=False)]),
+    nullable=False,
+)
+digest_children: list[Field] = digest_root.digest_fields
+digest_names: list[str] = digest_root.digest_field_names
+digest_count: int = digest_root.digest_field_len
+digest_explicit: bool = digest_root.has_digest_components
+digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(
     "row",
@@ -465,6 +489,8 @@ assert protocol_display == "Last trade"
 assert location
 assert property_value
 assert properties
+assert identity_properties is not None
+assert partition_properties is not None
 assert postgres_properties
 assert protocol_scheme == "iceberg"
 assert protocol_prefix == "iceberg"

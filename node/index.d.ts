@@ -953,6 +953,12 @@ export declare class Field {
    * a schema node reaches a nested child.
    */
   get fieldProperties(): JsProtocolField
+  /** The live row-digest property view. */
+  get digest(): JsProtocolField
+  /** The live generic field-identity property view. */
+  get identity(): JsProtocolField
+  /** The live generic partition-field property view. */
+  get partition(): JsProtocolField
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolField
   /** The live Google Cloud Storage property view. */
@@ -965,6 +971,16 @@ export declare class Field {
   get polars(): JsProtocolField
   /** The live pandas property view. */
   get pandas(): JsProtocolField
+  /** The effective row-digest components, in declaration order. */
+  digestFields(): Array<Field>
+  /** The names of the effective row-digest components. */
+  digestFieldNames(): Array<string>
+  /** Number of fields contributing to each row digest. */
+  get digestFieldLen(): number
+  /** Whether any child explicitly declares the digest-component role. */
+  get hasDigestComponents(): boolean
+  /** Return this struct root holding only its effective digest components. */
+  onlyDigestFields(): Field
   /** Whether this field carries the values a path spells out. */
   get isPartition(): boolean
   /** Mark or unmark this field as one a path spells out. */

@@ -610,6 +610,84 @@ Iceberg values - hash their canonical rendering through the same algorithm, so
 `Field::stable_hash` and `xxhash::xxh3` of that rendering are one number reached two
 ways.
 
+## Filling digest holders
+
+A digest holder is a field carrying `digest:role=holder`. Every resumable state fills all
+holders in one Arrow `RecordBatch` under an authoritative non-null Struct root:
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::cast::AsArray as _;
+use arrow_array::types::UInt64Type;
+use arrow_array::{RecordBatch, StringArray};
+use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+use yggdryl::xxhash::Xxh3;
+use yggdryl::{DataType, DigestAlgorithm, Field, Scalar};
+
+let symbol = Field::new("symbol", DataType::Utf8, false);
+let mut holder = Field::new("row_digest", DataType::UInt64, false);
+holder.as_digest_mut().set_holder()?;
+holder.as_digest_mut().set_paths(["symbol"])?;
+holder
+    .as_digest_mut()
+    .set_algorithm(DigestAlgorithm::Xxh3)?;
+let root = DataType::from_fields([symbol, holder])?.required_field("row");
+
+// The target root adds the missing holder in its declared position.
+let batch = RecordBatch::try_new(
+    Arc::new(Schema::new(vec![ArrowField::new(
+        "symbol",
+        ArrowDataType::Utf8,
+        false,
+    )])),
+    vec![Arc::new(StringArray::from(vec!["AAPL"]))],
+)?;
+
+let mut state = Xxh3::with_seed(7);
+state.write_bytes(b"an unrelated running stream");
+let running = state.as_u64();
+let filled = state.fill_arrow_batch(&root, batch, false)?;
+
+let mut expected = Xxh3::with_seed(7);
+expected.write_scalar(&Scalar::from_sequence([Scalar::from("AAPL")]));
+assert_eq!(
+    filled.column(1).as_primitive::<UInt64Type>().value(0),
+    expected.as_u64(),
+);
+assert_eq!(state.as_u64(), running, "filling does not consume the state");
+```
+
+`digest:paths` is a canonical JSON array of unique, non-empty paths stored on a holder, for
+example `["id","line.price"]`. Its order is the
+hash-feed order. Paths are relative to the containing Struct: an exact whole field name wins,
+then dots descend through Struct fields only. A list, map, union, or other value may be selected
+whole but cannot be traversed. An absent key uses the containing Struct's component fallback;
+`[]` deliberately hashes an empty sequence.
+
+Nested Struct holders are filled deepest first. Selecting a nested Struct with one direct holder
+feeds that holder's typed `Scalar` instead of hashing the Struct again. With no holder the Struct
+feeds normally; multiple direct holders are ambiguous and must be replaced by a path to the
+intended nested holder. A holder cannot select itself or another holder in the same Struct.
+
+Each visible row is framed as an ordered `Scalar::Sequence` and streamed through the state's
+canonical value feed. With `force=false`, a cell equal to its holder Field's default is computed
+and every non-default value is trusted and preserved. With `force=true`, every visible holder is
+recomputed. Thus a nullable holder treats null as unfilled while preserving a present zero; a
+required integer holder treats zero as unfilled. Children hidden below a null Struct are not read
+or changed. An existing non-default value carries no proof that its declared algorithm, seed, or
+secret produced it; set `force` when that provenance is not trusted.
+
+`digest:algorithm` is the canonical algorithm token a holder explicitly requests: `xxh32`,
+`xxh64`, `xxh3-64`, or `xxh3-128`. Without it, a receiver whose output width fits the holder is
+used with its seed and secret. Otherwise the holder type selects the best fresh default: `uint32`
+selects XXH32, `uint64` XXH3-64, and `fixed_size_binary(16)` XXH3-128. An explicit algorithm must
+fit the same storage mapping. If it differs from the receiver, its state is fresh and unseeded
+because the receiver's configuration
+belongs to a different algorithm. Python spells the operation
+`state.fill_arrow_batch(root, batch, force=True)`; JavaScript spells it
+`state.fillArrowBatch(root, batch, true)` and copies the batch through Arrow IPC.
+
 ## Arrow row digests
 
 !!! note "Rust only"
@@ -621,34 +699,52 @@ use std::sync::Arc;
 
 use arrow_array::cast::AsArray as _;
 use arrow_array::types::UInt64Type;
-use arrow_array::{Int64Array, RecordBatch, StringArray};
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::DigestAlgorithm;
+use arrow_array::{Int64Array, RecordBatch, StringArray, UInt64Array};
+use arrow_schema::Schema;
+use yggdryl::{DataType, DigestAlgorithm, Field};
 use yggdryl::xxhash::arrow::row_digests;
+
+let mut symbol = Field::new("symbol", DataType::Utf8, false);
+symbol.as_digest_mut().set_component()?;
+let quantity = Field::new("quantity", DataType::Int64, false);
+let mut stored = Field::new("row_digest", DataType::UInt64, false);
+stored.as_digest_mut().set_holder()?;
 
 let batch = RecordBatch::try_new(
     Arc::new(Schema::new(vec![
-        ArrowField::new("symbol", ArrowDataType::Utf8, false),
-        ArrowField::new("quantity", ArrowDataType::Int64, false),
+        symbol.into_arrow()?,
+        quantity.into_arrow()?,
+        stored.into_arrow()?,
     ])),
     vec![
         Arc::new(StringArray::from(vec!["AAPL", "MSFT", "AAPL"])),
-        Arc::new(Int64Array::from(vec![100, 250, 100])),
+        Arc::new(Int64Array::from(vec![100, 250, 999])),
+        Arc::new(UInt64Array::from(vec![11, 22, 33])),
     ],
 )?;
 
 let digests = row_digests(&batch, DigestAlgorithm::Xxh3)?;
 let digests = digests.as_primitive::<UInt64Type>();
-// Identical rows answer identical digests, which is what makes this a dedup
-// key, a change-detection column, and a hash-join key.
+// `symbol` is the explicit component. Differences in the unmarked quantity
+// and the prior holder do not feed the digest.
 assert_eq!(digests.value(0), digests.value(2));
 assert_ne!(digests.value(0), digests.value(1));
 ```
 
-A row is the ordered sequence of its columns, the canonical row shape everywhere in this
-project, so the answer equals feeding each row's `Scalar` through `write_bytes` - without
-building one. That equality is the contract and the test, on every datatype family, nulls,
-nested structs, lists, maps, dictionaries, unions, and geospatial values.
+The selected values remain an ordered `Scalar::Sequence` in schema order, including its element-count
+framing. One or more fields carrying `digest:role=component` are the exact selection. If there is no
+explicit component, every field except `digest:role=holder` is selected; an unmarked schema therefore
+keeps the full-row behavior. A schema containing only holders hashes the empty sequence for every
+row. Field names, roles, and other metadata choose the values but do not enter the byte feed.
+
+That sequence-feed equality is the contract and the test on every datatype family, nulls, nested
+structs, lists, maps, dictionaries, unions, and geospatial values. The
+[`DigestField` selection helpers](types.md#digest-components-and-holders) expose the same effective
+component set without hashing a batch.
+
+`row_digests` always uses its `algorithm` argument and the direct role selection above. It does not
+resolve holder-local `digest:paths` or `digest:algorithm`; those configure
+[`fill_arrow_batch`](#filling-digest-holders) only.
 
 `column_digests` is the single-column form: each answer is the cell's own value, with no row
 framing around it. Nulls feed the null tag, so a null and an empty string never collide.
@@ -663,7 +759,9 @@ wide enough to hold.
 `node/benchmarks/xxhash.js` measure the same protocol from the three sides. One containerized
 x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO;
 CPython 3.11.15; Node 22.22.2), `cargo bench --bench xxhash`. Fixtures are built once, outside
-every measured loop.
+every measured loop. The Arrow groups report rows per second for missing/default holders,
+preserved populated holders, and forced recomputation; the JavaScript rows include its required IPC
+copy.
 
 ### Throughput per algorithm and size
 

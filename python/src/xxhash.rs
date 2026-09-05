@@ -11,6 +11,8 @@
 //! Arrow buffer - is read through one bounded window, so nothing allocates
 //! proportionally to the payload.
 
+use arrow_array::RecordBatch as ArrowRecordBatch;
+use arrow_pyarrow::{FromPyArrow, ToPyArrow};
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -19,6 +21,7 @@ use pyo3::types::{PyBytes, PyString, PyType};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
+use crate::types::field::core_field_from_value;
 use crate::types::scalar::PyScalar;
 use crate::value_error;
 
@@ -333,6 +336,27 @@ macro_rules! state {
             /// Feed one value's canonical byte representation.
             fn write_scalar(&mut self, value: &PyScalar) {
                 self.inner.write_scalar(&value.inner);
+            }
+
+            /// Fill default digest holders in one `PyArrow` `RecordBatch`.
+            ///
+            /// The root Field owns holder/component/path metadata. Existing
+            /// non-default holders are retained, and this running state is not
+            /// consumed or reset.
+            #[pyo3(signature = (root, batch, *, force=false))]
+            fn fill_arrow_batch<'py>(
+                &self,
+                py: Python<'py>,
+                root: &Bound<'py, PyAny>,
+                batch: &Bound<'py, PyAny>,
+                force: bool,
+            ) -> PyResult<Bound<'py, PyAny>> {
+                let root = core_field_from_value(root)?;
+                let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+                self.inner
+                    .fill_arrow_batch(&root, batch, force)
+                    .map_err(value_error)?
+                    .to_pyarrow(py)
             }
 
             /// Answer the digest of everything fed so far.

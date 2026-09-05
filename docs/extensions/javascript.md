@@ -63,6 +63,12 @@ name declares without being told, and `IOBase.codec` is what asks it which one t
 `number` - a 32-bit value always fits one exactly - and the wider algorithms answer
 `bigint`, because they do not.
 
+Each resumable state also exposes `fillArrowBatch(root, batch, force = false)`. The root
+Field's digest metadata selects the row values, default holder cells are filled, and populated
+holders are preserved unless `force` is true. The state supplies its algorithm, seed, and secret,
+but bytes previously written to it are ignored and the state remains unchanged. Arrow JS batches
+cross this operation through copied Arrow IPC in both directions.
+
 ```javascript
 const assert = require('node:assert/strict')
 const { Scalar, xxhash } = require('yggdryl')
@@ -440,33 +446,70 @@ const assert = require('node:assert/strict')
 const field = new Field('price', 'int64', false)
 field.iceberg.set('doc', 'closing price')
 field.postgres.update({ type: 'numeric' })
+field.digest.set('role', 'component')
+field.identity.update({ role: 'primary', nulls: 'distinct' })
+field.partition.update({ transform: 'bucket[16]', order: '0' })
 
 assert.equal(field.iceberg.get('doc'), 'closing price')
 assert.deepEqual([...field.postgres], [['type', 'numeric']])
 assert.equal(field.iceberg.size, 1)
 assert.equal(field.postgres.has('doc'), false)
+assert.equal(field.digest.get('role'), 'component')
+assert.equal(field.identity.get('role'), 'primary')
+assert.equal(field.partition.get('transform'), 'bucket[16]')
 
 // The bare name is all the view needs; the full key is what the field stores.
 assert.equal(field.iceberg.key('doc'), 'iceberg:doc')
 assert.equal(field.get('iceberg:doc'), 'closing price')
-assert.equal(field.size, 2)
+assert.equal(field.size, 7)
 
 assert.equal(field.iceberg.delete('doc'), true)
 assert.equal(field.iceberg.size, 0)
 ```
 
-Every well-known protocol is a getter - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`, and
-the rest - and `field.protocol(name)` takes one that is only known at runtime. There is no `https`
+Every well-known protocol is a getter - `digest`, `identity`, `partition`, `iceberg`, `postgres`,
+`http`, `arrow`, `spark`, `s3`, and the rest - and `field.protocol(name)` takes one that is only
+known at runtime. `identity` and `partition` accept arbitrary inert string metadata; they are not
+restricted to one key flag. The `digest` role accepts only `'holder'` or `'component'`. There is no
+`https`
 getter, because HTTPS shares the canonical `http:` namespace. Rust spells the same accessors
 `as_iceberg()` / `as_iceberg_mut()`, and two of them differ by more than the prefix: `arrow` is
 `as_arrow_properties` and `fieldProperties` is `as_field_properties`, because `as_arrow` and
 `as_field` already mean something else on a Rust field.
 
 !!! note "Rust-only"
-    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, `DigestField`,
+    `IdentityField`, `PartitionField`, and the sixteen others, each
     carrying its protocol's typed vocabulary, and each dereferencing to the whole `Field` it borrows
     - have no JavaScript counterpart yet. `field.iceberg` answers the generic property `Map` above,
     and the validated HTTP values remain accessors on the field itself.
+
+A Struct field's direct children define a row digest. Explicit `component` roles select the exact
+set; without one, every child except a `holder` contributes. Both rules retain declaration order.
+
+```javascript
+const { DataType, Field } = require('yggdryl')
+const assert = require('node:assert/strict')
+
+const identifier = new Field('id', 'int64', false)
+const price = new Field('price', 'int64', false)
+const holder = new Field('row_digest', 'uint64', false)
+holder.digest.set('role', 'holder')
+
+const fallback = new Field(
+  'row', DataType.fromFields([identifier, price, holder]), false,
+)
+assert.deepEqual(fallback.digestFieldNames(), ['id', 'price'])
+assert.equal(fallback.hasDigestComponents, false)
+
+identifier.digest.set('role', 'component')
+const explicit = new Field(
+  'row', DataType.fromFields([identifier, price, holder]), false,
+)
+assert.deepEqual(explicit.digestFieldNames(), ['id'])
+assert.equal(explicit.digestFieldLen, 1)
+assert.equal(explicit.onlyDigestFields().dtype.length, 1)
+```
 
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.

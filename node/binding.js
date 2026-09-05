@@ -3174,6 +3174,31 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
 
   const asSecret = (secret) => (secret == null ? undefined : new Uint8Array(toBytes(secret)))
 
+  for (const State of [binding.Xxh32, binding.Xxh64, binding.Xxh3, binding.Xxh128]) {
+    const fillArrowBatchNative = State.prototype._fillArrowBatchIpcNative
+    if (typeof fillArrowBatchNative !== 'function') {
+      throw new TypeError(`native binding is missing ${State.name}._fillArrowBatchIpcNative`)
+    }
+    delete State.prototype._fillArrowBatchIpcNative
+    Object.defineProperty(State.prototype, 'fillArrowBatch', {
+      configurable: true,
+      value(root, batch, force = false) {
+        if (typeof force !== 'boolean') {
+          throw new TypeError(`${State.name}.fillArrowBatch force must be a boolean`)
+        }
+        return arrowBatchFromIPC(
+          fillArrowBatchNative.call(
+            this,
+            intoField(root),
+            arrowBatchIntoIPC(batch, `${State.name}.fillArrowBatch input`),
+            force,
+          ),
+          `${State.name}.fillArrowBatch output`,
+        )
+      },
+    })
+  }
+
   binding.xxhash = Object.freeze({
     SECRET_MINIMUM_LENGTH: secretMinimumLength,
     Digest: binding.Digest,

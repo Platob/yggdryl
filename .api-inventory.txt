@@ -186,6 +186,7 @@ pub enum DigestAlgorithm
   pub fn write_reader(&mut self, source: &mut impl Read) -> Result<u64>
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
+  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::root::edge_algorithm  [rust\src\edge_algorithm.rs]
 pub enum EdgeAlgorithm
@@ -1226,6 +1227,9 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn as_iceberg(&self) -> ProtocolMetadata<'_>
   pub fn as_fix(&self) -> ProtocolMetadata<'_>
   pub fn as_field_properties(&self) -> ProtocolMetadata<'_>
+  pub fn as_digest(&self) -> ProtocolMetadata<'_>
+  pub fn as_identity(&self) -> ProtocolMetadata<'_>
+  pub fn as_partition(&self) -> ProtocolMetadata<'_>
   pub fn as_s3(&self) -> ProtocolMetadata<'_>
   pub fn as_gs(&self) -> ProtocolMetadata<'_>
   pub fn as_az(&self) -> ProtocolMetadata<'_>
@@ -1367,6 +1371,9 @@ pub struct Scheme(SchemeValue);
   pub const ICEBERG: Self = Self(SchemeValue::Iceberg);
   pub const FIX: Self = Self(SchemeValue::Fix);
   pub const FIELD: Self = Self(SchemeValue::Field);
+  pub const DIGEST: Self = Self(SchemeValue::Digest);
+  pub const IDENTITY: Self = Self(SchemeValue::Identity);
+  pub const PARTITION: Self = Self(SchemeValue::Partition);
   pub const S3: Self = Self(SchemeValue::S3);
   pub const GS: Self = Self(SchemeValue::Gs);
   pub const AZ: Self = Self(SchemeValue::Az);
@@ -1874,6 +1881,11 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn unnest_fields(&self) -> Vec<Self>
   pub fn explode_fields(&self) -> Vec<Self>
   pub fn without_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn digest_fields(&self) -> DigestFields<'_>
+  pub fn digest_field_names(&self) -> DigestFieldNames<'_>
+  pub fn digest_field_len(&self) -> usize
+  pub fn has_digest_components(&self) -> bool
+  pub fn only_digest_fields(&self) -> Result<Self>
   pub fn is_partition(&self) -> bool
   pub fn partition_fields(&self) -> PartitionFields<'_>
   pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
@@ -1936,6 +1948,12 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn as_fix_mut(&mut self) -> protocol::FixFieldMut<'_>
   pub fn as_field_properties(&self) -> protocol::FieldPropertiesField<'_>
   pub fn as_field_properties_mut(&mut self) -> protocol::FieldPropertiesFieldMut<'_>
+  pub fn as_digest(&self) -> protocol::DigestField<'_>
+  pub fn as_digest_mut(&mut self) -> protocol::DigestFieldMut<'_>
+  pub fn as_identity(&self) -> protocol::IdentityField<'_>
+  pub fn as_identity_mut(&mut self) -> protocol::IdentityFieldMut<'_>
+  pub fn as_partition(&self) -> protocol::PartitionField<'_>
+  pub fn as_partition_mut(&mut self) -> protocol::PartitionFieldMut<'_>
   pub fn as_s3(&self) -> protocol::S3Field<'_>
   pub fn as_s3_mut(&mut self) -> protocol::S3FieldMut<'_>
   pub fn as_gs(&self) -> protocol::GsField<'_>
@@ -2227,6 +2245,15 @@ pub struct ProtocolField<'field>
   pub struct FieldPropertiesField<'field>(ProtocolField<'field>);
   pub struct FieldPropertiesFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> FieldPropertiesField<'_>
+  pub struct DigestField<'field>(ProtocolField<'field>);
+  pub struct DigestFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> DigestField<'_>
+  pub struct IdentityField<'field>(ProtocolField<'field>);
+  pub struct IdentityFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> IdentityField<'_>
+  pub struct PartitionField<'field>(ProtocolField<'field>);
+  pub struct PartitionFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PartitionField<'_>
   pub struct S3Field<'field>(ProtocolField<'field>);
   pub struct S3FieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> S3Field<'_>
@@ -2595,6 +2622,28 @@ pub struct Authority(SmolStr);
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn column_digests(array: &dyn Array, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
 
+### yggdryl::xxhash::field  [rust\src\xxhash\field.rs]
+impl DigestField<'_>
+  pub fn is_holder(&self) -> bool
+  pub fn is_component(&self) -> bool
+  pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
+  pub fn paths(&self) -> Result<Option<Vec<String>>>
+  impl DigestFieldMut<'_>
+  pub fn set_holder(&mut self) -> Result<()>
+  pub fn set_component(&mut self) -> Result<()>
+  pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()>
+  pub fn remove_algorithm(&mut self) -> Option<String>
+  pub fn set_paths<I, P>(&mut self, paths: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
+  pub fn remove_paths(&mut self) -> Option<String>
+  pub fn remove_role(&mut self) -> Result<Option<String>>
+  pub fn digest_fields(&self) -> DigestFields<'_>
+  pub fn digest_field_names(&self) -> DigestFieldNames<'_>
+  pub fn digest_field_len(&self) -> usize
+  pub fn has_digest_components(&self) -> bool
+  pub fn only_digest_fields(&self) -> Result<Self>
+  pub struct DigestFields<'field>
+  pub struct DigestFieldNames<'field>(DigestFields<'field>);
+
 ### yggdryl::xxhash::handle  [rust\src\xxhash\handle.rs]
 pub struct Hashed<H: IOBase>
   pub fn new(handle: H, algorithm: DigestAlgorithm) -> Self
@@ -2647,6 +2696,7 @@ pub struct Xxh32
   pub fn as_u128(&self) -> u128
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
+  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::xxhash::stream  [rust\src\xxhash\stream.rs]
 pub struct DigestReader<R: Read>

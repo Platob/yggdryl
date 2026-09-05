@@ -92,8 +92,10 @@ pin an unsettled design by implementing a binding first.
   facades around a monolith.
 - `Field` alone owns metadata and cache-aware mutation. `DataType` has no
   metadata. Protocol metadata is inert `<scheme>:<property>` text in one map.
-  A protocol view borrows a whole `Field` and dereferences to it, and a foreign
-  protocol's typed vocabulary lives on that view, never on `Field`. `Field`
+  A protocol view borrows a whole `Field` and dereferences to it. Protocol-owned
+  typed vocabulary, including `digest:role`, and generic `identity:` /
+  `partition:` metadata live on those views, never on `Field`. The only
+  digest roles are `holder` and `component`. `Field`
   owns its own state whatever key it is stored under: `field:init`,
   `field:partition`, `alias`, `comment`, `display`, `location`.
   `PARQUET:field_id` is the reserved typed exception.
@@ -127,6 +129,11 @@ pin an unsettled design by implementing a binding first.
   types never appear in a public signature, a doc example, an error, or a
   binding. `stable_hash` is XXH3-64 over that feed everywhere; there is no
   second hash family and no second spelling of this one.
+- A row digest reads direct Struct children in declaration order. One or more
+  `digest:role=component` fields are the exact input; with none, every field
+  except `digest:role=holder` is input. Holders never feed themselves back into
+  a recomputation. The selected values retain ordered-sequence framing,
+  including when the selection is empty.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.

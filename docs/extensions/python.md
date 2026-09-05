@@ -62,6 +62,10 @@ name declares without being told, and `IOBase.codec` is what asks it which one t
 `Digest`; `IOBase.read_digest` and `Scalar.digest` redirect to the same native path. The
 one-shot functions answer a plain `int` at the algorithm's native width and take `bytes`,
 `bytearray`, `memoryview`, any other buffer, or a `str` as its UTF-8.
+Each resumable state also exposes `fill_arrow_batch(root, batch)`: digest metadata on the
+root Field selects inputs, default holders are filled row by row, and stored non-default
+holders are retained without consuming the state. Pass `force=True` to recompute populated
+holders too.
 
 ```python
 from yggdryl import Scalar, xxhash
@@ -403,33 +407,68 @@ from yggdryl import Field
 field = Field("price", "int64", nullable=False)
 field.iceberg["doc"] = "closing price"
 field.postgres.update({"type": "numeric"})
+field.digest["role"] = "component"
+field.identity.update({"role": "primary", "nulls": "distinct"})
+field.partition.update({"transform": "bucket[16]", "order": "0"})
 
 assert field.iceberg["doc"] == "closing price"
 assert dict(field.postgres.items()) == {"type": "numeric"}
 assert len(field.iceberg) == 1
 assert "doc" not in field.postgres
+assert field.digest["role"] == "component"
+assert field.identity["role"] == "primary"
+assert field.partition["transform"] == "bucket[16]"
 
 # The bare name is all the view needs; the full key is what the field stores.
 assert field.iceberg.key("doc") == "iceberg:doc"
 assert field.metadata["iceberg:doc"] == "closing price"
-assert len(field.metadata) == 2
+assert len(field.metadata) == 7
 
 del field.iceberg["doc"]
 assert not field.iceberg
 ```
 
-Every well-known protocol is an attribute - `iceberg`, `postgres`, `http`, `arrow`, `spark`, `s3`,
-and the rest - and `field.protocol(name)` takes one that is only known at runtime. There is no
+Every well-known protocol is an attribute - `digest`, `identity`, `partition`, `iceberg`, `postgres`,
+`http`, `arrow`, `spark`, `s3`, and the rest - and `field.protocol(name)` takes one that is only
+known at runtime. `identity` and `partition` accept arbitrary inert string metadata; they are not
+restricted to one key flag. `digest["role"]` accepts only `"holder"` or `"component"`. There is no
 `https` attribute, because HTTPS shares the canonical `http:` namespace. Rust spells the same
 accessors `as_iceberg()` / `as_iceberg_mut()`, and two of them differ by more than the prefix:
 `arrow` is `as_arrow_properties` and `field_properties` is `as_field_properties`, because `as_arrow`
 and `as_field` already mean something else on a Rust field.
 
 !!! note "Rust-only"
-    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, and the sixteen others, each
+    Rust's per-protocol view *types* - `HttpField`, `IcebergField`, `DigestField`,
+    `IdentityField`, `PartitionField`, and the sixteen others, each
     carrying its protocol's typed vocabulary, and each dereferencing to the whole `Field` it borrows
     - have no Python counterpart yet. `field.iceberg` answers the generic property mapping above,
     and the validated HTTP values remain attributes on the field itself.
+
+A Struct field's direct children define a row digest. Explicit `component` roles select the exact
+set; without one, every child except a `holder` contributes. Both rules retain declaration order.
+
+```python
+from yggdryl import DataType, Field
+
+identifier = Field("id", "int64", nullable=False)
+price = Field("price", "int64", nullable=False)
+holder = Field("row_digest", "uint64", nullable=False)
+holder.digest["role"] = "holder"
+
+fallback = Field(
+    "row", DataType.from_fields([identifier, price, holder]), nullable=False
+)
+assert fallback.digest_field_names == ["id", "price"]
+assert not fallback.has_digest_components
+
+identifier.digest["role"] = "component"
+explicit = Field(
+    "row", DataType.from_fields([identifier, price, holder]), nullable=False
+)
+assert explicit.digest_field_names == ["id"]
+assert explicit.digest_field_len == 1
+assert len(explicit.only_digest_fields().dtype) == 1
+```
 
 A schema also says which of its columns a path spells out, which is what a partitioned write and an
 Iceberg spec both read.

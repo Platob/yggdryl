@@ -54,8 +54,9 @@ Validation, canonicalization, metadata, comparison, Arrow projection, and castin
 one source of truth.
 
 Protocol metadata is a borrowed view of the same field. `field.as_fix()` and
-`field.as_iceberg()` add typed foreign vocabulary without copying state or adding protocol fields
-to the core type.
+`field.as_iceberg()` add typed foreign vocabulary, `field.as_digest()` defines row-digest roles,
+and `field.as_identity()` / `field.as_partition()` provide generic field metadata. None copies state
+or adds protocol fields to the core type.
 
 ## Storage is one trait
 

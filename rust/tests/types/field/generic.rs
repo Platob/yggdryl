@@ -2,7 +2,9 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::{DataType, Error, Field, MediaType, Metadata, MimeType, Scheme, TimeUnit, Url};
+use yggdryl::{
+    DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, Scheme, TimeUnit, Url,
+};
 
 #[test]
 fn canonical_field_preserves_unicode_quotes_commas_and_metadata() {
@@ -1206,6 +1208,343 @@ fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
     field.as_iceberg_mut().clear();
     assert!(field.as_iceberg().is_empty());
     assert_eq!(field.as_postgres().len(), 1);
+}
+
+#[test]
+fn identity_and_partition_views_hold_independent_generic_metadata() {
+    let mut field = DataType::Utf8.required_field("venue");
+
+    field
+        .as_identity_mut()
+        .update([("role", "primary"), ("source", "exchange")])
+        .unwrap();
+    field
+        .as_partition_mut()
+        .update([("transform", "bucket[16]"), ("null", "last")])
+        .unwrap();
+
+    assert_eq!(field.as_identity().scheme(), &Scheme::IDENTITY);
+    assert_eq!(field.as_partition().scheme(), &Scheme::PARTITION);
+    let _: yggdryl::IdentityField<'_> = field.as_identity();
+    let _: yggdryl::PartitionField<'_> = field.as_partition();
+    assert_eq!(field.as_identity().get("role"), Some("primary"));
+    assert_eq!(
+        field.as_partition().iter().collect::<Vec<_>>(),
+        [("null", "last"), ("transform", "bucket[16]")]
+    );
+    assert_eq!(field.get_metadata("identity:source"), Some("exchange"));
+    assert_eq!(
+        field.get_metadata("partition:transform"),
+        Some("bucket[16]")
+    );
+
+    // Protocol annotations do not replace the field-owned path-layout mark.
+    assert!(!field.is_partition());
+    assert!(!field.has_metadata("field:partition"));
+
+    field.as_partition_mut().clear();
+    assert!(field.as_partition().is_empty());
+    assert_eq!(field.as_identity().len(), 2);
+
+    let restored: Field = serde_json::from_str(&serde_json::to_string(&field).unwrap()).unwrap();
+    assert_eq!(restored.as_identity().get("role"), Some("primary"));
+    assert!(restored.as_partition().is_empty());
+
+    let metadata = Metadata::from_entries([
+        ("identity:codec", "uuid"),
+        ("partition:transform", "truncate[8]"),
+    ])
+    .unwrap();
+    assert_eq!(metadata.as_identity().get("codec"), Some("uuid"));
+    assert_eq!(
+        metadata.as_partition().get("transform"),
+        Some("truncate[8]")
+    );
+}
+
+#[test]
+fn digest_view_owns_one_validated_exclusive_role_and_generic_metadata() {
+    let mut field = DataType::UInt64.required_field("row_digest");
+    let _: yggdryl::DigestField<'_> = field.as_digest();
+    assert_eq!(field.as_digest().scheme(), &Scheme::DIGEST);
+
+    field
+        .as_digest_mut()
+        .insert("note", "materialized")
+        .unwrap();
+    field.as_digest_mut().set_holder().unwrap();
+    assert!(field.as_digest().is_holder());
+    assert!(!field.as_digest().is_component());
+    assert_eq!(field.get_metadata("digest:role"), Some("holder"));
+    assert_eq!(field.as_digest().get("note"), Some("materialized"));
+
+    field.as_digest_mut().set_component().unwrap();
+    assert!(!field.as_digest().is_holder());
+    assert!(field.as_digest().is_component());
+    assert_eq!(field.get_metadata("digest:role"), Some("component"));
+
+    let snapshot = field.clone();
+    let error = field.as_digest_mut().insert("role", "input").unwrap_err();
+    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert_eq!(
+        field, snapshot,
+        "a rejected role leaves the field unchanged"
+    );
+    assert!(Metadata::from_entries([("digest:role", "output")]).is_err());
+
+    let arrow = field.clone().into_arrow().unwrap();
+    let restored = Field::from_arrow(&arrow).unwrap();
+    assert!(restored.as_digest().is_component());
+    assert_eq!(restored.as_digest().get("note"), Some("materialized"));
+    let metadata =
+        Metadata::from_entries([("digest:role", "holder"), ("digest:note", "materialized")])
+            .unwrap();
+    assert_eq!(metadata.as_digest().get("role"), Some("holder"));
+    assert_eq!(metadata.as_digest().get("note"), Some("materialized"));
+
+    assert_eq!(
+        field.as_digest_mut().remove_role().unwrap().as_deref(),
+        Some("component")
+    );
+    assert!(!field.as_digest().is_holder());
+    assert!(!field.as_digest().is_component());
+    assert_eq!(field.as_digest().get("note"), Some("materialized"));
+}
+
+#[test]
+fn digest_holder_paths_are_canonical_ordered_and_role_owned() {
+    let metadata = Metadata::from_entries([(
+        "digest:paths",
+        r#" [ "id", "line.price", "name,\"quoted\"", "\u6771\u4eac" ] "#,
+    )])
+    .unwrap();
+    assert_eq!(
+        metadata.get("digest:paths"),
+        Some(r#"["id","line.price","name,\"quoted\"","東京"]"#)
+    );
+
+    let mut holder = DataType::UInt64.required_field("row_digest");
+    let unchanged = holder.clone();
+    let error = holder
+        .as_digest_mut()
+        .set_paths(["id", "line.price"])
+        .unwrap_err();
+    assert!(error.to_string().contains("digest:paths"), "{error}");
+    assert_eq!(holder, unchanged, "a non-holder path write is atomic");
+
+    holder.as_digest_mut().set_holder().unwrap();
+    holder
+        .as_digest_mut()
+        .set_paths(["id", "line.price", "name,\"quoted\"", "東京"])
+        .unwrap();
+    assert_eq!(
+        holder.as_digest().paths().unwrap(),
+        Some(vec![
+            "id".to_owned(),
+            "line.price".to_owned(),
+            "name,\"quoted\"".to_owned(),
+            "東京".to_owned(),
+        ])
+    );
+
+    let restored = Field::from_arrow(&holder.clone().into_arrow().unwrap()).unwrap();
+    assert_eq!(restored, holder);
+    assert_eq!(
+        restored.as_digest().paths().unwrap(),
+        holder.as_digest().paths().unwrap()
+    );
+
+    let unchanged = holder.clone();
+    for paths in [vec!["id", ""], vec!["id", "id"]] {
+        let error = holder.as_digest_mut().set_paths(paths).unwrap_err();
+        assert!(error.to_string().contains("digest:paths"), "{error}");
+        assert_eq!(holder, unchanged, "a rejected path list is atomic");
+    }
+
+    let error = holder.as_digest_mut().set_component().unwrap_err();
+    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert_eq!(holder, unchanged);
+    let error = holder.as_digest_mut().remove_role().unwrap_err();
+    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert_eq!(holder, unchanged);
+
+    assert_eq!(
+        holder.as_digest_mut().remove_paths().as_deref(),
+        Some(r#"["id","line.price","name,\"quoted\"","東京"]"#)
+    );
+    assert_eq!(holder.as_digest().paths().unwrap(), None);
+    assert_eq!(
+        holder.as_digest_mut().remove_role().unwrap().as_deref(),
+        Some("holder")
+    );
+}
+
+#[test]
+fn digest_paths_preserve_explicit_empty_and_reject_every_invalid_shape() {
+    let mut holder = DataType::UInt64.required_field("row_digest");
+    holder.as_digest_mut().set_holder().unwrap();
+    holder
+        .as_digest_mut()
+        .set_paths(Vec::<&str>::new())
+        .unwrap();
+    assert_eq!(holder.get_metadata("digest:paths"), Some("[]"));
+    assert_eq!(holder.as_digest().paths().unwrap(), Some(Vec::new()));
+
+    for value in [
+        "null",
+        "{}",
+        r#""id""#,
+        "[1]",
+        r#"[""]"#,
+        r#"["id","id"]"#,
+        "[",
+    ] {
+        let error = Metadata::from_entries([("digest:paths", value)]).unwrap_err();
+        assert!(error.to_string().contains("digest:paths"), "{error}");
+    }
+
+    let unchanged = holder.clone();
+    let error = holder
+        .as_digest_mut()
+        .insert("paths", r#"["id","id"]"#)
+        .unwrap_err();
+    assert!(error.to_string().contains("digest:paths"), "{error}");
+    assert_eq!(
+        holder, unchanged,
+        "generic mutation uses the same validator"
+    );
+}
+
+#[test]
+fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
+    for (input, canonical, algorithm) in [
+        ("xxh32", "xxh32", DigestAlgorithm::Xxh32),
+        ("XXH64", "xxh64", DigestAlgorithm::Xxh64),
+        (" xxh3 ", "xxh3-64", DigestAlgorithm::Xxh3),
+        ("xxh128", "xxh3-128", DigestAlgorithm::Xxh128),
+    ] {
+        let metadata = Metadata::from_entries([("digest:algorithm", input)]).unwrap();
+        assert_eq!(metadata.get("digest:algorithm"), Some(canonical));
+
+        let field = Field::from_parts("digest", DataType::UInt64, false, metadata.iter()).unwrap();
+        assert_eq!(field.as_digest().algorithm().unwrap(), Some(algorithm));
+    }
+    for invalid in ["", "xxh3-256", "sha256"] {
+        let error = Metadata::from_entries([("digest:algorithm", invalid)]).unwrap_err();
+        assert!(error.to_string().contains("digest:algorithm"), "{error}");
+    }
+
+    let mut holder = DataType::UInt64.required_field("row_digest");
+    let unchanged = holder.clone();
+    let error = holder
+        .as_digest_mut()
+        .set_algorithm(DigestAlgorithm::Xxh3)
+        .unwrap_err();
+    assert!(error.to_string().contains("digest:algorithm"), "{error}");
+    assert_eq!(holder, unchanged, "a non-holder algorithm write is atomic");
+
+    holder.as_digest_mut().set_holder().unwrap();
+    let unchanged = holder.clone();
+    let error = holder
+        .as_digest_mut()
+        .set_algorithm(DigestAlgorithm::Xxh128)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("fixed_size_binary[16]"),
+        "{error}"
+    );
+    assert_eq!(holder, unchanged, "a mismatched algorithm write is atomic");
+
+    holder
+        .as_digest_mut()
+        .set_algorithm(DigestAlgorithm::Xxh3)
+        .unwrap();
+    assert_eq!(holder.get_metadata("digest:algorithm"), Some("xxh3-64"));
+    assert_eq!(
+        holder.as_digest().algorithm().unwrap(),
+        Some(DigestAlgorithm::Xxh3)
+    );
+
+    let unchanged = holder.clone();
+    let error = holder.as_digest_mut().set_component().unwrap_err();
+    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert_eq!(holder, unchanged);
+    let error = holder.as_digest_mut().remove_role().unwrap_err();
+    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert_eq!(holder, unchanged);
+
+    assert_eq!(
+        holder.as_digest_mut().remove_algorithm().as_deref(),
+        Some("xxh3-64")
+    );
+    assert_eq!(holder.as_digest().algorithm().unwrap(), None);
+    assert_eq!(
+        holder.as_digest_mut().remove_role().unwrap().as_deref(),
+        Some("holder")
+    );
+
+    let mut wide = DataType::FixedSizeBinary(16).required_field("wide_digest");
+    wide.as_digest_mut().set_holder().unwrap();
+    wide.as_digest_mut()
+        .set_algorithm(DigestAlgorithm::Xxh128)
+        .unwrap();
+    assert_eq!(
+        wide.as_digest().algorithm().unwrap(),
+        Some(DigestAlgorithm::Xxh128)
+    );
+}
+
+#[test]
+fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() {
+    let symbol = DataType::Utf8.required_field("symbol");
+    let quantity = DataType::Int64.required_field("quantity");
+    let mut holder = DataType::UInt64.required_field("row_digest");
+    holder.as_digest_mut().set_holder().unwrap();
+
+    let mut fallback = DataType::from_fields([symbol.clone(), holder.clone(), quantity.clone()])
+        .unwrap()
+        .required_field("row");
+    fallback.set_comment("trade row").unwrap();
+    assert!(!fallback.has_digest_components());
+    assert_eq!(
+        fallback.digest_field_names().collect::<Vec<_>>(),
+        ["symbol", "quantity"]
+    );
+    assert_eq!(
+        fallback.digest_field_names().rev().collect::<Vec<_>>(),
+        ["quantity", "symbol"]
+    );
+    assert_eq!(fallback.digest_field_len(), 2);
+    let _: yggdryl::DigestFields<'_> = fallback.digest_fields();
+    let _: yggdryl::DigestFieldNames<'_> = fallback.digest_field_names();
+    let selected = fallback.only_digest_fields().unwrap();
+    assert_eq!(selected.field_len(), 2);
+    assert_eq!(selected.comment(), Some("trade row"));
+
+    let mut component = quantity;
+    component.as_digest_mut().set_component().unwrap();
+    let explicit = DataType::from_fields([symbol, holder.clone(), component])
+        .unwrap()
+        .required_field("row");
+    assert!(explicit.has_digest_components());
+    assert_eq!(
+        explicit.digest_field_names().collect::<Vec<_>>(),
+        ["quantity"]
+    );
+    assert_eq!(explicit.only_digest_fields().unwrap().field_len(), 1);
+
+    let mut other_holder = DataType::UInt32.required_field("narrow_digest");
+    other_holder.as_digest_mut().set_holder().unwrap();
+    let holders = DataType::from_fields([holder, other_holder])
+        .unwrap()
+        .required_field("row");
+    assert_eq!(holders.digest_field_len(), 0);
+    assert_eq!(holders.only_digest_fields().unwrap().field_len(), 0);
+
+    let scalar = DataType::Int64.required_field("value");
+    assert_eq!(scalar.digest_field_len(), 0);
+    assert!(!scalar.has_digest_components());
+    assert!(scalar.only_digest_fields().is_err());
 }
 
 #[test]

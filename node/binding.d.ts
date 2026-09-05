@@ -437,6 +437,26 @@ declare module './index' {
     /** The same cast under the generic name. */
     cast(rows: BatchSource, options?: { safe?: boolean }): unknown
   }
+
+  interface Xxh32 {
+    /** Fill default XXH32 holder cells in one Arrow batch under `root`. */
+    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+  }
+
+  interface Xxh64 {
+    /** Fill default XXH64 holder cells in one Arrow batch under `root`. */
+    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+  }
+
+  interface Xxh3 {
+    /** Fill default XXH3-64 holder cells in one Arrow batch under `root`. */
+    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+  }
+
+  interface Xxh128 {
+    /** Fill default XXH3-128 holder cells in one Arrow batch under `root`. */
+    fillArrowBatch(root: FieldLike, batch: ArrowRecordBatch, force?: boolean): ArrowRecordBatch
+  }
 }
 
 declare const yggdrylValueType: unique symbol

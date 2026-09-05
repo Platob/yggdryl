@@ -1225,6 +1225,24 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::FIELD)
     }
 
+    /// The live row-digest property view.
+    #[napi(getter)]
+    pub fn digest(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::DIGEST)
+    }
+
+    /// The live generic field-identity property view.
+    #[napi(getter)]
+    pub fn identity(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::IDENTITY)
+    }
+
+    /// The live generic partition-field property view.
+    #[napi(getter)]
+    pub fn partition(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::PARTITION)
+    }
+
     /// The live Amazon S3 property view.
     #[napi(getter)]
     pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolField {
@@ -1259,6 +1277,46 @@ impl JsField {
     #[napi(getter)]
     pub fn pandas(&self, reference: Reference<JsField>) -> JsProtocolField {
         JsProtocolField::new(reference, CoreScheme::PANDAS)
+    }
+
+    /// The effective row-digest components, in declaration order.
+    #[napi]
+    pub fn digest_fields(&self) -> Vec<JsField> {
+        self.inner
+            .digest_fields()
+            .cloned()
+            .map(Self::from_core)
+            .collect()
+    }
+
+    /// The names of the effective row-digest components.
+    #[napi]
+    pub fn digest_field_names(&self) -> Vec<String> {
+        self.inner
+            .digest_field_names()
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    /// Number of fields contributing to each row digest.
+    #[napi(getter)]
+    pub fn digest_field_len(&self) -> u32 {
+        u32::try_from(self.inner.digest_field_len()).unwrap_or(u32::MAX)
+    }
+
+    /// Whether any child explicitly declares the digest-component role.
+    #[napi(getter)]
+    pub fn has_digest_components(&self) -> bool {
+        self.inner.has_digest_components()
+    }
+
+    /// Return this struct root holding only its effective digest components.
+    #[napi]
+    pub fn only_digest_fields(&self) -> Result<Self> {
+        self.inner
+            .only_digest_fields()
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Whether this field carries the values a path spells out.

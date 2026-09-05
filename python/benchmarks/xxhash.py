@@ -7,6 +7,10 @@ is deliberately visible rather than averaged away - the ``bytearray`` and
 ``memoryview`` rows are what a caller pays for a buffer that is not ``bytes``,
 and the small-payload rows are where a call's fixed cost still shows.
 
+The final rows measure Arrow holder filling through the Python boundary. They
+separate schema insertion, default recomputation, preservation, and ``force``;
+the fixture and protocol metadata are built outside every measured call.
+
 The file is named for the topic rather than the module, as ``compression.py``
 is: a benchmark named ``xxhash.py`` would shadow the C ``xxhash`` package it
 compares against, because a script's own directory comes first on ``sys.path``.
@@ -22,7 +26,9 @@ import statistics
 import sys
 import timeit
 
-from yggdryl import Scalar, xxhash
+import pyarrow as pa
+
+from yggdryl import DataType, Field, Scalar, xxhash
 
 try:
     import xxhash as xxhash_c
@@ -35,6 +41,9 @@ PAYLOAD = b'{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n' * 20_000
 #: kernel each dominate in turn.
 SIZES = [1, 4, 16, 64, 128, 240, 1024, 64 * 1024, 1024 * 1024]
 
+#: Large enough for per-row work to dominate one Python call.
+BATCH_ROWS = 4_096
+
 
 def _measure(label: str, callable_, size: int, min_time: float, repeat: int) -> None:
     timer = timeit.Timer(callable_)
@@ -45,6 +54,17 @@ def _measure(label: str, callable_, size: int, min_time: float, repeat: int) -> 
     median = statistics.median(samples)
     throughput = size / median / (1000 * 1000 * 1000)
     print(f"{label:46s} {median * 1e9:12.1f} ns {throughput:8.2f} GB/s")
+
+
+def _measure_rows(label: str, callable_, rows: int, min_time: float, repeat: int) -> None:
+    timer = timeit.Timer(callable_)
+    number, _ = timer.autorange()
+    while timer.timeit(number) < min_time:
+        number *= 2
+    samples = [timer.timeit(number) / number for _ in range(repeat)]
+    median = statistics.median(samples)
+    throughput = rows / median / 1_000_000
+    print(f"{label:46s} {median * 1e6:12.1f} us {throughput:8.2f} M row/s")
 
 
 def main() -> int:
@@ -122,6 +142,40 @@ def main() -> int:
 
     for label, callable_, case_size in cases:
         _measure(label, callable_, case_size, arguments.min_time, arguments.repeat)
+
+    symbols = pa.array(
+        ["AAPL" if index % 2 == 0 else "MSFT" for index in range(BATCH_ROWS)]
+    )
+    holder = Field("row_digest", "uint64", nullable=False)
+    holder.digest["role"] = "holder"
+    holder.digest["paths"] = '["symbol"]'
+    root = Field(
+        "row",
+        DataType.from_fields([Field("symbol", "utf8", nullable=False), holder]),
+        nullable=False,
+    )
+    missing = pa.record_batch([symbols], names=["symbol"])
+    defaults = pa.record_batch(
+        [symbols, pa.array([0] * BATCH_ROWS, type=pa.uint64())],
+        names=["symbol", "row_digest"],
+    )
+    populated = pa.record_batch(
+        [symbols, pa.array(range(1, BATCH_ROWS + 1), type=pa.uint64())],
+        names=["symbol", "row_digest"],
+    )
+    state = xxhash.Xxh3(seed=7)
+    fill_cases = [
+        ("fill batch (missing holder)", lambda: state.fill_arrow_batch(root, missing)),
+        ("fill batch (default holders)", lambda: state.fill_arrow_batch(root, defaults)),
+        ("fill batch (preserve populated)", lambda: state.fill_arrow_batch(root, populated)),
+        (
+            "fill batch (force populated)",
+            lambda: state.fill_arrow_batch(root, populated, force=True),
+        ),
+    ]
+    for label, callable_ in fill_cases:
+        _measure_rows(label, callable_, BATCH_ROWS, arguments.min_time, arguments.repeat)
+
     if xxhash_c is None:
         print("the xxhash package (C libxxhash) is not installed; comparison rows skipped")
     return 0

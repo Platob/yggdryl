@@ -91,18 +91,24 @@
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+mod field;
 mod handle;
 mod scalar;
 mod secret;
 mod state;
 pub(crate) mod stream;
 
+pub use field::{DigestFieldNames, DigestFields};
 pub use handle::Hashed;
 pub use scalar::ValueBytes;
 pub use secret::SECRET_MINIMUM_LENGTH;
 pub use state::{Xxh3, Xxh32, Xxh64, Xxh128};
 pub use stream::{DigestReader, DigestWriter};
 
+pub(crate) use field::{
+    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, DIGEST_ROLE_COMPONENT, DIGEST_ROLE_HOLDER,
+    DIGEST_ROLE_KEY, canonicalize_digest_algorithm, canonicalize_digest_paths,
+};
 pub(crate) use state::{low_32, low_64};
 
 use crate::{Digest, DigestAlgorithm, Result};

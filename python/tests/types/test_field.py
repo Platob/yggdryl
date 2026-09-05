@@ -377,6 +377,9 @@ WELL_KNOWN_PROTOCOLS = (
     "iceberg",
     "fix",
     "field",
+    "digest",
+    "identity",
+    "partition",
     "s3",
     "gs",
     "az",
@@ -477,7 +480,8 @@ def test_protocol_view_is_a_live_window_on_the_field_it_came_from() -> None:
 
 
 #: `field` names a child on a schema node, so its property view is the one
-#: accessor that is not simply its scheme name.
+#: accessor that is not simply its scheme name. The singular protocol views
+#: remain distinct from plural schema helpers such as `digest_fields`.
 PROTOCOL_ACCESSORS = {"field": "field_properties"}
 
 
@@ -556,6 +560,60 @@ def test_protocol_view_refuses_writes_to_a_generated_field_class() -> None:
             restored.metadata["owner"] = "tests"
     assert list(view.items()) == []
     assert not child.is_partition
+
+
+def test_digest_roles_select_effective_components_and_validate_atomically() -> None:
+    symbol = Field("symbol", "utf8", nullable=False)
+    price = Field("price", "float64", nullable=False)
+    holder = Field("row_digest", "uint64", nullable=False)
+    holder.digest["role"] = "holder"
+
+    before = dict(holder.digest)
+    with pytest.raises(ValueError, match="holder or component"):
+        holder.digest.update({"note": "output", "role": "invalid"})
+    assert dict(holder.digest) == before
+    with pytest.raises(ValueError, match="holder or component"):
+        Field("bad", "uint64", metadata={"digest:role": "invalid"})
+
+    default = Field(
+        "row",
+        DataType.from_fields([symbol, price, holder]),
+        nullable=False,
+    )
+    assert not default.has_digest_components
+    assert default.digest_field_names == ["symbol", "price"]
+    assert default.digest_field_len == 2
+    assert [child.name for child in default.digest_fields] == ["symbol", "price"]
+    assert [child.name for child in default.only_digest_fields().dtype] == [
+        "symbol",
+        "price",
+    ]
+
+    venue = Field("venue", "utf8", nullable=False)
+    venue.digest["role"] = "component"
+    explicit = Field(
+        "row",
+        DataType.from_fields([symbol, venue, price, holder]),
+        nullable=False,
+    )
+    assert explicit.has_digest_components
+    assert explicit.digest_field_names == ["venue"]
+    assert explicit.digest_field_len == 1
+    assert [child.name for child in explicit.digest_fields] == ["venue"]
+    assert [child.name for child in explicit.only_digest_fields().dtype] == ["venue"]
+
+    holders_only = Field(
+        "row", DataType.from_fields([holder]), nullable=False
+    ).only_digest_fields()
+    assert list(holders_only.dtype) == []
+    assert holders_only.digest_field_len == 0
+
+    assert symbol.digest_fields == []
+    assert symbol.digest_field_names == []
+    assert symbol.digest_field_len == 0
+    assert not symbol.has_digest_components
+    with pytest.raises(ValueError, match="struct root"):
+        symbol.only_digest_fields()
 
 
 def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> None:

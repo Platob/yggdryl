@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import pickle
 
+import pyarrow as pa
 import pytest
 
 import yggdryl
@@ -176,6 +177,89 @@ class TestStates:
         assert copy.copy(state).as_digest() == state.as_digest()
         assert copy.deepcopy(state).as_digest() == state.as_digest()
         assert repr(state) == "Xxh3(seed=3)"
+
+    def test_fill_arrow_batch_adds_a_missing_holder_without_consuming_state(
+        self,
+    ) -> None:
+        holder = yggdryl.Field("row_digest", "uint64", nullable=False)
+        holder.digest["role"] = "holder"
+        root = yggdryl.Field(
+            "row",
+            yggdryl.DataType.from_fields(
+                [yggdryl.Field("symbol", "utf8", nullable=False), holder]
+            ),
+            nullable=False,
+        )
+        batch = pa.record_batch(
+            [pa.array(["AAPL", "MSFT"], type=pa.string())], names=["symbol"]
+        )
+        state = xxhash.Xxh64(seed=11)
+        state.write_bytes(b"running")
+        before = state.as_digest()
+
+        filled = state.fill_arrow_batch(root, batch)
+
+        expected: list[int] = []
+        for symbol in ("AAPL", "MSFT"):
+            row = xxhash.Xxh64(seed=11)
+            row.write_scalar(Scalar.from_py([symbol]))
+            expected.append(int(row.as_digest()))
+        assert filled.schema == root.into_arrow_schema()
+        assert filled.column("row_digest").to_pylist() == expected
+        assert state.as_digest() == before
+
+    def test_fill_arrow_batch_replaces_only_default_holders(self) -> None:
+        holder = yggdryl.Field("row_digest", "uint64", nullable=False)
+        holder.digest["role"] = "holder"
+        root = yggdryl.Field(
+            "row",
+            yggdryl.DataType.from_fields(
+                [yggdryl.Field("symbol", "utf8", nullable=False), holder]
+            ),
+            nullable=False,
+        )
+        batch = pa.record_batch(
+            [
+                pa.array(["AAPL", "MSFT"], type=pa.string()),
+                pa.array([0, 123], type=pa.uint64()),
+            ],
+            names=["symbol", "row_digest"],
+        )
+        expected = xxhash.Xxh64()
+        expected.write_scalar(Scalar.from_py(["AAPL"]))
+
+        filled = xxhash.Xxh64().fill_arrow_batch(root, batch)
+
+        assert filled.column("row_digest").to_pylist() == [
+            int(expected.as_digest()),
+            123,
+        ]
+        forced = xxhash.Xxh64().fill_arrow_batch(root, batch, force=True)
+        forced_expected = xxhash.Xxh64()
+        forced_expected.write_scalar(Scalar.from_py(["MSFT"]))
+        assert forced.column("row_digest").to_pylist() == [
+            int(expected.as_digest()),
+            int(forced_expected.as_digest()),
+        ]
+
+    def test_fill_arrow_batch_infers_the_algorithm_from_the_holder_width(self) -> None:
+        holder = yggdryl.Field("row_digest", "uint32", nullable=False)
+        holder.digest["role"] = "holder"
+        root = yggdryl.Field(
+            "row",
+            yggdryl.DataType.from_fields(
+                [yggdryl.Field("symbol", "utf8", nullable=False), holder]
+            ),
+            nullable=False,
+        )
+        batch = pa.record_batch([pa.array(["AAPL"])], names=["symbol"])
+        expected = xxhash.Xxh32()
+        expected.write_scalar(Scalar.from_py(["AAPL"]))
+
+        filled = xxhash.Xxh3().fill_arrow_batch(root, batch)
+
+        assert filled.column("row_digest").type == pa.uint32()
+        assert filled.column("row_digest").to_pylist() == [int(expected.as_digest())]
 
 
 class TestDigest:
