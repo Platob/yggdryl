@@ -92,7 +92,7 @@ impl FixMsg {
   yet" — why this is not simply a `FixId`. `Option<i32>` costs 8 bytes, not
   4: `0` is a legal digest, so there is no niche.
 - **P7-R5. A pair is bytes, not text.** FIX is a byte protocol: a
-  `data`-typed value may hold anything, including the separator (P7-R67) and
+  `data`-typed value may hold anything, including the separator (P7-R72) and
   bytes that are not UTF-8 at all — a signature, an encrypted block, a
   vendor's XML in some other encoding. So `from_pairs` takes
   `(&[u8], &[u8])`, the readers hand it byte slices, and a separator is a
@@ -373,14 +373,50 @@ with no copy. Each reader splits, rewrites its dialect into the key forms
 `from_pairs` understands, and hands the iterator over. One nesting builder,
 one fold, one code translation under all three.
 
-- **P7-R41. `from_text` picks the dialect by one token, never by sniffing.**
-  Take the bytes before the first `=`: all ASCII digits means `from_fixtext`
-  — separator SOH (`0x01`) when the body holds one, else `|` (`0x7C`);
-  anything else means `from_ultext`. `from_text` takes a `&str` because a
-  log line is text and `&str` is `&[u8]` for free; it is the convenience
-  over the process default with everything inferred. Empty input is a typed
-  error, not an empty message.
-- **P7-R42. `from_fixtext` takes a body and a `u8`.** Split on `sep` with
+- **P7-R41. A row is a log line, so find the frame before reading it.** A
+  capture line is a message wrapped in whatever the process printed around
+  it: `sending >> 8=FIX.4.2|…|10=203| << queued seq=1092`. Locate the frame
+  first — `8=` at a token boundary, else `35=`, else the first pair-shaped
+  run — and read from there; everything before is a prefix, and P7-R68 ends
+  the message at the checksum, so everything after is noise. Reading from
+  byte zero would take `sending >> 8` as the first key and pick the wrong
+  dialect on nearly every real line.
+- **P7-R42. The dialect is decided once, from the frame, and never
+  re-sniffed.** Take the bytes before the first `=` **of the frame**: all
+  ASCII digits means `from_fixtext` — separator SOH (`0x01`) when the body
+  holds one, else `|` (`0x7C`); anything else means `from_ultext`. Once
+  decided it holds for the whole body, so a `#` or a `<` inside a *value* is
+  part of that value: `58=quoting #A=1 and #B=2` is one Text field, not the
+  start of a UL group — the same rule P7-R61 gives `;`. `from_text` takes a
+  `&str` because a log line is text and `&str` is `&[u8]` for free.
+- **P7-R43. A FIX frame carrying named keys needs no third reader.** A line
+  can be a FIX envelope whose body mixes numeric and named keys —
+  `8=FIX.4.4|35=D|11=ORDER-1|SYMBOL=AAPL|SIDE=1|10=000`, or the same with
+  `#`-marked ones under `35=UL`. A classifier may call that a protocol of
+  its own; this layer does not, because `from_pairs` already takes a tag key
+  or a name key (P7-R14) and the frame already said which reader splits. One
+  reader, mixed keys, no third path (N3).
+- **P7-R44. No message type is `unknown`, and nothing is skipped.** A
+  message is typed by `35=` in a FIX frame or `MSGTYPE=` in a UL one. Where
+  a row carries neither, **build it anyway**: every pair that parsed becomes
+  a field, the entries record the whole row, and the root is named
+  `unknown`. Nothing is dropped and no row is refused — fill what can be
+  filled, and let the type say what could not. `unknown` is a safe name for
+  the same reason `0` is a safe tag (P7-R8): every real `MsgType` is one or
+  two characters from the code set, so none can collide with it, and a
+  caller separating real messages from log noise filters on the type rather
+  than on a rule buried in the reader.
+- **P7-R45. A truncated `BeginString` resolves to no version.** `8=FIX4` is
+  a real thing in real captures; the nearest version is a guess, and this
+  brief does not guess (P7-R26 already falls through for `FIXT.1.1`). It
+  falls through to the next tier, and the frame is still found: a truncated
+  BeginString is a bad version, not a bad message.
+- **P7-R46. A UL body may be separated by spaces.** `After Enrichment ->
+  ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR` is a UL row with a space
+  where another writes `|`. The `ultext` separator is whichever of `|` or
+  space the frame uses, chosen once by P7-R42 and then held — never both, or
+  a value containing a space would split.
+- **P7-R47. `from_fixtext` takes a body and a `u8`.** Split on `sep` with
   `memchr`, then each segment at its first `=`. A trailing empty segment is
   tolerated — a wire message ends with the separator. A segment with no `=`
   is dropped, as an empty key is. Duplicate tags stay in arrival order.
@@ -397,23 +433,23 @@ ULBridge writes names, not tags, and packs a repeating group into one pair:
 
 where `<sub>` is `\x04\x03`, EOT then ETX.
 
-- **P7-R43.** Pairs split on `|`, then at the first `=`. Keys are names in
+- **P7-R48.** Pairs split on `|`, then at the first `=`. Keys are names in
   any case and reach their field through the P7-R14 fold.
-- **P7-R44.** A key opening with `#` names a group: `#NOPARTYIDS=1` is the
+- **P7-R49.** A key opening with `#` names a group: `#NOPARTYIDS=1` is the
   counter; `#NOPARTYIDS[0]=…` is entry 0, its *value* a run of member pairs.
-- **P7-R45.** Members inside an entry split on `\x04\x03`.
-- **P7-R46. And sometimes on nothing at all.** ULBridge may omit the
+- **P7-R50.** Members inside an entry split on `\x04\x03`.
+- **P7-R51. And sometimes on nothing at all.** ULBridge may omit the
   separator after the first member while keeping the index:
   `#NoPartyIDs[0]=PartyID=P-1PartyIDSource=DPartyRole=3`. Split by scanning
   for the next member name the group's own field declares, taking the
   **longest declared match** so `PartyIDSource` beats `PartyID`. Only that
   group's declared members are candidates, which bounds the scan and keeps
   the result explainable.
-- **P7-R47.** Residue that will not split stays as one unknown key,
+- **P7-R52.** Residue that will not split stays as one unknown key,
   verbatim. Never dropped, never fatal.
-- **P7-R48.** Indices may be partial or out of order — `[2]` before `[0]`,
+- **P7-R53.** Indices may be partial or out of order — `[2]` before `[0]`,
   with gaps. Occurrences are built by index, not arrival; a gap is null.
-- **P7-R49.** It rewrites into the key forms `from_pairs` takes —
+- **P7-R54.** It rewrites into the key forms `from_pairs` takes —
   `#NOPARTYIDS[0]=PARTYID=…` becomes `("NoPartyIDs[0].PartyID", "…")` — and
   builds no tree of its own. Values translate like any other, so
   `PARTYIDSOURCE=shortcodeid` stores `P` and `PARTYROLE=executingsystem`
@@ -446,11 +482,11 @@ impl FixReader {
 }
 ```
 
-- **P7-R50. Lazy, one row at a time, with backpressure** — the repository's
+- **P7-R55. Lazy, one row at a time, with backpressure** — the repository's
   standing rule for streaming iterators. Nothing is collected up front, the
   source is pulled only as the consumer pulls, and a `FixReader` over an
   unbounded source runs in bounded memory.
-- **P7-R51. A malformed row is an `Err` item; the stream continues.** One
+- **P7-R56. A malformed row is an `Err` item; the stream continues.** One
   corrupt line must not end a run over ten million, so the item type is
   `Result<FixMsg>` and the error carries the row so a caller can log what it
   could not read. A caller who wants to stop at the first failure already
@@ -458,22 +494,22 @@ impl FixReader {
   and the reader does not grow a mode for it. This is the same posture as
   P7-R30 one level up: a bad value never costs a message, a bad message
   never costs the stream.
-- **P7-R52. Pinning is what the type buys.** `branch` and the two versions
+- **P7-R57. Pinning is what the type buys.** `branch` and the two versions
   pinned once skip P7-R20 and P7-R22 for every row — and a capture is one
   session, so pinning is the normal case, not an optimization. Unpinned, the
   reader infers per row exactly as the singular readers do, and answers the
   same messages.
-- **P7-R53. Only the split buffer is reused.** The three vectors of P7-R75
+- **P7-R58. Only the split buffer is reused.** The three vectors of P7-R80
   are the message's own and move into it, so they cannot be pooled without
   giving `FixMsg` a borrow. What the reader holds across rows is the
   registry handle, the pinned resolutions, and one buffer the splitters
   write pairs into and the builder reads back. Pooling the rest would end in
   a `FixMsg<'a>`, which P7-R7 refuses for the same reason.
-- **P7-R54. The singular readers are the stream of one.** `from_text` and
+- **P7-R59. The singular readers are the stream of one.** `from_text` and
   its two siblings are a `FixReader` over one row, so there is one parsing
   path and no chance of the two disagreeing. Assert it: a row read singly
   and the same row read through the reader answer equal messages.
-- **P7-R55. There is no `convert_all` and no `lift_all`.** Converting a
+- **P7-R60. There is no `convert_all` and no `lift_all`.** Converting a
   stream is `.map(|m| m?.convert_into(&target))` and lifting one is
   `.map(|m| m?.lift())`; neither holds state across items, so neither earns
   a symbol (N1, N5). Only the readers do, because only they have something
@@ -486,29 +522,29 @@ line some venue really sent.
 
 | # | rule | why |
 | --- | --- | --- |
-| P7-R56 | A token splits at its **first** `=` only. | `Text=a;b` is one value with a semicolon, not two fields. |
-| P7-R57 | `G[0]=M=v` and `G[0].M=v` are one field, two prints. | A group has one shape; two spellings must not make two. |
-| P7-R58 | `#` marks where a key **starts**, not which field it is. | `#54=x` is a rendered key spelled with digits, **not** tag 54. |
-| P7-R59 | `#A=1#B=2` has no separator: the next `#` ends the previous value. | ULBridge omits separators; the marker is the boundary. |
-| P7-R60 | Tag mode is ASCII digits only. | A bracket, dot or `#` means a rendered key, so `453[0]` is never tag 453. |
-| P7-R61 | A digit key overflowing `i32` is not a tag. | An epoch-millis key looks like digits; `parse_tag` already drops it. |
-| P7-R62 | Trim ASCII whitespace only. | A non-breaking space is part of the value; trimming Unicode returns a tag never sent. |
-| P7-R63 | Nothing after `10=<checksum>` is part of the message. | Log lines carry pair-shaped noise after the trailer. |
-| P7-R64 | One `a=b` alone is a sentence, not a message. | Require two tokens, or an `8=`/`35=` lead, so prose does not parse. |
-| P7-R65 | Two values under one key stay two. | It is a group or a rewrite; collapsing picks one, and picking is a guess. |
-| P7-R66 | "Not a message" and "a message that said nothing" are different answers. | The empty message is `Ok` with no entries; unparseable input is an error. |
+| P7-R61 | A token splits at its **first** `=` only. | `Text=a;b` is one value with a semicolon, not two fields. |
+| P7-R62 | `G[0]=M=v` and `G[0].M=v` are one field, two prints. | A group has one shape; two spellings must not make two. |
+| P7-R63 | `#` marks where a key **starts**, not which field it is. | `#54=x` is a rendered key spelled with digits, **not** tag 54. |
+| P7-R64 | `#A=1#B=2` has no separator: the next `#` ends the previous value. | ULBridge omits separators; the marker is the boundary. |
+| P7-R65 | Tag mode is ASCII digits only. | A bracket, dot or `#` means a rendered key, so `453[0]` is never tag 453. |
+| P7-R66 | A digit key overflowing `i32` is not a tag. | An epoch-millis key looks like digits; `parse_tag` already drops it. |
+| P7-R67 | Trim ASCII whitespace only. | A non-breaking space is part of the value; trimming Unicode returns a tag never sent. |
+| P7-R68 | Nothing after `10=<checksum>` is part of the message. | Log lines carry pair-shaped noise after the trailer. |
+| P7-R69 | One `a=b` alone is not refused; it is an `unknown` message of one field. | `heartbeat emitted seq=7` is data too, and the type is what says it was not addressed to this reader (P7-R44). |
+| P7-R70 | Two values under one key stay two. | It is a group or a rewrite; collapsing picks one, and picking is a guess. |
+| P7-R71 | A row with no pairs is an `unknown` message with no entries, not an error. | Empty *input* is a typed error; a line that simply held nothing is `Ok` and says so (P7-R44). |
 
 #### `data` fields are read by length, not by separator
 
-- **P7-R67.** FIX types a field `data` **because its value may contain the
+- **P7-R72.** FIX types a field `data` **because its value may contain the
   separator**. `RawData(96)`, `XmlData(213)`, `SecureData(91)` and
   `Signature(89)` each follow a length field — `RawDataLength(95)`,
   `XmlDataLen(212)`, `SecureDataLen(90)`, `SignatureLength(93)` — and that
   length, not the next SOH, says where the value ends. A reader that
   tokenizes first loses the message.
-- **P7-R68.** The registry says which tags are `data` (`DataType::Binary`
+- **P7-R73.** The registry says which tags are `data` (`DataType::Binary`
   after P6-R13), so nothing hard-codes the four pairs.
-- **P7-R69.** When the stated length and the next separator disagree, **take
+- **P7-R74.** When the stated length and the next separator disagree, **take
   the separator**: a writer that miscounted has stated two things and the
   delimiter is the safer. Record it through `anomalies()`.
 #### `XmlData(213)` that is not XML
@@ -518,7 +554,7 @@ payload in it — commonly under a vendor `MsgType` of `UL`, where the envelope
 carries a handful of session tags and everything that matters is inside 213,
 as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 
-- **P7-R70. The payload's own shape decides, not the message type.** Look at
+- **P7-R75. The payload's own shape decides, not the message type.** Look at
   the first non-space byte: `<` means XML, and the value stays whole.
   Anything else means pairs, and P7-R41's one-token rule then picks the
   dialect — all ASCII digits before the first `=` is `fixtext`, otherwise
@@ -526,29 +562,29 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
   guessed, and a venue spelling the envelope with some `MsgType` other than
   `UL` works without a table of venues. `UL` is worth knowing as the common
   case; it is not the trigger.
-- **P7-R71. The inner pairs are nested, not flattened.** They go to the same
+- **P7-R76. The inner pairs are nested, not flattened.** They go to the same
   builder with their keys prefixed — `11=abc` inside 213 becomes
   `("xmldata.11", "abc")` — so `XmlData.ClOrdID` resolves the way
   `NoPartyIDs.PartyID` does (P7-R35) and no new machinery exists. A value
   inside something belongs to that something, which is P9-R7 seen from the
   other end: flattening would let an inner `Price` answer as the message's
   own.
-- **P7-R72. Only tag 213 is descended into.** `RawData(96)`,
+- **P7-R77. Only tag 213 is descended into.** `RawData(96)`,
   `SecureData(91)` and `Signature(89)` are opaque by intent, and an
   encrypted block that happens to contain an `=` must never be read as
   pairs. 213 is the one the standard documents as a text stream, so it is
   the one exception — named, not generalized.
-- **P7-R73. Reformatting is a read; the emit is untouched.** The entry for
+- **P7-R78. Reformatting is a read; the emit is untouched.** The entry for
   tag 213 keeps the whole payload as it arrived, so `into_bytes` re-emits it
   byte-for-byte and `XmlDataLen(212)` still describes it: no length is
   recomputed and no round trip changes (P7-R12, P7-R38). A payload that will
-  not split cleanly stays whole and reports (P7-R74), and nesting past a
+  not split cleanly stays whole and reports (P7-R79), and nesting past a
   documented guard is refused the same way, so a payload carrying another
   213 cannot recurse without bound.
 
 #### Anomalies are derived, never a second state
 
-- **P7-R74.** A counter disagreeing with the entries it introduces, a group
+- **P7-R79.** A counter disagreeing with the entries it introduces, a group
   that would not split cleanly, a value that would not type — all real, none
   fatal. `anomalies()` derives them on demand by comparing the counter value
   (an ordinary value at its own tag) with the List's length, the way `FixId`
@@ -557,17 +593,17 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 
 ### Optimization the phase is judged on
 
-- **P7-R75.** One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each
+- **P7-R80.** One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each
   reserved from the iterator's `size_hint` before the walk. No per-entry
   `String`, no per-entry map. The `Vec<FixEntry>` is the one the message
   keeps: built once, moved in, never cloned.
-- **P7-R76.** A resolved entry allocates nothing — integers for `tag` and
+- **P7-R81.** A resolved entry allocates nothing — integers for `tag` and
   `branch`, `None` for `key`, a value inside `SmolStr`'s inline buffer.
-- **P7-R77.** Only `get_primitive_field` is probed for scalars; the nested
+- **P7-R82.** Only `get_primitive_field` is probed for scalars; the nested
   half is reached only for a counter tag.
-- **P7-R78.** Header ordering reads a precomputed tag-to-position table, not
+- **P7-R83.** Header ordering reads a precomputed tag-to-position table, not
   a scan per entry.
-- **P7-R79.** The readers copy nothing: every key and value is a slice of
+- **P7-R84.** The readers copy nothing: every key and value is a slice of
   the input, and splitting uses `memchr`.
 
 ### Tests
@@ -637,14 +673,14 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
      `from_text` of that answers the converted message (P7-R35, P7-R40).
 
 **Token rules.**
-15. Every row of P7-R56…R48, one case each.
+15. Every row of P7-R61…R48, one case each.
 16. `#54=x` reaching the field whose *rendered key* is `54`, never tag 54;
     `G[0]=M=v` and `G[0].M=v` answering equal messages.
 17. A lone `a=b` refused as not-a-message, while an empty-but-valid message
     answers `Ok` with no entries.
 18. A `data` field whose value contains the separator, read by its length
     field; a miscounted length taking the separator and appearing in
-    `anomalies()` (P7-R67, P7-R69).
+    `anomalies()` (P7-R72, P7-R74).
 19. A `BodyLength` of `abc` nulling that field while the raw text stays in
     `entries` (P7-R30).
 20. Tag 555 at two nesting levels in one TradeCaptureReport, neither
@@ -653,16 +689,16 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 **`XmlData`.**
 20b. A `MsgType=UL` envelope whose 213 holds numeric `tag=value` pairs, and
      one whose 213 holds ULBridge `NAME=VALUE` pairs, both descended into
-     and nested under `xmldata` (P7-R70, P7-R71).
-20c. A 213 whose first byte is `<` kept whole (P7-R70), and the same content
+     and nested under `xmldata` (P7-R75, P7-R76).
+20c. A 213 whose first byte is `<` kept whole (P7-R75), and the same content
      under a `MsgType` that is not `UL` still descended into — the shape
      decides, not the type.
 20d. An inner `Price` answering as `xmldata.price` and never as the
-     message's `price` facet (P7-R71, P9-R7).
+     message's `price` facet (P7-R76, P9-R7).
 20e. `RawData`, `SecureData` and `Signature` never descended into, even
-     when their bytes contain an `=` (P7-R72).
+     when their bytes contain an `=` (P7-R77).
 20f. `into_bytes` re-emitting 213 byte-for-byte with `XmlDataLen` unchanged
-     (P7-R73), and a payload that will not split staying whole and
+     (P7-R78), and a payload that will not split staying whole and
      reporting.
 
 **Codes.**
@@ -677,7 +713,7 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
     omitted, both producing one `NoPartyIDs` occurrence of four members.
 24. `PARTYIDSOURCE` translating while `PARTYROLE=orderoriginatorsystem`
     survives untranslated.
-25. Out-of-order and gapped indices (P7-R48); a counter of `2` against one
+25. Out-of-order and gapped indices (P7-R53); a counter of `2` against one
     entry appearing in `anomalies()` while the message still reads.
 26. `entries()` holding every pair in arrival order with the untranslated
     spelling, beside a row holding the translated code (P7-R11); an
@@ -688,17 +724,49 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 28. `from_fixtext(built.into_bytes(b'|'), b'|') == built` (P7-R40), and
     `into_text` refusing a message that carries a non-printable value.
 
+**Capture lines.** One row per shape a real capture holds, asserted for what
+the reader builds — `SOH` is `\x01`, and the classifier labels in the last
+column are a *consumer's* taxonomy, not a third reader (P7-R43).
+
+| row | reads as | type |
+| --- | --- | --- |
+| `sending >> 8=FIX.4.2\|9=176\|35=D\|10=203\| << queued seq=1092` | fixtext, framed at `8=`, tail dropped | `D` |
+| `recv 8=FIX4^A9=61^A35=0^A10=017^A on session 3` | fixtext, SOH-separated, truncated `BeginString` | `0` |
+| `raw 8=FIX.4.4{SOH}9=224{SOH}35=8{SOH}10=118{SOH}` | fixtext | `8` |
+| `8=FIX.4.4\|35=8\|58=quoting #A=1 and #B=2\|10=1\|` | fixtext; the `#`s are inside Text(58) | `8` |
+| `sending >> 8=FIX.4.2\|35=UL\|#SYMBOL=TTF\|#SIDE=1\|10=044\|` | fixtext frame, `#`-marked named keys | `UL` |
+| `8=FIX.4.4\|35=D\|11=ORDER-1\|SYMBOL=AAPL\|SIDE=1\|10=000` | fixtext frame, mixed numeric and named keys | `D` |
+| `toBridge #ISINCODE=XX\|#SYMBOL=TTF\|#SIDE=1` | ultext, no FIX frame | `unknown` |
+| `ACCOUNT=A1\|MSGTYPE=D\|CLORDID=ORDER-1\|SYMBOL=AAPL\|SIDE=1` | ultext, type from `MSGTYPE=` | `D` |
+| `After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR` | ultext, space-separated | `unknown` |
+| `Referential(dbi\|equity\|dbi;GB00BN7SWP63_XLON_GBX\|[quantity-type=])` | pairs it can find, nothing more | `unknown` |
+| `<Order ClOrdID='XML-1'>…</Order>` | not pairs; kept whole | `unknown` |
+| `Receiving XmlApi: <Execution ExecID='E1'>…</Execution>` | the same, behind a prefix | `unknown` |
+| `Message rejected because : ignoring OMSSales expiry message` | no pairs | `unknown`, no entries |
+| `no level printed by this plugin` | no pairs | `unknown`, no entries |
+| `heartbeat emitted seq=7` | one pair, kept | `unknown` |
+
+28g. Every row above builds — none is skipped and none is an `Err` (P7-R44).
+28h. The four framed rows resolve their type from `35=`, the `MSGTYPE=` row
+     from its key, and the rest answer `unknown` (P7-R44).
+28i. `58=quoting #A=1 and #B=2` is one Text field, not three (P7-R42).
+28j. `8=FIX4` finds its frame and answers no version, falling through to the
+     next tier (P7-R45).
+28k. The space-separated row splits on space and the `|` rows on `|`, each
+     chosen once (P7-R46).
+28l. The two rows whose payload opens with `<` keep it whole (P7-R70).
+
 **Streaming.**
 28b. A row read singly and through a `FixReader` answer equal messages
-     (P7-R54).
+     (P7-R59).
 28c. A malformed row in the middle of a good capture yields one `Err` item
-     carrying that row, and the rows after it still read (P7-R51).
+     carrying that row, and the rows after it still read (P7-R56).
 28d. An unbounded source is consumed lazily: a reader over an infinite
-     iterator, pulled ten times, touches ten rows (P7-R50).
+     iterator, pulled ten times, touches ten rows (P7-R55).
 28e. Pinned and unpinned readers answer the same messages over one capture
-     (P7-R52).
+     (P7-R57).
 28f. `collect::<Result<Vec<_>, _>>()` over a capture with one bad row
-     answers `Err`, which is how a caller opts into stopping (P7-R51).
+     answers `Err`, which is how a caller opts into stopping (P7-R56).
 
 **Halves.**
 29. Each half accessor answering only from its half, over a registry holding
@@ -712,10 +780,10 @@ against inferred; the readers benched beside `from_pairs` so the split cost
 is visible separately. Then the stream: rows per second over a 100k-row
 capture, pinned against inferred, and against calling the singular reader in
 a loop — the number that says whether `FixReader` earns its existence
-(P7-R52). Table on the FIX page, which also gains the two half-probe rows.
+(P7-R57). Table on the FIX page, which also gains the two half-probe rows.
 
 **Allocations.** A 30-pair tag-keyed build of short values allocates the
-three reserved vectors and nothing per entry (P7-R75, P7-R76).
+three reserved vectors and nothing per entry (P7-R80, P7-R81).
 
 
 ---
@@ -964,7 +1032,7 @@ the *expression-driven* normalization layer with its conditions, lookups and
 value mappings, which needs an evaluator (P3-R16). Two things that once
 looked like that layer's are done here instead: the lineage-driven half of
 transcoding, in `convert_into` (P7-R31), and pair-shaped `XmlData(213)`,
-which needs no evaluator because the payload's own shape decides (P7-R70).
+which needs no evaluator because the payload's own shape decides (P7-R75).
 
 **From Phase 9.** Nothing in this brief consumes it: lifting is the outermost
 layer, and a batch writer or a column projection is the next thing that would.

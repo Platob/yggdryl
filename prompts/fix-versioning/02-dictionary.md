@@ -507,7 +507,7 @@ which is why the script reads all of them.
   members in wire order with their requiredness — the same facts the header
   and trailer constants carry (P6-R16), for everything else. It earns its
   place twice over: the ULBridge splitter needs a group's declared members
-  to split a run with no separator (P7-R46), and lifting addresses Parties
+  to split a run with no separator (P7-R51), and lifting addresses Parties
   and TrdRegTimestamps by role and type (P9-R5, P9-R6).
   **Nothing is invented to make a kind fit:** no synthetic tag, no component
   smuggled into a tree (P6-R17).
@@ -732,11 +732,11 @@ lowest priority first (P6-R15), so nothing in the core learns about sources.
 
 **From Phase 6.** Phase 7 needs `config/fix` with lineages and code sets
 populated, and the layouts manifest, whose component and group member lists
-are what the ULBridge splitter reads (P7-R46) and what lifting addresses
+are what the ULBridge splitter reads (P7-R51) and what lifting addresses
 (P9-R5, P9-R6); `STANDARD_HEADER_TAGS` and `STANDARD_TRAILER_TAGS`
 (P6-R16) as the message layout order (P7-R27); at least one non-standard
 branch with its manifest entry (P6-R10, P6-R9), so branch inference (P7-R22)
-is tested against real data; and `data`-typed tags (P6-R13), which P7-R68
+is tested against real data; and `data`-typed tags (P6-R13), which P7-R73
 reads to find length-prefixed fields.
 
 **From Phase 8.** Phase 9 lifts a side and a message type as packed keys
