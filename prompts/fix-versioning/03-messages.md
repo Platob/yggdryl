@@ -609,9 +609,50 @@ as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
 - **P7-R84.** The readers copy nothing: every key and value is a slice of
   the input, and splitting uses `memchr`.
 
+#### A stated absence is not a value
+
+- **P7-R85. `null_values` is a listing of spellings that mean "nothing was
+  sent", defaulting to `""`, `null` and `<null>`.** A bridge with nothing to
+  say writes one of those three, and a reader that keeps them puts the
+  four characters `null` into a column where the answer is no answer. The
+  match is on the value's **raw bytes** after the whitespace trim
+  (P7-R67), compared case-insensitively as ASCII — `NULL`, `Null` and
+  `null` are one marker — and never through the crate's fold, which serves
+  names and code spellings (P4-R5.2) and, by dropping separators, would
+  match spellings nobody wrote. A pair whose value matches produces no field
+  and no entry: the key is read as never having been sent. The listing rides
+  the options struct (P10) like every other per-stream setting — the byte
+  readers keep the signatures they have and use the default listing when
+  called bare, which is the same reason a record carries parameters as
+  columns rather than a reader carrying them as arguments (P10-R16).
+- **P7-R86. The value is what is filtered, never the key.** A key that
+  resolves to no field is still kept, still an entry, still a child
+  (P7-R6, P7-R44) — an unknown key is data. Only a *stated absence* goes.
+  And it is a listing rather than a rule because a venue for which the
+  literal text `null` is a value sets it empty: the default is a convention,
+  and a convention has to be overridable to be safe.
+- **P7-R87. Filtering happens before typing, and the consequences are
+  reported, not repaired.** Nothing tries to read `<null>` as a price and
+  file the failure through `anomalies()` — that anomaly is exactly the noise
+  this removes. Two consequences follow and both are left visible: a
+  repeating-group counter that counted a filtered occurrence now disagrees
+  with its group's length, which `anomalies()` derives and states like any
+  other disagreement (P7-R79), never silently corrects; and a filtered pair
+  is not in `entries`, so it is not in the digest either (P11-R3) — two
+  messages differing only in a `<null>` pair hash equal, which for
+  deduplication is the answer wanted.
+
 ### Tests
 
 **Keys and values.**
+0a. Each default spelling — `""`, `null`, `NULL`, `<null>` — producing no
+    field and no entry, while `nullable`, `not-null` and a value that merely
+    contains `null` produce both (P7-R85).
+0b. An empty `null_values` keeping all four, and a listing naming only
+    `<null>` keeping `null` (P7-R86).
+0c. A group whose counter counted a filtered occurrence reporting the
+    disagreement rather than renumbering (P7-R87, P7-R79), and two messages
+    differing only in a filtered pair sharing a digest (P7-R87, P11-R3).
 1. Tag-keyed and name-keyed pairs producing the identical message.
 2. `" Side "`, `msg_type`, `msg-type`, `MSG_TYPE`, `Msg Type` all reaching
    their field (P7-R14).
@@ -1233,9 +1274,12 @@ impl FixMsg {
   is the group — one cadence in the crate, not a FIX one beside it.
 - **P10-R15. Byte-in / byte-out is the test that decides this phase.** Every
   line of the capture corpus (P7's tests) through rows → batch → rows,
-  compared byte for byte modulo the separator. A round trip that holds over
-  the corpus is worth more than any assertion about an individual column,
-  because the corpus is where the shapes that break parsers actually live.
+  compared byte for byte modulo the separator, and with `null_values` empty:
+  a reader that drops pairs is deliberately not byte-preserving (P7-R85), so
+  this test turns the convention off to measure the reader rather than the
+  convention. A round trip that holds over the corpus is worth more than any
+  assertion about an individual column, because the corpus is where the
+  shapes that break parsers actually live.
 
 #### A row is a record, and its columns are the parameters
 
