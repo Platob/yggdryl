@@ -7,16 +7,15 @@
 | Key | Value |
 | --- | --- |
 | Owns | `BatchReader`, `batch_reader`, `combined`, `combined_as`, `cast_reader` |
-| Shape | `Box<dyn arrow_array::RecordBatchReader + Send>`; owns its source, outlives the call, `Send` |
-| Returned by | `ipc::read_batch_reader`, `parquet::read_batch_reader` (`parquet` feature), `IOMedia::read_arrow_reader` |
-| Consumed by | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` ([../holder/iobase/records.md](../holder/iobase/records.md)) |
-| Lazy | Schema before any batch; `combined` merges without pulling a row; nothing is collected |
+| Shape | `Box<dyn arrow_array::RecordBatchReader + Send>`; owns what it reads from |
+| Paths | Every read path returns one; `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` consume one ([../holder/iobase/records.md](../holder/iobase/records.md)) |
+| Feature flag | `parquet::read_batch_reader` needs the non-default `parquet` feature |
+| Roots | `combined` merges both schemas into the root; `combined_as` casts both onto the caller's |
+| Lazy | Schema before any batch; `combined` pulls no row and collects nothing |
 | Cast | `cast_reader(inner, &field, safe)` ([../types/cast.md](../types/cast.md)); an exact side passes through unchanged |
 | Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)`; JavaScript `BatchReader.combined(other, schema?, safe?)` |
 
 ## Use
-
-`combined` chains two readers onto the root their schemas merge into; `combined_as` chains onto a root the caller holds.
 
 === "Rust"
 
@@ -96,9 +95,9 @@
 | Rule | Behavior |
 | --- | --- |
 | Column identity | Name, ASCII case-insensitive; left's order, then right-only columns in right's order |
-| Shared column | One datatype; a difference is refused naming both sides, never widened |
+| Shared column | One datatype, never widened |
 | One-sided column | Nullable, even when non-nullable on its side; the other side reads null |
-| Metadata, field ids | Left's; a conflicting `PARQUET:field_id` is refused, never reassigned |
+| Metadata, field ids | Left's kept |
 | Root | Left's name; bounded non-nullable Struct; appendable to Iceberg wherever both inputs were |
 
 ## Streaming batches
@@ -157,8 +156,8 @@ assert_eq!(rows, 3);
 
 ## Edges
 
+- Shared column with two datatypes or two `PARQUET:field_id` values -> `combined` refuses, naming both sides.
 - Root not a bounded, non-nullable Struct -> `combined_as` and `cast_reader` return `Err`.
-- `parquet::read_batch_reader` -> absent unless the non-default `parquet` feature is on.
 
 ## Commands
 

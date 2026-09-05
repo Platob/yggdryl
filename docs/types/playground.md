@@ -11,11 +11,6 @@ Every ASCII datatype, every registered code, every refusal, and a declared vocab
 | Browser | Renders the manifest only; nothing is computed client-side (the addon is native, so no WebAssembly target exists) |
 | Contract proven | The [ASCII page](ascii.md): widths, registered codes, packed integers, declared vocabularies |
 
-To try a value of your own, add it to the generator's corpus and regenerate:
-
-```bash
-node scripts/build_docs_playground.js
-```
 
 ## The ASCII datatypes and the codes
 
@@ -48,3 +43,12 @@ A member is the integer its ASCII value packs into (the storage bytes, big-endia
 <div class="ygg-pg" data-playground="lookup" markdown="1">
 This section renders `assets/playground.json` and needs JavaScript.
 </div>
+
+## Commands
+
+Add a value to the generator's corpus, then regenerate and check for drift.
+
+```bash
+node scripts/build_docs_playground.js
+node scripts/build_docs_playground.js --check
+```

@@ -6,14 +6,14 @@ JSON and JSON Lines over the shared `Scalar` codec.
 
 | facet | contract |
 | --- | --- |
-| Loads | objects to name-sorted `Record`, arrays to `Sequence`, numbers to the narrowest exact natural family |
-| Dumps | compact by default; deterministic `Record` key order; `Mapping` keeps insertion order, string keys only |
-| Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return that tree, else natural objects |
-| Exact types | `_with_field` / `field=` / `{ field }` recovers `D128`, `Bytes`, temporals from string spellings |
-| Lazy | `load_all` pulls a path or stream; `loads_all` decodes held content; iterators fuse after the first error |
-| Limits | nullable `max_depth` / `maxDepth`, input bytes, decoded nodes, document count; omitted means safe core defaults |
-| Placeholders | refused; see [Placeholders](placeholders.md) |
-| Errors | name JSON and the byte offset |
+| Loads | objects to name-sorted `Record`, arrays to `Sequence`, numbers to the narrowest exact family |
+| Dumps | compact; deterministic `Record` order; `Mapping` keeps insertion order, string keys only |
+| Bindings | Rust `Scalar`; Python `cls=Scalar` / JavaScript `{ scalar: true }` return it, else natural objects |
+| Exact types | `_with_field` / `field=` / `{ field }` recovers `D128`, `Bytes`, temporals from strings |
+| One document | `from_utf8`, `from_bytes`, `from_reader` in; `into_utf8`, `into_bytes`, `into_writer` out |
+| Streams | `_all` takes whitespace-separated values; `from_lines_*` and `JsonLines` take one per non-empty line |
+| Lazy | `load_all` pulls a path or readable; `loads_all` decodes held content; iterators fuse after the first error |
+| Limits | nullable `max_depth` / `maxDepth`, input bytes, decoded nodes, document count; omitted means core defaults |
 
 ## Use
 
@@ -112,7 +112,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 
 ## Natural values and exact Fields
 
-Values without JSON syntax use interoperable spellings, with no private marker envelope:
+Other native values use interoperable spellings, without a private marker envelope:
 
 | native value | natural JSON |
 | --- | --- |
@@ -122,7 +122,7 @@ Values without JSON syntax use interoperable spellings, with no private marker e
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-A schemaless reader sees those as strings; pass a native [`Field`](../types/field.md) to recover exact types.
+A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to recover exact types.
 
 === "Rust"
 
@@ -162,21 +162,11 @@ A schemaless reader sees those as strings; pass a native [`Field`](../types/fiel
     assert.equal(decoded.unscaled, 1250n)
     ```
 
-A Struct Field yields one ordered row `Sequence` in Rust and a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
+A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
 
 ## Documents and streams
 
-Rust names the transport in the method; Python and JavaScript keep `loads` / `dumps` and leave caller-owned streams open.
-
-| Rust method | transport |
-| --- | --- |
-| `from_utf8`, `from_bytes`, `from_reader` | decode one document |
-| `into_utf8`, `into_bytes`, `into_writer` | encode one document |
-| `_with_field` | exact typing |
-| `_all` | whitespace-separated values |
-| `from_lines_*`, `JsonLines` | one value per non-empty line |
-
-Reader iterators yield one `Result<Scalar>` at a time; writers stream to `Write`.
+Reader iterators yield one `Result<Scalar>` at a time and writers stream to `Write`; Python and JavaScript keep `loads` / `dumps` and leave caller streams open.
 
 === "Rust"
 
@@ -265,19 +255,17 @@ Rust `Formatting::indented(n)` adds layout and `Formatting::compact()` removes i
 
 ## `IOBase` and content coding
 
-[Structured-text I/O](../holder/iobase/values.md) derives JSON and any outer [coding](../coding/index.md) from the handle's `MediaType`, so `quotes.json.gz` reads, writes, and publishes without format arguments. Python accepts `PathLike`; JavaScript accepts path strings, file descriptors, file URLs, and streams.
+[Structured-text I/O](../holder/iobase/values.md) derives JSON and any outer [coding](../coding/index.md) from the handle's `MediaType`, so `quotes.json.gz` reads, writes, and publishes without arguments. Python accepts `PathLike`; JavaScript accepts path strings, file descriptors, file URLs, and streams.
 
 ## Edges
 
 - duplicate object names -> rejected.
-- non-finite float, or a `Mapping` with a non-string key -> encode error.
 - text naming an existing file -> parsed as JSON, never read; a bare file name is invalid syntax.
-- trailing data in a one-document call -> error at the byte offset.
+- invalid UTF-8, trailing data after one document, or a failed `Field` conversion -> error at the boundary, with the byte offset.
 - malformed JSON Lines row -> error at its offset in the original input, preceding lines included.
-- invalid UTF-8, or a failed `Field` conversion -> error at the boundary.
 - depth above the hard nesting ceiling -> refused, whatever `max_depth` asks.
-- placeholder options -> refused; only [YAML](yaml.md) and [TOML](toml.md) substitute.
-- streamed Arrow batches with overwrite or append -> [Text records](../media/text.md), which refuses keyed merge since a line has no row identity.
+- placeholder options -> refused; only [YAML](yaml.md) and [TOML](toml.md) substitute, see [Placeholders](placeholders.md).
+- streamed Arrow batches -> [Text records](../media/text.md); keyed merge is refused there since a line has no row identity.
 
 ## Commands
 

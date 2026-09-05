@@ -12,10 +12,10 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 | Engine | `zstd` crate |
 | Level | shared 0 to 9, clamped, default 6; maps to zstd 1 to 19 |
 | Errors | non-frame input -> `Err`, `ValueError` in Python, a throw in JavaScript |
-| Handle | `Zstd<H>` is an [`IOBase`](../holder/index.md) over an `IOBase`: reads decompress, writes compress, `size` is the decoded length, nothing seeks |
+| Handle | [`IOBase`](../holder/index.md) over an `IOBase`; reads decompress, writes compress, `size` is the decoded length |
 | Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
 | Streamed reads | [`pstream_bytes`](../holder/iobase/bytes.md), bounded arrays, handle never opened |
-| Selection | `Codec::Zstd` names it; [`coding::Coded`](index.md) applies it at runtime |
+| Selection | `Codec::Zstd`, applied by [`coding::Coded`](index.md) |
 
 ## Use
 
@@ -51,7 +51,7 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 
 ## Frames
 
-Gain starts where the payload repeats; below that, framing grows the output. `load` rejects anything but one frame, as each binding's own error type.
+Gain starts where the payload repeats; below that, framing grows the output.
 
 === "Rust"
 
@@ -178,8 +178,6 @@ assert_eq!(zstd::load(&encoded)?, payload.as_bytes());
 | 8 | 17 |
 | 9 (`BEST`) | 19 |
 
-`Level::NONE` maps to zstd 1, its cheapest real level; [gzip](gzip.md) and [zlib](zlib.md) store uncompressed instead.
-
 ## The transparent handle
 
 Rust only. Anything that takes a handle sees decoded bytes; the wrapped handle keeps the frame.
@@ -204,7 +202,7 @@ assert_eq!(
 );
 ```
 
-Sequential reads decode from the wrapped handle into bounded arrays; the [stream benchmark](../holder/iobase/bytes.md) records their cost beside gzip and zlib.
+The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib.
 
 ```rust
 use yggdryl::IOBase;
@@ -216,8 +214,6 @@ let handle = Zstd::new(Buffer::new());
 assert!(handle.read_all_bytes()?.is_empty());
 assert_eq!(handle.size(), 0);
 ```
-
-Constructing touches nothing, reading something absent yields nothing, writing creates.
 
 ```rust
 use yggdryl::IOBase;
@@ -240,11 +236,10 @@ assert_eq!(zstd::load(&inner.read_all_bytes()?)?, payload.as_bytes());
 
 ## Edges
 
-- `zstd::load` on a non-frame payload -> `Err`; `ValueError` in Python; a throw in JavaScript.
-- `zstd::dump` on a short payload -> longer than its input; framing costs bytes.
+- `zstd::dump` on a short payload -> output longer than input.
 - `zstd::writer` dropped before `finish` -> no epilogue, not a valid frame.
-- `zstd::reader` when the window cannot be allocated -> still a value; the error surfaces on the first `read`.
-- `Level::NONE` -> zstd 1; zstd has no stored form.
+- `zstd::reader` unable to allocate its window -> still constructed; the error surfaces on the first `read`.
+- `Level::NONE` -> zstd 1, never stored; [gzip](gzip.md) and [zlib](zlib.md) store uncompressed.
 - `Zstd::new` over an empty handle -> size 0, empty read, no error.
 - `pwrite` on `Zstd<H>` -> pending until `flush`, `close`, or `into_handle`.
 - `pstream_bytes` past offset zero -> the prefix is decoded and discarded; a surrounding [`Buffered`](../holder/backends/buffered.md) stays empty.
@@ -281,7 +276,7 @@ zstd encode (yggdryl)     14.879 ms     69.2 MiB/s
 zstd decode (yggdryl)      0.358 ms   2877.3 MiB/s
 ```
 
-Standard-library rows need `compression.zstd` on Python 3.14+; on 3.11 the script prints `stdlib compression.zstd unavailable on this interpreter; skipped`. [gzip](gzip.md) and [zlib](zlib.md) carry their rows from the same run.
+Standard-library rows need `compression.zstd` (Python 3.14+); on 3.11 the script prints `stdlib compression.zstd unavailable on this interpreter; skipped`.
 
 ```bash
 python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5

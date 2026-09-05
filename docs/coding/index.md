@@ -8,14 +8,14 @@
 | --- | --- |
 | Owns | `Codec`, `Level`, `coding::Coded`; the bytes live in [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
 | Codings | `Identity`, `Gzip`, `Zlib`, `Deflate`, `Zstd`; four `Coded` variants |
-| Select | `Coded::infer` reads the handle's media type; `Coded::wrap` takes a `Codec` |
+| Select | `Coded::infer` from the media type; `Coded::wrap` from a `Codec` |
 | Deflate | No framing to detect, so it wraps as the zlib handle |
-| Level | `with_level` reaches gzip, zlib, zstd; `Identity` ignores it |
-| Composes | Over any [`IOBase`](../holder/index.md), including `Holder` or another coded handle; `Coded` is itself an `IOBase` |
-| Seek | Not seekable; the decoded value is materialized once and held until `close` |
-| Commit | Writes publish on `flush`, `close`, or `into_handle`, never on `pwrite` |
-| Media type | The wrapper reports the decoded type, coding removed |
-| Bindings | `Coded` is Rust only; Python and JavaScript use [`IOBase.codec`, `compress_into`, `decompress_into`](../holder/iobase/bytes.md) and per-codec `loads`/`dumps` |
+| Level | `with_level`; `Identity` ignores it |
+| Composes | Any [`IOBase`](../holder/index.md), `Holder` or another coded handle; `Coded` is itself an `IOBase` |
+| Seek | None; the decoded value is materialized once and held until `close` |
+| Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
+| Media type | Decoded, coding removed |
+| Bindings | Rust only; Python and JavaScript use [`IOBase.codec`, `compress_into`, `decompress_into`](../holder/iobase/bytes.md) and per-codec `loads`/`dumps` |
 
 ## Use
 
@@ -45,9 +45,9 @@ Rust only. A compound [filename](../uri/path.md) declares the coding, so `Coded:
 
 | Page | Purpose |
 | --- | --- |
-| [gzip](gzip.md) | RFC 1952 gzip: buffers, streams, `Gzip<H>` |
-| [zlib](zlib.md) | RFC 1950 zlib and raw DEFLATE: buffers, streams, `Zlib<H>` |
-| [zstd](zstd.md) | RFC 8878 Zstandard: buffers, streams, `Zstd<H>` |
+| [gzip](gzip.md) | RFC 1952 gzip |
+| [zlib](zlib.md) | RFC 1950 zlib and raw DEFLATE |
+| [zstd](zstd.md) | RFC 8878 Zstandard |
 
 ## Wrap and publish
 
@@ -115,9 +115,7 @@ The wrapper's media type drops the coding; the wrapped handle holds the frame.
 
 - `Codec::Deflate` -> `Coded::wrap` answers `Codec::Zlib`; no raw handle exists.
 - `Codec::Identity` -> pass-through; `with_level` changes nothing.
-- `pwrite` -> nothing reaches the wrapped handle until `flush`, `close`, or `into_handle`.
-- `into_handle` -> publishes first, then returns the wrapped `Holder`; an encode or write failure is the `Err`.
-- Positional read over a frame -> the whole decoded value is materialized and held until `close`.
+- `into_handle` -> publishes first; an encode or write failure is the `Err`.
 
 ## Commands
 

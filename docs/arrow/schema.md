@@ -7,13 +7,13 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 | Key | Value |
 | --- | --- |
 | Owns | `Field::into_arrow_schema`, `Field::into_arrow_exchange_schema`, `Field::from_arrow_schema` |
-| Validates | A bounded, non-nullable Struct root; anything else is refused, never coerced |
+| Validates | Bounded, non-nullable Struct root; refused, never coerced |
 | Metadata | Root metadata becomes schema metadata and comes back |
-| Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, paths as dot-joined child positions; transport only |
-| Errors | `Error::IncompatibleSchema` (root shape), `Error::Core(InvalidMetadataValue)` (sidecar) |
+| Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID; transport only |
+| Errors | `Error::IncompatibleSchema` (root), `Error::Core(InvalidMetadataValue)` (sidecar) |
 | Feature flag | `arrow` (default) |
-| Bindings | Rust; [Python](../extensions/python.md) `Field.from_arrow_schema(schema, name="row")` and `Field.into_arrow_schema()` (exchange path); JavaScript none |
-| Per-field | `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow` live in [Field](../types/field.md) and [DataType](../types/datatype.md) |
+| Bindings | Rust; [Python](../extensions/python.md) `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
+| Per-field | `Field::into_arrow`, `DataType::into_arrow`: [Field](../types/field.md), [DataType](../types/datatype.md) |
 
 ## Use
 
@@ -84,15 +84,15 @@ Rust only.
 | Method | Returns | Dictionary ID | Sidecar |
 | --- | --- | --- | --- |
 | `Field::into_arrow_schema` | `SchemaRef` | Kept on Arrow's `Field` | None |
-| `Field::into_arrow_exchange_schema` | Owned `Schema` | Zeroed by the C Data Interface, as under PyArrow | Added for every non-zero ID |
+| `Field::into_arrow_exchange_schema` | Owned `Schema` | Zeroed across the C interface | Added per non-zero ID |
 | `Field::from_arrow_schema` | `Field` | Restored from the sidecar | Validated, then stripped |
 
 ## Edges
 
-- Root not a Struct, nullable, or unbounded -> `Error::IncompatibleSchema` from all three methods.
-- Caller-set root metadata under `yggdryl:ipc:dictionary-ids` -> `into_arrow_exchange_schema` refuses with `InvalidMetadataValue`.
+- Root not a Struct, nullable, or unbounded -> `Error::IncompatibleSchema`.
+- Caller-set root metadata under the sidecar key -> `into_arrow_exchange_schema` refuses.
 - Sidecar malformed, naming a non-dictionary field, or conflicting with a non-zero Arrow ID -> `from_arrow_schema` refuses.
-- `FFI_ArrowSchema` round trip -> `dict_id()` reads `Some(0)`; the sidecar restores the original ID.
+- `FFI_ArrowSchema` round trip -> `dict_id()` reads `Some(0)`; the sidecar restores it.
 
 ## Commands
 
@@ -114,15 +114,13 @@ Rust only.
 
 ## Performance
 
-The `types` Criterion target times the three Struct-root methods over one nested dictionary fixture built outside the timer. One local Windows x86_64 release run, Criterion point estimates; regenerate on the deployment host.
+The `types` Criterion target times only the three Struct-root methods over one nested fixture built outside the timer; no record batch is allocated. One local Windows x86_64 release run, Criterion point estimates; regenerate on the deployment host.
 
 | operation | estimate | 95% interval |
 | --- | ---: | ---: |
 | `Field::into_arrow_schema` | 1.48 us | 1.14-2.27 us |
 | `Field::into_arrow_exchange_schema` | 1.81 us | 1.71-1.95 us |
 | `Field::from_arrow_schema` | 2.59 us | 2.37-2.81 us |
-
-Schema projection only; no record batch is allocated or crossed.
 
 ```bash
 cargo bench -p yggdryl --bench types -- arrow/struct_field --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10

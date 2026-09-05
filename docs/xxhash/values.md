@@ -6,15 +6,13 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 
 | Key | Value |
 | --- | --- |
-| Owns | `Scalar::as_value_bytes`, `Scalar::write_bytes`, `Scalar::digest`, `stable_hash`, `xxhash::arrow::row_digests`, `column_digests` |
+| Owns | `as_value_bytes`, `write_bytes`, `Scalar::digest`, `stable_hash`, `xxhash::arrow::row_digests`, `column_digests` |
 | `as_value_bytes` | payload alone, no tag, no length; borrows, never allocates; `None` for `Null`, `Sequence`, `Mapping`, `Record` |
-| `write_bytes` | total prefix-free feed: one [`DataTypeId`](../types/datatype.md) tag byte, then the family's canonical form; every integer little-endian |
-| `stable_hash` | XXH3-64 over the feed, equal to `digest(Xxh3).as_u64()`; [`Field`](../types/field.md), [`Uri`](../uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
-| Widths | `I8(1)`, `I64(1)`, `U8(1)` feed one form; so do `F32(1.5)`/`F64(1.5)` and `D128(100, 2)`/`D256(1, 0)` |
-| Recursion | bounded by `DataType::PARSE_RECURSION_LIMIT`; a deeper subtree feeds one reserved `0xff` |
+| `write_bytes` | total prefix-free feed: one [`DataTypeId`](../types/datatype.md) tag byte, then the family's canonical form; integers little-endian |
+| `stable_hash` | XXH3-64 over the feed; [`Field`](../types/field.md), [`Uri`](../uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
 | Arrow column | `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Feature flag | `xxhash::arrow` needs the default `arrow` feature |
-| Bindings | `Scalar.digest`, `stable_hash`, and a [state's](streaming.md) `write_scalar` reach the feed from Python and JavaScript; `as_value_bytes` and Arrow digests are Rust only |
+| Bindings | `Scalar.digest`, `stable_hash`, and a [state's](streaming.md) `write_scalar`; `as_value_bytes` and Arrow digests are Rust only |
 
 ## Use
 
@@ -137,11 +135,9 @@ assert_eq!(
 let _ = text::Format::Json;
 ```
 
-`Field::stable_hash` and `xxhash::xxh3` of the field's canonical rendering are one number reached two ways.
-
 ## Arrow row digests
 
-A row is the ordered sequence of its columns, so `row_digests` equals feeding each row's `Scalar` through `write_bytes` without building one. That equality is the test on every datatype family, nulls, nested structs, lists, maps, dictionaries, unions, and geospatial values.
+A row is the ordered sequence of its columns, so `row_digests` equals feeding each row's `Scalar` through `write_bytes` without building one. That equality is the test across every datatype family, nulls, nesting, dictionaries, unions, and geospatial values.
 
 Rust only.
 
@@ -178,14 +174,9 @@ assert_ne!(digests.value(0), digests.value(1));
 
 ## Edges
 
-- `as_value_bytes` on `Null`, `Sequence`, `Mapping`, or `Record` -> `None`; these have no payload without a framing.
 - `as_value_bytes` on a decimal or temporal -> coefficient or stored count at storage width; scale, unit, and zone are type, not payload.
 - Subtree past `DataType::PARSE_RECURSION_LIMIT` -> one reserved `0xff` replaces it; no allocation, no panic; values differing only below that depth collide.
-- `Scalar::Null` vs `Scalar::from("")` -> different digests; each feeds its own tag.
-- `Scalar::from("1")` vs `Scalar::from(0x31_u8)` -> different digests; the tag byte separates variants.
 - Null cell in `column_digests` -> feeds the null tag, so it never collides with an empty string.
-- XXH3-128 over rows -> `FixedSizeBinary(16)` of big-endian bytes; no Arrow integer is wide enough.
-- Dictionary-encoded text column -> no buffer arm; read through the scalar boundary, same digests.
 
 ## Commands
 
@@ -214,11 +205,11 @@ assert_ne!(digests.value(0), digests.value(1));
 
 ## Performance
 
-One containerized x86_64 Linux run measures both groups: Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB, rustc 1.94.1 release with thin LTO. The sources are `rust/benchmarks/xxhash/values.rs` and `rust/benchmarks/xxhash/arrow.rs`.
+One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO) measures `rust/benchmarks/xxhash/values.rs` and `arrow.rs`.
 
 ### The value feed
 
-The feed row reuses one state, as an Arrow column does; the digest row builds a fresh state per value. XXH3 keeps its secret on the heap, so that construction is the gap; the feed itself allocates nothing, pinned by `rust/tests/allocations.rs`.
+The feed row reuses one state, as an Arrow column does; the digest row builds a fresh state per value. The feed allocates nothing, which `rust/tests/allocations.rs` pins with a counting allocator.
 
 | value | feed into a reused state | `digest` | `stable_hash` |
 | --- | ---: | ---: | ---: |
@@ -229,7 +220,7 @@ The feed row reuses one state, as an Arrow column does; the digest row builds a 
 | 64-field record | 2.32 µs | 2.29 µs | 2.28 µs |
 | 32-deep nest | 1.43 µs | 1.43 µs | 1.39 µs |
 
-`stable_hash` on the short canonical renderings it sees; the first column measures the rendering, the second the algorithm alone. At these lengths the hash is the small half by more than an order of magnitude.
+`stable_hash` on the short canonical renderings it sees measures the rendering; the second column is the algorithm alone.
 
 | value | `stable_hash` | the same bytes through `xxh3` |
 | --- | ---: | ---: |
@@ -244,7 +235,7 @@ cargo bench -p yggdryl --bench xxhash -- xxhash_stable_hash
 
 ### Arrow row digests
 
-Each case digests 65,536 rows of four columns. Both paths answer the same digests; reading buffers directly is worth about 1.8x against the dictionary fallback and 2.6x against materializing rows.
+Each case digests 65,536 rows of four columns. Both paths answer the same digests; the fallback's dictionary-encoded text has no buffer arm and reads through the scalar boundary.
 
 | case | time | per row |
 | --- | ---: | ---: |
@@ -252,8 +243,6 @@ Each case digests 65,536 rows of four columns. Both paths answer the same digest
 | scalar fallback (same shape, text dictionary-encoded) | 20.84 ms | 318 ns |
 | materializing each row as a `Scalar` first | 29.32 ms | 447 ns |
 | buffer path, XXH3-128 | 11.24 ms | 172 ns |
-
-Answering 128 bits instead of 64 costs nothing.
 
 ```bash
 cargo bench -p yggdryl --bench xxhash -- xxhash_row_digests

@@ -6,20 +6,18 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixField` / `FixFieldMut` behind `field.as_fix()` / `as_fix_mut()`, `FixBranch`, `FixId`; no second field class anywhere |
+| Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixBranch`, `FixId`; no second field class |
 | Keys | `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`, `fix:description`; name, datatype and `display` stay the field's own |
-| Branch | First byte an ASCII letter, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; ASCII case folded once on parse |
-| Standard branch | `FixBranch::STANDARD` spells `standard`; an absent `fix:branch` means it, and setting it removes the key |
-| Identity | `FixId` renders `branch:tag`; derived on every read from `fix:branch` and `fix:tag`, never stored; `None` without a tag; ordered branch-major, then by tag |
-| Standard-tag rule | A tag below `FixId::STANDARD_TAG_LIMIT` (5000) forces the standard branch, one-way; `FixId::from_parts` refuses at every door |
-| List properties | Comma-separated text; `aliases()` iterates slices lazily, `tags()` parses a `Vec`; an empty list removes the key |
-| Errors | `InvalidMetadataValue` naming the full key; the field is left unchanged |
-| Nesting | Component: Struct field; repeating group: List of that Struct; `dtype().is_nested()` selects the [registry](registry.md)'s nested half and the [store](store.md)'s `nested/` tree |
-| Bindings | Rust `as_fix()`; Python `field.fix` plus [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` plus the [`fix` namespace](../extensions/javascript.md); branch and id cross as text |
+| Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
+| Standard branch | `standard`; an absent key means it, and setting it removes the key |
+| Identity | `FixId` = `branch:tag`, derived on every read, never stored; `None` without a tag; ordered branch-major, then tag |
+| Standard-tag rule | Tag below `FixId::STANDARD_TAG_LIMIT` (5000) forces the standard branch, one-way; `FixId::from_parts` refuses at every door |
+| List properties | Comma-separated text; `aliases()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
+| Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
+| Nesting | Struct = component, List of that Struct = group; `dtype().is_nested()` picks the [registry](registry.md) half and the [store](store.md) tree |
+| Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); branch and id cross as text |
 
 ## Use
-
-Every property reads and writes through the fix view, and a refusal names the full key.
 
 === "Rust"
 
@@ -139,22 +137,22 @@ Every property reads and writes through the fix view, and a refusal names the fu
 
 | Page | Purpose |
 | --- | --- |
-| [FIX](index.md) | This page: the `fix:` vocabulary, `FixBranch` and `FixId`, nesting through Struct and List fields |
-| [Registry](registry.md) | `FixRegistry`: tiered resolution, the primitive/nested halves, `FixKey`, insert/update/remove, iteration order, the process-wide default |
-| [Store](store.md) | Persistence through one `IOBase` folder handle: `primitive/` and `nested/` shard trees, `from_handle`, `write_into`, the tracked seed |
-| [Message](message.md) | `FixMsg`: a root Struct plus its row and registry, the derived branch, `by_tag` / `by_id` / `by_name` / `by_path`, JSON |
+| [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
+| [Registry](registry.md) | `FixRegistry`: tiered resolution, index halves, `FixKey`, mutation, the process-wide default |
+| [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
+| [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 
 ## The vocabulary is metadata
 
-The namespace adds only what FIX states beyond a field; the property names live in one private place, so a caller never spells `fix:`.
+The namespace adds only what FIX states beyond a field, and a caller never spells `fix:`.
 
 | Property | Key | Type | Meaning |
 | --- | --- | --- | --- |
-| `branch` | `fix:branch` | `FixBranch` | the dictionary this field belongs to; absent means the standard one |
-| `tag` | `fix:tag` | `i32` | canonical FIX tag, never negative |
+| `branch` | `fix:branch` | `FixBranch` | owning dictionary; absent means standard |
+| `tag` | `fix:tag` | `i32` | canonical tag, never negative |
 | `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
-| `description` | `fix:description` | text | the specification's own wording |
+| `description` | `fix:description` | text | the specification's wording |
 
 ## Identity is a branch and a tag
 
@@ -299,7 +297,7 @@ The namespace adds only what FIX states beyond a field; the property names live 
 
 ## Nesting needs no second type
 
-A component is a Struct field; a repeating group is a List whose item is that Struct, and the counter tag is the group's `fix:tag`. The path resolver every `Field` has descends through the list's item, so `NoPartyIDs.PartyID` and `NoPartyIDs.item.PartyID` spell one route.
+A component is a Struct field; a repeating group is a List of that Struct, its counter tag the group's own `fix:tag`. A list is transparent to a dotted path, so `NoPartyIDs.PartyID` and `NoPartyIDs.item.PartyID` spell one route.
 
 === "Rust"
 
@@ -373,15 +371,14 @@ A component is a Struct field; a repeating group is a List whose item is that St
 
 ## Edges
 
-- Empty element, duplicate (aliases compared ASCII-folded), alias containing a comma, or negative tag -> refused, naming `fix:tags` / `fix:aliases` / `fix:tag`; the field is unchanged.
+- Empty element, duplicate (aliases ASCII-folded), alias with a comma, or negative tag -> refused naming `fix:tags` / `fix:aliases` / `fix:tag`; field unchanged.
 - Folding is ASCII only: `Größe` and `GRÖSSE` are two names.
-- A tag is decimal `0` to `i32::MAX`; readers refuse stored `+35`, `-35`, `3x`, so shard arithmetic is total.
-- Python `field.fix.tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.
-- `2cme`, or an identifier without a colon (`5001`) -> "fix branch" / "fix identifier" at the Python and JavaScript boundary.
-- A tag below `STANDARD_TAG_LIMIT` on another branch, canonical or alternate -> refused naming `fix:branch`, the limit and both sides, from a setter, a read, an insert, or a shard load.
-- `set_branch` checks the canonical tag and every alternate tag before writing.
-- `Field::get_field_by_path` is transparent to a list on a read; `set_field_by_path` and `remove_field_by_path` still spell the item (`NoPartyIDs.item.PartyID`).
-- A group member (`PartyID`) is reached only through its group; `get_field_by_name` answers none for it.
+- A tag is decimal `0` to `i32::MAX`; readers refuse stored `+35`, `-35`, `3x`.
+- Python `tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.
+- `2cme` -> "fix branch"; `5001` as an identifier -> "fix identifier".
+- Tag below `STANDARD_TAG_LIMIT` on another branch, canonical or alternate -> refused naming `fix:branch`, from a setter, a read, an insert, or a shard load.
+- `get_field_by_path` is transparent to a list on a read; `set_field_by_path` / `remove_field_by_path` spell the item (`NoPartyIDs.item.PartyID`).
+- A group member is reached only through its group; `get_field_by_name("PartyID")` answers none.
 
 ## Commands
 
@@ -413,11 +410,9 @@ A component is a Struct field; a repeating group is a List whose item is that St
 
 ## Performance
 
-This page owns the field setters and the `FixId` codec; the full tables live on [Registry](registry.md).
-
 === "Rust"
 
-    One local Windows x86_64 release run of the Criterion target, point estimates.
+    Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point estimates.
 
     | resolution | estimate |
     | --- | ---: |
@@ -439,14 +434,14 @@ This page owns the field setters and the `FixId` codec; the full tables live on 
 
 === "Python"
 
-    One local Windows x86_64 run of the release wheel (`maturin build --release`) under CPython 3.12, median time per call.
+    Release wheel (`maturin build --release`) under CPython 3.12 on local Windows x86_64, median time per call.
 
     | Python operation | estimate |
     | --- | ---: |
     | `field.fix.branch` | 549 ns |
     | `field.fix.id` | 625 ns |
 
-    Both cross as text and parse on every call: `get_field_by_id("standard:55")` is 408 ns against 196 ns by tag, the 212 ns between them being `FixId::from_str`. Each row is a metadata read plus a fresh Python `str`, so a loop should hold the answer.
+    Both cross as text and parse per call; each row is a metadata read plus a fresh `str`, so hold the answer in a loop.
 
     ```bash
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
@@ -454,14 +449,14 @@ This page owns the field setters and the `FixId` codec; the full tables live on 
 
 === "JavaScript"
 
-    One local Windows x86_64 run (AMD Ryzen 5 150) of the release addon (`npm run --prefix node build`) under Node.js v24.18.0, whole-loop rate.
+    Release addon (`npm run --prefix node build`) under Node.js v24.18.0 on local Windows x86_64 (AMD Ryzen 5 150), whole-loop rate.
 
     | JavaScript operation | rate | per call |
     | --- | ---: | ---: |
     | `field.fix.branch` | 238k/s | 4.19 us |
     | `field.fix.id` | 223k/s | 4.48 us |
 
-    Both cross as text and parse on every call: a `getFieldById('cme:5001')` miss is 1.08 us against an 815 ns tag miss, the difference being `FixId::from_str`. `field.fix` builds a fresh protocol view per access and `id` renders a new string, so a loop should hold the view.
+    Both cross as text; `field.fix` builds a fresh protocol view per access and `id` renders a new string, so hold the view in a loop.
 
     ```bash
     npm run --prefix node bench:fix

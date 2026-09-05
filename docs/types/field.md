@@ -6,16 +6,16 @@
 
 | | |
 | --- | --- |
-| Owns | name, datatype, `nullable`, metadata; there is no separate schema type |
+| Owns | name, datatype, `nullable`, metadata; no separate schema type |
 | Schema root | a struct `Field` with `nullable` false; `validate_struct_root` checks it |
-| Validates | `Field::new` nothing; `Field::from_parts` and the bindings' one constructor everything |
-| Datatype argument | bindings accept any text syntax, a native `DataType`, or (Python) a PyArrow type |
+| Validates | `Field::new` nothing; `Field::from_parts` and the bindings' constructor everything |
+| Datatype argument | bindings take text, a native `DataType`, or a PyArrow type (Python) |
 | `nullable` default | Python `True`, JavaScript `false` |
-| Metadata | string keys and values, lexical key order; clones share one map until a write |
-| Identity | equality, ordering, and hashing include metadata and dictionary state |
-| Serialization | one `Field` ⇄ `Scalar` mapping under JSON, YAML, and TOML |
-| Rendering | `Display` compact and round-tripping; `{:#}` / `pretty()` readable |
-| JavaScript | subscript access, YAML/TOML, and `pretty` are Rust first; `toJSON` exists |
+| Metadata | string keys and values, lexical order; clones share one map until a write |
+| Identity | equality, ordering, hashing include metadata and dictionary state |
+| Serialization | one `Field` ⇄ `Scalar` mapping under JSON, YAML, TOML |
+| Rendering | `Display` compact, round-trips; `{:#}` / `pretty()` readable |
+| JavaScript | subscripts, YAML/TOML, `pretty` are Rust first; `toJSON` exists |
 
 ## Use
 
@@ -71,7 +71,7 @@ Build one, read its four parts, and round-trip the compact text.
     ```
 ## A non-null struct field is the schema
 
-A table's columns are the children of a struct field with `nullable` false, the root every [media](../media/index.md) reader takes and returns. `require_struct` still accepts a nullable struct as a column.
+A table's columns are the children of a struct field with `nullable` false, the root every [media](../media/index.md) reader takes. `require_struct` still accepts a nullable struct column.
 === "Rust"
 
     ```rust
@@ -135,7 +135,7 @@ A table's columns are the children of a struct field with `nullable` false, the 
     assert.equal(children.getFieldByPath('symbol').name, 'symbol')
     assert.deepEqual(children.keys(), ['id', 'symbol'])
     ```
-Each lookup exists by position, by path, or either, raising or answering `None`:
+Each lookup exists by position, by path, or either:
 
 | | position | path | either |
 |---|---|---|---|
@@ -143,7 +143,7 @@ Each lookup exists by position, by path, or either, raising or answering `None`:
 | optional | `get_field_at` | `get_field_by_path` | `get_field` |
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
-`DataType` answers the same calls, plus `fields`, `field_len`, and `index_of`; `DataType::named_field` sits beside `nullable_field` and `required_field`. The [`field:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties` by language.
+`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`field:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
 ## Flattening and expanding
 
@@ -183,9 +183,9 @@ Rust only.
 
 1. equal types are that type;
 2. `null` yields to the defined side;
-3. same-family nested layouts recurse; a struct takes the union of its fields;
+3. same-family nesting recurses; a struct takes the union of its fields;
 4. bytes win;
-5. text wins next; two ASCII widths meet at the wider width, a width beside variable text at the variable text. Narrowing picks the narrower width, or the width;
+5. text wins next; ASCII widths meet at the wider width, or the narrower when narrowing. A width beside variable text meets at the variable text, or the width when narrowing;
 6. numbers meet by width, temporals by unit.
 
 Anything left is refused. `Field.merge_with` keeps the receiver's name, is nullable when either side is, keeps dictionary options where both encode, and unions metadata, receiver winning.
@@ -317,9 +317,9 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
         `keys`; the shared subscript vocabulary lands with the rest of the lifecycle surface.
 | | path (`str`) | position (`int`) |
 | --- | --- | --- |
-| read | whole name first, then split at each `.` from the left | Python accepts a negative index |
-| assign | replaces in place, or appends when unresolved | replaces only; past the end errors |
-| `del` | removes and closes the gap | removes and closes the gap |
+| read | whole name first, then split at each `.` from the left | negative counts from the end |
+| assign | replaces in place; appends when unresolved | replaces only; past the end errors |
+| `del` | removes, closing the gap | removes, closing the gap |
 
 ## Metadata is a mapping
 
@@ -448,26 +448,26 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(symbol.get('source'), 'feed')
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
-`Int64Field` and its fifty-five siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; precision, unit, and child stay in the wrapped field.
+`Int64Field` and its fifty-five siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `Utf8Field`, `VariantField`, `UuidField`, `Ascii16Field` to `Ascii128Field`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`) | `new(name, nullable)` cannot fail; `from_parts(name, nullable, metadata)` |
+| static datatype (`Int64Field`, `Utf8Field`, `VariantField`, `UuidField`, `Ascii16Field` to `Ascii128Field`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
 | parameterized (`DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)` |
-| from a `Field` | `try_as_typed` borrows a `TypedFieldRef`; `try_into_typed` consumes |
-| bindings | `types.int64` / `fields.int64` return the one native `Field`, typed for a checker only; `fields.ascii(name, width)` |
+| from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
+| bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `fields.ascii(name, width)` |
 
-[Geospatial](geospatial.md), [ASCII](ascii.md), and [UUID](uuid.md) aliases follow the same pattern; a registered code builds its own datatype, not an ASCII width.
+[Geospatial](geospatial.md), [ASCII](ascii.md), and [UUID](uuid.md) aliases follow this pattern; a registered code builds its own datatype, not an ASCII width.
 
 ## Converting to one native field
 
 | | typed value | struct root |
 | --- | --- | --- |
 | Rust | `TypedField<K>::into_field(self)` | `StructField::into_struct_field(self)` |
-| Python | `field(value, name=None) -> Field` | cached staticmethod `Class.field() -> StructField`, installed by `@scalar` |
+| Python | `field(value, name=None)` | cached `Class.field() -> StructField`, installed by `@scalar` |
 | JavaScript | `intoField(value, name = null)` | static getter `Class.intoStructField`, memoized by `intoField` |
 
-No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root accessor must answer a non-null struct field.
+No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root must be a non-null struct field.
 
 ## Serializing a schema
 
@@ -641,29 +641,26 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
 ## Edges
 
-- nullable root -> `validate_struct_root` refuses; a whole row cannot be absent.
+- nullable root -> `validate_struct_root` refuses.
 - Python `field(x, idx=..., path=...)` naming more than one -> refused.
-- optional lookups -> `Option`, `None`, `null` by language.
 - `unnest_fields` -> a leaf under a nullable ancestor is nullable; each name resolves through `field_by_path`.
 - `explode_fields` -> one level per call; nullable when the collection or its element is.
-- both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
-- `merge_with(other, false)` -> the tightest type naming both; `true` widens and loses nothing.
+- both projections -> a list of fields, not a node.
+- `merge_with(other, false)` -> the tightest type naming both; `true` widens losslessly.
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.
-- boolean beside datetime, decimal beside float -> refused, never re-encoded.
+- boolean beside datetime, decimal beside float -> refused.
 - `order["a.b"]` -> a child literally named `a.b` wins over `a` then `b`.
 - list or run-end node -> exactly one or two children; grow and shrink refuse.
 - Python `DataType[...] = ...` -> refused; it points at the owning `Field`.
-- Python `order["owner"]` for a metadata key -> `KeyError`.
-- Python first `hash(field)` -> locks mutation on that wrapper; `copy.copy(field)` unlocks; `stable_hash()` never locks.
-- binding metadata and protocol views -> unhashable; Rust's borrowed protocol view hashes only its properties, so not `Borrow<Field>`.
+- Python first `hash(field)` -> locks mutation on that wrapper; `copy.copy` unlocks; `stable_hash()` never locks.
+- binding metadata and protocol views -> unhashable; Rust's borrowed protocol view is not `Borrow<Field>`.
 - typed field -> no `DerefMut`; a failing `set_dtype` leaves the value untouched.
-- `try_into_typed` with the wrong datatype -> error; the marker is checked.
 - `field(value, name)` with a non-string name or a non-field value -> `TypeError`.
 - emitted shape -> `dictionary_id` only when non-zero, `dictionary_is_ordered` only when set; unset optionals omitted, never null.
 - `pretty()` -> only set attributes; metadata as `@key = value` lines; stable across runs.
-- `with_metadata=false` -> metadata dropped at every depth, not only the root.
+- `with_metadata=false` -> metadata dropped at every depth.
 - `return_equal` -> false for `show_diffs`, true for `show_diff`; only `show_diff` prints `✓ equal`.
-- diff paths -> `$`-rooted: `$.nullable`, `$.dtype.length`, `$.metadata["venue"]`, `$.fields[2]`.
+- diff paths -> `$`-rooted places such as `$.nullable` and `$.fields[2]`.
 
 ## Commands
 
@@ -696,7 +693,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
 ## Performance
 
-Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached class or native `Field` and price a renamed clone separately. One local Windows x86_64 release run: Criterion point estimates, Python median per call, JavaScript whole-loop rate.
+Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached value and price a renamed clone separately. One local Windows x86_64 release run: Criterion point estimates, Python median per call, JavaScript whole-loop rate.
 
 | runtime operation | estimate |
 | --- | ---: |

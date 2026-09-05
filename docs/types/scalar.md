@@ -1,25 +1,24 @@
 # Scalar
 
-`Scalar` is the one value every layer speaks, and this page owns the shared vocabulary, families, and `TypedScalar` beside it.
+`Scalar` is the one value every layer speaks; the vocabulary, families, and `TypedScalar` sit beside it.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Shared enums | One named root file each, re-exported at the crate root; `yggdryl.enums` (Python), `enums` (JavaScript) |
-| `DataTypeId`, `DataTypeKind` | Exact [datatype](datatype.md) identity and family |
-| `Codec`, `Level` | Content coding and the shared 0–9 compression scale |
-| `DigestAlgorithm`, `Digest`, `Digester` | Hash algorithm identity, the value it answers, and the runtime-selected streaming state |
-| `MimeType`, `MediaType` | Base representation and ordered content codings; they own suffix and coding inference, bounded by `MAGIC_PROBE_LEN` |
-| `Scheme`; `IOKind`, `IOMode` | URI and compatibility schemes; resource kind and I/O intent (`overwrite`, `append`, `merge`, `readonly`, `random`) |
-| `TimeUnit`, `Timezone`; `UnionMode`, `EdgeAlgorithm` | Temporal resolution and zone; union layout and geospatial edge model |
-| `Enum` | Vocabulary, spelling, and compact member index; text and host projections emit the spelling |
-| `TypedScalar` | One value and one datatype checked against each other, one alias per datatype; Rust only |
-| Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal` keep total equality, ordering, and hash semantics |
+| `DataTypeId`, `DataTypeKind` | [Datatype](datatype.md) identity, family |
+| `Codec`, `Level` | Content coding, compression scale 0 to 9 |
+| `DigestAlgorithm`, `Digest`, `Digester` | Hash identity, value, streaming state |
+| `MimeType`, `MediaType` | Representation, ordered codings; suffix, coding, and `MAGIC_PROBE_LEN`-bounded content inference |
+| `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
+| `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
+| `Enum` | Kind, spelling, ordinal; projections emit the spelling |
+| Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal`; total equality, ordering, hash |
+| Bindings | `yggdryl.enums`, `enums`; `TypedScalar` Rust only |
 
 ## Use
 
-Every enum spells itself the same way at each boundary.
+One spelling per member at every boundary.
 
 === "Rust"
 
@@ -52,7 +51,7 @@ Every enum spells itself the same way at each boundary.
 
 ## Enum scalars
 
-An `Enum` scalar keeps the member's kind, spelling, and ordinal across the bindings.
+`Scalar.from_enum` keeps kind, spelling, and ordinal.
 
 === "Rust"
 
@@ -88,7 +87,7 @@ An `Enum` scalar keeps the member's kind, spelling, and ordinal across the bindi
 
 ## Scalar families
 
-Units select date and time widths, duration the narrowest fitting count, decimal the coefficient; datetime stays 64-bit like Arrow timestamps.
+Units pick date and time widths, duration the narrowest fitting count, decimal the coefficient; datetime stays 64-bit.
 Rust only.
 
 ```rust
@@ -106,11 +105,8 @@ assert_eq!(time.as_temporal().unwrap().family(), TemporalFamily::Time);
 assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
 ```
 
-Exact constructors remain in Rust when a physical Arrow identity is required; the width rules live under [Numeric & temporal](numeric.md).
-
 ## TypedScalar
 
-`TypedScalar` pairs one value with one datatype, with one alias per datatype for a caller who knows which is coming.
 Rust only.
 
 ```rust
@@ -128,7 +124,7 @@ assert!(Int64Scalar::new(Scalar::from("seven")).is_err());
 
 ## Inferred fields
 
-Without a schema, `Scalar` exposes the `Field` the core already inferred: `value` for a scalar, `item` for a sequence, `row` for named record rows.
+Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `row` by shape.
 
 === "Rust"
 
@@ -172,18 +168,17 @@ Without a schema, `Scalar` exposes the `Field` the core already inferred: `value
     assert.equal(Scalar.fromJs([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
-The markers match a [typed field](field.md); the Arrow projection lives under [Scalars](../arrow/scalars.md) and the parsers under [Text](../text/index.md).
+See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/index.md).
 
 ## Edges
 
-- `IOMode::ReadOnly` or `IOMode::Random` at a write entry point -> refused; only the three write modes write.
-- Empty or positional rows -> ambiguous; `inferred_struct_field` needs a declared `Field`.
-- `Int64Scalar::new(Scalar::from("seven"))` -> `Err`; the value must match the datatype.
-- Duration count above `i32::MAX` -> 64-bit; the narrowest fitting width is chosen.
-- `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1` magic; the Puffin specification assigns no MIME name.
-- Geospatial value across a binding -> plain WKB bytes; `TypedScalar` and the `wkb` reader stay [Rust only](geospatial.md).
-- [ASCII](ascii.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md); the declaration they build is the shared `AsciiEnum`.
-- Field inference -> Rust only; neither binding reimplements it.
+- `readonly` or `random` at a write entry point -> refused.
+- Empty or positional rows -> ambiguous; declare the `Field`.
+- Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
+- `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
+- Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial.md).
+- [ASCII](ascii.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md), building the shared `AsciiEnum`.
+- Field inference -> Rust only; no binding reimplements it.
 
 ## Commands
 
@@ -211,7 +206,7 @@ The markers match a [typed field](field.md); the Arrow projection lives under [S
 
 ## Performance
 
-Release measurements on Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, and Node 24.18.0 (2026-08-24); no Node scalar benchmark is checked in.
+Release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24); no Node benchmark exists.
 
 | Rust | 28.9 ns | 2.59 ns | 5.01 ns | 3.94 ns |
 | Python | 200 ns | 98.8 ns | 100 ns | 73.7 ns |
@@ -220,7 +215,7 @@ Release measurements on Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3
 Regenerate with `cargo bench --bench datatype --all-features -- "value/enum_"`,
 `python benchmarks/scalars.py --iterations 10000`, and
 
-Field inference is Rust only; the same host with rustc 1.96.1 (2026-08-23) gave these Criterion point estimates.
+Inference, same host, rustc 1.96.1 (2026-08-23), Criterion point estimates:
 
 | inferred field | estimate |
 | --- | ---: |

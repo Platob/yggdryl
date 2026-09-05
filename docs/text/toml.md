@@ -6,20 +6,18 @@ One natural record document backed by the shared Rust codec.
 
 | | |
 | --- | --- |
-| Root | one table, decoded as a sorted `Record`; deterministic order makes repeated writes byte-identical |
+| Root | one table as a sorted `Record`; repeated writes are byte-identical |
 | Proves | strings, `i64`, `f64`, booleans, arrays, tables, four date/time forms |
-| Lacks | null, non-string keys, scalar root, multi-document stream, private marker envelope |
-| Exact types | decimal width and scale, binary, string temporals, Struct child order need a [`Field`](../types/field.md) |
-| Transports | one document per call; Rust `_all` forms require exactly one value; bindings expose no `loads_all` or `dump_all` |
-| Scalar selector | Python `cls=Scalar`, JavaScript `{ scalar: true }`; omitted returns natural mappings |
-| Placeholders | opt-in, quoted strings only, after parsing and before Field interpretation |
-| Validates | `validate_for_write` checks the natural projection before any destination opens |
-| Limits and errors | byte, depth, decoded-node, document limits as nullable binding options, core defaults on omission; errors name TOML and a byte offset |
-| Arrow batches | none; streamed batches with overwrite and append live in [Text records](../media/text.md) |
+| Lacks | null, non-string keys, scalar root, streams, private markers |
+| Exact | decimal scale, binary, string temporals, Struct order need a [`Field`](../types/field.md) |
+| Selector | Python `cls=Scalar`, JavaScript `{ scalar: true }`; omitted returns natural mappings |
+| Limits | byte, depth, decoded-node, document; nullable binding options, core defaults |
+| Errors | name TOML and a byte offset; `validate_for_write` rejects before a destination opens |
+| `IOBase` | `from_io` / `into_io` infer TOML and outer [coding](../coding/index.md) from the media type |
 
 ## Use
 
-Rust returns `Scalar`; Python and JavaScript redirect native mappings through the same codec.
+Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 
 === "Rust"
 
@@ -78,7 +76,7 @@ Rust returns `Scalar`; Python and JavaScript redirect native mappings through th
 
 ## Inferring entry point
 
-`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](index.md) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`. The answer is a `Record` because a TOML root is a table.
+`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](index.md), answering a `Record`.
 
 === "Rust"
 
@@ -127,7 +125,7 @@ Rust returns `Scalar`; Python and JavaScript redirect native mappings through th
 
 ## Natural values and exact Fields
 
-TOML's own syntax proves the types below without a schema. Scalars TOML cannot spell are rejected before a destination opens.
+Unspellable Scalars are rejected before a destination opens, never encoded into a side format.
 
 | input or native value | natural TOML behavior |
 | --- | --- |
@@ -141,7 +139,7 @@ TOML's own syntax proves the types below without a schema. Scalars TOML cannot s
 | null | error |
 | integer outside `i64` | error |
 
-A Struct Field canonicalizes Record input into a row `Sequence` in Rust; bindings restore the field names. Python can pass both `field=` and `cls=YourDataclass` to materialize its dataclass wrapper.
+A Struct Field yields a row `Sequence` in Rust; bindings restore field names, and Python may add `cls=YourDataclass`.
 
 === "Rust"
 
@@ -198,20 +196,18 @@ A Struct Field canonicalizes Record input into a row `Sequence` in Rust; binding
 
 ### Dates and times
 
-Every native temporal carries a `TimeUnit` and a non-null `Timezone`; see [Temporal](../types/temporal.md).
+Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../types/temporal.md).
 
 | value | TOML behavior |
 | --- | --- |
-| offset date-time | `DateTime64` instant with explicit zone |
-| local date-time | `DateTime64` with `Timezone::NAIVE` |
+| offset date-time | `DateTime64` instant; a local date-time uses `Timezone::NAIVE` |
 | date, local time | zone-free |
-| native unit and range inside the grammar | TOML date/time token |
-| other unit, range, or named zone | natural ISO string or count; a Field interprets it exactly |
-| bindings | closest lossless native temporal; the `Scalar` wrapper keeps the rest |
+| outside the grammar, or named zone | ISO string or count, never a rewritten offset |
+| bindings | closest lossless native temporal; `Scalar` keeps the rest |
 
 ## Documents and streams
 
-Rust `from_utf8`, `from_bytes`, and `from_reader` decode one document; `into_utf8`, `into_bytes`, and `into_writer` encode one. Binding `loads` accepts content, paths, and readers; `dump` returns bytes or text or writes directly.
+Rust `from_utf8`, `from_bytes`, `from_reader` decode one document; `into_utf8`, `into_bytes`, `into_writer` encode one. Binding `loads` takes content, paths, descriptors, file URLs, and readers; `dump` returns bytes or text or writes directly.
 
 === "Rust"
 
@@ -258,7 +254,7 @@ Rust `from_utf8`, `from_bytes`, and `from_reader` decode one document; `into_utf
 
 ## Formatting
 
-`Formatting::indented(n)` lays nested array items out vertically; `Formatting::compact()` requests no extra layout. Whitespace changes, meaning does not.
+`Formatting::indented(n)` lays array items out vertically; `Formatting::compact()` adds no layout.
 
 === "Rust"
 
@@ -310,11 +306,11 @@ Rust `from_utf8`, `from_bytes`, and `from_reader` decode one document; `into_utf
     assert.deepEqual(toml.loads(laidOut), toml.loads(compact))
     ```
 
-Keys are always quoted, so dots, spaces, and syntax-like names round-trip without changing table structure.
+Keys are always quoted, so dots, spaces, and syntax-like names round-trip unchanged.
 
 ## Placeholders
 
-Syntax and measured overhead live on [Placeholders](placeholders.md).
+Opt-in, inside quoted strings, substituted after parsing and before Field interpretation; see [Placeholders](placeholders.md).
 
 === "Rust"
 
@@ -365,25 +361,15 @@ Syntax and measured overhead live on [Placeholders](placeholders.md).
     assert.deepEqual(value, { host: 'db.internal', port: 5432 })
     ```
 
-## IOBase and content coding
-
-Generic `from_io` / `into_io` infer TOML and any outer [coding](../coding/index.md) from the handle media type.
-
-| binding | accepted handles |
-| --- | --- |
-| Python | `PathLike` sources and destinations |
-| JavaScript | paths, file descriptors, file URLs, streams |
-
 ## Edges
 
 - empty or comment-only document -> empty `Record`.
-- `null`, non-record root, non-string table key, `i64` overflow, excessive depth -> `validate_for_write` error; no partial destination.
-- text naming an existing file -> parsed as TOML; a bare file name fails as the bare word it is.
-- Rust `_all` transport with more than one value -> error.
-- named zone TOML cannot express -> ISO string; never rewritten to the zone's current offset.
-- user key spelled like a private marker -> ordinary application data.
-- supplied placeholder mapping -> wins over environment lookup; the environment is never read unless enabled.
-- Text media keyed merge -> refused; a line has no stable row identity.
+- null, non-record root, non-string key, `i64` overflow, excessive depth -> `validate_for_write` error, no partial destination.
+- an existing file name as text -> parsed as TOML; fails as a bare word.
+- Rust `_all` forms -> exactly one value; bindings expose no `loads_all`, `dump_all`, or streams.
+- user key spelled like a private marker -> ordinary data.
+- placeholder mapping -> wins over the environment, never read unless enabled.
+- Arrow batches -> [Text records](../media/text.md), which refuse keyed merge.
 
 ## Commands
 
