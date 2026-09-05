@@ -201,9 +201,7 @@ assert_eq!(
 
 `rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([benchmarks](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
 
-The Arrow groups report rows per second for missing or default holders, preserved populated
-holders, and forced recomputation. The JavaScript rows include the IPC copy that binding
-requires.
+The Arrow groups report rows per second for missing or default holders, preserved populated holders, and forced recomputation. The JavaScript rows include the IPC copy that binding requires.
 
 ### Throughput per algorithm and size
 

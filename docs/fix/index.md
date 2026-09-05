@@ -7,8 +7,8 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
 | Page | Purpose |
 | --- | --- |
 | [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
-| [Registry](registry.md) | `FixRegistry`: tiered resolution, index halves, `FixKey`, mutation, the process-wide default |
-| [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
+| [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
+| [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 
 ## Contract

@@ -139,8 +139,7 @@ let _ = text::Format::Json;
 
 ## Filling digest holders
 
-A digest holder is a field carrying `digest:role=holder`. A state fills every holder in one
-Arrow `RecordBatch` under an authoritative non-null Struct root.
+A digest holder is a field carrying `digest:role=holder`. A state fills every holder in one Arrow `RecordBatch` under an authoritative non-null Struct root.
 
 ```rust
 use std::sync::Arc;
@@ -185,8 +184,7 @@ assert_eq!(
 assert_eq!(state.as_u64(), running, "filling does not consume the state");
 ```
 
-Each visible row is framed as an ordered `Scalar::Sequence` and streamed through the
-canonical value feed. Nested Struct holders are filled deepest first.
+Each visible row is framed as an ordered `Scalar::Sequence` and streamed through the canonical value feed. Nested Struct holders are filled deepest first.
 
 | Holder setting | Effect |
 | --- | --- |
@@ -203,8 +201,7 @@ canonical value feed. Nested Struct holders are filled deepest first.
 
 ## Arrow row digests
 
-A row is the ordered `Scalar::Sequence` of its selected columns in schema order, element
-count included. The answer never builds one.
+A row is the ordered `Scalar::Sequence` of its selected columns in schema order, element count included. The answer never builds one.
 
 Rust only.
 
@@ -251,12 +248,9 @@ assert_ne!(digests.value(0), digests.value(1));
 | No explicit component | every field except a `digest:role=holder` |
 | Only holders | the empty sequence, for every row |
 
-Names, roles, and other metadata choose the values but never enter the byte feed. The
-[`DigestField` selection helpers](../types/protocol.md) answer the same set without hashing a
-batch.
+Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](../types/protocol.md) answer the same set without hashing a batch.
 
-`row_digests` always uses its `algorithm` argument and the selection above. `column_digests`
-is the single-column form, each answer the cell's own value with no row framing.
+`row_digests` always uses its `algorithm` argument and the selection above. `column_digests` is the single-column form, each answer the cell's own value with no row framing.
 
 ## Edges
 

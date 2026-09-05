@@ -432,13 +432,15 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     assert.equal(registry.inferTextMsgtype(line), 'D')
     ```
 
-A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an alphanumeric suffix routes to the canonical `UDF` root. Canonical spellings work in an empty registry, loaded aliases and alternate tags extend the same lookup, and the Rust byte path returns a slice of the input without allocating.
+A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root. Canonical spellings work in an empty registry, and loaded aliases and alternate tags extend the same lookup.
 
 ## Edges
 
 - `registry.get_field("5055:cme")` -> `None`; a string key is a name, and only `FixId::from_str` parses an identifier.
 - `registry.get_field_by_tag(5055)` with no branch -> the deterministic best match, so a named branch's own tag resolves; an explicit branch never crosses.
 - Two names whose seeded XXH64 digests collide -> a read rechecks the field behind the digest and misses; a mutation refuses loudly.
+- `infer_bytes_msgtype` / `infer_text_msgtype` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
+- A line the scan cannot place -> `application/octet-stream`; a checksum tag 10 stops the scan.
 - `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.
 - An alternate tag equal to another field's canonical tag, or an alias equal to another's canonical name -> legal, and it never wins.
@@ -484,7 +486,11 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` followed by an a
 
 Performance is a guardrail, not a second contract. The release target uses 400 generated fields and 100 fields in the second branch, while Python and JavaScript use 200 of each.
 
-The timing runs report release builds on one Windows x86_64 host, so they are boundary-scale comparisons, not promises. The allocation test is the stronger hot-path assertion: canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference and iteration allocate nothing in Rust.
+The timing runs report release builds on one Windows x86_64 host, so they are boundary-scale comparisons, not promises. The allocation test is the stronger hot-path assertion.
+
+| assertion | scope |
+| --- | --- |
+| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration |
 
 Criterion takes ten samples with short warm-up and measurement windows in this phase.
 
