@@ -38,11 +38,11 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     price.as_fix_mut().set_aliases(["Px"])?;
     // The venue dictionary reuses the name `Symbol`, which is the normal case.
     let mut venue = DataType::Utf8.nullable_field("Symbol");
-    venue.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5055)?)?;
+    venue.as_fix_mut().set_id(&cme, 5055)?;
     let mut registry = FixRegistry::from_fields([symbol, price, venue])?;
 
     // Any spelling of a name or alias answers the canonical field.
-    assert_eq!(registry.field_by_name(&standard, "TICKER")?.name(), "Symbol");
+    assert_eq!(registry.field_by_name("TICKER", Some(&standard))?.name(), "Symbol");
     assert_eq!(registry.field("px")?.name(), "Price");
     assert_eq!(registry.get_field(55), registry.get_field("symbol"));
     assert!(registry.contains(FixKey::Tag(44)));
@@ -50,15 +50,15 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     let error = registry.field_by_tag(35).unwrap_err();
     assert!(error.is_absent());
 
-    // A bare tag and a bare name are the standard branch; the venue field
-    // is reached by its identifier or by name inside its own dictionary.
-    let venue_id = FixId::from_str("cme:5055")?;
-    assert_eq!(registry.field_by_id(&venue_id)?.as_fix().branch()?, cme);
-    assert_eq!(registry.field(&venue_id)?.as_fix().tag()?, Some(5055));
-    assert_eq!(registry.field_by_name(&cme, "SYMBOL")?.as_fix().tag()?, Some(5055));
-    assert_eq!(registry.field_by_name(&standard, "symbol")?.as_fix().tag()?, Some(55));
-    assert!(registry.get_field_by_tag(5055).is_none(), "never crosses a branch");
-    assert!(registry.get_field("cme:5055").is_none(), "a string key is a name");
+    // Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    // matching venue definition, while the standard canonical name wins.
+    let venue_id = FixId::from_str("5055:cme")?;
+    assert_eq!(registry.field_by_id(venue_id)?.as_fix().branch()?, cme);
+    assert_eq!(registry.field(venue_id)?.as_fix().tag()?, Some(5055));
+    assert_eq!(registry.field_by_name("SYMBOL", Some(&cme))?.as_fix().tag()?, Some(5055));
+    assert_eq!(registry.field_by_name("symbol", Some(&standard))?.as_fix().tag()?, Some(55));
+    assert_eq!(registry.field_by_tag(5055)?.as_fix().branch()?, cme);
+    assert!(registry.get_field("5055:cme").is_none(), "a string key is a name");
 
     // A key another field holds *in the same branch* is a conflict naming
     // both, and the branch; nothing changes.
@@ -86,14 +86,14 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     assert!(registry.update(widened).is_err());
     assert_eq!(registry.field_by_tag(55)?.dtype(), &DataType::Utf8);
 
-    // Iteration is branch-major, then by tag.
+    // Iteration is tag-major, then by branch digest.
     assert_eq!(
         registry.iter().map(|field| field.name()).collect::<Vec<_>>(),
-        ["Symbol", "Price", "SYMBOL"],
+        ["Price", "SYMBOL", "Symbol"],
     );
     assert_eq!(registry.remove("sym").map(|field| field.name().to_owned()), Some("SYMBOL".into()));
     assert!(registry.get_field_by_tag(65).is_none());
-    assert_eq!(registry.remove(&venue_id).map(|field| field.name().to_owned()), Some("Symbol".into()));
+    assert_eq!(registry.remove(venue_id).map(|field| field.name().to_owned()), Some("Symbol".into()));
     ```
 
 === "Python"
@@ -115,15 +115,15 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
 
     registry = FixRegistry.from_fields(
         [
-            fix_field("Symbol", "utf8", "standard:55", "Ticker"),
-            fix_field("Price", "decimal128(20, 8)", "standard:44", "Px"),
+            fix_field("Symbol", "utf8", "55:", "Ticker"),
+            fix_field("Price", "decimal128(20, 8)", "44:", "Px"),
             # The venue dictionary reuses the name `Symbol`, the normal case.
-            fix_field("Symbol", "utf8", "cme:5055"),
+            fix_field("Symbol", "utf8", "5055:cme"),
         ]
     )
 
     # Any spelling of a name or alias answers the canonical field.
-    assert registry.field_by_name(STANDARD_BRANCH, "TICKER").name == "Symbol"
+    assert registry.field_by_name("TICKER", STANDARD_BRANCH).name == "Symbol"
     assert registry.field("px").name == "Price"
     assert registry.get_field(55) == registry.get_field("symbol")
     assert 44 in registry
@@ -131,23 +131,23 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     with pytest.raises(KeyError, match="tag 35"):
         registry.field_by_tag(35)
 
-    # A bare tag and a bare name are the standard branch; the venue field is
-    # reached by its identifier or by name inside its own dictionary.
-    assert registry.field_by_id("cme:5055").fix.branch == "cme"
-    assert registry.field_by_name("cme", "SYMBOL").fix.tag == 5055
-    assert registry.field_by_name("standard", "symbol").fix.tag == 55
-    assert registry.get_field_by_tag(5055) is None, "never crosses a branch"
-    assert registry.get_field("cme:5055") is None, "a string key is a name"
+    # Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    # matching venue definition, while the standard canonical name wins.
+    assert registry.field_by_id("5055:cme").fix.branch == "cme"
+    assert registry.field_by_name("SYMBOL", "cme").fix.tag == 5055
+    assert registry.field_by_name("symbol", "").fix.tag == 55
+    assert registry.field_by_tag(5055).fix.branch == "cme"
+    assert registry.get_field("5055:cme") is None, "a string key is a name"
 
     # A key another field holds *in the same branch* is a conflict naming
     # both, and the branch; nothing changes.
     with pytest.raises(ValueError, match="held by Symbol") as conflict:
-        registry.insert(fix_field("SymbolSfx", "utf8", "standard:65", "ticker"))
-    assert 'branch \\"standard\\"' in str(conflict.value)
+        registry.insert(fix_field("SymbolSfx", "utf8", "65:", "ticker"))
+    assert 'branch \\"\\"' in str(conflict.value)
     assert len(registry) == 3
 
     # A merge keeps what only the stored field declared and adds the rest.
-    incoming = fix_field("SYMBOL", "utf8", "standard:55", "Sym")
+    incoming = fix_field("SYMBOL", "utf8", "55:", "Sym")
     incoming.fix.tags = [65]
     registry.update(incoming)
     merged = registry.field_by_tag(65)
@@ -155,14 +155,14 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     assert merged.fix.aliases == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
-        registry.update(fix_field("Symbol", "large_utf8", "standard:55"))
+        registry.update(fix_field("Symbol", "large_utf8", "55:"))
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
-    # Iteration is branch-major, then by tag.
+    # Iteration is tag-major, then by branch digest.
     assert [field.fix.id for field in registry] == [
-        "cme:5055",
-        "standard:44",
-        "standard:55",
+        "44:",
+        "55:",
+        "5055:cme",
     ]
     assert registry.remove("sym").name == "SYMBOL"
     assert registry.get_field_by_tag(65) is None
@@ -182,57 +182,57 @@ A name or alias in any ASCII case answers the canonical field, and a bare tag st
     }
 
     const registry = fix.FixRegistry.fromFields([
-      fixField('Symbol', 'utf8', 'standard:55', 'Ticker'),
-      fixField('Price', 'decimal128(20, 8)', 'standard:44', 'Px'),
+      fixField('Symbol', 'utf8', '55:', 'Ticker'),
+      fixField('Price', 'decimal128(20, 8)', '44:', 'Px'),
       // The venue dictionary reuses the name `Symbol`, the normal case.
-      fixField('Symbol', 'utf8', 'cme:5055'),
+      fixField('Symbol', 'utf8', '5055:cme'),
     ])
 
     // Any spelling of a name or alias answers the canonical field.
-    assert.equal(registry.fieldByName(fix.STANDARD_BRANCH, 'TICKER').name, 'Symbol')
+    assert.equal(registry.fieldByName('TICKER', fix.STANDARD_BRANCH).name, 'Symbol')
     assert.equal(registry.field('px').name, 'Price')
     assert.ok(registry.getField(55).equals(registry.getField('symbol')))
     assert.equal(registry.has(44), true)
     assert.equal(registry.has('44'), false, 'a tag query never consults names')
     assert.throws(() => registry.fieldByTag(35), /tag 35/)
 
-    // A bare tag and a bare name are the standard branch; the venue field is
-    // reached by its identifier or by name inside its own dictionary.
-    assert.equal(registry.fieldById('cme:5055').fix.branch, 'cme')
-    assert.equal(registry.fieldByName('cme', 'SYMBOL').fix.tag, 5055)
-    assert.equal(registry.fieldByName('standard', 'symbol').fix.tag, 55)
-    assert.equal(registry.getFieldByTag(5055), null, 'never crosses a branch')
-    assert.equal(registry.getField('cme:5055'), null, 'a string key is a name')
+    // Explicit identity/name pin a branch. Omitted tag lookup infers the only
+    // matching venue definition, while the standard canonical name wins.
+    assert.equal(registry.fieldById('5055:cme').fix.branch, 'cme')
+    assert.equal(registry.fieldByName('SYMBOL', 'cme').fix.tag, 5055)
+    assert.equal(registry.fieldByName('symbol', '').fix.tag, 55)
+    assert.equal(registry.fieldByTag(5055).fix.branch, 'cme')
+    assert.equal(registry.getField('5055:cme'), null, 'a string key is a name')
 
     // A key another field holds *in the same branch* is a conflict naming
     // both, and the branch; nothing changes.
     assert.throws(
-      () => registry.insert(fixField('SymbolSfx', 'utf8', 'standard:65', 'ticker')),
+      () => registry.insert(fixField('SymbolSfx', 'utf8', '65:', 'ticker')),
       /held by Symbol/,
     )
     assert.equal(registry.size, 3)
 
     // A merge keeps what only the stored field declared and adds the rest.
-    const incoming = fixField('SYMBOL', 'utf8', 'standard:55', 'Sym')
+    const incoming = fixField('SYMBOL', 'utf8', '55:', 'Sym')
     incoming.fix.tags = [65]
     registry.update(incoming)
     const merged = registry.fieldByTag(65)
     assert.equal(merged.name, 'SYMBOL')
     assert.deepEqual(merged.fix.aliases, ['Sym', 'Ticker'])
     // A datatype disagreement is refused, never widened.
-    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', 'standard:55')))
+    assert.throws(() => registry.update(fixField('Symbol', 'large_utf8', '55:')))
     assert.ok(registry.fieldByTag(55).dtype.equals(DataType.from('utf8')))
 
-    // Iteration is branch-major, then by tag.
+    // Iteration is tag-major, then by branch digest.
     assert.deepEqual(
       [...registry].map((field) => field.fix.id),
-      ['cme:5055', 'standard:44', 'standard:55'],
+      ['44:', '55:', '5055:cme'],
     )
     assert.equal(registry.remove('sym').name, 'SYMBOL')
     assert.equal(registry.getFieldByTag(65), null)
     // `remove` reads a string as a standard name, so a vendor field leaves by
     // its identifier.
-    assert.equal(registry.removeById('cme:5055').name, 'Symbol')
+    assert.equal(registry.removeById('5055:cme').name, 'Symbol')
     assert.equal(registry.size, 1)
     ```
 

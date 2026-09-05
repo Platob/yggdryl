@@ -885,7 +885,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ## Text records
 
-`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method; [Text records](../../media/text.md) defines schema, parsing, errors, and benchmarks. Each line becomes `url: utf8` and `body: binary`; `with_rownum` / `withRownum` inserts `rownum: int64` between them with its first value.
+`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method. Physical lines are records by default; [Plain-text records](../../media/text.md) defines the schema, parsing order, errors, and benchmarks.
 
 ## Edges
 
@@ -905,7 +905,9 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 - `kind` -> `IOKind` in Rust, a `kind` property or getter in the bindings spelling `memory`, `file`, `directory`, `table`, `namespace`, `catalog`, `unknown`.
 - the commit splitter -> slices batches as views and holds one cadence plus the current input remainder.
 - native row conversion -> bounded by the smaller of `batch_row_size` and `commit_row_size`, so a failed row keeps the committed prefix.
-- `TextOptions` -> regex `rowheader` captures, edge stripping, a fixed line separator, syntax-directed pre-read autotyping; generic `RecordOptions` keeps the shared timezone accessor.
+- `TextOptions` `rowheader` -> frames logical records from its matches, with a bounded body prefix and an explicit leading-fragment policy.
+- `with_rownum` / `withRownum` -> records the first physical line of each result.
+- generic `RecordOptions` -> keeps the shared timezone accessor.
 - plain folder -> earlier leaves stay published after a later leaf fails; see [Partitions](partitions.md).
 
 ## Commands

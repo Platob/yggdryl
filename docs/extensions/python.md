@@ -246,22 +246,30 @@ from yggdryl import Field
 field = Field("price", "int64", nullable=False)
 field.iceberg["doc"] = "closing price"
 field.postgres.update({"type": "numeric"})
+field.digest["role"] = "component"
+field.identity.update({"role": "primary", "nulls": "distinct"})
+field.partition.update({"transform": "bucket[16]", "order": "0"})
 
 assert field.iceberg["doc"] == "closing price"
 assert dict(field.postgres.items()) == {"type": "numeric"}
 assert len(field.iceberg) == 1
 assert "doc" not in field.postgres
+assert field.digest["role"] == "component"
+assert field.identity["role"] == "primary"
+assert field.partition["transform"] == "bucket[16]"
 
 # The bare name is all the view needs; the full key is what the field stores.
 assert field.iceberg.key("doc") == "iceberg:doc"
 assert field.metadata["iceberg:doc"] == "closing price"
-assert len(field.metadata) == 2
+assert len(field.metadata) == 7
 
 del field.iceberg["doc"]
 assert not field.iceberg
 ```
 
-Every well-known [protocol](../types/protocol.md) is an attribute, and `field.protocol(name)` takes one known only at runtime. A schema also names the columns a path spells out, which a partitioned write and an Iceberg spec both read.
+Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity` and `partition`, and `field.protocol(name)` takes one known only at runtime. `identity` and `partition` hold arbitrary inert strings, while `digest["role"]` accepts only `"holder"` or `"component"`.
+
+A schema also names the columns a path spells out, which a partitioned write and an Iceberg spec both read.
 
 ```python
 from yggdryl import DataType, Field
@@ -279,6 +287,35 @@ assert schema.partition_field_names == ["year"]
 assert schema.dtype["year"].is_partition
 assert len(schema.without_partition_fields().dtype) == 1
 ```
+
+### Row digests
+
+A Struct field's direct children define a row digest. Explicit `component` roles select the exact set; otherwise every child except a `holder` contributes, in declaration order.
+
+```python
+from yggdryl import DataType, Field
+
+identifier = Field("id", "int64", nullable=False)
+price = Field("price", "int64", nullable=False)
+holder = Field("row_digest", "uint64", nullable=False)
+holder.digest["role"] = "holder"
+
+fallback = Field(
+    "row", DataType.from_fields([identifier, price, holder]), nullable=False
+)
+assert fallback.digest_field_names == ["id", "price"]
+assert not fallback.has_digest_components
+
+identifier.digest["role"] = "component"
+explicit = Field(
+    "row", DataType.from_fields([identifier, price, holder]), nullable=False
+)
+assert explicit.digest_field_names == ["id"]
+assert explicit.digest_field_len == 1
+assert len(explicit.only_digest_fields().dtype) == 1
+```
+
+Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit algorithms. `field.cast_arrow_array_bits(...)` performs the same reversible bit-preserving cast outside holder filling.
 
 ## Field classes
 
@@ -694,7 +731,7 @@ handle.overwrite_records([], options=empty)
 
 ### Record options
 
-Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema and row numbering of [plain-text records](../media/text.md).
+Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record decoded-byte retention, and row numbering of [plain-text records](../media/text.md).
 
 ## pandas and polars
 
@@ -815,6 +852,8 @@ assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_has
 
 A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window ([xxHash](../xxhash/index.md)).
 
+Each resumable state also exposes `fill_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
+
 ## FIX registry at the boundary
 
 `yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`"standard"`) and `STANDARD_TAG_LIMIT` (`5000`). The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
@@ -919,7 +958,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `stable_hash()` -> never locks a mutable wrapper, and a copy or an unpickle arrives unlocked.
 - metadata views -> unhashable, but compare by their current content like ordinary mapping views.
 - Iceberg views -> keep snapshot v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every data-file count, bound, split, encryption, delete, and row-lineage field.
-- Rust's per-protocol view types (`HttpField`, `IcebergField`, and sixteen others) -> no Python counterpart yet.
+- Rust's per-protocol view types (`HttpField`, `IcebergField`, `DigestField`, `IdentityField`, `PartitionField`, and sixteen others) -> no Python counterpart yet.
 - `field.https` -> absent, because HTTPS shares the canonical `http:` namespace.
 - `field.iceberg` in Rust -> `as_iceberg()` / `as_iceberg_mut()`; `arrow` is `as_arrow_properties` and `field_properties` is `as_field_properties`.
 - `field.content_type` -> `as_http().content_type()` in Rust, where the `http:` headers live.
@@ -946,6 +985,8 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - streaming `reader` / `writer` and the `Gzip<H>` and `Hashed<H>` handles -> Rust-only, built on Rust's `Read` / `Write`.
 - `from yggdryl.coding import gzip` -> the standard library's module names with `loads` / `dumps`; `zlib` adds `loads_raw` / `dumps_raw`.
 - a handle applies the coding its own name declares, and `IOBase.codec` asks which one.
+- `fill_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
+- a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
 - `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.

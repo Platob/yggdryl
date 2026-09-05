@@ -262,24 +262,32 @@ const assert = require('node:assert/strict')
 const field = new Field('price', 'int64', false)
 field.iceberg.set('doc', 'closing price')
 field.postgres.update({ type: 'numeric' })
+field.digest.set('role', 'component')
+field.identity.update({ role: 'primary', nulls: 'distinct' })
+field.partition.update({ transform: 'bucket[16]', order: '0' })
 
 assert.equal(field.iceberg.get('doc'), 'closing price')
 assert.deepEqual([...field.postgres], [['type', 'numeric']])
 assert.equal(field.iceberg.size, 1)
 assert.equal(field.postgres.has('doc'), false)
+assert.equal(field.digest.get('role'), 'component')
+assert.equal(field.identity.get('role'), 'primary')
+assert.equal(field.partition.get('transform'), 'bucket[16]')
 
 // The bare name is all the view needs; the full key is what the field stores.
 assert.equal(field.iceberg.key('doc'), 'iceberg:doc')
 assert.equal(field.get('iceberg:doc'), 'closing price')
-assert.equal(field.size, 2)
+assert.equal(field.size, 7)
 
 assert.equal(field.iceberg.delete('doc'), true)
 assert.equal(field.iceberg.size, 0)
 ```
 
-`field.protocol(name)` takes a runtime scheme, and there is no `https` getter,
-because HTTPS shares the canonical `http:` namespace. A schema also says which
-columns a path spells out.
+`digest`, `identity`, and `partition` join the well-known protocol getters, and
+`field.protocol(name)` takes a runtime scheme. There is no `https` getter,
+because HTTPS shares the canonical `http:` namespace.
+
+A schema also says which columns a path spells out.
 
 ```javascript
 const { DataType, Field } = require('yggdryl')
@@ -298,6 +306,40 @@ assert.deepEqual(schema.partitionFieldNames(), ['year'])
 assert.equal(schema.dtype.getFieldByPath('year').isPartition, true)
 assert.equal(schema.withoutPartitionFields().dtype.length, 1)
 ```
+
+## Row digest fields
+
+A Struct field's direct children define a row digest. Explicit `component`
+roles select the exact set, otherwise every child except a `holder`
+contributes, both in declaration order.
+
+```javascript
+const { DataType, Field } = require('yggdryl')
+const assert = require('node:assert/strict')
+
+const identifier = new Field('id', 'int64', false)
+const price = new Field('price', 'int64', false)
+const holder = new Field('row_digest', 'uint64', false)
+holder.digest.set('role', 'holder')
+
+const fallback = new Field(
+  'row', DataType.fromFields([identifier, price, holder]), false,
+)
+assert.deepEqual(fallback.digestFieldNames(), ['id', 'price'])
+assert.equal(fallback.hasDigestComponents, false)
+
+identifier.digest.set('role', 'component')
+const explicit = new Field(
+  'row', DataType.fromFields([identifier, price, holder]), false,
+)
+assert.deepEqual(explicit.digestFieldNames(), ['id'])
+assert.equal(explicit.digestFieldLen, 1)
+assert.equal(explicit.onlyDigestFields().dtype.length, 1)
+```
+
+Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the
+64-bit algorithms. `field.castArrowArrayBits(...)` is the same explicit,
+reversible representation cast outside holder filling.
 
 ## A filesystem is whatever answers seven calls
 
@@ -630,6 +672,10 @@ Every immutable wrapper here follows the same convention: `equals`, `compare`,
 hashed in place, an `ArrayBuffer` is narrowed to a `Buffer` window, and a
 `string` is encoded as UTF-8.
 
+Each resumable state also exposes `fillArrowBatch(root, batch, force = false)`.
+The root Field's digest metadata selects the row values, and the state supplies
+its algorithm, seed, and secret.
+
 ## FIX is a namespace
 
 `fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`,
@@ -746,6 +792,14 @@ and validates a plain object. Resolution and merging are the core's, on the
 - Rust field metadata -> `http:` headers on `as_http()`, while
   `parquet_field_id`, `alias`, `comment`, `display`, and `location` stay on
   `Field`.
+- `fillArrowBatch` -> fills default holder cells; a populated holder is
+  preserved unless `force` is true.
+- `fillArrowBatch` -> ignores bytes already written to the state, leaves it
+  unchanged, and copies Arrow batches as IPC in both directions.
+- A signed digest holder -> high-bit results read as a negative `number` or
+  `bigint`, with the complete digest bits retained.
+- `field.digest` `role` -> only `'holder'` or `'component'`; `identity` and
+  `partition` take arbitrary inert string metadata.
 - `DataType.fromRegex` -> named-capture inference, decided by the core.
 - `gzip`, `zlib`, `zstd` -> `loads`/`dumps` over `Buffer`, plus
   `loadsRaw`/`dumpsRaw` on `zlib`, reading and writing what `node:zlib` does.
@@ -753,6 +807,8 @@ and validates a plain object. Resolution and merging are the core's, on the
   `IOBase.codec` asks which one that is.
 - `TextOptions.withRownum` -> `bigint | null` over the whole signed 64-bit
   range; a `number` is rejected, never silently narrowed.
+- `TextOptions` logical framing -> `framing`, `leadingFragment`, and
+  `maxRecordByteSize`, contracted in [plain-text records](../media/text.md).
 - A `bigint` wider than 128 bits -> refused, since no exact native integer
   holds it.
 - A handler-backed handle in a `Worker` -> refused by name; handlers run

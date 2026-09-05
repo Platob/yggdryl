@@ -62,10 +62,10 @@
     // The message's branch is the root's own, and an identifier is exact.
     assert_eq!(msg.branch(), &yggdryl::FixBranch::STANDARD);
     assert_eq!(
-        msg.by_id(&yggdryl::FixId::standard(38))?,
+        msg.by_id(yggdryl::FixId::standard(38))?,
         &Scalar::from(100_i64)
     );
-    assert!(msg.get_by_id(&yggdryl::FixId::from_str("cme:5001")?).is_none());
+    assert!(msg.get_by_id(yggdryl::FixId::from_str("5001:cme")?).is_none());
 
     // Schema and value serialize through the paths every field and value share.
     let schema = root.clone().into_json()?;
@@ -126,8 +126,8 @@
 
     # The message's branch is the root's own, and an identifier is exact.
     assert message.branch == STANDARD_BRANCH
-    assert message.by_id("standard:38").as_py() == 100
-    assert message.get_by_id("cme:5001") is None
+    assert message.by_id("38:").as_py() == 100
+    assert message.get_by_id("5001:cme") is None
 
     # The schema serializes through the path every field already has, and the
     # value the message holds names the same row.
@@ -184,8 +184,8 @@
 
     // The message's branch is the root's own, and an identifier is exact.
     assert.equal(message.branch, fix.STANDARD_BRANCH)
-    assert.equal(message.byId('standard:38').asJs(), 100)
-    assert.equal(message.getById('cme:5001'), null)
+    assert.equal(message.byId('38:').asJs(), 100)
+    assert.equal(message.getById('5001:cme'), null)
 
     // Schema and value serialize through the paths every field and value share.
     const document = message.toJSON()

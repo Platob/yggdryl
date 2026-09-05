@@ -42,7 +42,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     // One venue field, which lands in its own branch folder.
     let cme = FixBranch::from_str("cme")?;
     let mut trade = DataType::Utf8.nullable_field("TradeID");
-    trade.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5001)?)?;
+    trade.as_fix_mut().set_id(&cme, 5001)?;
     fields.push(trade);
     // One repeating group, which is the only field of the nested tree.
     let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])?
@@ -55,23 +55,24 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 
     let shards = |tree: &str, branch: &str| -> yggdryl::Result<Vec<String>> {
         let mut names: Vec<String> = std::fs::read_dir(root.join(tree).join(branch))?
+            .filter(|entry| entry.as_ref().is_ok_and(|entry| entry.path().is_file()))
             .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
             .collect::<Result<_, _>>()?;
         names.sort();
         Ok(names)
     };
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert_eq!(shards("primitive", "standard")?, ["0.json", "1.json"]);
+    assert_eq!(shards("primitive", "")?, ["0.json", "1.json"]);
     // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert_eq!(shards("primitive", "cme")?, ["50.json"]);
     // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert_eq!(shards("nested", "standard")?, ["4.json"]);
+    assert_eq!(shards("nested", "")?, ["4.json"]);
 
     let reloaded = FixRegistry::from_handle(&folder)?;
     assert_eq!(reloaded, registry);
     assert_eq!(reloaded.field_by_tag(20)?.name(), "ExecType");
     assert_eq!(reloaded.field_by_tag(453)?.name(), "NoPartyIDs");
-    assert_eq!(reloaded.field_by_id(&FixId::from_str("cme:5001")?)?.name(), "TradeID");
+    assert_eq!(reloaded.field_by_id(FixId::from_str("5001:cme")?)?.name(), "TradeID");
 
     // Removing the only field of a shard removes the shard on the next write,
     // emptying a branch removes its folder whole, and emptying a tree removes
@@ -79,19 +80,12 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     registry.remove(100);
     registry.remove(150);
     registry.remove(453);
-    registry.remove(&FixId::from_str("cme:5001")?);
+    registry.remove(FixId::from_str("5001:cme")?);
     registry.write_into(&mut folder)?;
-    assert!(!root.join("primitive").join("standard").join("1.json").exists());
+    assert!(!root.join("primitive").join("").join("1.json").exists());
     assert!(!root.join("primitive").join("cme").exists());
     assert!(!root.join("nested").exists());
     assert_eq!(FixRegistry::from_handle(&folder)?.len(), 2);
-
-    // A leaf directly under a tree root is a typed error, never a silent
-    // empty load.
-    std::fs::write(root.join("primitive").join("0.json"), b"[]")?;
-    let error = FixRegistry::from_handle(&folder).unwrap_err();
-    assert!(error.to_string().contains("only branch folders"), "{error}");
-    std::fs::remove_file(root.join("primitive").join("0.json"))?;
 
     // A folder that is not there loads as empty and is not created.
     let absent = Folder::new(root.join("absent"))?;
@@ -123,7 +117,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     declared[3].fix.tags = [20]
     # One venue field, which lands in its own branch folder.
     trade = Field("TradeID", "utf8")
-    trade.fix.id = "cme:5001"
+    trade.fix.id = "5001:cme"
     declared.append(trade)
     # One repeating group, which is the only field of the nested tree.
     item = Field("item", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
@@ -135,21 +129,21 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 
 
     def shards(tree: str, branch: str) -> list[str]:
-        return sorted(path.name for path in (root / tree / branch).iterdir())
+        return sorted(path.name for path in (root / tree / branch).iterdir() if path.is_file())
 
 
     # The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert shards("primitive", "standard") == ["0.json", "1.json"]
+    assert shards("primitive", "") == ["0.json", "1.json"]
     # Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert shards("primitive", "cme") == ["50.json"]
     # The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert shards("nested", "standard") == ["4.json"]
+    assert shards("nested", "") == ["4.json"]
 
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
     assert reloaded.field_by_tag(20).name == "ExecType"
     assert reloaded.field_by_tag(453).name == "NoPartyIDs"
-    assert reloaded.field_by_id("cme:5001").name == "TradeID"
+    assert reloaded.field_by_id("5001:cme").name == "TradeID"
 
     # Removing the only field of a shard removes the shard on the next write,
     # emptying a branch removes its folder whole, and emptying a tree removes
@@ -159,25 +153,17 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     registry.remove(150)
     registry.remove(453)
     kept = FixRegistry.from_fields(
-        [field for field in registry if field.fix.branch == "standard"]
+        [field for field in registry if field.fix.branch == ""]
     )
     kept.write_into(root)
-    assert not (root / "primitive" / "standard" / "1.json").exists()
+    assert not (root / "primitive" / "1.json").exists()
     assert not (root / "primitive" / "cme").exists()
     assert not (root / "nested").exists()
     assert len(FixRegistry.from_handle(root)) == 2
 
-    # A leaf directly under a tree root is a typed error, never a silent
-    # empty load.
-    stray = root / "primitive" / "0.json"
-    stray.write_bytes(b"[]")
-    with pytest.raises(ValueError, match="only branch folders"):
-        FixRegistry.from_handle(root)
-    stray.unlink()
-
     # A root left in the retired `records/` layout is refused, not read empty.
     retired = workspace / "retired"
-    (retired / "records" / "standard").mkdir(parents=True)
+    (retired / "records" / "old").mkdir(parents=True)
     with pytest.raises(ValueError, match="records"):
         FixRegistry.from_handle(retired)
 
@@ -210,7 +196,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     declared[3].fix.tags = [20]
     // One venue field, which lands in its own branch folder.
     const trade = Field.from('TradeID: utf8')
-    trade.fix.id = 'cme:5001'
+    trade.fix.id = '5001:cme'
     declared.push(trade)
     // One repeating group, which is the only field of the nested tree.
     const item = fields.struct('item', [Field.from('PartyID: utf8')], { nullable: false })
@@ -220,19 +206,21 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     const registry = fix.FixRegistry.fromFields(declared)
     registry.writeInto(root)
 
-    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch)).sort()
+    const shards = (tree, branch) => fs.readdirSync(path.join(root, tree, branch))
+      .filter((name) => fs.statSync(path.join(root, tree, branch, name)).isFile())
+      .sort()
     // The alternate tag 20 wrote nothing into shard 0 beyond MsgType and StopPx.
-    assert.deepEqual(shards('primitive', 'standard'), ['0.json', '1.json'])
+    assert.deepEqual(shards('primitive', ''), ['0.json', '1.json'])
     // Each branch owns its own shard arithmetic: 5001 / 100 is 50.
     assert.deepEqual(shards('primitive', 'cme'), ['50.json'])
     // The group is nested, so it is the nested tree's only shard: 453 / 100.
-    assert.deepEqual(shards('nested', 'standard'), ['4.json'])
+    assert.deepEqual(shards('nested', ''), ['4.json'])
 
     const reloaded = fix.FixRegistry.fromHandle(root)
     assert.ok(reloaded.equals(registry))
     assert.equal(reloaded.fieldByTag(20).name, 'ExecType')
     assert.equal(reloaded.fieldByTag(453).name, 'NoPartyIDs')
-    assert.equal(reloaded.fieldById('cme:5001').name, 'TradeID')
+    assert.equal(reloaded.fieldById('5001:cme').name, 'TradeID')
 
     // Removing the only field of a shard removes the shard on the next write,
     // emptying a branch removes its folder whole, and emptying a tree removes
@@ -241,23 +229,16 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     registry.remove(100)
     registry.remove(150)
     registry.remove(453)
-    registry.removeById('cme:5001')
+    registry.removeById('5001:cme')
     registry.writeInto(root)
-    assert.equal(fs.existsSync(path.join(root, 'primitive', 'standard', '1.json')), false)
+    assert.equal(fs.existsSync(path.join(root, 'primitive', '1.json')), false)
     assert.equal(fs.existsSync(path.join(root, 'primitive', 'cme')), false)
     assert.equal(fs.existsSync(path.join(root, 'nested')), false)
     assert.equal(fix.FixRegistry.fromHandle(root).size, 2)
 
-    // A leaf directly under a tree root is a typed error, never a silent
-    // empty load.
-    const stray = path.join(root, 'primitive', '0.json')
-    fs.writeFileSync(stray, '[]')
-    assert.throws(() => fix.FixRegistry.fromHandle(root), /only branch folders/)
-    fs.rmSync(stray)
-
     // A root left in the retired `records/` layout is refused, not read empty.
     const retired = path.join(workspace, 'retired')
-    fs.mkdirSync(path.join(retired, 'records', 'standard'), { recursive: true })
+    fs.mkdirSync(path.join(retired, 'records', 'old'), { recursive: true })
     assert.throws(() => fix.FixRegistry.fromHandle(retired), /records/)
 
     // A folder that is not there loads as empty and is not created.
@@ -273,8 +254,11 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
 `primitive` holds the fields whose datatype is one scalar value and `nested` the ones carrying a subtree. In FIX terms the nested fields are exactly the components, a Struct of members, and the repeating groups, a List of that Struct.
 
 ```text
+<root>/primitive/<shard>.json
 <root>/primitive/<branch>/<shard>.json
+<root>/nested/<shard>.json
 <root>/nested/<branch>/<shard>.json
+<root>/branches.json
 ```
 
 ## The tracked seed
@@ -293,10 +277,10 @@ Each field carries the specification's wording as its description and a display 
     let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
 
     assert_eq!(registry.field_by_tag(55)?.name(), "Symbol");
-    assert_eq!(registry.field_by_name(&standard, "ticker")?.name(), "Symbol");
+    assert_eq!(registry.field_by_name("ticker", Some(&standard))?.name(), "Symbol");
     assert_eq!(registry.field_by_tag(20)?.name(), "ExecType");
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.PartyID")?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_name(&standard, "ClOrdID")?.display(), Some("Client order ID"));
+    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("Client order ID"));
     // Every seed field is a specification field, so none states a branch.
     assert!(registry.iter().all(|field| !field.has_metadata("fix:branch")));
     assert!(registry.len() < 40);
@@ -314,11 +298,11 @@ Each field carries the specification's wording as its description and a display 
     registry = FixRegistry.from_handle(seed)
 
     assert registry.field_by_tag(55).name == "Symbol"
-    assert registry.field_by_id("standard:55").name == "Symbol"
-    assert registry.field_by_name(STANDARD_BRANCH, "ticker").name == "Symbol"
+    assert registry.field_by_id("55:").name == "Symbol"
+    assert registry.field_by_name("ticker", STANDARD_BRANCH).name == "Symbol"
     assert registry.field_by_tag(20).name == "ExecType"
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
-    assert registry.field_by_name(STANDARD_BRANCH, "ClOrdID").display == "Client order ID"
+    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
+    assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "Client order ID"
     # Every seed field is a specification field, so none states a branch.
     assert all("fix:branch" not in field.metadata for field in registry)
     assert len(registry) < 40
@@ -336,11 +320,11 @@ Each field carries the specification's wording as its description and a display 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
 
     assert.equal(registry.fieldByTag(55).name, 'Symbol')
-    assert.equal(registry.fieldById('standard:55').name, 'Symbol')
-    assert.equal(registry.fieldByName(standard, 'ticker').name, 'Symbol')
+    assert.equal(registry.fieldById('55:').name, 'Symbol')
+    assert.equal(registry.fieldByName('ticker', standard).name, 'Symbol')
     assert.equal(registry.fieldByTag(20).name, 'ExecType')
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByName(standard, 'ClOrdID').display, 'Client order ID')
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByName('ClOrdID', standard).display, 'Client order ID')
     // Every seed field is a specification field, so none states a branch.
     assert.ok([...registry].every((field) => field.has('fix:branch') === false))
     assert.ok(registry.size < 40)

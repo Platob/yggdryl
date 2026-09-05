@@ -18,12 +18,16 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixBranch`, `FixId`; no second field class |
 | Keys | `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`, `fix:description`; name, datatype and `display` stay the field's own |
 | Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
-| Standard branch | `standard`; an absent key means it, and setting it removes the key |
-| Identity | `FixId` = `branch:tag`, derived on every read, never stored; `None` without a tag; ordered branch-major, then tag |
-| Standard-tag rule | Tag below `FixId::STANDARD_TAG_LIMIT` (5000) forces the standard branch, one-way; `FixId::from_parts` refuses at every door |
+| Standard branch | Empty name, digest zero, `Version::default()`, empty sender and target component IDs; an absent key means it, and setting it removes the key |
+| Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest, `Version`, `target_comp_id`, `sender_comp_id`, and the registry stores that value |
+| Identity | `FixId` packs the tag in the high 32 bits and the branch's cached XXH32 digest in the low 32 bits of one positive `i64`; `Copy`, eight bytes, tag-major |
+| Spelling | Parsed as `tag:branch`; displayed `35:` for the standard branch and `5001:#7f3a1c02` for another; a field keeps its branch text, so `field.fix.id` reads `5001:cme` |
+| Derived | The identifier is computed on every read from `fix:branch` and `fix:tag`, never stored; `None` without a tag |
+| User tag range | A non-standard branch may claim only `FixId::USER_TAG_MIN..FixId::USER_TAG_MAX`, currently `[5000, 40000)`; the standard branch holds every non-negative tag |
+| Tag gate | `FixId::from_parts` is the one gate, for canonical and alternate tags; a refusal names both bounds |
 | List properties | Comma-separated text; `aliases()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Nesting | Struct = component, List of that Struct = group; `dtype().is_nested()` picks the [registry](registry.md) half and the [store](store.md) tree |
+| Nesting | Struct = component, List of that Struct = group; `dtype().is_nested()` routes a field into the [store](store.md)'s `nested/` tree |
 | Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); branch and id cross as text |
 
 ## Use
@@ -156,7 +160,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## Identity is a branch and a tag
 
-`standard:35` to `cme:5001` needs set-tag-then-set-branch, and the reverse move the opposite order. `set_id` writes both halves at once and restores the prior branch when the tag write fails.
+`35:` to `5001:cme` needs set-tag-then-set-branch, and the reverse move the opposite order. `set_id` writes both halves at once and restores the prior branch when the tag write fails.
 
 === "Rust"
 
@@ -164,7 +168,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     use yggdryl::{DataType, FixId, FixBranch};
 
     let cme = FixBranch::from_str("CME")?;
-    assert_eq!(cme.as_str(), "cme", "folded once, on the way in");
+    assert_eq!(cme.name(), "cme", "folded once, on the way in");
     assert!(FixBranch::from_str("2cme").is_err());
 
     let mut trade = DataType::Utf8.nullable_field("TradeID");
@@ -172,25 +176,21 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     assert_eq!(trade.as_fix().branch()?, FixBranch::STANDARD);
     assert_eq!(trade.as_fix().id()?, None);
 
-    trade.as_fix_mut().set_id(&FixId::from_parts(cme.clone(), 5001)?)?;
-    assert_eq!(trade.as_fix().id()?.map(|id| id.to_string()), Some("cme:5001".into()));
+    trade.as_fix_mut().set_id(&cme, 5001)?;
     assert_eq!(trade.get_metadata("fix:branch"), Some("cme"));
-    assert_eq!(trade.as_fix().id()?, Some(FixId::from_str("cme:5001")?));
+    assert_eq!(trade.as_fix().id()?, Some(FixId::from_parts(&cme, 5001)?));
+    assert_eq!(std::mem::size_of::<FixId>(), 8);
 
-    // A tag the FIX specification assigns belongs to the standard branch,
-    // at every door, and a refusal leaves the field unchanged.
-    let error = FixId::from_parts(cme.clone(), 35).unwrap_err();
-    assert!(error.to_string().contains("fix:branch"), "{error}");
-    assert!(trade.as_fix_mut().set_tag(35).is_err());
-    assert_eq!(trade.as_fix().id()?, Some(FixId::from_str("cme:5001")?));
-    let mut msg_type = DataType::Utf8.nullable_field("MsgType");
-    msg_type.as_fix_mut().set_tag(35)?;
-    assert!(msg_type.as_fix_mut().set_branch(&cme).is_err());
-    // The rule is one-way: the standard branch holds any tag.
-    assert!(FixId::from_parts(FixBranch::STANDARD, 10_000).is_ok());
+    assert_eq!(FixId::USER_TAG_MIN, 5_000);
+    assert_eq!(FixId::USER_TAG_MAX, 40_000);
+    assert!(FixId::from_parts(&cme, 4_999).is_err());
+    assert!(FixId::from_parts(&cme, 5_000).is_ok());
+    assert!(FixId::from_parts(&cme, 39_999).is_ok());
+    assert!(FixId::from_parts(&cme, 40_000).is_err());
+    assert!(!FixBranch::from_str("standard")?.is_standard());
 
     // Setting the standard branch removes the key rather than storing it.
-    trade.as_fix_mut().set_id(&FixId::standard(9001))?;
+    trade.as_fix_mut().set_id(&FixBranch::STANDARD, 9_001)?;
     assert!(!trade.has_metadata("fix:branch"));
     assert_eq!(trade.as_fix().id()?, Some(FixId::standard(9001)));
     ```
@@ -201,17 +201,17 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     import pytest
 
     from yggdryl import Field
-    from yggdryl.fix import STANDARD_BRANCH, STANDARD_TAG_LIMIT
+    from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN
 
     trade = Field("TradeID", "utf8")
     # Absent means standard, and there is no identity without a tag.
-    assert trade.fix.branch == STANDARD_BRANCH == "standard"
+    assert trade.fix.branch == STANDARD_BRANCH == ""
     assert trade.fix.id is None
 
     # A branch and an identifier cross as text, parsed once at the boundary,
     # so there is no class for either in Python.
-    trade.fix.id = "CME:5001"
-    assert trade.fix.id == "cme:5001", "folded once, on the way in"
+    trade.fix.id = "5001:CME"
+    assert trade.fix.id == "5001:cme", "folded once, on the way in"
     assert trade.fix.branch == "cme"
     assert trade.metadata["fix:branch"] == "cme"
     with pytest.raises(ValueError, match="fix branch"):
@@ -219,28 +219,16 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     with pytest.raises(ValueError, match="fix identifier"):
         trade.fix.id = "5001"
 
-    # A tag the FIX specification assigns belongs to the standard branch, at
-    # every door, and a refusal leaves the field unchanged.
-    assert STANDARD_TAG_LIMIT == 5000
-    with pytest.raises(ValueError, match="fix:branch"):
-        trade.fix.tag = 35
-    with pytest.raises(ValueError, match="fix:branch"):
-        trade.fix.tags = [35]
-    assert trade.fix.id == "cme:5001"
-    msg_type = Field("MsgType", "utf8")
-    msg_type.fix.tag = 35
-    with pytest.raises(ValueError, match="fix:branch"):
-        msg_type.fix.branch = "cme"
-    # The rule is one-way: the standard branch holds any tag.
-    high = Field("Vendorish", "utf8")
-    high.fix.tag = 10_000
-    assert high.fix.id == "standard:10000"
-
+    assert (USER_TAG_MIN, USER_TAG_MAX) == (5_000, 40_000)
+    for tag in (4_999, 40_000):
+        with pytest.raises(ValueError, match="5000.*40000"):
+            trade.fix.id = f"{tag}:cme"
+    assert trade.fix.id == "5001:cme"
     # Setting the standard branch removes the key rather than storing it.
-    trade.fix.id = "standard:9001"
+    trade.fix.id = "9001:"
     assert "fix:branch" not in trade.metadata
-    assert trade.fix.branch == "standard"
-    assert trade.fix.id == "standard:9001"
+    assert trade.fix.branch == ""
+    assert trade.fix.id == "9001:"
     ```
 
 === "JavaScript"
@@ -252,13 +240,13 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
     const trade = Field.from('TradeID: utf8')
     // Absent means standard, and there is no identity without a tag.
     assert.equal(trade.fix.branch, fix.STANDARD_BRANCH)
-    assert.equal(fix.STANDARD_BRANCH, 'standard')
+    assert.equal(fix.STANDARD_BRANCH, '')
     assert.equal(trade.fix.id, null)
 
     // A branch and an identifier cross as text, parsed once at the boundary,
     // so there is no class for either in JavaScript.
-    trade.fix.id = 'CME:5001'
-    assert.equal(trade.fix.id, 'cme:5001', 'folded once, on the way in')
+    trade.fix.id = '5001:CME'
+    assert.equal(trade.fix.id, '5001:cme', 'folded once, on the way in')
     assert.equal(trade.fix.branch, 'cme')
     assert.equal(trade.get('fix:branch'), 'cme')
     assert.throws(() => {
@@ -268,31 +256,16 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
       trade.fix.id = '5001'
     }, /fix identifier/)
 
-    // A tag the FIX specification assigns belongs to the standard branch, at
-    // every door, and a refusal leaves the field unchanged.
-    assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
+    assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
     assert.throws(() => {
-      trade.fix.tag = 35
-    }, /fix:branch/)
-    assert.throws(() => {
-      trade.fix.tags = [35]
-    }, /fix:branch/)
-    assert.equal(trade.fix.id, 'cme:5001')
-    const msgType = Field.from('MsgType: utf8')
-    msgType.fix.tag = 35
-    assert.throws(() => {
-      msgType.fix.branch = 'cme'
-    }, /fix:branch/)
-    // The rule is one-way: the standard branch holds any tag.
-    const high = Field.from('Vendorish: utf8')
-    high.fix.tag = 10_000
-    assert.equal(high.fix.id, 'standard:10000')
-
+      trade.fix.id = '40000:cme'
+    }, /5000.*40000/)
+    assert.equal(trade.fix.id, '5001:cme')
     // Setting the standard branch removes the key rather than storing it.
-    trade.fix.id = 'standard:9001'
+    trade.fix.id = '9001:'
     assert.equal(trade.has('fix:branch'), false)
-    assert.equal(trade.fix.branch, 'standard')
-    assert.equal(trade.fix.id, 'standard:9001')
+    assert.equal(trade.fix.branch, '')
+    assert.equal(trade.fix.id, '9001:')
     ```
 
 ## Nesting needs no second type
@@ -314,11 +287,11 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     group.as_fix_mut().set_tag(453)?;
 
     let registry = FixRegistry::from_fields([group])?;
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs")?.as_fix().tag()?, Some(453));
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.PartyID")?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_path(&standard, "NoPartyIDs.item.PartyRole")?.name(), "PartyRole");
+    assert_eq!(registry.field_by_path("NoPartyIDs", Some(&standard))?.as_fix().tag()?, Some(453));
+    assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
+    assert_eq!(registry.field_by_path("NoPartyIDs.item.PartyRole", Some(&standard))?.name(), "PartyRole");
     // A member is reached through its group, not registered on its own.
-    assert!(registry.get_field_by_name(&standard, "PartyID").is_none());
+    assert!(registry.get_field_by_name("PartyID", Some(&standard)).is_none());
     ```
 
 === "Python"
@@ -336,14 +309,14 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     group.fix.tag = 453
 
     registry = FixRegistry.from_fields([group])
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs").fix.tag == 453
-    assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
+    assert registry.field_by_path("NoPartyIDs", STANDARD_BRANCH).fix.tag == 453
+    assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
     assert (
-        registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.item.PartyRole").name
+        registry.field_by_path("NoPartyIDs.item.PartyRole", STANDARD_BRANCH).name
         == "PartyRole"
     )
     # A member is reached through its group, not registered on its own.
-    assert registry.get_field_by_name(STANDARD_BRANCH, "PartyID") is None
+    assert registry.get_field_by_name("PartyID", STANDARD_BRANCH) is None
     ```
 
 === "JavaScript"
@@ -362,9 +335,9 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 
     const standard = fix.STANDARD_BRANCH
     const registry = fix.FixRegistry.fromFields([group])
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs').fix.tag, 453)
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.PartyID').fix.tag, 448)
-    assert.equal(registry.fieldByPath(standard, 'NoPartyIDs.item.PartyRole').name, 'PartyRole')
+    assert.equal(registry.fieldByPath('NoPartyIDs', standard).fix.tag, 453)
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
+    assert.equal(registry.fieldByPath('NoPartyIDs.item.PartyRole', standard).name, 'PartyRole')
     // A member is reached through its group, not registered on its own.
     assert.equal(registry.getFieldByName(standard, 'PartyID'), null)
     ```
@@ -376,7 +349,9 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 - A tag is decimal `0` to `i32::MAX`; readers refuse stored `+35`, `-35`, `3x`.
 - Python `tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.
 - `2cme` -> "fix branch"; `5001` as an identifier -> "fix identifier".
-- Tag below `STANDARD_TAG_LIMIT` on another branch, canonical or alternate -> refused naming `fix:branch`, from a setter, a read, an insert, or a shard load.
+- A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a named branch, canonical or alternate -> refused naming `fix:branch` and both bounds, from a setter, a read, an insert, or a shard load.
+- `FixBranch::from_str("standard")` -> an ordinary named branch whose `is_standard()` is `false`; only the empty name is the standard branch.
+- `FixId::from_parts` takes the branch by reference and `set_id` takes the branch and the tag, so neither clones a branch.
 - `get_field_by_path` is transparent to a list on a read; `set_field_by_path` / `remove_field_by_path` spell the item (`NoPartyIDs.item.PartyID`).
 - A group member is reached only through its group; `get_field_by_name("PartyID")` answers none.
 
@@ -405,59 +380,5 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     ```bash
     node --test node/tests/fix/fix.test.js
     node --test --test-name-pattern="typed fix vocabulary|answers only on the fix view|never narrowed|round trip as text|malformed branch|specification tag" node/tests/fix/fix.test.js
-    npm run --prefix node bench:fix
-    ```
-
-## Performance
-
-=== "Rust"
-
-    Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point estimates.
-
-    | resolution | estimate |
-    | --- | ---: |
-    | `FixId::to_string` | 197.6 ns |
-    | `FixId::from_str("cme:5001")` | 143.1 ns |
-
-    | mutation | estimate |
-    | --- | ---: |
-    | `set_branch` on a field whose tags allow it | 816 ns |
-    | `set_id` moving a field into a vendor branch | 1.05 us |
-    | `set_id` back to the standard branch | 569 ns |
-    | `set_branch` refused for a specification tag | 654 ns |
-
-    ```bash
-    cargo bench -p yggdryl --bench fix -- fix/mutate/set_
-    cargo bench -p yggdryl --bench fix -- fix/resolve/id_render
-    cargo bench -p yggdryl --bench fix -- fix/resolve/id_parse
-    ```
-
-=== "Python"
-
-    Release wheel (`maturin build --release`) under CPython 3.12 on local Windows x86_64, median time per call.
-
-    | Python operation | estimate |
-    | --- | ---: |
-    | `field.fix.branch` | 549 ns |
-    | `field.fix.id` | 625 ns |
-
-    Both cross as text and parse per call; each row is a metadata read plus a fresh `str`, so hold the answer in a loop.
-
-    ```bash
-    python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
-    ```
-
-=== "JavaScript"
-
-    Release addon (`npm run --prefix node build`) under Node.js v24.18.0 on local Windows x86_64 (AMD Ryzen 5 150), whole-loop rate.
-
-    | JavaScript operation | rate | per call |
-    | --- | ---: | ---: |
-    | `field.fix.branch` | 238k/s | 4.19 us |
-    | `field.fix.id` | 223k/s | 4.48 us |
-
-    Both cross as text; `field.fix` builds a fresh protocol view per access and `id` renders a new string, so hold the view in a loop.
-
-    ```bash
     npm run --prefix node bench:fix
     ```
