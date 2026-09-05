@@ -463,7 +463,7 @@ impl FixReader {
   session, so pinning is the normal case, not an optimization. Unpinned, the
   reader infers per row exactly as the singular readers do, and answers the
   same messages.
-- **P7-R53. Only the split buffer is reused.** The three vectors of P7-R72
+- **P7-R53. Only the split buffer is reused.** The three vectors of P7-R75
   are the message's own and move into it, so they cannot be pooled without
   giving `FixMsg` a borrow. What the reader holds across rows is the
   registry handle, the pinned resolutions, and one buffer the splitters
@@ -511,14 +511,44 @@ line some venue really sent.
 - **P7-R69.** When the stated length and the next separator disagree, **take
   the separator**: a writer that miscounted has stated two things and the
   delimiter is the safer. Record it through `anomalies()`.
-- **P7-R70.** Venues put `NAME=VALUE` pairs inside `XmlData(213)` though the
-  standard calls it an XML stream. Not this phase's job — the value is kept
-  whole — but a nested pair addressed `XmlData.ClOrdID` must later resolve
-  the way `NoPartyIDs.PartyID` does.
+#### `XmlData(213)` that is not XML
+
+The standard calls tag 213 an XML stream; venues put a whole pair-shaped
+payload in it — commonly under a vendor `MsgType` of `UL`, where the envelope
+carries a handful of session tags and everything that matters is inside 213,
+as numeric `tag=value` pairs, ULBridge `NAME=VALUE` pairs, or a mix.
+
+- **P7-R70. The payload's own shape decides, not the message type.** Look at
+  the first non-space byte: `<` means XML, and the value stays whole.
+  Anything else means pairs, and P7-R41's one-token rule then picks the
+  dialect — all ASCII digits before the first `=` is `fixtext`, otherwise
+  `ultext`. That is the rule the readers already use, so nothing new is
+  guessed, and a venue spelling the envelope with some `MsgType` other than
+  `UL` works without a table of venues. `UL` is worth knowing as the common
+  case; it is not the trigger.
+- **P7-R71. The inner pairs are nested, not flattened.** They go to the same
+  builder with their keys prefixed — `11=abc` inside 213 becomes
+  `("xmldata.11", "abc")` — so `XmlData.ClOrdID` resolves the way
+  `NoPartyIDs.PartyID` does (P7-R35) and no new machinery exists. A value
+  inside something belongs to that something, which is P9-R7 seen from the
+  other end: flattening would let an inner `Price` answer as the message's
+  own.
+- **P7-R72. Only tag 213 is descended into.** `RawData(96)`,
+  `SecureData(91)` and `Signature(89)` are opaque by intent, and an
+  encrypted block that happens to contain an `=` must never be read as
+  pairs. 213 is the one the standard documents as a text stream, so it is
+  the one exception — named, not generalized.
+- **P7-R73. Reformatting is a read; the emit is untouched.** The entry for
+  tag 213 keeps the whole payload as it arrived, so `into_bytes` re-emits it
+  byte-for-byte and `XmlDataLen(212)` still describes it: no length is
+  recomputed and no round trip changes (P7-R12, P7-R38). A payload that will
+  not split cleanly stays whole and reports (P7-R74), and nesting past a
+  documented guard is refused the same way, so a payload carrying another
+  213 cannot recurse without bound.
 
 #### Anomalies are derived, never a second state
 
-- **P7-R71.** A counter disagreeing with the entries it introduces, a group
+- **P7-R74.** A counter disagreeing with the entries it introduces, a group
   that would not split cleanly, a value that would not type — all real, none
   fatal. `anomalies()` derives them on demand by comparing the counter value
   (an ordinary value at its own tag) with the List's length, the way `FixId`
@@ -527,17 +557,17 @@ line some venue really sent.
 
 ### Optimization the phase is judged on
 
-- **P7-R72.** One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each
+- **P7-R75.** One `Vec<FixEntry>`, one `Vec<Field>`, one `Vec<Scalar>`, each
   reserved from the iterator's `size_hint` before the walk. No per-entry
   `String`, no per-entry map. The `Vec<FixEntry>` is the one the message
   keeps: built once, moved in, never cloned.
-- **P7-R73.** A resolved entry allocates nothing — integers for `tag` and
+- **P7-R76.** A resolved entry allocates nothing — integers for `tag` and
   `branch`, `None` for `key`, a value inside `SmolStr`'s inline buffer.
-- **P7-R74.** Only `get_primitive_field` is probed for scalars; the nested
+- **P7-R77.** Only `get_primitive_field` is probed for scalars; the nested
   half is reached only for a counter tag.
-- **P7-R75.** Header ordering reads a precomputed tag-to-position table, not
+- **P7-R78.** Header ordering reads a precomputed tag-to-position table, not
   a scan per entry.
-- **P7-R76.** The readers copy nothing: every key and value is a slice of
+- **P7-R79.** The readers copy nothing: every key and value is a slice of
   the input, and splitting uses `memchr`.
 
 ### Tests
@@ -620,6 +650,21 @@ line some venue really sent.
 20. Tag 555 at two nesting levels in one TradeCaptureReport, neither
     guessed.
 
+**`XmlData`.**
+20b. A `MsgType=UL` envelope whose 213 holds numeric `tag=value` pairs, and
+     one whose 213 holds ULBridge `NAME=VALUE` pairs, both descended into
+     and nested under `xmldata` (P7-R70, P7-R71).
+20c. A 213 whose first byte is `<` kept whole (P7-R70), and the same content
+     under a `MsgType` that is not `UL` still descended into — the shape
+     decides, not the type.
+20d. An inner `Price` answering as `xmldata.price` and never as the
+     message's `price` facet (P7-R71, P9-R7).
+20e. `RawData`, `SecureData` and `Signature` never descended into, even
+     when their bytes contain an `=` (P7-R72).
+20f. `into_bytes` re-emitting 213 byte-for-byte with `XmlDataLen` unchanged
+     (P7-R73), and a payload that will not split staying whole and
+     reporting.
+
 **Codes.**
 21. `("CommType", "PercentageWaivedCashDiscount")` and
     `("13", "percentage_waived_cash_discount")` both storing `4`;
@@ -670,7 +715,7 @@ a loop — the number that says whether `FixReader` earns its existence
 (P7-R52). Table on the FIX page, which also gains the two half-probe rows.
 
 **Allocations.** A 30-pair tag-keyed build of short values allocates the
-three reserved vectors and nothing per entry (P7-R72, P7-R73).
+three reserved vectors and nothing per entry (P7-R75, P7-R76).
 
 
 ---
@@ -914,12 +959,12 @@ tag, so the table's cost is visible.
 
 Last phase of this brief. Deliberately left to the CBlock brief and stated
 in the module docs rather than started here: reassembling a repeating group
-from bare tag repetition, which needs the message-type grammar (P7-R38); the
-*expression-driven* normalization layer with its conditions, lookups and
-value mappings, which needs an evaluator (P3-R16) — note that the
-lineage-driven half of transcoding *is* done here, in `convert_into`
-(P7-R31); and parsing `NAME=VALUE` pairs nested inside `XmlData(213)`
-(P7-R70).
+from bare tag repetition, which needs the message-type grammar (P7-R38); and
+the *expression-driven* normalization layer with its conditions, lookups and
+value mappings, which needs an evaluator (P3-R16). Two things that once
+looked like that layer's are done here instead: the lineage-driven half of
+transcoding, in `convert_into` (P7-R31), and pair-shaped `XmlData(213)`,
+which needs no evaluator because the payload's own shape decides (P7-R70).
 
 **From Phase 9.** Nothing in this brief consumes it: lifting is the outermost
 layer, and a batch writer or a column projection is the next thing that would.
