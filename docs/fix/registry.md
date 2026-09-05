@@ -279,6 +279,8 @@ Every lookup has an optional form and a failing twin. The twin raises a typed ab
 | `next_field_after` | the cursor each binding advances with; the same order as `iter` |
 | `len` / `is_empty` | the one field vector counted |
 
+The stored `FixBranch` values are reached through `branch_of`, `branch_named`, `branch_for_session`, `branches` and `set_branch`, listed with the [store](store.md)'s manifest.
+
 ## Insert, update and remove
 
 Both mutations build the result first and check every key it would claim, so a refusal writes nothing.
