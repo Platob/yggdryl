@@ -53,12 +53,18 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
 }
 
 /// Retain branch text beside a packed identifier for a field write.
+///
+/// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
+/// the colon first would answer a malformed identifier with a message of this
+/// binding's own invention, where Python answers with the core's - and the
+/// core's is the one every test and every documented example spells.
 pub(crate) fn id_parts_from_js(text: &str) -> Result<(CoreFixBranch, CoreFixId)> {
+    let id = id_from_js(text)?;
     let branch = text
         .split_once(':')
         .map(|(_, branch)| branch)
         .ok_or_else(|| napi::Error::from_reason("a FIX identifier requires tag:branch"))?;
-    Ok((branch_from_js(branch)?, id_from_js(text)?))
+    Ok((branch_from_js(branch)?, id))
 }
 
 /// What an absent `fix:branch` means, for the `fix` namespace to freeze.

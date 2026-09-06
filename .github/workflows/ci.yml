@@ -300,6 +300,59 @@ jobs:
       - name: Exchange tables with Spark
         run: python -m pytest python/tests/media/test_spark_interop.py -m spark_interop
 
+  docs-examples:
+    # Every fenced example under `docs/` compiled and run, in each of the three
+    # languages it is shown in - which the documentation contract requires of
+    # every example and nothing has ever enforced. `docs.yml` re-runs whenever
+    # this script changes but has never executed it, and `mkdocs build
+    # --strict` reads links and navigation, never a code block. 772 examples
+    # were shipping unrun.
+    #
+    # The three halves need three toolchains, which is why the job is one and
+    # not three: the Rust half generates an integration target and compiles it
+    # against `parquet iceberg s3`, the Python half runs under `python/.venv`
+    # where the script looks for its interpreter, and the JavaScript half
+    # needs the built addon and the Arrow package beside it.
+    name: Documentation examples
+    needs: python-wheel
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-ci-wheel
+          path: python/dist
+      # The script runs a Python example under `python/.venv`, so the wheel and
+      # what the examples import go there rather than into the job's Python.
+      - name: Provision the interpreter the Python examples run under
+        run: |
+          python -m venv python/.venv
+          python/.venv/bin/pip install "pyarrow>=18" "pytest>=8" "pandas>=2" "polars>=1" tzdata
+          python/.venv/bin/pip install --force-reinstall --no-deps python/dist/*.whl
+      - name: Build the addon and the packages the JavaScript examples require
+        run: |
+          npm ci --prefix node
+          npm run --prefix node build:debug
+      - name: Compile and run every Rust example
+        run: python scripts/check_docs_examples.py --lang rust
+      - name: Run every Python example
+        run: python scripts/check_docs_examples.py --lang python
+      - name: Run every JavaScript example
+        run: python scripts/check_docs_examples.py --lang javascript
+
   node:
     name: Node.js binding
     runs-on: ubuntu-latest
