@@ -154,7 +154,7 @@ Rust only. Each marker `M` has a `TypedField<M>` alias (`Int8Field`, `Decimal128
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "decimal or time_infers"
     python/.venv/bin/python -m pytest python/tests/types/test_timezone.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```
 

@@ -33,7 +33,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
 | xxHash | [Handles](xxhash/handles.md) | One containerized x86_64 Linux run (benchmarks): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 relea... |
-| xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one pro... |
+| xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/digest.py`, and `node/benchmarks/xxhash.js` measure one pro... |
 | xxHash | [Values](xxhash/values.md) | One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin... |
 
 ## Running every target
@@ -55,7 +55,7 @@ Results live beside the method they measure. Each page's Performance section nam
 === "Python"
 
     ```bash
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
@@ -66,7 +66,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
-    python/.venv/bin/python python/benchmarks/xxhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```

@@ -2,7 +2,12 @@
 
 Run after ``maturin develop`` with::
 
-    python benchmarks/types.py --iterations 10000
+    python benchmarks/datatypes.py --iterations 10000
+
+Named for the topic rather than the layer, as ``coding.py`` and ``digest.py``
+are: a script's own directory comes first on ``sys.path``, so a benchmark named
+``types.py`` shadows the standard library's ``types`` for every sibling script
+too - ``enum`` imports it, which is most of them.
 
 The wide metadata cases guard the bulk accumulator against accidental
 quadratic duplicate handling. The inference cases exercise native nested

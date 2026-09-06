@@ -222,7 +222,7 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_defaults.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

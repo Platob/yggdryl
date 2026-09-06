@@ -643,7 +643,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_defaults.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"
