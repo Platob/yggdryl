@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyInt};
+use pyo3::types::{PyBool, PyBytes, PyInt};
 
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
@@ -200,6 +200,48 @@ impl PyFixRegistry {
         let holder = folder_holder_from_value(location)?;
         CoreFixRegistry::from_handle(&holder)
             .map(|registry| Self::from_arc(Arc::new(registry)))
+            .map_err(value_error)
+    }
+
+    /// Read an Ullink `CBlock` into the vocabulary and roots it declares.
+    ///
+    /// Answers the dictionary its `vocabulary` states and the message roots
+    /// its `grammar-binding`s describe. `branch` names the dialect its
+    /// user-range tags belong to; the standard tags always land in the
+    /// standard branch, because a dialect redefines its own tags and never
+    /// FIX's.
+    #[staticmethod]
+    #[pyo3(signature = (location, branch=None))]
+    fn from_cfb(
+        location: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+    ) -> PyResult<(Self, Vec<PyField>)> {
+        let holder = folder_holder_from_value(location)?;
+        let dialect = branch.map(branch_from_py).transpose()?;
+        let (registry, roots) =
+            CoreFixRegistry::from_cfb(&holder, dialect.as_ref()).map_err(value_error)?;
+        Ok((
+            Self::from_arc(Arc::new(registry)),
+            roots.into_iter().map(PyField::from_inner).collect(),
+        ))
+    }
+
+    /// Add this crate's own fields, so they resolve by tag and by name.
+    fn with_crate_fields(&mut self) -> PyResult<()> {
+        let held = std::mem::take(self.inner_mut()?);
+        *self.inner_mut()? = held.with_crate_fields().map_err(value_error)?;
+        Ok(())
+    }
+
+    /// Register one message type, answering the value it takes.
+    ///
+    /// A type the code set does not have is added rather than refused, and a
+    /// spelling too long for the datatype takes a stable synthesized value.
+    /// Idempotent, so a reader may call it per row.
+    fn register_msgtype(&mut self, spelling: &str) -> PyResult<String> {
+        self.inner_mut()?
+            .register_msgtype(spelling)
+            .map(|held| held.as_str().to_owned())
             .map_err(value_error)
     }
 
@@ -773,6 +815,101 @@ impl PyFixMsg {
             registry.push(stored.clone().into_json().map_err(value_error)?);
         }
         Ok((callable, (field, value, registry)))
+    }
+
+    /// This message's value digest, as sixteen big-endian bytes.
+    ///
+    /// Over what the message says: the whole session envelope is excluded,
+    /// so the same order relayed through two sessions or replayed on a
+    /// resend is one message. Computed on every call and stored nowhere.
+    fn digest<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.digest().to_be_bytes())
+    }
+
+    /// One instrument symbol that is the same across venues.
+    fn symbol_ticker(&self) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.symbol_ticker()))
+    }
+
+    /// The timestamp a capture is ordered and partitioned by.
+    fn market_timestamp(&self) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.market_timestamp()))
+    }
+
+    /// The partition that timestamp falls in, in whole seconds.
+    #[pyo3(signature = (seconds=3600))]
+    fn unix_partition(&self, seconds: i64) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.unix_partition(seconds)))
+    }
+
+    /// The one value a facet names, or `None` where it is not unambiguous.
+    fn lifted(&self, facet: &str) -> Option<PyScalar> {
+        Self::answered(self.inner.lifted(facet))
+    }
+
+    /// Which tag answered a facet, so a fallback is visible.
+    fn lift_source(&self, facet: &str) -> Option<String> {
+        self.inner.lift_source(facet).map(|id| id.to_string())
+    }
+
+    /// Every facet this message answers, in the table's own order.
+    fn lift(&self) -> Vec<(String, PyScalar)> {
+        self.inner
+            .lift()
+            .map(|(facet, value)| (facet.to_owned(), PyScalar::from_inner(value.clone())))
+            .collect()
+    }
+
+    /// The party bearing one role, matched through the code translation.
+    fn party(&self, role: &str) -> Option<Vec<Option<PyScalar>>> {
+        let held = self.inner.party(role)?;
+        Some(vec![
+            Self::answered(held.id()),
+            Self::answered(held.source()),
+            Self::answered(held.role()),
+            Self::answered(held.qualifier()),
+        ])
+    }
+
+    /// One regulatory timestamp by its type.
+    fn trd_reg_timestamp(&self, kind: &str) -> Option<PyScalar> {
+        Self::answered(self.inner.trd_reg_timestamp(kind))
+    }
+
+    /// What this message says about itself that does not add up.
+    ///
+    /// Derived by comparing the row against the arrival record, so a caller
+    /// who never asks pays nothing.
+    fn anomalies(&self) -> Vec<String> {
+        self.inner
+            .anomalies()
+            .map(|held| held.to_string())
+            .collect()
+    }
+
+    /// What arrived, in arrival order, untranslated.
+    fn entries(&self) -> Vec<(i32, Option<String>, String, String)> {
+        self.inner
+            .entries()
+            .iter()
+            .map(|entry| {
+                (
+                    entry.tag(),
+                    entry.branch().map(ToOwned::to_owned),
+                    entry.key().to_owned(),
+                    entry.value().to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    /// Re-emit this message on the wire, separated by `separator`.
+    ///
+    /// Named for what it answers rather than for consuming the message: the
+    /// bytes come from the arrival record, which the message keeps.
+    #[pyo3(signature = (separator=1))]
+    fn to_bytes<'py>(&self, py: Python<'py>, separator: u8) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.into_bytes(separator))
     }
 
     fn __copy__(&self) -> Self {

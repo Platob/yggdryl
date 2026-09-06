@@ -474,7 +474,8 @@ impl super::FixMsg {
 
     /// The timestamp a capture is ordered and partitioned by.
     ///
-    /// The first of [`CLOCK_SOURCES`] the message answers. A group's
+    /// The first clock source the message answers, in decreasing exactness:
+    /// `TransactTime`, `TrdRegTimestamp`, `SendingTime`, `OrigSendingTime`. A group's
     /// timestamp is read from its first occurrence, because a regulatory
     /// clock that ran several times still ran first once.
     #[must_use]

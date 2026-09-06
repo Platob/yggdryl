@@ -376,6 +376,21 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "cfi",
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
+        Scalar::Ascii(AsciiFamily::Side(value)) => tagged_pickle_state(
+            py,
+            "side",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::Ascii(AsciiFamily::MsgType(value)) => tagged_pickle_state(
+            py,
+            "msgtype",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::Ascii(AsciiFamily::MsgDirection(value)) => tagged_pickle_state(
+            py,
+            "msgdirection",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
             "uuid",
@@ -649,6 +664,15 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::Cfi(value)))
+            .map_err(value_error),
+        "side" => yggdryl::types::Side::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::Side(value)))
+            .map_err(value_error),
+        "msgtype" => yggdryl::types::MsgType::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::MsgType(value)))
+            .map_err(value_error),
+        "msgdirection" => yggdryl::types::MsgDirection::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::MsgDirection(value)))
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;
