@@ -13,6 +13,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | [Buffer](backends/buffer.md) | in-memory bytes |
 | [Buffered](backends/buffered.md) | the page cache |
 | [Filesystems](backends/filesystems.md) | Arrow-style `FileSystem` |
+| [ZIP](backends/zip.md) | `Path`, `Folder`, `File` inside one archive |
 
 ## Contract
 
