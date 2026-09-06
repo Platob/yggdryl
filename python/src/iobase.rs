@@ -2067,6 +2067,30 @@ impl PyIOBase {
         decoded_as_py(py, &yggdryl::Scalar::from(statistics), None)
     }
 
+    /// The row-group split offsets a Parquet footer records.
+    ///
+    /// This is what a table format writes as a data file's split points, so
+    /// a reader can divide the file without decoding it.
+    fn read_parquet_split_offsets(&self) -> PyResult<Vec<i64>> {
+        Ok(self
+            .inner()?
+            .read_parquet_statistics()
+            .map_err(value_error)?
+            .split_offsets())
+    }
+
+    /// The null count one Parquet leaf column records across every row group.
+    ///
+    /// `None` when no row group recorded the statistic, which is not the same
+    /// answer as zero: a missing statistic prunes nothing.
+    fn read_parquet_null_count(&self, path: &str) -> PyResult<Option<u64>> {
+        Ok(self
+            .inner()?
+            .read_parquet_statistics()
+            .map_err(value_error)?
+            .null_count(path))
+    }
+
     /// Recompute one Parquet geospatial column's bounds and geometry types.
     ///
     /// This is the deliberate scan counterpart to `read_parquet_statistics`:

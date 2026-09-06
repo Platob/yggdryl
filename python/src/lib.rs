@@ -270,6 +270,12 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         "io_write_modes",
         IOMode::WRITE.map(IOMode::as_str).to_vec(),
     )?;
+    listing.set_item(
+        "leading_fragments",
+        yggdryl::media::text::LeadingFragment::ALL
+            .map(yggdryl::media::text::LeadingFragment::as_str)
+            .to_vec(),
+    )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
     listing.set_item(
         "digest_algorithms",
@@ -404,6 +410,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PySnapshot>()?;
     module.add_class::<media::iceberg::PyManifestFile>()?;
     module.add_class::<media::iceberg::PyDataFile>()?;
+    media::partition::register(module)?;
     xxhash::register(module)?;
     Ok(())
 }

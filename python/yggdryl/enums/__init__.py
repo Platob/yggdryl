@@ -51,6 +51,9 @@ IO_MODES: tuple[str, ...] = tuple(_LISTING["io_modes"])
 #: The subset of :data:`IO_MODES` a record write accepts.
 IO_WRITE_MODES: tuple[str, ...] = tuple(_LISTING["io_write_modes"])
 
+#: What a text read does with a first line that is only part of a record.
+LEADING_FRAGMENTS: tuple[str, ...] = tuple(_LISTING["leading_fragments"])
+
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
@@ -96,4 +99,5 @@ __all__ = [
     "UNION_MODES",
     "IO_MODES",
     "IO_WRITE_MODES",
+    "LEADING_FRAGMENTS",
 ]

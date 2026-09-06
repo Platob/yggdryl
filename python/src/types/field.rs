@@ -2835,6 +2835,24 @@ impl PyProtocolField {
             .map(|transform| transform.as_str().to_owned()))
     }
 
+    /// The expression this partition column derives its value with.
+    ///
+    /// The declared `transform` is compiled over the field paths in
+    /// `sources`, so `year(event)` is what the column actually computes. A
+    /// column that declares neither answers `None`; a transform with no
+    /// sources, or more sources than the transform reads, is a `ValueError`.
+    #[getter]
+    fn expression(&self, py: Python<'_>) -> PyResult<Option<crate::expression::PyExpression>> {
+        self.require_partition("expression")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_partition()
+            .expression()
+            .map_err(value_error)?
+            .map(crate::expression::PyExpression::from_core))
+    }
+
     #[setter]
     fn set_transform(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_partition("transform")?;
