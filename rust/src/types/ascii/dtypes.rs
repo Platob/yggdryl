@@ -124,7 +124,7 @@ pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
 pub(crate) const MSGTYPE_EXTENSION_NAME: &str = "yggdryl.msgtype";
 
 /// The Arrow extension name of a captured line's direction.
-pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.direction";
+pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.msgdirection";
 
 /// The storage width of ISO 3166-1's country code.
 pub(crate) const COUNTRY_WIDTH: usize = 2;
@@ -300,6 +300,9 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         SIDE_EXTENSION_NAME => DataType::Side,
         MSGTYPE_EXTENSION_NAME => DataType::MsgType,
         DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
+        // The name this datatype was first published under, so a column
+        // written before the rename still reads as what it is.
+        "yggdryl.direction" => DataType::MsgDirection,
         _ => return None,
     };
     (dtype.ascii_width() == Some(width)).then_some(dtype)
