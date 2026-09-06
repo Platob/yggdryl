@@ -275,6 +275,23 @@ scheme vocabulary.
 - `IOBase` is positional: `pread`/`pwrite` are primitives. Whole reads,
   streams, compression, records, and media derive from them. No second storage
   trait or hidden cursor in the base object.
+- **Every derived operation makes the fewest `IOBase` calls it needs.**
+  `IOBase` is the one boundary a layer crosses to reach storage, and on a
+  store each crossing is a round trip, so the count is a contract rather than
+  an aspiration. A whole read is one call. A question the operation already
+  answered is none. A question two branches of one operation both want is
+  asked once and reused, never once per branch. A wrapper overrides the
+  defaults that would ask again - the `size`-then-read pair above all - rather
+  than inheriting them, and a handle that resolves a role or a length keeps it
+  for the scope that retains it. A default that decomposes into other calls
+  states what it decomposes into.
+- `holder::counted::Counted` is how that is checked rather than argued: it
+  wraps a handle, forwards every call unchanged, and tallies it by name, so a
+  derived operation's cost is an exact number. Every derived surface pins its
+  count in `rust/tests/iobase_calls.rs` and reports it in the `holder`
+  benchmark; the S3 backend's `Stats` then counts the requests one call
+  becomes. Adding a call to a derived path means changing the assertion that
+  names it, which is the review this rule exists to force.
 - Every derived read and append names the core type it answers, because the
   same verbs also address rows: `read_all_bytes`, `read_range_bytes`,
   `write_all_bytes`, `append_bytes`, `read_scalar`, `read_arrow_reader`. A bare
@@ -657,6 +674,7 @@ checks:
 - Rust 1.85 default and `--no-default-features --lib` checks;
 - rustdoc with warnings denied;
 - relevant parser, codec, text, I/O, Arrow, and interop benchmarks;
+- the `IOBase` call-count assertions for every derived surface touched;
 - Python native/codec/parity tests and release boundary benchmarks;
 - Node native/codec/type/parity tests and release boundary benchmarks;
 - docs examples and `python -m mkdocs build --strict`;

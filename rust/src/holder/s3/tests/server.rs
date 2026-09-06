@@ -206,6 +206,15 @@ impl FakeS3 {
 
     /// Answer the next `times` requests with `status` and error `code`
     /// before looking at them, e.g. `503 SlowDown` to exercise retries.
+    /// Send only `after` bytes of the next `times` bodies, then hang up.
+    ///
+    /// The declared `Content-Length` stays honest, so the client sees a
+    /// transfer that stopped part way through rather than a short object -
+    /// which is exactly what a reset connection looks like from the inside.
+    pub fn cut_next_body(&self, after: usize, times: usize) {
+        self.inner.store().cut = (times > 0).then_some((after, times));
+    }
+
     /// Answer every assumed-role session as already lapsed, or as long-lived.
     ///
     /// Lapsed is what makes the refresh path visible: a client that holds a
@@ -320,6 +329,21 @@ impl Inner {
 
     fn log(&self) -> MutexGuard<'_, Vec<Recorded>> {
         self.log.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// How much of `response`'s body to send before hanging up, if any.
+    ///
+    /// Only a body worth cutting is cut: a header-only or error answer would
+    /// make the test about something else.
+    fn take_cut(&self, response: &Response) -> Option<usize> {
+        let mut store = self.store();
+        let (after, times) = store.cut?;
+        let long_enough = matches!(&response.body, Body::Bytes(bytes) if bytes.len() > after);
+        if !long_enough {
+            return None;
+        }
+        store.cut = (times > 1).then_some((after, times - 1));
+        Some(after)
     }
 
     fn next_request_id(&self) -> String {
@@ -526,6 +550,8 @@ struct Store {
     failure: Option<Injected>,
     /// The expiry every assumed-role session is answered with.
     role_expiry: String,
+    /// Bodies still to be cut short, and after how many bytes.
+    cut: Option<(usize, usize)>,
     /// Upload ids handed out so far.
     next_upload: usize,
 }
@@ -539,6 +565,7 @@ impl Default for Store {
             required_access_key: None,
             failure: None,
             role_expiry: DEFAULT_ROLE_EXPIRY.to_owned(),
+            cut: None,
             next_upload: 0,
         }
     }
@@ -1459,18 +1486,20 @@ fn serve(inner: &Inner, stream: TcpStream) {
                     &[],
                 );
                 response.request_id = inner.next_request_id();
-                let _ = write_response(reader.get_mut(), "GET", &response, true);
+                let _ = write_response(reader.get_mut(), "GET", &response, true, None);
                 return;
             }
         };
         let response = inner.handle(&mut request);
+        let cut = inner.take_cut(&response);
         let written = write_response(
             reader.get_mut(),
             &request.method,
             &response,
             !request.keep_alive,
+            cut,
         );
-        if written.is_err() || !request.keep_alive {
+        if written.is_err() || !request.keep_alive || cut.is_some() {
             return;
         }
     }
@@ -1695,6 +1724,7 @@ fn write_response(
     method: &str,
     response: &Response,
     close: bool,
+    cut: Option<usize>,
 ) -> io::Result<()> {
     let head = method == "HEAD";
     let rendered;
@@ -1733,7 +1763,9 @@ fn write_response(
     out.push_str("\r\n");
     let mut out = out.into_bytes();
     if !head {
-        out.extend_from_slice(body);
+        // A cut sends the declared length in the header and less than that on
+        // the wire, which is what a severed transfer looks like.
+        out.extend_from_slice(&body[..cut.unwrap_or(body.len()).min(body.len())]);
     }
     stream.write_all(&out)?;
     stream.flush()

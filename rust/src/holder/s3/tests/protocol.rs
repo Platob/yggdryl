@@ -798,3 +798,66 @@ fn default_metadata_rides_every_write_without_displacing_a_content_type() {
         "a name the write sets for itself is not displaced by a default"
     );
 }
+
+#[test]
+fn a_transfer_cut_part_way_through_resumes_from_where_it_stopped() {
+    let store = store();
+    let payload = payload(64 * 1024);
+    store.put(BUCKET, "lake/part.bin", &payload);
+    let handle = file(&store, "lake/part.bin");
+
+    // The next body stops after 8 KiB with its declared length unchanged,
+    // which is what a severed connection looks like from the inside.
+    store.cut_next_body(8 * 1024, 1);
+    store.clear_requests();
+    let streamed: Vec<u8> = handle
+        .pstream_bytes(0, 4096)
+        .expect("a stream")
+        .flat_map(|chunk| chunk.expect("bytes"))
+        .collect();
+    assert_eq!(
+        streamed, payload,
+        "the caller sees one uninterrupted stream"
+    );
+
+    let ranges: Vec<String> = store
+        .requests()
+        .iter()
+        .filter_map(|request| {
+            request
+                .headers
+                .iter()
+                .find(|(name, _)| name == "range")
+                .map(|(_, value)| value.clone())
+        })
+        .collect();
+    assert_eq!(
+        ranges,
+        vec!["bytes=8192-".to_owned()],
+        "the resumed request asks for the rest, not for the whole object again"
+    );
+    assert_eq!(store.request_count(), 2, "the open, and the one resume");
+}
+
+#[test]
+fn a_transfer_that_cannot_deliver_a_byte_stops_rather_than_looping() {
+    let store = store();
+    store.put(BUCKET, "lake/part.bin", &payload(64 * 1024));
+    let handle = super::file_with("lake/part.bin", options(&store).with_max_attempts(3));
+
+    // Every body is cut before a single byte arrives, so nothing ever
+    // progresses and the consecutive-failure budget is what ends it.
+    store.cut_next_body(0, 100);
+    store.clear_requests();
+    let outcome: crate::Result<Vec<u8>> = handle
+        .pstream_bytes(0, 4096)
+        .expect("a stream")
+        .collect::<crate::Result<Vec<_>>>()
+        .map(|chunks| chunks.concat());
+    assert!(outcome.is_err(), "a stream that never moves is a failure");
+    assert!(
+        store.request_count() <= 3,
+        "bounded by the attempt limit, not by the object: {}",
+        store.request_count()
+    );
+}

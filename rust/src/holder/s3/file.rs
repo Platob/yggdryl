@@ -130,7 +130,7 @@ impl File {
 
     /// How many requests this handle's client has sent, by shape.
     pub fn stats(&self) -> super::StatsSnapshot {
-        self.client.stats().snapshot()
+        self.client.snapshot()
     }
 
     /// Return whether the object exists, per the store right now.
@@ -417,7 +417,11 @@ impl IOBase for File {
             return crate::ByteStream::from_handle(self, position, batch_size);
         }
         drop(state);
-        let reader = self.client.open_reader(&self.bucket, &self.key, position)?;
+        // Resuming, because this is the long transfer: a stream drained over
+        // minutes outlives more connections than one request does.
+        let reader = self
+            .client
+            .open_resuming_reader(&self.bucket, &self.key, position, None)?;
         crate::ByteStream::from_reader(reader, batch_size)
     }
 
@@ -508,7 +512,7 @@ impl IOBase for File {
         let last = offset.saturating_add(length as u64 - 1);
         let mut reader =
             self.client
-                .open_reader_range(&self.bucket, &self.key, offset, Some(last))?;
+                .open_resuming_reader(&self.bucket, &self.key, offset, Some(last))?;
         let mut window = vec![0_u8; crate::DEFAULT_STREAM_BATCH_SIZE.min(length)];
         loop {
             let read = std::io::Read::read(&mut reader, &mut window).map_err(Error::Io)?;

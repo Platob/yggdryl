@@ -147,6 +147,7 @@ nav:
     - holder/index.md
     - IOBase:
       - Bytes: holder/iobase/bytes.md
+      - Calls: holder/iobase/calls.md
       - Values: holder/iobase/values.md
       - Records: holder/iobase/records.md
       - Partitions: holder/iobase/partitions.md

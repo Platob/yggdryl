@@ -6,6 +6,7 @@
 
 mod buffer;
 pub mod buffered;
+pub mod counted;
 pub mod fs;
 pub mod local;
 #[cfg(feature = "s3")]

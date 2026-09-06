@@ -79,7 +79,7 @@ impl Folder {
 
     /// How many requests this handle's client has sent, by shape.
     pub fn stats(&self) -> super::StatsSnapshot {
-        self.client.stats().snapshot()
+        self.client.snapshot()
     }
 
     /// Return whether anything lives under this prefix.

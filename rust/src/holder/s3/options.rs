@@ -30,6 +30,12 @@ const DEFAULT_MAX_ATTEMPTS: u32 = 3;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
 /// Connection establishment budget when nothing else is said.
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Which environment variables are read when nothing else is said.
+///
+/// `AWS_` because that is what the AWS tools set and what every deployment
+/// already has, and `YGGDRYL_S3_` so a process can configure this client
+/// without pretending to be configuring theirs.
+const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 2] = ["AWS_", "YGGDRYL_S3_"];
 
 /// How an S3 client reaches the store and signs what it sends.
 ///
@@ -84,6 +90,7 @@ pub struct S3Options {
     payload_signing: Option<bool>,
     encryption: Encryption,
     proxy: Option<String>,
+    environment_prefixes: Vec<String>,
     assumed_role: Option<AssumedRole>,
     bucket_creation: bool,
     bucket_deletion: bool,
@@ -109,6 +116,10 @@ impl Default for S3Options {
             payload_signing: None,
             encryption: Encryption::Default,
             proxy: None,
+            environment_prefixes: DEFAULT_ENVIRONMENT_PREFIXES
+                .iter()
+                .map(|prefix| (*prefix).to_owned())
+                .collect(),
             assumed_role: None,
             bucket_creation: true,
             bucket_deletion: true,
@@ -307,6 +318,41 @@ impl S3Options {
         self
     }
 
+    /// Read environment variables under `prefix` as well as the usual ones.
+    ///
+    /// The name after the prefix is matched the way
+    /// [`Self::with_properties`] matches one, so a deployment that spells its
+    /// configuration `TRADING_S3_ENDPOINT` and `TRADING_S3_SSE_TYPE` gets
+    /// every knob rather than the handful someone remembered to wire up.
+    #[must_use]
+    pub fn with_environment_prefix(mut self, prefix: impl Into<String>) -> Self {
+        let prefix: String = prefix.into();
+        if !prefix.trim().is_empty() {
+            self.environment_prefixes.push(prefix.trim().to_owned());
+        }
+        self
+    }
+
+    /// Read environment variables under exactly these prefixes.
+    ///
+    /// Replaces the defaults rather than adding to them, which is what a
+    /// process that must not pick up an ambient `AWS_` needs. An empty list
+    /// reads nothing from the environment by name, though
+    /// [`Self::with_environment`] is the switch for reading none of it at all.
+    #[must_use]
+    pub fn with_environment_prefixes<P>(mut self, prefixes: impl IntoIterator<Item = P>) -> Self
+    where
+        P: Into<String>,
+    {
+        self.environment_prefixes = prefixes
+            .into_iter()
+            .map(Into::into)
+            .filter(|prefix| !prefix.trim().is_empty())
+            .map(|prefix| prefix.trim().to_owned())
+            .collect();
+        self
+    }
+
     /// Consult, or ignore, the process environment and the shared AWS files.
     ///
     /// Off, only explicit values and the URL decide, which is what a test
@@ -390,6 +436,11 @@ impl S3Options {
     /// How writes are encrypted at rest.
     pub const fn encryption(&self) -> &Encryption {
         &self.encryption
+    }
+
+    /// The prefixes environment variables are read under.
+    pub fn environment_prefixes(&self) -> &[String] {
+        &self.environment_prefixes
     }
 
     /// The proxy the endpoint is reached through, when one was named.
@@ -479,6 +530,7 @@ impl std::fmt::Debug for S3Options {
             // `Encryption` redacts a customer key.
             .field("encryption", &self.encryption)
             .field("proxy", &self.proxy)
+            .field("environment_prefixes", &self.environment_prefixes)
             .field("assumed_role", &self.assumed_role)
             .field("bucket_creation", &self.bucket_creation)
             .field("bucket_deletion", &self.bucket_deletion)

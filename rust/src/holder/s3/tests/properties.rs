@@ -235,3 +235,100 @@ fn sizes_may_carry_the_unit_a_configuration_file_writes_them_with() {
     assert_eq!(options.list_page_size(), 500);
     assert_eq!(options.max_attempts(), 5, "four retries is five attempts");
 }
+
+#[test]
+fn the_environment_is_swept_rather_than_looked_up_by_name() {
+    // `PATH` exists everywhere, so a prefix of `PAT` proves the sweep runs
+    // without this test setting a variable of its own - which it could not do
+    // in a crate that denies unsafe code, and should not do to a process it
+    // shares with every other test.
+    let found = S3Options::default()
+        .with_environment_prefixes(["PAT"])
+        .environment_properties();
+    assert!(
+        found
+            .iter()
+            .any(|(name, value)| name == "H" && !value.is_empty()),
+        "expected the sweep to reach PATH: {found:?}"
+    );
+
+    // The longest matching prefix wins, so a specific spelling is not eaten by
+    // a general one.
+    let found = S3Options::default()
+        .with_environment_prefixes(["PA", "PAT"])
+        .environment_properties();
+    assert!(found.iter().any(|(name, _)| name == "H"), "{found:?}");
+
+    // And nothing at all when the environment is shut off, whatever the
+    // prefixes say.
+    assert!(
+        S3Options::default()
+            .with_environment(false)
+            .with_environment_prefix("PAT")
+            .environment_properties()
+            .is_empty()
+    );
+    assert_eq!(
+        S3Options::default().environment_prefixes(),
+        ["AWS_".to_owned(), "YGGDRYL_S3_".to_owned()]
+    );
+    assert_eq!(
+        S3Options::default()
+            .with_environment_prefix("TRADING_S3_")
+            .environment_prefixes()
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn what_a_caller_set_wins_over_what_the_environment_says() {
+    let ambient = S3Options::from_properties([
+        ("endpoint", "https://ambient.example.io"),
+        ("region", "us-east-1"),
+        ("access_key_id", "AMBIENT"),
+        ("secret_access_key", "ambient-secret"),
+        ("max_attempts", "9"),
+        ("part_size", "32MiB"),
+        ("sse_type", "AES256"),
+        ("allow_bucket_creation", "false"),
+    ])
+    .expect("readable properties");
+
+    let explicit = S3Options::default()
+        .with_region("eu-west-1")
+        .with_max_attempts(2)
+        .under(&ambient);
+
+    // What the caller said stands.
+    assert_eq!(explicit.region(), Some("eu-west-1"));
+    assert_eq!(explicit.max_attempts(), 2);
+    // What they left alone takes the ambient answer.
+    assert_eq!(explicit.endpoint(), Some("https://ambient.example.io"));
+    assert_eq!(
+        explicit.credentials().map(|keys| keys.access_key_id()),
+        Some("AMBIENT")
+    );
+    assert_eq!(explicit.part_size(), 32 * 1024 * 1024);
+    assert!(matches!(explicit.encryption(), Encryption::Managed));
+    assert!(!explicit.bucket_creation());
+
+    // An anonymous client stays anonymous, whatever keys are lying about.
+    let anonymous = S3Options::default().with_anonymous(true).under(&ambient);
+    assert!(anonymous.anonymous());
+    assert!(anonymous.credentials().is_none());
+}
+
+#[test]
+fn the_service_specific_endpoint_and_region_names_win() {
+    let options = S3Options::from_properties([
+        ("AWS_ENDPOINT_URL", "https://generic.example.io"),
+        ("AWS_ENDPOINT_URL_S3", "https://s3.example.io"),
+        ("AWS_DEFAULT_REGION", "us-east-1"),
+        ("AWS_REGION", "eu-west-1"),
+    ])
+    .expect("readable properties");
+
+    assert_eq!(options.endpoint(), Some("https://s3.example.io"));
+    assert_eq!(options.region(), Some("eu-west-1"));
+}

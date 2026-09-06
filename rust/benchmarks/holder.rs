@@ -3,6 +3,8 @@ mod bench_profile;
 
 #[path = "holder/buffered.rs"]
 mod buffered;
+#[path = "holder/calls.rs"]
+mod calls;
 #[path = "holder/fs/mod.rs"]
 mod fs;
 #[path = "holder/listing.rs"]
@@ -39,6 +41,7 @@ criterion_group!(
     fs::record::record_benchmarks,
     fs::listing::listing_benchmarks,
     buffered::buffered_benchmarks,
+    calls::call_benchmarks,
     listing::listing_benchmarks,
     s3::bytes::byte_benchmarks,
     s3::listing::listing_benchmarks,

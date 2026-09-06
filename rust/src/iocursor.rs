@@ -183,6 +183,20 @@ impl<H: IOBase> std::io::Read for Cursor<H> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
         self.read_next(buffer).map_err(std::io::Error::other)
     }
+
+    /// Take the whole remainder in one call rather than in a ladder of them.
+    ///
+    /// [`Read::read_to_end`] grows its buffer by doubling and asks for what
+    /// fits each time, so draining a value costs a call per doubling - on a
+    /// store, a round trip per doubling, which for a four-megabyte object is
+    /// seventeen of them. The handle answers the remainder in one.
+    fn read_to_end(&mut self, into: &mut Vec<u8>) -> std::io::Result<usize> {
+        let rest = crate::iobase::rest_of(&self.handle, self.position)?;
+        self.position += rest.len() as u64;
+        let read = rest.len();
+        into.extend_from_slice(&rest);
+        Ok(read)
+    }
 }
 
 impl<H: IOBase> std::io::Write for Cursor<H> {

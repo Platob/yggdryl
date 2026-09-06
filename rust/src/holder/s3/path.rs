@@ -43,6 +43,9 @@ pub struct Path {
     /// The implementation this location resolved to, kept so a staged write
     /// survives between calls.
     resolved: Mutex<Option<Resolved>>,
+    /// What the store last said is at this location, kept for the same reason
+    /// and dropped by the same operations.
+    probed: Mutex<Option<IOKind>>,
 }
 
 /// The specialized implementations an S3 location can resolve to.
@@ -83,6 +86,7 @@ impl Path {
             declared: None,
             inferred: std::sync::OnceLock::new(),
             resolved: Mutex::new(None),
+            probed: Mutex::new(None),
         })
     }
 
@@ -103,7 +107,7 @@ impl Path {
 
     /// How many requests this handle's client has sent, by shape.
     pub fn stats(&self) -> super::StatsSnapshot {
-        self.client.stats().snapshot()
+        self.client.snapshot()
     }
 
     /// Return whether anything is at this location yet.
@@ -189,12 +193,29 @@ impl Path {
     }
 
     /// Resolve a role before a specialized handle has been retained.
+    ///
+    /// What the store says is kept, on the same terms as the resolved handle
+    /// beside it: a caller that asks three questions of one location - is it a
+    /// container, what encoding does it hold, how many columns - would
+    /// otherwise pay for three listings to hear one answer three times. It is
+    /// dropped by the operations that can change the answer.
     fn unresolved_kind(&self) -> Result<IOKind> {
         // A glob or a trailing slash says what this is, so nothing is asked.
         if self.url.is_glob() || self.url.has_trailing_slash() || self.key.is_empty() {
             return Ok(IOKind::Directory);
         }
-        self.probe()
+        if let Some(known) = *self.probed.lock().map_err(|_| poisoned())? {
+            return Ok(known);
+        }
+        let kind = self.probe()?;
+        *self.probed.lock().map_err(|_| poisoned())? = Some(kind);
+        Ok(kind)
+    }
+
+    /// Forget what the store said, because something changed it.
+    fn forget(&self) -> Result<()> {
+        *self.probed.lock().map_err(|_| poisoned())? = None;
+        Ok(())
     }
 
     /// Run `read` against the resolved implementation, or report absence.
@@ -280,7 +301,9 @@ impl IOBase for Path {
         if self.unresolved_kind()? == IOKind::Directory {
             return crate::ByteStream::from_reader(std::io::empty(), batch_size);
         }
-        let reader = self.client.open_reader(&self.bucket, &self.key, position)?;
+        let reader = self
+            .client
+            .open_resuming_reader(&self.bucket, &self.key, position, None)?;
         crate::ByteStream::from_reader(reader, batch_size)
     }
 
@@ -370,8 +393,17 @@ impl IOBase for Path {
         self.path_is_tabular()
     }
 
+    /// Publish whatever was resolved, and nothing when nothing was.
+    ///
+    /// No request when this location has resolved to nothing: there is nothing
+    /// staged to publish, and asking the store what the location is in order
+    /// to find that out would be the round trip this avoids.
     fn flush(&mut self) -> Result<()> {
-        self.with_resolved_mut(|handle| handle.flush())?
+        let mut slot = self.resolved.lock().map_err(|_| poisoned())?;
+        match slot.as_mut() {
+            Some(resolved) => resolved.as_io_mut().flush(),
+            None => Ok(()),
+        }
     }
 
     fn open(&mut self) -> Result<()> {
@@ -388,8 +420,18 @@ impl IOBase for Path {
             .is_ok_and(|slot| slot.as_ref().is_some_and(|held| held.as_io().opened()))
     }
 
+    /// Publish and let go of everything this scope learned.
+    ///
+    /// Costs nothing when nothing resolved, for the reason
+    /// [`Self::flush`] gives, and drops the role along with the handle so the
+    /// next read sees the store as it is.
     fn close(&mut self) -> Result<()> {
-        self.with_resolved_mut(|handle| handle.close())?
+        let held = self.resolved.lock().map_err(|_| poisoned())?.take();
+        self.forget()?;
+        match held {
+            Some(mut resolved) => resolved.as_io_mut().close(),
+            None => Ok(()),
+        }
     }
 
     fn parent(&self) -> Option<Holder> {
@@ -449,6 +491,8 @@ impl IOBase for Path {
             None => self.unresolved_kind()?,
         };
         drop(held);
+        // Whatever was there is about to not be.
+        self.forget()?;
         match kind {
             IOKind::Directory => self.as_directory()?.remove(recursive),
             // An undecided location may still hold an object this handle has

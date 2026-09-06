@@ -97,6 +97,133 @@ impl S3Options {
         parts.apply(self)
     }
 
+    /// The knobs the process environment names, under this one's prefixes.
+    ///
+    /// The whole environment is swept rather than a list of variables being
+    /// looked up, so every name [`Self::with_properties`] accepts is also an
+    /// environment variable: `AWS_REGION` and `AWS_ENDPOINT_URL_S3` because
+    /// they are the AWS spellings, `AWS_S3_SSE_TYPE` and `YGGDRYL_S3_ROLE_ARN`
+    /// because they are this crate's knobs said the same way. Names it does
+    /// not know are ignored, which is most of an environment.
+    ///
+    /// Answers nothing when [`Self::with_environment`] is off.
+    #[must_use]
+    pub fn environment_properties(&self) -> Vec<(String, String)> {
+        if !self.reads_environment() {
+            return Vec::new();
+        }
+        let mut found: Vec<(String, String)> = std::env::vars()
+            .filter_map(|(name, value)| {
+                let named = self
+                    .environment_prefixes()
+                    .iter()
+                    .filter_map(|prefix| strip_prefix_ignoring_case(&name, prefix))
+                    .max_by_key(|rest| name.len() - rest.len())?;
+                (!value.trim().is_empty()).then(|| (named.to_owned(), value))
+            })
+            .collect();
+        // The sweep order is the environment's, which is nobody's; sorting
+        // makes what an ambiguous pair resolves to a fact rather than a race.
+        found.sort();
+        found
+    }
+
+    /// The knobs the environment names, as options.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::with_properties`]: a value that will not parse is a refusal
+    /// rather than a silently ignored variable.
+    pub fn from_environment(&self) -> Result<Self> {
+        Self::default()
+            .with_environment_prefixes(self.environment_prefixes().to_vec())
+            .with_properties(self.environment_properties())
+    }
+
+    /// Fill from `ambient` every knob this one does not set for itself.
+    ///
+    /// Explicit wins, which is what makes "explicit, then the URL, then the
+    /// environment" an order rather than a special case per knob. A knob left
+    /// at its default takes the ambient answer; one the caller set keeps
+    /// theirs.
+    #[must_use]
+    pub fn under(mut self, ambient: &Self) -> Self {
+        let fallback = Self::default();
+        if self.endpoint().is_none() {
+            if let Some(endpoint) = ambient.endpoint() {
+                self = self.with_endpoint(endpoint);
+            }
+        }
+        if self.region().is_none() {
+            if let Some(region) = ambient.region() {
+                self = self.with_region(region);
+            }
+        }
+        if self.credentials().is_none() && !self.anonymous() {
+            if let Some(credentials) = ambient.credentials() {
+                self = self.with_credentials(credentials.clone());
+            } else if ambient.anonymous() {
+                self = self.with_anonymous(true);
+            }
+        }
+        if self.profile().is_none() {
+            if let Some(profile) = ambient.profile() {
+                self = self.with_profile(profile);
+            }
+        }
+        if self.path_style().is_none() {
+            if let Some(path_style) = ambient.path_style() {
+                self = self.with_path_style(path_style);
+            }
+        }
+        if self.payload_signing().is_none() {
+            if let Some(signing) = ambient.payload_signing() {
+                self = self.with_payload_signing(signing);
+            }
+        }
+        if self.proxy().is_none() {
+            if let Some(proxy) = ambient.proxy() {
+                self = self.with_proxy(proxy);
+            }
+        }
+        if self.encryption().is_default() && !ambient.encryption().is_default() {
+            self = self.with_encryption(ambient.encryption().clone());
+        }
+        if self.assumed_role().is_none() {
+            if let Some(role) = ambient.assumed_role() {
+                self = self.with_assumed_role(role.clone());
+            }
+        }
+        if self.default_metadata().is_empty() && !ambient.default_metadata().is_empty() {
+            self = self.with_default_metadata(ambient.default_metadata().to_vec());
+        }
+        if self.part_size() == fallback.part_size() {
+            self = self.with_part_size(ambient.part_size());
+        }
+        if self.multipart_threshold() == fallback.multipart_threshold() {
+            self = self.with_multipart_threshold(ambient.multipart_threshold());
+        }
+        if self.list_page_size() == fallback.list_page_size() {
+            self = self.with_list_page_size(ambient.list_page_size());
+        }
+        if self.max_attempts() == fallback.max_attempts() {
+            self = self.with_max_attempts(ambient.max_attempts());
+        }
+        if self.timeout() == fallback.timeout() {
+            self = self.with_timeout(ambient.timeout());
+        }
+        if self.connect_timeout() == fallback.connect_timeout() {
+            self = self.with_connect_timeout(ambient.connect_timeout());
+        }
+        if self.bucket_creation() == fallback.bucket_creation() {
+            self = self.with_bucket_creation(ambient.bucket_creation());
+        }
+        if self.bucket_deletion() == fallback.bucket_deletion() {
+            self = self.with_bucket_deletion(ambient.bucket_deletion());
+        }
+        self
+    }
+
     /// The same, starting from the defaults.
     ///
     /// # Errors
@@ -117,8 +244,14 @@ impl S3Options {
             "endpoint" | "endpoint_url" | "endpoint_override" => {
                 parts.endpoint = Some(value.to_owned());
             }
+            // The service-specific spelling wins over the generic one, which
+            // is what `AWS_ENDPOINT_URL_S3` beside `AWS_ENDPOINT_URL` means.
+            "endpoint_url_s3" | "s3_endpoint_url" => {
+                parts.service_endpoint = Some(value.to_owned());
+            }
             "scheme" => parts.scheme = Some(value.to_owned()),
-            "region" | "default_region" => options = options.with_region(value),
+            "region" => parts.region = Some(value.to_owned()),
+            "default_region" => parts.default_region = Some(value.to_owned()),
             "access_key" | "access_key_id" => parts.access_key = Some(value.to_owned()),
             "secret_key" | "secret_access_key" => parts.secret_key = Some(value.to_owned()),
             "session_token" => parts.session_token = Some(value.to_owned()),
@@ -195,7 +328,10 @@ impl S3Options {
 #[derive(Default)]
 struct Parts {
     endpoint: Option<String>,
+    service_endpoint: Option<String>,
     scheme: Option<String>,
+    region: Option<String>,
+    default_region: Option<String>,
     access_key: Option<String>,
     secret_key: Option<String>,
     session_token: Option<String>,
@@ -216,7 +352,11 @@ struct Parts {
 impl Parts {
     /// Assemble what was collected onto `options`.
     fn apply(self, mut options: S3Options) -> Result<S3Options> {
-        if let Some(endpoint) = &self.endpoint {
+        if let Some(region) = self.region.as_ref().or(self.default_region.as_ref()) {
+            options = options.with_region(region);
+        }
+        let endpoint = self.service_endpoint.as_ref().or(self.endpoint.as_ref());
+        if let Some(endpoint) = endpoint {
             // PyArrow splits the endpoint from its scheme; PyIceberg does not.
             options = match (&self.scheme, endpoint.contains("://")) {
                 (Some(scheme), false) => options.with_endpoint(format!("{scheme}://{endpoint}")),
@@ -317,6 +457,14 @@ impl Parts {
             ))),
         }
     }
+}
+
+/// The rest of `name` after `prefix`, matched without regard to case.
+fn strip_prefix_ignoring_case<'name>(name: &'name str, prefix: &str) -> Option<&'name str> {
+    let head = name.get(..prefix.len())?;
+    head.eq_ignore_ascii_case(prefix)
+        .then(|| &name[prefix.len()..])
+        .filter(|rest| !rest.is_empty())
 }
 
 /// The name a property is matched by: case, separators, and prefix removed.

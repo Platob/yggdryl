@@ -27,6 +27,20 @@ const DEFAULT_REGION: &str = "us-east-1";
 pub(super) const DELETE_BATCH: usize = 1000;
 /// Base of the exponential backoff between attempts.
 const RETRY_BACKOFF: Duration = Duration::from_millis(50);
+/// The longest a retry ever waits, however many attempts precede it.
+const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(20);
+/// The longest a `Retry-After` the store sent is honoured for.
+///
+/// A store under load may ask for minutes. Waiting that long inside a call
+/// nobody can cancel is worse than failing and letting the caller decide, so
+/// anything past this is treated as "not now" rather than as an instruction.
+const RETRY_AFTER_CAP: Duration = Duration::from_secs(30);
+/// Tokens a client starts with, and never exceeds.
+const RETRY_TOKENS: i64 = 500;
+/// What one retry costs, so a client whose requests are all failing runs out.
+const RETRY_COST: i64 = 5;
+/// What a first-attempt success refunds.
+const RETRY_REFUND: i64 = 1;
 /// The service name in every credential scope.
 const SERVICE: &str = "s3";
 
@@ -84,6 +98,13 @@ pub struct StatsSnapshot {
     pub lists: u64,
     /// Attempts beyond the first, from a retried failure or a region redirect.
     pub retries: u64,
+    /// What is left of the retry budget.
+    ///
+    /// A client that is only failing spends this down and then stops retrying,
+    /// so a falling number is the sign of a store in trouble rather than of a
+    /// slow one. A [`Default`] snapshot reports zero because it describes no
+    /// client at all.
+    pub retry_tokens: i64,
 }
 
 impl Stats {
@@ -98,6 +119,7 @@ impl Stats {
             deletes: self.deletes.load(Ordering::Relaxed),
             lists: self.lists.load(Ordering::Relaxed),
             retries: self.retries.load(Ordering::Relaxed),
+            retry_tokens: 0,
         }
     }
 
@@ -281,6 +303,10 @@ pub(super) struct Client {
     signer: Mutex<Option<(String, String, Arc<Signer>)>>,
     options: S3Options,
     stats: Stats,
+    /// What is left to spend on retries.
+    retries: RetryBudget,
+    /// The counter every jitter draw is taken from.
+    jitter: AtomicU64,
 }
 
 impl Client {
@@ -295,6 +321,16 @@ impl Client {
     /// Returns a refusal when the URL names no bucket, or when an endpoint
     /// cannot be read as a location.
     pub(super) fn new(url: &Url, options: S3Options) -> Result<Self> {
+        // Everything the environment names, under whatever the caller sets
+        // for it, so one vocabulary covers a property map and a process
+        // environment rather than each knob being wired up separately.
+        let options = match options.reads_environment() {
+            true => options.from_environment().map(|ambient| {
+                let explicit = options.clone();
+                explicit.under(&ambient)
+            })?,
+            false => options,
+        };
         let endpoint = Self::endpoint_of(url, &options)?;
         let region = Self::region_of(url, &options);
         let credentials = if options.anonymous() {
@@ -329,6 +365,8 @@ impl Client {
             signer: Mutex::new(None),
             options,
             stats: Stats::default(),
+            retries: RetryBudget::default(),
+            jitter: AtomicU64::new(fresh_jitter()),
         })
     }
 
@@ -476,12 +514,15 @@ impl Client {
         Some(Credentials::new(decode(user), decode(secret)))
     }
 
-    /// The counters of what has gone out.
-    pub(super) const fn stats(&self) -> &Stats {
-        &self.stats
+    /// The options this client was built with.
+    /// Every counter, plus what is left of the retry budget.
+    pub(super) fn snapshot(&self) -> StatsSnapshot {
+        StatsSnapshot {
+            retry_tokens: self.retries.remaining(),
+            ..self.stats.snapshot()
+        }
     }
 
-    /// The options this client was built with.
     /// How this client encrypts what it writes.
     pub(super) const fn encryption(&self) -> &Encryption {
         self.options.encryption()
@@ -528,6 +569,57 @@ impl Client {
         Ok(Some(signer))
     }
 
+    /// Wait before the next attempt.
+    ///
+    /// A `Retry-After` is an instruction and is waited out as given. Anything
+    /// else is a *window*, and the wait is drawn uniformly from it: doubling
+    /// alone puts every client that failed at the same instant back on the
+    /// wire at the same instant, which is the herd the backoff exists to
+    /// prevent. The draw is a hash of a per-client counter rather than a
+    /// random number generator - no dependency, no global state, and a
+    /// sequence a test can predict.
+    fn pause(&self, attempt: u32, asked: Option<Duration>) {
+        let delay = match asked {
+            Some(asked) => asked,
+            None => {
+                let window = backoff(attempt);
+                let span = u64::try_from(window.as_nanos()).unwrap_or(u64::MAX);
+                let draw =
+                    crate::xxhash::xxh3(&self.jitter.fetch_add(1, Ordering::Relaxed).to_le_bytes());
+                Duration::from_nanos(draw % span.saturating_add(1))
+            }
+        };
+        std::thread::sleep(delay);
+    }
+
+    /// Re-open a body from `offset`, for a transfer that was cut.
+    fn open_resumed(
+        &self,
+        bucket: &str,
+        key: &str,
+        offset: u64,
+        last: Option<u64>,
+    ) -> Result<Box<dyn Read + Send>> {
+        self.open_reader_range(bucket, key, offset, last)
+    }
+
+    /// Whether another attempt is allowed, and pay for it if so.
+    fn may_retry(&self, attempt: u32) -> bool {
+        attempt < self.options.max_attempts() && self.retries.withdraw()
+    }
+
+    /// Give back what an exchange that reached a verdict is owed.
+    fn settle(&self, answer: &Answer, attempt: u32) {
+        if answer.status >= 500 || answer.status == 429 {
+            return;
+        }
+        self.retries.refund(if attempt == 1 {
+            RETRY_REFUND
+        } else {
+            RETRY_COST
+        });
+    }
+
     /// Send `request`, retrying what is worth retrying.
     ///
     /// One attempt is the rule; a retry happens only for a transport failure,
@@ -546,8 +638,8 @@ impl Client {
             let answer = match outcome {
                 Ok(answer) => answer,
                 Err(error) => {
-                    if attempt < self.options.max_attempts() && is_retryable_transport(&error) {
-                        std::thread::sleep(backoff(attempt));
+                    if is_retryable_transport(&error) && self.may_retry(attempt) {
+                        self.pause(attempt, None);
                         continue;
                     }
                     return Err(transport_failure(request, self.location(request), error));
@@ -564,12 +656,11 @@ impl Client {
                     }
                 }
             }
-            if (answer.status >= 500 || answer.status == 429)
-                && attempt < self.options.max_attempts()
-            {
-                std::thread::sleep(backoff(attempt));
+            if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
+                self.pause(attempt, retry_after(&answer));
                 continue;
             }
+            self.settle(&answer, attempt);
             return Ok(answer);
         }
     }
@@ -671,8 +762,8 @@ impl Client {
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
                 Err(error) => {
-                    if attempt < self.options.max_attempts() && is_retryable_transport(&error) {
-                        std::thread::sleep(backoff(attempt));
+                    if is_retryable_transport(&error) && self.may_retry(attempt) {
+                        self.pause(attempt, None);
                         continue;
                     }
                     return Err(transport_failure(request, self.location(request), error));
@@ -701,12 +792,11 @@ impl Client {
                         }
                     }
                 }
-                if (answer.status >= 500 || answer.status == 429)
-                    && attempt < self.options.max_attempts()
-                {
-                    std::thread::sleep(backoff(attempt));
+                if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
+                    self.pause(attempt, retry_after(&answer));
                     continue;
                 }
+                self.settle(&answer, attempt);
                 return Ok((
                     answer.status,
                     answer.headers,
@@ -1035,22 +1125,35 @@ impl Client {
         Ok(bytes)
     }
 
-    /// Open one object as a reader positioned at `offset`.
+    /// The same, over a body that re-opens itself if the transfer dies.
     ///
-    /// One `GET` for the whole drain, which is what a stream is for: reading a
-    /// value in chunks must not become one request per chunk. A missing object
-    /// opens as empty.
+    /// This is what a long read wants. The retry in [`Self::stream`] covers
+    /// only the exchange up to the status: once the body is the caller's, a
+    /// connection that dies half way through a gigabyte fails the whole
+    /// transfer, and everything already delivered has to be read again. Here
+    /// it does not: see [`Resuming`].
     ///
     /// # Errors
     ///
-    /// Returns the store's refusal.
-    pub(super) fn open_reader(
-        &self,
+    /// Returns the store's refusal to open the stream at all.
+    pub(super) fn open_resuming_reader(
+        self: &Arc<Self>,
         bucket: &str,
         key: &str,
         offset: u64,
+        last: Option<u64>,
     ) -> Result<Box<dyn Read + Send>> {
-        self.open_reader_range(bucket, key, offset, None)
+        let reader = self.open_reader_range(bucket, key, offset, last)?;
+        Ok(Box::new(Resuming {
+            client: Arc::clone(self),
+            bucket: bucket.to_owned(),
+            key: key.to_owned(),
+            start: offset,
+            last,
+            delivered: 0,
+            failures: 0,
+            reader,
+        }))
     }
 
     /// Open one object as a reader over `offset ..= last`, or to its end.
@@ -1533,10 +1636,173 @@ fn build_agent(options: &S3Options) -> ureq::Agent {
     ureq::Agent::new_with_config(builder.build())
 }
 
-/// The delay before attempt `attempt + 1`, doubling and capped.
+/// The window attempt `attempt + 1` is drawn from: doubling, and capped.
 fn backoff(attempt: u32) -> Duration {
     let steps = attempt.saturating_sub(1).min(6);
-    RETRY_BACKOFF.saturating_mul(1_u32 << steps)
+    RETRY_BACKOFF
+        .saturating_mul(1_u32 << steps)
+        .min(RETRY_BACKOFF_CAP)
+}
+
+/// How long a client may spend on retries before it stops making them.
+///
+/// Doubling spreads one client's own attempts, and does nothing about the
+/// other hundred that failed at the same instant: when a store is refusing
+/// broadly, every client retrying every request turns a partial outage into a
+/// worse one. A budget is what makes the client's total retry load bounded
+/// rather than proportional to its failure rate. Each retry costs
+/// [`RETRY_COST`] tokens, a request that succeeds without one refunds
+/// [`RETRY_REFUND`], and a retry that succeeds gives its cost back, so a
+/// healthy client always has budget and a client that is only failing runs out
+/// and fails fast.
+struct RetryBudget {
+    tokens: std::sync::atomic::AtomicI64,
+}
+
+impl Default for RetryBudget {
+    fn default() -> Self {
+        Self {
+            tokens: std::sync::atomic::AtomicI64::new(RETRY_TOKENS),
+        }
+    }
+}
+
+impl RetryBudget {
+    /// Take the price of one retry, or refuse it.
+    fn withdraw(&self) -> bool {
+        self.tokens
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
+                (held >= RETRY_COST).then_some(held - RETRY_COST)
+            })
+            .is_ok()
+    }
+
+    /// Put `tokens` back, never above where the budget started.
+    fn refund(&self, tokens: i64) {
+        let _ = self
+            .tokens
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
+                Some((held + tokens).min(RETRY_TOKENS))
+            });
+    }
+
+    /// What is left, for the counters to report.
+    fn remaining(&self) -> i64 {
+        self.tokens.load(Ordering::Relaxed)
+    }
+}
+
+/// A body that re-opens itself when the transfer dies part way through.
+///
+/// A long read over a network dies for reasons that have nothing to do with
+/// the object - a reset connection, an idle timeout, a load balancer being
+/// recycled - and failing the whole transfer for one of them means re-reading
+/// everything already delivered. On a multi-gigabyte scan that is the
+/// difference between finishing and not. This asks for the rest, from the byte
+/// it stopped at, and carries on; the caller sees one uninterrupted stream and
+/// the resumed request is counted like any other.
+///
+/// Only a transport failure resumes, and only while *consecutive* failures
+/// stay under the client's attempt limit - a byte arriving resets that, so a
+/// transfer which keeps moving survives any number of interruptions while one
+/// that cannot deliver a byte stops rather than looping. A store refusing the
+/// request answers with a status instead, which never reaches here.
+struct Resuming {
+    client: Arc<Client>,
+    bucket: String,
+    key: String,
+    /// Where the caller's window starts.
+    start: u64,
+    /// The last byte the window covers, when it is bounded.
+    last: Option<u64>,
+    /// How much of it has reached the caller.
+    delivered: u64,
+    /// Failures since the last byte arrived.
+    failures: u32,
+    reader: Box<dyn Read + Send>,
+}
+
+impl Read for Resuming {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        loop {
+            match self.reader.read(buffer) {
+                Ok(read) => {
+                    self.delivered = self.delivered.saturating_add(read as u64);
+                    if read > 0 {
+                        self.failures = 0;
+                    }
+                    return Ok(read);
+                }
+                Err(error) => {
+                    if !is_resumable(&error)
+                        || self.failures.saturating_add(1) >= self.client.options().max_attempts()
+                    {
+                        return Err(error);
+                    }
+                    self.failures += 1;
+                    self.client.pause(self.failures, None);
+                    let from = self.start.saturating_add(self.delivered);
+                    if self.last.is_some_and(|last| from > last) {
+                        // Everything asked for arrived; the failure was the
+                        // end of the body announcing itself badly.
+                        return Ok(0);
+                    }
+                    match self
+                        .client
+                        .open_resumed(&self.bucket, &self.key, from, self.last)
+                    {
+                        Ok(reader) => self.reader = reader,
+                        // The re-open failed too, so the original failure is
+                        // what the caller hears about.
+                        Err(_) => return Err(error),
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Whether a read failure is the transport's rather than the store's verdict.
+///
+/// The generic kind is included deliberately: a client library reports a
+/// severed connection in more than one shape, and mistaking one for a decoding
+/// failure costs the whole transfer where mistaking it the other way costs one
+/// bounded re-open.
+fn is_resumable(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::UnexpectedEof
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::Other
+    )
+}
+
+/// A starting point for one client's jitter, different from every other's.
+///
+/// Two clients in one process that fail at the same instant should not draw
+/// the same delays, so each starts its counter somewhere of its own.
+fn fresh_jitter() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
+    crate::xxhash::xxh3(
+        &[u64::from(std::process::id()), ordinal]
+            .map(u64::to_le_bytes)
+            .concat(),
+    )
+}
+
+/// The `Retry-After` an answer asks for, when it asks for one this will wait.
+///
+/// Seconds only: the HTTP-date spelling is legal and no S3 implementation
+/// sends it, and reading a date needs a clock this has no reason to trust.
+fn retry_after(answer: &Answer) -> Option<Duration> {
+    let seconds: u64 = answer.header("retry-after")?.trim().parse().ok()?;
+    let asked = Duration::from_secs(seconds);
+    (asked <= RETRY_AFTER_CAP).then_some(asked)
 }
 
 /// Whether a transport failure is worth another attempt.
