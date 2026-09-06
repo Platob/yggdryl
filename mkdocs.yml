@@ -147,6 +147,7 @@ nav:
     - holder/index.md
     - IOBase:
       - Bytes: holder/iobase/bytes.md
+      - Calls: holder/iobase/calls.md
       - Values: holder/iobase/values.md
       - Records: holder/iobase/records.md
       - Partitions: holder/iobase/partitions.md
@@ -154,7 +155,9 @@ nav:
       - Buffer: holder/backends/buffer.md
       - Local: holder/backends/local.md
       - Filesystems: holder/backends/filesystems.md
+      - Amazon S3: holder/backends/s3.md
       - Buffered: holder/backends/buffered.md
+      - ZIP: holder/backends/zip.md
   - Coding:
     - coding/index.md
     - gzip: coding/gzip.md

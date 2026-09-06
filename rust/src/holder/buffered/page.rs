@@ -298,6 +298,17 @@ impl PageTable {
         self.pages.contains_key(&index)
     }
 
+    /// Return whether a read can be answered from the page at `index`.
+    ///
+    /// Unlike [`Self::get`] this neither records an access nor discards a
+    /// lapsed page: it is the question the miss path asks *ahead* of itself,
+    /// to find how far a run of pages the table cannot answer reaches.
+    pub(crate) fn holds(&self, index: u64, now: Instant, ttl: Duration, pinned: Pinned) -> bool {
+        self.pages.get(&index).is_some_and(|page| {
+            pinned.holds(index) || now.saturating_duration_since(page.touched) <= ttl
+        })
+    }
+
     /// Discard every page whose life ran out, keeping the pinned ones.
     fn sweep(&mut self, now: Instant, ttl: Duration, pinned: Pinned) {
         let mut freed = 0;

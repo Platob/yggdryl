@@ -25,7 +25,7 @@ use crate::{DataType, Error, Result, Scalar};
 pub(crate) const UUID_EXTENSION_NAME: &str = "arrow.uuid";
 
 /// The number of bytes one identifier is.
-const UUID_BYTES: usize = 16;
+pub(crate) const UUID_BYTES: usize = 16;
 
 /// Where the canonical rendering puts its hyphens, in nibbles.
 const GROUPS: [usize; 5] = [8, 4, 4, 4, 12];

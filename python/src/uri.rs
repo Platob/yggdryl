@@ -306,6 +306,11 @@ impl PyUri {
     }
 
     #[getter]
+    fn key(&self) -> Option<&str> {
+        self.inner.key()
+    }
+
+    #[getter]
     fn region(&self) -> Option<&str> {
         self.inner.region()
     }
@@ -741,6 +746,11 @@ impl PyUrl {
     #[getter]
     fn bucket(&self) -> Option<&str> {
         self.inner.bucket()
+    }
+
+    #[getter]
+    fn key(&self) -> Option<&str> {
+        self.inner.key()
     }
 
     #[getter]

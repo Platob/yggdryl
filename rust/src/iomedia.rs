@@ -81,15 +81,18 @@ pub trait IOMedia: Send {
             return Ok(field.fields().len());
         }
         let handle = self.as_io_base();
+        // Asked once and reused: on a store an unresolved location answers
+        // this with a listing, and the two routes below want the same answer.
+        let container = handle.is_container();
         #[cfg(feature = "iceberg")]
-        if handle.is_container() {
+        if container {
             if let Some(table) = crate::media::iceberg::located(handle)? {
                 return table.column_size();
             }
         }
         // Preserve the container route: its canonical field may include Hive
         // partition columns restored from paths across multiple leaves.
-        if handle.is_container() {
+        if container {
             return Ok(self.read_arrow_field(&options)?.fields().len());
         }
         if handle.is_empty() && !matches!(options, RecordOptions::Text(_)) {

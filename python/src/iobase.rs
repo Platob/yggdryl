@@ -71,6 +71,30 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
         .map(yggdryl::holder::fs::located)
 }
 
+/// Hold the resource `url` names, on the store its scheme selects.
+///
+/// The scheme is what says which backend a location belongs to. An `s3` URL
+/// reaches the native S3 backend; everything else stays local, exactly as it
+/// did. Construction touches nothing on either.
+pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme() == &yggdryl::Scheme::S3 {
+        return yggdryl::holder::s3::located(&url.to_string())
+            .map_err(crate::holder::fs::storage_error);
+    }
+    Holder::local(url.clone().into_path().map_err(value_error)?)
+        .map_err(crate::holder::fs::storage_error)
+}
+
+/// Hold `url` as a container, on the store its scheme selects.
+pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme() == &yggdryl::Scheme::S3 {
+        return yggdryl::holder::s3::folder(&url.to_string())
+            .map(Holder::S3Folder)
+            .map_err(crate::holder::fs::storage_error);
+    }
+    Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
+}
+
 /// Address a foreign-filesystem handle's location as a container.
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
@@ -312,6 +336,14 @@ impl PyIOBase {
         Holder::local(path).map_err(crate::holder::fs::storage_error)
     }
 
+    /// Describe the resource `url` names, on the store its scheme selects.
+    ///
+    /// A location is what says which backend it belongs to, so this is the one
+    /// place that decides. Nothing is opened or contacted here either way.
+    fn located_url(url: &yggdryl::Url) -> PyResult<Holder> {
+        located_holder(url)
+    }
+
     /// Build a second holder on the same location.
     ///
     /// A handle owns backend state - such as a mapping or an open descriptor -
@@ -326,7 +358,7 @@ impl PyIOBase {
         let url = self.inner()?.url().ok_or_else(|| {
             PyValueError::new_err("an in-memory resource has no location to rebuild from")
         })?;
-        Self::located(&url.clone().into_path().map_err(value_error)?)
+        Self::located_url(url)
     }
 
     /// Build a container handle on the same location.
@@ -344,7 +376,7 @@ impl PyIOBase {
             .inner()?
             .url()
             .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
-        Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
+        folder_holder_for(url)
     }
 
     /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
@@ -667,7 +699,7 @@ impl PyIOBase {
             );
         }
         let url = core_url_from_value(value)?;
-        declared(py, Self::located(&url.into_path().map_err(value_error)?)?)
+        declared(py, Self::located_url(&url)?)
     }
 
     /// Describe a resource on any `pyarrow.fs.FileSystem`.
@@ -1640,7 +1672,7 @@ impl PyIOBase {
             let url = self.inner()?.url().ok_or_else(|| {
                 PyValueError::new_err("an in-memory resource cannot become a directory")
             })?;
-            Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)?
+            folder_holder_for(url)?
         };
         if let Some(bound) = folder.bound_location() {
             bound

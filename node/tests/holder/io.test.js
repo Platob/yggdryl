@@ -1055,3 +1055,21 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
     /invalid gzip header/,
   )
 })
+
+test('an s3 location reaches the native backend without touching it', () => {
+  // Nothing here contacts a store: the point is that the scheme selects the
+  // backend and that construction stays lazy across the boundary.
+  const handle = new IOBase('s3://trades/lake/year=2026/part.parquet')
+
+  assert.equal(handle.url.scheme, 's3')
+  assert.equal(handle.url.bucket, 'trades')
+  assert.equal(handle.url.key, 'lake/year=2026/part.parquet')
+  assert.equal(handle.name, 'part.parquet')
+  // The media type comes from the key, so it costs no request.
+  assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
+  assert.deepEqual(handle.partitions, [{ column: 'year', value: '2026' }])
+
+  // A child resolves without asking the store anything.
+  const child = new IOBase('s3://trades/lake/').joinpath('year=2026', 'part.parquet')
+  assert.equal(child.url.toString(), 's3://trades/lake/year=2026/part.parquet')
+})

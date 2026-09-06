@@ -286,42 +286,69 @@ impl Uri {
             return None;
         }
 
-        let mut path = self.path_segments();
-        if self.has_authority && !self.authority.is_empty() && self.authority.port().is_some() {
+        // The cursor walks the path so whatever the endpoint and the bucket do
+        // not consume is the key, spelled exactly as the path spells it.
+        let mut cursor = 0;
+        let next_segment = |cursor: &mut usize| {
+            let (next, segment) = self.path.next_segment(*cursor)?;
+            *cursor = next;
+            Some(segment)
+        };
+        let key_of = |cursor: usize| {
+            self.path
+                .as_str()
+                .get(cursor..)
+                .unwrap_or_default()
+                .trim_start_matches('/')
+        };
+
+        let authority =
+            (self.has_authority && !self.authority.is_empty()).then_some(&self.authority);
+        // A port is something no bucket name carries, so it names the endpoint
+        // before any suffix rule runs.
+        if let Some(authority) = authority.filter(|authority| authority.port().is_some()) {
+            let bucket = next_segment(&mut cursor);
             return Some(S3Location {
-                hostname: Some(self.authority.host()),
-                endpoint: Some(self.authority.host_port()),
-                bucket: path.next(),
+                hostname: Some(authority.host()),
+                endpoint: Some(authority.host_port()),
+                bucket,
                 region: None,
                 virtual_addressing: false,
+                key: key_of(cursor),
             });
         }
 
-        let first = if self.has_authority && !self.authority.is_empty() {
-            self.authority.host()
-        } else {
-            path.next()?
+        let first = match authority {
+            Some(authority) => authority.host(),
+            None => next_segment(&mut cursor)?,
         };
 
         if let Some(aws) = parse_aws_s3_hostname(first) {
             let endpoint = aws
                 .bucket
                 .map_or(first, |bucket| &first[bucket.len() + 1..]);
+            let bucket = match aws.bucket {
+                Some(bucket) => Some(bucket),
+                None => next_segment(&mut cursor),
+            };
             return Some(S3Location {
                 hostname: Some(first),
                 endpoint: Some(endpoint),
-                bucket: aws.bucket.or_else(|| path.next()),
+                bucket,
                 region: aws.region,
                 virtual_addressing: aws.bucket.is_some(),
+                key: key_of(cursor),
             });
         }
         if is_s3_hostname(first) {
+            let bucket = next_segment(&mut cursor);
             return Some(S3Location {
                 hostname: Some(first),
                 endpoint: Some(first),
-                bucket: path.next(),
+                bucket,
                 region: None,
                 virtual_addressing: false,
+                key: key_of(cursor),
             });
         }
         Some(S3Location {
@@ -330,6 +357,7 @@ impl Uri {
             bucket: Some(first),
             region: None,
             virtual_addressing: false,
+            key: key_of(cursor),
         })
     }
 }
@@ -341,6 +369,7 @@ pub(super) struct S3Location<'a> {
     pub(super) bucket: Option<&'a str>,
     pub(super) region: Option<&'a str>,
     pub(super) virtual_addressing: bool,
+    pub(super) key: &'a str,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -349,7 +378,16 @@ struct AwsS3Hostname<'a> {
     region: Option<&'a str>,
 }
 
+/// Return whether a first component spells an endpoint rather than a bucket.
+///
+/// A name ending in `.com` or `.io` is a hostname, and so is `localhost` or an
+/// IP literal: no bucket is named either, and a local S3-compatible store is
+/// what those spellings mean. A port settles it earlier still, in
+/// [`Uri::s3_location`].
 fn is_s3_hostname(value: &str) -> bool {
+    if value.eq_ignore_ascii_case("localhost") || value.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
     [".com", ".io"].iter().any(|suffix| {
         value
             .get(value.len().saturating_sub(suffix.len())..)
