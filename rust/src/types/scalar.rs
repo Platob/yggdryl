@@ -961,23 +961,40 @@ impl Scalar {
         state.as_u64()
     }
 
-    /// Construct an ordered sequence.
-    pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
-        let values = values.into_iter().collect::<Vec<_>>();
-        if values.is_empty() {
-            static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-            return Self::Nested(Nested::Sequence(Sequence::new(Arc::clone(
-                EMPTY.get_or_init(|| Arc::from([])),
-            ))));
-        }
-        Self::Nested(Nested::Sequence(Sequence::new(Arc::<[Scalar]>::from(
-            values,
+    /// The one shared empty sequence, which every empty run answers with.
+    fn empty_sequence() -> Self {
+        static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
+        Self::Nested(Nested::Sequence(Sequence::new(Arc::clone(
+            EMPTY.get_or_init(|| Arc::from([])),
         ))))
+    }
+
+    /// The one shared empty mapping.
+    fn empty_mapping() -> Self {
+        static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
+        Self::Nested(Nested::Mapping(Mapping::new(Arc::clone(
+            EMPTY.get_or_init(|| Arc::from([])),
+        ))))
+    }
+
+    /// Construct an ordered sequence.
+    ///
+    /// The children are written straight into the shared slice they are
+    /// stored in. A `Vec` on the way would allocate a second buffer and copy
+    /// the whole run between the two, which is what a row build pays per row.
+    pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
+        shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
+            Self::Nested(Nested::Sequence(Sequence::new(values)))
+        })
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
     pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self> {
-        let entries = entries.into_iter().collect::<Vec<_>>();
+        // The duplicate check reads the entries in place, so they are
+        // collected once into the storage the mapping keeps.
+        let Some(entries) = shared_children(entries.into_iter()) else {
+            return Ok(Self::empty_mapping());
+        };
         if entries.len() <= 16 {
             for (index, (key, _)) in entries.iter().enumerate() {
                 if entries[..index].iter().any(|(existing, _)| existing == key) {
@@ -995,17 +1012,7 @@ impl Scalar {
                 }
             }
         }
-        if entries.is_empty() {
-            static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
-            return Ok(Self::Nested(Nested::Mapping(Mapping::new(Arc::clone(
-                EMPTY.get_or_init(|| Arc::from([])),
-            )))));
-        }
-        Ok(Self::Nested(Nested::Mapping(Mapping::new(Arc::<
-            [(Scalar, Scalar)],
-        >::from(
-            entries
-        )))))
+        Ok(Self::Nested(Nested::Mapping(Mapping::new(entries))))
     }
 
     /// Construct a deterministic record sorted by field name.
@@ -1359,6 +1366,27 @@ impl Scalar {
         rebuilt.remove(name);
         Ok(Self::Nested(Nested::Record(Record::new(Arc::new(rebuilt)))))
     }
+}
+
+/// The shared slice a nested value stores, or `None` for an empty run.
+///
+/// An empty run answers with one shared value rather than a fresh allocation,
+/// so a source that might be empty is drained through a `Vec` first: a size
+/// hint is a hint and not a promise, and an iterator that under-reports must
+/// still keep its children. Every other source is written straight into the
+/// slice - one allocation, where a `Vec` on the way costs two and a copy of
+/// the whole run between them.
+fn shared_children<T>(values: impl Iterator<Item = T>) -> Option<Arc<[T]>> {
+    let values: Arc<[T]> = if values.size_hint().1 == Some(0) {
+        let drained = values.collect::<Vec<_>>();
+        if drained.is_empty() {
+            return None;
+        }
+        Arc::from(drained)
+    } else {
+        values.collect()
+    };
+    (!values.is_empty()).then_some(values)
 }
 
 fn duplicate_key_error(index: usize) -> Error {

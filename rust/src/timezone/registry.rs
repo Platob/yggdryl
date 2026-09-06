@@ -396,6 +396,18 @@ static FIXED_NAMES: [OnceLock<SmolStr>; FIXED_COUNT_USIZE] =
 static REGISTERED_NAMES: OnceLock<Box<[OnceLock<SmolStr>]>> = OnceLock::new();
 static INTERNED_NAMES: OnceLock<RwLock<InternedNames>> = OnceLock::new();
 
+/// How many unregistered zone names one process retains.
+///
+/// A handle is a `NonZeroU32` that reads back as a `&'static str`, so an
+/// interned name is retained for the life of the process and can never be
+/// reclaimed. Names arrive from file content - an Arrow timestamp column, a
+/// parsed schema - so without a ceiling a stream of distinct spellings grows
+/// the table without bound. The IANA database this build carries names some
+/// hundreds of zones; a schema needing more than sixty-four thousand
+/// *unregistered* ones is a malformed source, and it is refused by name here
+/// rather than consuming the process.
+const MAX_INTERNED_NAMES: usize = 64 * 1024;
+
 #[derive(Default)]
 struct InternedNames {
     by_name: HashMap<&'static str, NonZeroU32>,
@@ -549,6 +561,9 @@ pub(super) fn intern(name: &str) -> Result<NonZeroU32> {
         return Ok(*handle);
     }
 
+    if names.names.len() >= MAX_INTERNED_NAMES {
+        return Err(capacity_error());
+    }
     let index = u32::try_from(names.names.len()).map_err(|_| capacity_error())?;
     let value = dynamic_base()
         .checked_add(index)

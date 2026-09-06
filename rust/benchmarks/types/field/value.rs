@@ -4,7 +4,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
 use yggdryl::expression::Function;
-use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scheme, Url};
+use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scalar, Scheme, Url};
 
 use super::nested_field;
 
@@ -396,5 +396,52 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // Ingest canonicalizes every row it accepts, so this is the per-row cost
+    // of the value contract. The payload columns are measured at two payload
+    // sizes: a value already in its declared representation must cost the
+    // same at both, because deciding a row is canonical never reads or copies
+    // what it holds, while a layout rewrite shares the storage it retags.
+    let payload_root = DataType::from_fields([
+        Field::new("symbol", DataType::Utf8, false),
+        Field::new("payload", DataType::Binary, false),
+        Field::new("ccy", DataType::Currency, false),
+    ])
+    .expect("the payload row schema is valid")
+    .required_field("row");
+    let large_root = DataType::from_fields([
+        Field::new("symbol", DataType::LargeUtf8, false),
+        Field::new("payload", DataType::LargeBinary, false),
+        Field::new("ccy", DataType::Currency, false),
+    ])
+    .expect("the wide-layout row schema is valid")
+    .required_field("row");
+    for bytes in [64_usize, 64 * 1024] {
+        let row = payload_root
+            .canonicalize_value(Scalar::from_sequence([
+                Scalar::from("a symbol far longer than any inline string buffer can hold"),
+                Scalar::from(vec![0x42_u8; bytes]),
+                Scalar::from("USD"),
+            ]))
+            .expect("the row satisfies its schema");
+        group.bench_function(format!("canonicalize_row_unchanged_{bytes}b"), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    black_box(&payload_root)
+                        .canonicalize_value(black_box(&row).clone())
+                        .expect("the row satisfies its schema"),
+                )
+            });
+        });
+        group.bench_function(format!("canonicalize_row_relayout_{bytes}b"), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    black_box(&large_root)
+                        .canonicalize_value(black_box(&row).clone())
+                        .expect("the row satisfies the wider layout"),
+                )
+            });
+        });
+    }
+
     group.finish();
 }

@@ -142,6 +142,13 @@ Rust only.
 
 `validate_value` checks a [`Scalar`](scalar.md) row is representable; `canonicalize_value` rewrites it exactly.
 
+Canonicalization decides before it builds, so a row already in its declared representation
+allocates nothing whatever it carries: text, byte, ASCII, code, and geospatial columns are
+recognized from the value in hand rather than rebuilt and compared. A column that does rewrite a
+layout - `utf8` to `large_utf8`, `binary` to `binary_view`, bytes to a geometry - retags the
+storage handle it was given, so the payload is never copied. `rust/tests/allocations.rs` counts
+both.
+
 ```rust
 use yggdryl::{DataType, Field, Scalar};
 
@@ -295,6 +302,23 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 - Temporal to text -> the classic form, zoned instants included.
 - Any other width, sign pairing, or target datatype in `cast_arrow_array_bits` -> error; `cast_arrow_array` stays range-checked.
 - A required bit-cast target over source nulls -> the canonical zero default, so the value buffer is rebuilt rather than shared.
+
+## Performance
+
+Row canonicalization over a three-column row - `utf8`, `binary`, `currency` - at two payload
+sizes. Containerized x86_64 Linux, Intel Xeon, rustc 1.94.1 release, Criterion point estimates.
+`unchanged` hands the root a row already in its declared representation; `relayout` hands the
+same row to a `large_utf8`/`large_binary` root. Both are flat in the payload because neither
+reads it: the cost is the walk over the three columns, not the bytes behind them.
+
+| row | 64 B payload | 64 KiB payload |
+| --- | ---: | ---: |
+| unchanged | 235 ns | 238 ns |
+| relayout | 280 ns | 275 ns |
+
+```bash
+cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/canonicalize_row'
+```
 
 ## Commands
 
