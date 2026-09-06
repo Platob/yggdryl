@@ -53,15 +53,18 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
         Some(field) => field.clone(),
         None => rows.inferred_struct_field()?,
     };
-    let canonical = rows
+    // Reading the spellings and canonicalizing the values are two walks, and
+    // the batch build owns the second one for every row at once. Only the
+    // first is done here, so no row is walked twice.
+    let prepared = rows
         .as_sequence()
         .unwrap_or_default()
         .iter()
-        .map(|row| root.from_natural_value(row.clone()))
+        .map(|row| crate::text::typed::prepared(row.clone(), &root))
         .collect::<Result<Vec<_>>>()?;
     Ok(ArrowValue::from_rows(
         &root,
-        &Scalar::from_sequence(canonical),
+        &Scalar::from_sequence(prepared),
     )?)
 }
 

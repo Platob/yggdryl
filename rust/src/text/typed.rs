@@ -119,6 +119,18 @@ fn named(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar>
     )
 }
 
+/// Read a natural text value into this field's typed leaves, and stop there.
+///
+/// The half of [`with_field`] that turns spellings into values: base64 into
+/// bytes, decimal text into a coefficient at the field's scale, an ISO reading
+/// into its unit. Canonicalization is deliberately not done, so a caller that
+/// is about to hand the value to something which canonicalizes - a record
+/// batch build, whose root owns that walk for every row at once - pays for it
+/// once rather than twice.
+pub(crate) fn prepared(value: Scalar, field: &Field) -> Result<Scalar> {
+    prepare(value, field)
+}
+
 fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);
