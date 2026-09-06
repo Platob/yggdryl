@@ -785,15 +785,17 @@ impl ArrayCastPlan {
             ) => {
                 if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
                     (dtype, source_type)
-                    && size != source
                 {
-                    return Err(Error::Unsupported {
-                        kind: dtype.name(),
-                        reason: format!(
-                            "a fixed-size list of {source} items holds a different row than one \
-                             of {size} items, so it is a value change rather than a layout change"
-                        ),
-                    });
+                    if size != source {
+                        return Err(Error::Unsupported {
+                            kind: dtype.name(),
+                            reason: format!(
+                                "a fixed-size list of {source} items holds a different row than \
+                                 one of {size} items, so it is a value change rather than a \
+                                 layout change"
+                            ),
+                        });
+                    }
                 }
                 ArrayCastKind::List {
                     field: list_child(expected)?,

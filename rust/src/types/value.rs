@@ -630,16 +630,16 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let Some(bytes) = value.as_bytes() else {
                 return canonicalization_failure(dtype);
             };
-            if let D::FixedSizeBinary(width) = dtype
-                && usize::try_from(*width).ok() != Some(bytes.len())
-            {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new_static("$"),
-                    reason: format_smolstr!(
-                        "fixed_size_binary({width}) requires {width} bytes, got {}",
-                        bytes.len()
-                    ),
-                });
+            if let D::FixedSizeBinary(width) = dtype {
+                if usize::try_from(*width).ok() != Some(bytes.len()) {
+                    return Err(Error::InvalidRecord {
+                        path: SmolStr::new_static("$"),
+                        reason: format_smolstr!(
+                            "fixed_size_binary({width}) requires {width} bytes, got {}",
+                            bytes.len()
+                        ),
+                    });
+                }
             }
             if matches!(
                 (dtype, value),
@@ -1139,10 +1139,10 @@ fn broken_map_invariant(
     if let Some(index) = duplicate_mapping_key_index(entries) {
         return Some((index, "map keys collide"));
     }
-    if map.keys_sorted()
-        && let Some(index) = entries.windows(2).position(|pair| pair[0].0 > pair[1].0)
-    {
-        return Some((index + 1, "map keys are not sorted"));
+    if map.keys_sorted() {
+        if let Some(index) = entries.windows(2).position(|pair| pair[0].0 > pair[1].0) {
+            return Some((index + 1, "map keys are not sorted"));
+        }
     }
     None
 }

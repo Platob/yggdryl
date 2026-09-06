@@ -538,8 +538,9 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
 /// Pads `text` with trailing NUL into one storage slot.
 ///
 /// The slot is one value of the fixed-width storage; `text` has already
-/// passed [`ascii_text`] for that width, so it fits.
-#[cfg(feature = "arrow")]
+/// passed [`ascii_text`] for that width, so it fits. It is the payload the
+/// width stores, so a value answers with it whether or not an Arrow array is
+/// being built around it.
 pub(crate) fn ascii_padded(slot: &mut [u8], text: &str) {
     let length = text.len().min(slot.len());
     slot[..length].copy_from_slice(&text.as_bytes()[..length]);
