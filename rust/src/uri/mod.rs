@@ -29,6 +29,7 @@ mod urn;
 
 pub use authority::Authority;
 pub use extensions::Extensions;
+pub(crate) use hive::hive_partitions_of;
 pub use parameters::Parameters;
 pub(crate) use parser::percent_decode;
 #[cfg(feature = "s3")]
@@ -421,6 +422,33 @@ impl Uri {
         )?;
         let mut candidate = self.clone();
         candidate.query = query;
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    /// Replace or remove the fragment, from text that is not URI syntax.
+    ///
+    /// A fragment is one opaque component rather than a composite of parts, so
+    /// this takes the value itself and percent-encodes what the syntax cannot
+    /// carry - which is what makes [`fragment(true)`](Self::fragment) read
+    /// back exactly what was set, for a value that was never URI text to begin
+    /// with. [`set_query`](Self::set_query) takes formed query text instead,
+    /// because a query is that composite and [`Parameters`](crate::uri::Parameters)
+    /// is how its parts are set.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the resulting URI is not valid. An error
+    /// leaves the URI unchanged.
+    pub fn set_fragment(&mut self, fragment: Option<&str>) -> Result<()> {
+        let fragment = fragment.map(|fragment| {
+            SmolStr::new(percent_encode(fragment, is_query_fragment_byte).as_ref())
+        });
+        let fragment =
+            validate_optional_component(fragment, "uri fragment", is_query_fragment_byte)?;
+        let mut candidate = self.clone();
+        candidate.fragment = fragment;
         candidate.validate()?;
         *self = candidate;
         Ok(())

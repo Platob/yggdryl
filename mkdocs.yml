@@ -157,6 +157,7 @@ nav:
       - Filesystems: holder/backends/filesystems.md
       - Amazon S3: holder/backends/s3.md
       - Buffered: holder/backends/buffered.md
+      - ZIP: holder/backends/zip.md
   - Coding:
     - coding/index.md
     - gzip: coding/gzip.md

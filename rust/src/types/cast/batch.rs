@@ -2,7 +2,7 @@
 
 use arrow_array::RecordBatch;
 
-use super::cast_record_batch;
+use super::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
 use crate::Field;
 use crate::arrow::{Error, Result, arrow_schema_from_field};
 
@@ -25,7 +25,7 @@ pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()> {
 
     // Valid means "needs no repair": casting an exact batch returns the very
     // arrays it was given, so a changed column is a validation failure.
-    let cast = cast_record_batch(field, batch.clone(), true)?;
+    let cast = field.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())?;
     for (index, (before, after)) in batch.columns().iter().zip(cast.columns()).enumerate() {
         if !std::sync::Arc::ptr_eq(before, after) {
             let name = batch.schema().field(index).name().clone();
@@ -52,13 +52,9 @@ pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()> {
 pub fn preflight_arrow_batch_cast(
     source: &Field,
     target: Option<&Field>,
-    safe: bool,
+    options: ArrowCastOptions,
 ) -> Result<()> {
     let schema = arrow_schema_from_field(source)?;
     let target = target.unwrap_or(source);
-    // An empty batch of the source schema exercises the whole recursive plan
-    // without materializing a row.
-    let empty = RecordBatch::new_empty(schema);
-    cast_record_batch(target, empty, safe)?;
-    Ok(())
+    ArrowCastPlan::compile(&schema, target, options)?.preflight()
 }

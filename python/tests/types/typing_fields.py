@@ -60,9 +60,9 @@ dynamic_class: type[object] = imported.into_dataclass(
     name="DynamicTypedOrder"
 )
 currency: CurrencyField = types.currency("currency", nullable=False)
-currency_code: str | None = currency.default_pyvalue()
+currency_default_scalar: Scalar = currency.default_scalar()
 version: VersionField = types.version("version", nullable=False)
-version_code: str | None = version.default_pyvalue()
+version_default_scalar: Scalar = version.default_scalar()
 
 
 assert payload["order_id"] == 42
@@ -71,5 +71,5 @@ assert datatype.is_nested
 assert optional.nullable
 assert from_yaml == from_toml == from_json == order
 assert dynamic_class.field() is imported  # type: ignore[attr-defined]
-assert currency_code == ""
-assert version_code == "0"
+assert currency_default_scalar.as_py() == ""
+assert version_default_scalar.as_py() == "0"

@@ -12,7 +12,8 @@
 | Feature flag | `parquet::read_batch_reader` needs the non-default `parquet` feature |
 | Roots | `combined` merges both schemas into the root; `combined_as` casts both onto the caller's |
 | Lazy | Schema before any batch; `combined` pulls no row and collects nothing |
-| Cast | `cast_reader(inner, &field, safe)` ([../types/cast.md](../types/cast.md)); an exact side passes through unchanged |
+| Cast | `cast_reader(inner, &field, options)` ([../types/cast.md](../types/cast.md)); one compiled plan for the whole stream, and an exact side passes through unwrapped |
+| Cast errors | Reported at the pull of the batch that carries them; the reader is fused after one, and the source is released then |
 | Bindings | Rust; Python `combined(left, right, schema=None, *, safe=True)`; JavaScript `BatchReader.combined(other, schema?, safe?)` |
 
 ## Use
@@ -158,6 +159,8 @@ assert_eq!(rows, 3);
 
 - Shared column with two datatypes or two `PARQUET:field_id` values -> `combined` refuses, naming both sides.
 - Root not a bounded, non-nullable Struct -> `combined_as` and `cast_reader` return `Err`.
+- A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a required column missing under [`strict`](../types/cast.md#strict-nullability) -> `cast_reader` returns `Err` rather than a reader that fails on its first batch.
+- Dropping a cast reader before it is drained -> the source is dropped with it, so a C stream behind it is released there.
 
 ## Commands
 
@@ -167,4 +170,5 @@ assert_eq!(rows, 3);
     cargo test --features "parquet iceberg" -p yggdryl --test arrow combined::
     cargo test --features "parquet iceberg" -p yggdryl --lib arrow::rows::
     cargo test --features "parquet iceberg" -p yggdryl --test arrow cast_coverage::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow cast_plan::
     ```

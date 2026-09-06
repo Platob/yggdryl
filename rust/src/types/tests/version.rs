@@ -8,8 +8,8 @@ use arrow_schema::DataType as ArrowDataType;
 use super::super::DataType;
 use crate::arrow::{scalar_array, scalar_value};
 use crate::{
-    ArrowCast, DataTypeId, DataTypeKind, Error, Field, Scalar, Scheme, Version, VersionField,
-    VersionScalar,
+    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, Scalar, Scheme, Version,
+    VersionField, VersionScalar,
 };
 
 fn version(text: &str) -> Version {
@@ -191,7 +191,10 @@ fn arrow_field_values_and_casts_keep_version_identity() {
     );
 
     let ingested = field
-        .cast_arrow_array(Arc::new(StringArray::from(vec!["5.0.SP1"])), false)
+        .cast_arrow_array(
+            Arc::new(StringArray::from(vec!["5.0.SP1"])),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
     assert_eq!(
         ingested
@@ -203,7 +206,10 @@ fn arrow_field_values_and_casts_keep_version_identity() {
     );
     assert!(
         field
-            .cast_arrow_array(Arc::new(Int32Array::from(vec![5])), false)
+            .cast_arrow_array(
+                Arc::new(Int32Array::from(vec![5])),
+                ArrowCastOptions::new().with_safe(false)
+            )
             .unwrap_err()
             .to_string()
             .contains("version")
@@ -213,15 +219,19 @@ fn arrow_field_values_and_casts_keep_version_identity() {
     let source_schema = source_root.clone().into_arrow_schema().unwrap();
     let source: Arc<dyn Array> = Arc::new(StringArray::from(vec!["5.0SP2"]));
     let batch = RecordBatch::try_new(source_schema, vec![Arc::clone(&source)]).unwrap();
-    let exact = source_root.cast_arrow_batch(batch.clone(), false).unwrap();
+    let exact = source_root
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert!(Arc::ptr_eq(exact.column(0), &source));
 
     let text_root = root(DataType::Utf8.required_field("begin_string"));
-    let rendered = text_root.cast_arrow_batch(batch.clone(), false).unwrap();
+    let rendered = text_root
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(rendered.column(0).data_type(), &ArrowDataType::Utf8);
     let numeric_root = root(DataType::Int32.required_field("begin_string"));
     let refused = numeric_root
-        .cast_arrow_batch(batch, false)
+        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("version"), "{refused}");

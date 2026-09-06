@@ -14,6 +14,8 @@ mod listing;
 #[cfg(feature = "s3")]
 #[path = "holder/s3/mod.rs"]
 mod s3;
+#[path = "holder/zip.rs"]
+mod zip;
 
 use criterion::{criterion_group, criterion_main};
 
@@ -46,5 +48,6 @@ criterion_group!(
     s3::bytes::byte_benchmarks,
     s3::listing::listing_benchmarks,
     s3::records::record_benchmarks,
+    zip::zip_benchmarks,
 );
 criterion_main!(holder);

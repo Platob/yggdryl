@@ -264,6 +264,11 @@ Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase string
 Rust and Python exchange a real Arrow type; Node reads Arrow JS through `toString`.
 Python crosses through the Arrow C Data Interface rather than rebuilding the value.
 
+An extension identity is field metadata, so `into_arrow` answers the storage a type is written
+over and [the field](field.md) is what carries the name back. A C schema is a field node, so
+`into_arrow_ffi` keeps the identity - under a dictionary encoding too, where the entries belong
+to the outer node and Arrow's values are a bare datatype.
+
 === "Rust"
 
     ```rust
@@ -351,10 +356,12 @@ The core computes one default; each binding projects it.
         Field("id", "int32", nullable=False),
         Field("note", "utf8", nullable=True),
     ])
-    row = value.default_pyvalue()
+    # A default is a value, so it answers as one `Scalar`; `as_py` is the one
+    # conversion, and a struct reads as its ordered children.
+    row = value.default_scalar()
 
-    assert (row.id, row.note) == (0, None)
-    assert DataType("utf8").default_pyvalue() == ""
+    assert row.as_py() == [0, None]
+    assert DataType("utf8").default_scalar().as_py() == ""
     assert DataType("int64").default_pyhint() is int
     assert value.default_arrow_scalar().as_py() == {"id": 0, "note": None}
     ```
@@ -610,6 +617,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
+- `DataType::from_arrow(currency.into_arrow())` -> `ascii(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
 - prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.

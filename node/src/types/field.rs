@@ -139,46 +139,55 @@ impl JsField {
             .map_err(napi_error)
     }
 
-    /// Cast one Arrow IPC stream to this exact Field, batch by batch.
+    /// Cast a whole stream to this exact Field, one batch at a time.
     ///
-    /// The loader wraps this as `castArrow`/`cast`, which hand over whatever
-    /// Arrow JS holds and read the result back as a `Table`.
-    #[napi(js_name = "_castArrowIpc", skip_typescript)]
-    pub fn cast_arrow_ipc(&self, bytes: Uint8Array, safe: Option<bool>) -> Result<Buffer> {
-        use arrow_ipc::reader::StreamReader;
-        use arrow_ipc::writer::StreamWriter;
-        use yggdryl::ArrowCast;
-
-        let safe = safe.unwrap_or(true);
-        let reader = StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .map_err(napi_error)?;
-        let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
-        let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
-        for batch in reader {
-            let cast = self
-                .inner
-                .cast_arrow_batch(batch.map_err(napi_error)?, safe)
-                .map_err(napi_error)?;
-            writer.write(&cast).map_err(napi_error)?;
-        }
-        writer.finish().map_err(napi_error)?;
-        Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
+    /// The source reader is consumed, exactly as a write consumes one: a stream
+    /// is read once, and the reader handed back is the only one that still
+    /// yields rows. Nothing is drained here - one compiled cast plan serves the
+    /// whole stream, each batch is cast when it is pulled, and a batch's
+    /// failure surfaces at that pull.
+    ///
+    /// The loader wraps this as `castArrowReader`, and `castArrowBatch`,
+    /// `castArrow`, and `cast` are the eager readings of the same call.
+    #[napi(js_name = "_castArrowReaderNative", skip_typescript)]
+    pub fn cast_arrow_reader(
+        &self,
+        rows: &mut crate::iomedia::JsBatchReader,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<crate::iomedia::JsBatchReader> {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let cast =
+            yggdryl::arrow::cast_reader(rows.take()?, &self.inner, options).map_err(napi_error)?;
+        Ok(crate::iomedia::JsBatchReader::from_core(
+            cast,
+            self.inner.name(),
+        ))
     }
 
-    /// Bit-cast one opposite-signed, same-width Arrow JS integer vector.
+    /// Cast one Arrow JS vector to this exact Field.
     ///
     /// The JavaScript loader owns the copied one-column IPC boundary and
     /// removes this private bridge from the published class.
-    #[napi(js_name = "_castArrowArrayBitsIpcNative", skip_typescript)]
-    pub fn cast_arrow_array_bits_ipc(&self, bytes: Uint8Array) -> Result<Buffer> {
+    #[napi(js_name = "_castArrowArrayIpcNative", skip_typescript)]
+    pub fn cast_arrow_array_ipc(
+        &self,
+        bytes: Uint8Array,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
+    ) -> Result<Buffer> {
         use std::sync::Arc;
 
         use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
         use arrow_ipc::writer::StreamWriter;
         use arrow_schema::Schema;
+        use yggdryl::ArrowCast;
 
         use crate::text::codec::{arrow_batches, ensure_one_column};
 
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
         let (source_schema, batches) = arrow_batches(&bytes)?;
         ensure_one_column(&source_schema, "Arrow array")?;
         let target_schema = Arc::new(Schema::new([self
@@ -189,37 +198,37 @@ impl JsField {
         let mut writer =
             StreamWriter::try_new(Vec::new(), target_schema.as_ref()).map_err(napi_error)?;
 
-        if batches.is_empty() {
-            let source = new_empty_array(source_schema.field(0).data_type());
+        // A vector that crossed as no batches still names a datatype, so the
+        // empty case casts the empty array rather than skipping the schema.
+        let sources: Vec<(arrow_array::ArrayRef, usize)> = if batches.is_empty() {
+            vec![(new_empty_array(source_schema.field(0).data_type()), 0)]
+        } else {
+            batches
+                .iter()
+                .map(|batch| {
+                    let rows = batch.num_rows();
+                    batch
+                        .columns()
+                        .first()
+                        .cloned()
+                        .map(|column| (column, rows))
+                        .ok_or_else(|| napi_error("Arrow array IPC has no value column"))
+                })
+                .collect::<Result<_>>()?
+        };
+        for (source, rows) in sources {
             let cast = self
                 .inner
-                .cast_arrow_array_bits(source)
+                .cast_arrow_array(source, options)
                 .map_err(napi_error)?;
-            let options = RecordBatchOptions::new().with_row_count(Some(0));
-            let batch =
-                RecordBatch::try_new_with_options(Arc::clone(&target_schema), vec![cast], &options)
-                    .map_err(napi_error)?;
+            let batch_options = RecordBatchOptions::new().with_row_count(Some(rows));
+            let batch = RecordBatch::try_new_with_options(
+                Arc::clone(&target_schema),
+                vec![cast],
+                &batch_options,
+            )
+            .map_err(napi_error)?;
             writer.write(&batch).map_err(napi_error)?;
-        } else {
-            for batch in batches {
-                let source = batch
-                    .columns()
-                    .first()
-                    .cloned()
-                    .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
-                let cast = self
-                    .inner
-                    .cast_arrow_array_bits(source)
-                    .map_err(napi_error)?;
-                let options = RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
-                let cast_batch = RecordBatch::try_new_with_options(
-                    Arc::clone(&target_schema),
-                    vec![cast],
-                    &options,
-                )
-                .map_err(napi_error)?;
-                writer.write(&cast_batch).map_err(napi_error)?;
-            }
         }
 
         writer.finish().map_err(napi_error)?;

@@ -17,7 +17,7 @@ use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, SchemaRef};
 use napi::bindgen_prelude::{Buffer, Env, Function, FunctionRef, Result, Uint8Array};
 use napi_derive::napi;
-use yggdryl::arrow::BatchReader;
+use yggdryl::arrow::{BatchReader, from_reader_error};
 
 use crate::media::iceberg::{FieldInput, field_from_input};
 use yggdryl::media::DEFAULT_ROOT_NAME;
@@ -249,7 +249,9 @@ impl JsBatchReader {
             self.inner = None;
             return Ok(None);
         };
-        let batch = batch.map_err(napi_error)?;
+        // The envelope a reader must box a core failure in is transport, so it
+        // is unwrapped here: a caller reads the failure the cast raised.
+        let batch = batch.map_err(|error| napi_error(from_reader_error(error)))?;
         encoded(&self.schema, std::slice::from_ref(&batch)).map(Some)
     }
 
@@ -292,7 +294,7 @@ impl JsBatchReader {
         let reader = self.take()?;
         let mut batches = Vec::new();
         for batch in reader {
-            batches.push(batch.map_err(napi_error)?);
+            batches.push(batch.map_err(|error| napi_error(from_reader_error(error)))?);
         }
         encoded(&self.schema, &batches)
     }

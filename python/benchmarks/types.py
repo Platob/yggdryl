@@ -185,8 +185,14 @@ def _cached_default_hint() -> object:
     return DEFAULT_STRUCT.default_pyhint()
 
 
+def _default_scalar() -> object:
+    return DEFAULT_STRUCT.default_scalar()
+
+
+# The crossing and the conversion are measured apart because a caller who
+# materializes the default never pays for `as_py`.
 def _default_python_value() -> object:
-    return DEFAULT_STRUCT.default_pyvalue()
+    return DEFAULT_STRUCT.default_scalar().as_py()
 
 
 def _global_field() -> Field:
@@ -230,7 +236,7 @@ def _spark_compatibility() -> DataType:
 
 
 def _cast_arrow_array_bits() -> object:
-    return BIT_CAST_FIELD.cast_arrow_array_bits(BIT_CAST_SOURCE)
+    return BIT_CAST_FIELD.cast_arrow_array(BIT_CAST_SOURCE, representation="bits")
 
 
 # The protocol cases measure the boundary the live view adds: creating one is a
@@ -352,6 +358,7 @@ def main() -> None:
         )
         _measure("wide diff first line", _first_wide_difference, args.iterations)
         _measure("cached default hint", _cached_default_hint, args.iterations)
+        _measure("default Scalar", _default_scalar, args.iterations)
         _measure("default Python value", _default_python_value, args.iterations)
         _measure(
             "cached static field",

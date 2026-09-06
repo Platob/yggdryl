@@ -1082,8 +1082,8 @@ mod geospatial {
     use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
     use super::{Parquet, handle};
-    use crate::ArrowCast;
     use crate::holder::Buffer;
+    use crate::{ArrowCast, ArrowCastOptions};
     use crate::{IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.
@@ -1423,7 +1423,7 @@ mod geospatial {
         let text = crate::DataType::from_fields([crate::DataType::Utf8.nullable_field("ccy")])
             .unwrap()
             .required_field("row")
-            .cast_arrow_batch(stored, false)
+            .cast_arrow_batch(stored, ArrowCastOptions::new().with_safe(false))
             .unwrap();
         let ccy = text.column(0).as_string::<i32>();
         assert_eq!(ccy.value(0), "USD");

@@ -6,7 +6,7 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringAr
 
 use super::{partitioned_reader, with_partitions, without_partitions};
 use crate::media::RecordOptions;
-use crate::{ArrowCast, DataType, Field, IOBase};
+use crate::{ArrowCast, ArrowCastOptions, DataType, Field, IOBase};
 
 fn schema() -> Field {
     DataType::from_fields([
@@ -259,7 +259,9 @@ fn a_derived_column_carrying_values_is_left_alone() {
 fn a_column_holding_nothing_but_nulls_is_filled_from_the_batchs_own_schema() {
     // A batch cast to its root carries the declared column null-filled, which
     // is a column that was never written rather than one written null.
-    let placeholder = derived_schema().cast_arrow_batch(events(), true).unwrap();
+    let placeholder = derived_schema()
+        .cast_arrow_batch(events(), ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(placeholder.column(1).null_count(), 2);
 
     let filled = Field::from_arrow_schema("row", placeholder.schema().as_ref())
@@ -556,7 +558,9 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
 
     // A required column cannot be null, so a cast fills it with the canonical
     // default rather than nothing, and that is what "never written" looks like.
-    let placeholder = root.cast_arrow_batch(events(), true).unwrap();
+    let placeholder = root
+        .cast_arrow_batch(events(), ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(
         placeholder
             .column(1)

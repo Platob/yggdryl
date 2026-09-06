@@ -786,3 +786,101 @@ fn building_a_sequence_costs_one_allocation() {
         black_box(Scalar::from_sequence([]));
     });
 }
+
+/// The two batches every cast-budget case reads, and the root they answer to.
+///
+/// The batches differ only in their values, so anything that varies between
+/// casting one and casting the other is per-batch work rather than schema work.
+#[cfg(feature = "arrow")]
+fn cast_corpus() -> (
+    arrow_schema::SchemaRef,
+    [arrow_array::RecordBatch; 2],
+    Field,
+) {
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+
+    let schema = Arc::new(Schema::new(vec![
+        ArrowField::new("id", ArrowDataType::Int32, false),
+        ArrowField::new("symbol", ArrowDataType::Utf8, true),
+    ]));
+    let batch = |offset: i32| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int32Array::from(vec![offset, offset + 1])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["AAPL", "MSFT"])) as ArrayRef,
+            ],
+        )
+        .expect("the benchmark batch matches its schema")
+    };
+    let root = Field::new(
+        "row",
+        DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("symbol"),
+            DataType::Utf8.required_field("venue"),
+        ])
+        .expect("the root fields are valid"),
+        false,
+    );
+    (Arc::clone(&schema), [batch(0), batch(2)], root)
+}
+
+#[test]
+#[cfg(feature = "arrow")]
+fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
+
+    let (schema, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+        .expect("the cast is plannable");
+
+    // The budget belongs to a batch, not to the stream: applying the plan a
+    // thousand times costs a thousand times one batch, because nothing about
+    // the previous batch is retained. Reading it as a total would hide exactly
+    // the leak this pins - a plan that grew with every batch it saw.
+    let mut index = 0;
+    let (once, repeated) = counted_once_and_repeated(|| {
+        let batch = batches[index % batches.len()].clone();
+        index += 1;
+        black_box(plan.apply(batch).expect("the batch fits the plan"));
+    });
+    assert_eq!(
+        repeated,
+        once * 1_000,
+        "applying one compiled plan cost {once} for one batch and {repeated} for a thousand"
+    );
+}
+
+#[test]
+#[cfg(feature = "arrow")]
+fn planning_once_is_what_a_reused_plan_saves_per_batch() {
+    use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
+
+    let (schema, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+        .expect("the cast is plannable");
+    let batch = batches[0].clone();
+
+    // Warm both paths so neither is charged for a first-call cache fill.
+    let _ = plan.apply(batch.clone());
+    let _ = root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new());
+
+    let (applied, ()) = counted(|| {
+        black_box(plan.apply(batch.clone()).expect("the batch fits the plan"));
+    });
+    let (planned, ()) = counted(|| {
+        black_box(
+            root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+                .expect("the batch fits the root"),
+        );
+    });
+
+    // The same batch, the same answer, and the difference is the plan: a
+    // reader that compiles per batch pays that difference on every one.
+    assert!(
+        planned > applied,
+        "compiling per batch cost {planned} and reusing one plan cost {applied}"
+    );
+}

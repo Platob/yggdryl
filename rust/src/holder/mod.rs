@@ -1,8 +1,9 @@
 //! Byte storage handles and the concrete [`Holder`] that unifies them.
 //!
-//! [`Buffer`] owns in-memory bytes, [`local`] and [`fs`] supply the
-//! path/folder/file backend roles, and [`buffered`] adds a page cache over any
-//! [`IOBase`] implementation.
+//! [`Buffer`] owns in-memory bytes, [`local`], [`fs`], and [`zip`] supply the
+//! path/folder/file backend roles - a local tree, a foreign filesystem, and
+//! the file system one archive holds inside a single file - and [`buffered`]
+//! adds a page cache over any [`IOBase`] implementation.
 
 mod buffer;
 pub mod buffered;
@@ -11,6 +12,7 @@ pub mod fs;
 pub mod local;
 #[cfg(feature = "s3")]
 pub mod s3;
+pub mod zip;
 
 pub use buffer::Buffer;
 
@@ -76,6 +78,12 @@ pub enum Holder {
     /// One Amazon S3 object.
     #[cfg(feature = "s3")]
     S3File(crate::holder::s3::File),
+    /// A directory of members inside a ZIP archive, or the archive root.
+    ZipFolder(crate::holder::zip::Folder),
+    /// A location inside a ZIP archive that resolves to whatever it holds.
+    ZipPath(crate::holder::zip::Path),
+    /// One member of a ZIP archive, addressed positionally.
+    ZipFile(crate::holder::zip::File),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -140,6 +148,30 @@ impl Holder {
     /// `file:` URL.
     pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self> {
         Ok(Self::Path(crate::holder::local::Path::new(path)?))
+    }
+
+    /// Hold the members of the archive `handle` addresses.
+    ///
+    /// The answer is the archive root: a container whose children are the
+    /// members, resolved and walked exactly as any other container's are.
+    /// Nothing is read until an operation needs the archive's index.
+    ///
+    /// ```
+    /// use yggdryl::holder::{Buffer, Holder};
+    /// use yggdryl::IOBase;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let root = Holder::zip(Holder::buffer(Buffer::new()));
+    /// root.child_by_path("trades/eu.csv")?
+    ///     .write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
+    ///
+    /// assert_eq!(root.child_by_path("trades/eu.csv")?.size(), 25);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn zip(handle: Self) -> Self {
+        crate::holder::zip::mount(handle)
     }
 
     /// Hold this resource behind a page cache.
@@ -443,6 +475,9 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            Self::ZipFolder(inner) => inner,
+            Self::ZipPath(inner) => inner,
+            Self::ZipFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Coded(inner) => inner.as_io(),
             Self::Text(inner) => inner.as_ref(),
@@ -467,6 +502,9 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            Self::ZipFolder(inner) => inner,
+            Self::ZipPath(inner) => inner,
+            Self::ZipFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Coded(inner) => inner.as_io_mut(),
             Self::Text(inner) => inner.as_mut(),
@@ -492,6 +530,9 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            Self::ZipFolder(inner) => inner,
+            Self::ZipPath(inner) => inner,
+            Self::ZipFile(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Coded(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
@@ -517,6 +558,9 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            Self::ZipFolder(inner) => inner,
+            Self::ZipPath(inner) => inner,
+            Self::ZipFile(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Coded(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),
@@ -727,6 +771,16 @@ impl IOBase for Holder {
 
     fn ls(&self, recursive: bool, include_private: bool) -> crate::Listing {
         self.as_io().ls(recursive, include_private)
+    }
+
+    fn glob(&self, pattern: &str, include_private: bool) -> Result<crate::Listing> {
+        self.as_io().glob(pattern, include_private)
+    }
+
+    /// Forwarded, because a handle can spell its partitions somewhere other
+    /// than in its URL path - an archive member spells them in its own name.
+    fn partitions(&self) -> Vec<(String, String)> {
+        self.as_io().partitions()
     }
 
     fn kind(&self) -> crate::IOKind {

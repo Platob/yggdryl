@@ -2,6 +2,7 @@ import {
   DataType,
   Field,
   fields,
+  type ArrowCastOptions,
   type AsciiField,
   type CurrencyField,
   type FixedAsciiField,
@@ -16,12 +17,19 @@ import {
   type DateTime64Field,
   type VariantField,
   type VersionField,
+  type BatchReader,
+  type BatchSource,
 } from '../..'
-import type { Vector as ArrowVector } from 'apache-arrow'
+import type {
+  RecordBatch as ArrowRecordBatch,
+  Vector as ArrowVector,
+} from 'apache-arrow'
 
 const id: Int32Field = fields.int32('id', { nullable: false })
 declare const unsignedBits: ArrowVector
-const signedBits: ArrowVector = id.castArrowArrayBits(unsignedBits)
+const signedBits: ArrowVector = id.castArrowArray(unsignedBits, {
+  representation: 'bits',
+})
 // `kind` is the coarse family a variant belongs to; `id` is the variant itself.
 const idKind: 'integer' = id.dtype.kind
 const idId: 'int32' = id.dtype.id
@@ -75,6 +83,14 @@ void release
 void shapeKind
 void projectedShape
 void region
+// The two Arrow cast halves keep their kinds: the lazy one answers a reader
+// that has not been read, the eager batch one answers a single Arrow batch.
+declare const castSource: BatchSource
+declare const castBatch: ArrowRecordBatch
+const strictly: ArrowCastOptions = { safe: false, nullability: 'strict' }
+const castReader: BatchReader = id.castArrowReader(castSource, strictly)
+const castOne: ArrowRecordBatch = id.castArrowBatch(castBatch, strictly)
+
 const clockType: DataType = DataType.time('milliseconds')
 const generic: Field = ids
 const genericItem = new Field('item', 'int32', false)
@@ -98,8 +114,12 @@ const defaultedValue: number | null = defaulted.defaultJSValue()
 
 // @ts-expect-error internal factory bridges are not part of the package API
 DataType._simple('int32')
-// @ts-expect-error bit casts accept an Arrow Vector, not a JavaScript array
-id.castArrowArrayBits([0])
+// @ts-expect-error an array cast accepts an Arrow Vector, not a JavaScript array
+id.castArrowArray([0])
+// @ts-expect-error `representation` is a closed vocabulary, not any name
+id.castArrowArray(unsignedBits, { representation: 'raw' })
+// @ts-expect-error `nullability` is a closed vocabulary, not any name
+id.castArrowReader(castSource, { nullability: 'lenient' })
 // @ts-expect-error the native diff bridge is hidden behind showDiffs
 id._showDiffs(fields.int32('native_other'))
 // @ts-expect-error metadata values are never string-coerced
@@ -115,6 +135,8 @@ const nonNullAlias: Int32Field = fields.int32('defaulted')
 
 void idKind
 void signedBits
+void castReader
+void castOne
 void idId
 void eventTime
 void labels

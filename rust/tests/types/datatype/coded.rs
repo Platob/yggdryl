@@ -7,7 +7,7 @@ use arrow_schema::DataType as ArrowDataType;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField};
 use yggdryl::types::{CurrencyScalar, MicScalar};
-use yggdryl::{ArrowCast, DataType, Field, Scalar};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
@@ -82,7 +82,10 @@ fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
 fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
     let venue = Field::new("venue", DataType::Mic, false);
     let padded = venue
-        .cast_arrow_array(text(&["XPAR", "XLON"]), false)
+        .cast_arrow_array(
+            text(&["XPAR", "XLON"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
     let bytes = padded
         .as_any()
@@ -92,7 +95,9 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
     assert_eq!(bytes.value(0), b"XPAR");
 
     // A shorter value pads; the column read under `utf8` trims it back.
-    let short = venue.cast_arrow_array(text(&["BX"]), false).unwrap();
+    let short = venue
+        .cast_arrow_array(text(&["BX"]), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     let short = short
         .as_any()
         .downcast_ref::<FixedSizeBinaryArray>()
@@ -102,7 +107,9 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
     let row = root([venue.clone()]);
     let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![padded]).unwrap();
     let as_text = root([DataType::Utf8.required_field("venue")]);
-    let trimmed = as_text.cast_arrow_batch(batch, false).unwrap();
+    let trimmed = as_text
+        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     let trimmed = trimmed
         .column(0)
         .as_any()
@@ -113,7 +120,7 @@ fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
 
     // The refusal names the code's own width, not the next ASCII one up.
     let refused = venue
-        .cast_arrow_array(text(&["XPARIS"]), false)
+        .cast_arrow_array(text(&["XPARIS"]), ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("at most 4 bytes"), "{refused}");

@@ -226,8 +226,8 @@ const nativeScalarIntoArrowBatch =
   NativeScalar.prototype._intoArrowBatchIpcNative
 const nativeScalarIntoArrowTable =
   NativeScalar.prototype._intoArrowTableIpcNative
-const nativeFieldCastArrowArrayBits =
-  NativeField.prototype._castArrowArrayBitsIpcNative
+const nativeFieldCastArrowArray =
+  NativeField.prototype._castArrowArrayIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -279,7 +279,7 @@ delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowBatchIpcNative
 delete NativeScalar.prototype._intoArrowTableIpcNative
-delete NativeField.prototype._castArrowArrayBitsIpcNative
+delete NativeField.prototype._castArrowArrayIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -2380,14 +2380,17 @@ Object.defineProperty(Field, 'fromArrow', {
   },
 })
 
-Object.defineProperty(Field.prototype, 'castArrowArrayBits', {
+Object.defineProperty(Field.prototype, 'castArrowArray', {
   configurable: true,
-  value(value) {
+  value(value, options) {
     return arrowVectorFromIPC(
-      Reflect.apply(nativeFieldCastArrowArrayBits, this, [
-        arrowVectorIntoIPC(value, 'Field.castArrowArrayBits input'),
+      Reflect.apply(nativeFieldCastArrowArray, this, [
+        arrowVectorIntoIPC(value, 'Field.castArrowArray input'),
+        options?.safe,
+        options?.nullability,
+        options?.representation,
       ]),
-      'Field.castArrowArrayBits output',
+      'Field.castArrowArray output',
     )
   },
 })

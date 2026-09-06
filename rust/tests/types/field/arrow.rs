@@ -6,7 +6,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+use yggdryl::{ArrowCastOptions, DataType, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
     assert!(schema.flags().unwrap().contains(flag));
@@ -406,7 +406,9 @@ fn events() -> arrow_array::RecordBatch {
 fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
     let root = applied_root();
 
-    let applied = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+    let applied = root
+        .apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
+        .unwrap();
 
     assert_eq!(applied.num_columns(), 3);
     let trade = applied
@@ -451,10 +453,13 @@ fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
 #[test]
 fn apply_arrow_batch_answers_the_same_batch_the_second_time() {
     let root = applied_root();
-    let once = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+    let once = root
+        .apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
+        .unwrap();
 
     assert_eq!(
-        root.apply_arrow_batch(&once, true, true, true).unwrap(),
+        root.apply_arrow_batch(&once, true, true, true, ArrowCastOptions::new())
+            .unwrap(),
         once
     );
 }
@@ -465,7 +470,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
 
     // Cast alone materializes every declared column and writes none of them.
     let cast_only = root
-        .apply_arrow_batch(&events(), false, false, true)
+        .apply_arrow_batch(&events(), false, false, true, ArrowCastOptions::new())
         .unwrap();
     assert_eq!(cast_only.num_columns(), 3);
     assert_eq!(
@@ -479,7 +484,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
 
     // Partition alone leaves the holders untouched.
     let partitioned = root
-        .apply_arrow_batch(&events(), false, true, true)
+        .apply_arrow_batch(&events(), false, true, true, ArrowCastOptions::new())
         .unwrap();
     assert_eq!(
         partitioned
@@ -502,7 +507,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
     // A digest over the uncast batch still reconciles for itself, because a
     // holder is addressed by position.
     let digested = root
-        .apply_arrow_batch(&events(), true, false, false)
+        .apply_arrow_batch(&events(), true, false, false, ArrowCastOptions::new())
         .unwrap();
     assert_eq!(
         digested.column_by_name("row_digest").unwrap().null_count(),
@@ -516,7 +521,7 @@ fn apply_arrow_batch_refuses_a_root_that_is_not_a_struct() {
     let root = DataType::Int64.required_field("id");
 
     assert!(
-        root.apply_arrow_batch(&events(), false, true, false)
+        root.apply_arrow_batch(&events(), false, true, false, ArrowCastOptions::new())
             .is_err()
     );
 }
@@ -527,7 +532,13 @@ fn apply_arrow_schema_answers_the_shape_without_reading_a_row() {
     let stored = events().schema();
 
     let applied = root
-        .apply_arrow_schema(Arc::clone(&stored), true, true, true)
+        .apply_arrow_schema(
+            Arc::clone(&stored),
+            true,
+            true,
+            true,
+            ArrowCastOptions::new(),
+        )
         .unwrap();
 
     assert_eq!(
@@ -546,7 +557,7 @@ fn apply_arrow_schema_answers_the_shape_without_reading_a_row() {
     // It is exactly the schema a batch comes back with.
     assert_eq!(
         applied,
-        root.apply_arrow_batch(&events(), true, true, true)
+        root.apply_arrow_batch(&events(), true, true, true, ArrowCastOptions::new())
             .unwrap()
             .schema()
     );
@@ -563,7 +574,7 @@ fn apply_arrow_schema_refuses_a_declaration_the_reader_cannot_satisfy() {
 
     // Nothing is decoded, and the missing source is named before any row is.
     let error = root
-        .apply_arrow_schema(unrelated, false, true, false)
+        .apply_arrow_schema(unrelated, false, true, false, ArrowCastOptions::new())
         .unwrap_err()
         .to_string();
     assert!(error.contains("trade"), "{error}");
@@ -575,7 +586,9 @@ fn apply_arrow_reader_reports_the_applied_schema_before_the_first_batch() {
     let stored = events().schema();
     let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events(), events()]);
 
-    let mut applied = root.apply_arrow_reader(reader, true, true, true).unwrap();
+    let mut applied = root
+        .apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())
+        .unwrap();
 
     // Read before pulling: the shape is a property of the two schemas.
     let reported = arrow_array::RecordBatchReader::schema(&applied);
@@ -602,7 +615,7 @@ fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
     let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events()]);
 
     let mut untouched = root
-        .apply_arrow_reader(reader, false, false, false)
+        .apply_arrow_reader(reader, false, false, false, ArrowCastOptions::new())
         .unwrap();
 
     assert_eq!(arrow_array::RecordBatchReader::schema(&untouched), stored);
@@ -610,4 +623,159 @@ fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
         untouched.next().expect("one batch").unwrap().num_columns(),
         1
     );
+}
+
+/// A root whose derived and held columns are declared non-null.
+///
+/// This is the shape strictness has to reason about: `year` and `row_digest`
+/// are absent from the source and required in the schema, and the only reason
+/// that is not a contradiction is that the two protocols write them.
+fn required_applied_root() -> Field {
+    let mut year = DataType::Int32.required_field("year");
+    year.as_partition_mut().set_sources(["event"]).unwrap();
+    year.as_partition_mut()
+        .set_transform(yggdryl::expression::Function::Year)
+        .unwrap();
+    let mut row_digest = DataType::UInt64.required_field("row_digest");
+    row_digest.as_digest_mut().set_holder().unwrap();
+    DataType::from_fields([DataType::Date32.required_field("event"), year, row_digest])
+        .unwrap()
+        .required_field("row")
+}
+
+fn dates() -> arrow_array::RecordBatch {
+    arrow_array::RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(arrow_array::Date32Array::from(vec![19_723, 20_089])) as arrow_array::ArrayRef,
+    )])
+    .unwrap()
+}
+
+#[test]
+fn a_strict_apply_lets_an_enabled_protocol_fill_its_own_required_column() {
+    let root = required_applied_root();
+
+    let applied = root
+        .apply_arrow_batch(
+            &dates(),
+            true,
+            true,
+            true,
+            ArrowCastOptions::new().with_nullability(Nullability::Strict),
+        )
+        .unwrap();
+
+    // Both columns were absent from the source and are declared non-null; the
+    // cast let them through because their protocols were about to write them,
+    // and the re-check over the finished batch found them written.
+    assert_eq!(applied.num_columns(), 3);
+    assert_eq!(applied.column(1).null_count(), 0);
+    assert_eq!(applied.column(2).null_count(), 0);
+}
+
+#[test]
+fn a_strict_apply_refuses_the_column_whose_protocol_is_switched_off() {
+    let root = required_applied_root();
+
+    // The partition step is what would have written `year`, so with it off the
+    // finished batch leaves a declared non-null column holding its default.
+    let message = root
+        .apply_arrow_batch(
+            &dates(),
+            true,
+            false,
+            true,
+            ArrowCastOptions::new().with_nullability(Nullability::Strict),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.year"), "{message}");
+
+    // The default policy still fills it, unchanged.
+    let filled = root
+        .apply_arrow_batch(&dates(), true, false, true, ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(filled.num_columns(), 3);
+}
+
+#[test]
+fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
+    let root = Field::new(
+        "row",
+        DataType::from_fields([
+            DataType::Date32.required_field("event"),
+            DataType::Utf8.required_field("venue"),
+        ])
+        .unwrap(),
+        false,
+    );
+
+    // No protocol declares `venue`, so nothing is going to write it: the cast
+    // refuses it where it stands rather than defaulting it and re-checking.
+    let message = root
+        .apply_arrow_batch(
+            &dates(),
+            true,
+            true,
+            true,
+            ArrowCastOptions::new().with_nullability(Nullability::Strict),
+        )
+        .unwrap_err()
+        .to_string();
+    // The applied verbs answer a core error, so the runtime refusal travels
+    // inside one rather than replacing it.
+    assert!(
+        message.contains("required Arrow field $.venue is missing from the source"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_strict_applied_schema_is_still_derived_without_reading_a_row() {
+    let root = required_applied_root();
+    let stored = dates().schema();
+
+    let applied = root
+        .apply_arrow_schema(
+            Arc::clone(&stored),
+            true,
+            true,
+            true,
+            ArrowCastOptions::new().with_nullability(Nullability::Strict),
+        )
+        .unwrap();
+
+    assert_eq!(applied.fields().len(), 3);
+    assert_eq!(applied.field(1).name(), "year");
+    assert_eq!(applied.field(2).name(), "row_digest");
+}
+
+#[test]
+fn a_strict_applied_reader_answers_its_schema_and_applies_every_batch() {
+    let root = required_applied_root();
+    let stored = dates().schema();
+    let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [dates(), dates()]);
+
+    let mut applied = root
+        .apply_arrow_reader(
+            reader,
+            true,
+            true,
+            true,
+            ArrowCastOptions::new().with_nullability(Nullability::Strict),
+        )
+        .unwrap();
+
+    assert_eq!(
+        arrow_array::RecordBatchReader::schema(&applied)
+            .fields()
+            .len(),
+        3
+    );
+    for _ in 0..2 {
+        let batch = applied.next().expect("a batch").unwrap();
+        assert_eq!(batch.num_columns(), 3);
+        assert_eq!(batch.column(2).null_count(), 0);
+    }
+    assert!(applied.next().is_none());
 }
