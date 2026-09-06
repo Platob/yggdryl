@@ -236,7 +236,7 @@ def _spark_compatibility() -> DataType:
 
 
 def _cast_arrow_array_bits() -> object:
-    return BIT_CAST_FIELD.cast_arrow_array_bits(BIT_CAST_SOURCE)
+    return BIT_CAST_FIELD.cast_arrow_array(BIT_CAST_SOURCE, representation="bits")
 
 
 # The protocol cases measure the boundary the live view adds: creating one is a

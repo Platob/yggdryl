@@ -825,6 +825,7 @@ function installRecords({
         batchReader(rows, this.name),
         options?.safe,
         options?.nullability,
+        options?.representation,
       ])
     },
   })

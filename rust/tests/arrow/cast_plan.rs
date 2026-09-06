@@ -8,9 +8,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{
-    ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchReader, StringArray,
-};
+use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::arrow::{BatchReader, cast_reader};
 use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
@@ -242,10 +240,7 @@ fn a_strict_reader_reports_its_batch_at_the_pull_and_then_fuses() {
 
     assert!(reader.next().unwrap().is_ok());
     let error = reader.next().unwrap().unwrap_err();
-    assert!(
-        error.to_string().contains("$.symbol"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("$.symbol"), "{error}");
     // Fused: the third batch is never asked for, because the stream already
     // reported that it could not be honoured.
     assert!(reader.next().is_none());
@@ -266,7 +261,8 @@ fn dropping_a_reader_early_releases_the_source() {
 fn a_compiled_plan_crosses_threads() {
     fn assert_send_sync<T: Send + Sync>(_: &T) {}
 
-    let plan = Arc::new(ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap());
+    let plan =
+        Arc::new(ArrowCastPlan::compile(&stored(), &target(), ArrowCastOptions::new()).unwrap());
     assert_send_sync(&plan);
 
     let handles: Vec<_> = (0..4)

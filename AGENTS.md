@@ -513,10 +513,17 @@ Iceberg contract:
 - `ArrowCast` owns recursive array/batch casting. Struct casts reconcile names,
   reject ambiguous folds, follow target order, fill valid missing fields, and
   preserve exact arrays after logical validation.
-- `Field::cast_arrow_array_bits` is the explicit full-domain `int32`/`uint32`
-  and `int64`/`uint64` representation cast. It shares value buffers unless a
-  required target must fill nulls, preserves every present value's bits, and
-  never changes ordinary numeric cast semantics.
+- `ArrowCastOptions` carries the three independent answers a cast needs and
+  every entry point takes it: `safe` decides whether a present value may be
+  converted, `Nullability` whether a declared value may be absent, and
+  `Representation` what a same-width pair carries. `Representation::Bits`
+  reads two fixed-width layouts of one byte width as the same bytes, sharing
+  the value buffer; it is a preference, so a pair that is not the same bytes,
+  or a target whose values follow a rule, converts as it always did.
+- `ArrowCastPlan` is the schema-dependent half of a cast compiled once:
+  immutable, `Send + Sync`, `compile`/`preflight`/`apply`, one plan per reader.
+  Only masks, offsets, and dictionary reachability vary per batch, and an exact
+  cast returns the caller's own batch.
 - Wrapper exposure propagates: hidden child failures/nulls remain hidden.
   Preflight slot and fixed-buffer budgets before allocating.
 - IPC dictionary IDs are transport-local. Preserve native IDs in one reserved

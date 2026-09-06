@@ -35,7 +35,7 @@ use arrow_select::zip::zip;
 use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::metadata::is_all_sources;
-use crate::types::cast::{ArrowCast, ArrowCastOptions};
+use crate::types::cast::{ArrowCast, ArrowCastOptions, Representation};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
@@ -513,8 +513,13 @@ fn fill_struct<S: ArrowDigestState>(
             continue;
         }
         let computed = collect(&values, holder.algorithm);
+        // A signed holder stores the unsigned digest's bits, not a narrower
+        // number: the same bytes under the width the schema declared.
         let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
-            holder.field.cast_arrow_array_bits(computed)?
+            holder.field.cast_arrow_array(
+                computed,
+                ArrowCastOptions::new().with_representation(Representation::Bits),
+            )?
         } else {
             computed
         };

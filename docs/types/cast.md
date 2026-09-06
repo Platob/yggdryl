@@ -6,12 +6,13 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 
 | Key | Value |
 | --- | --- |
-| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `ArrowCastOptions`, `Nullability`, `ArrowCastPlan`, `cast_arrow_scalar/array/batch`, `cast_arrow_array_bits`, `cast_arrow`, `cast` |
+| Owns | `validate_value`, `canonicalize_value`, `ArrowCast`, `ArrowCastOptions`, `Nullability`, `Representation`, `ArrowCastPlan`, `cast_arrow_scalar/array/batch`, `cast_arrow`, `cast` |
 | Target | The field, never the source; an exact input returns unchanged - the same arrays, and the same batch object |
 | Returns | `Field`, `DataType`: `ArrayRef`; `TypedField`: its own array (datetime, dictionary: `ArrayRef`) |
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
-| Independent | The two answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand |
+| `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
+| Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip` |
@@ -93,32 +94,52 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
         raise AssertionError("a strict cast must refuse the null")
     ```
 
-## Bit-preserving casts
+## Reading the bits
 
-`cast_arrow_array_bits` is the explicit representation cast for `int32` <-> `uint32` and
-`int64` <-> `uint64`. It accepts every source bit pattern and has no `safe` flag, because no value
-can overflow.
+`representation` decides what a cast carries when the two datatypes occupy the same physical
+width. `value` is the number they spell, range-checked as always. `bits` is the bytes under it:
+an `int64`, a `uint64`, a `float64` and a `fixed_size_binary(8)` are one buffer under four
+readings, so every source bit pattern maps, every chain round-trips, and the value buffer is
+shared rather than rebuilt. `u64::MAX` reads as `-1`, and back.
+
+It is a preference, not a mode. A pair that is *not* the same bytes - two different widths, or
+text and a number - takes the ordinary conversion, and a datatype whose values follow a rule
+(an [ASCII width](ascii.md), a registered code, a [UUID](uuid.md), a [version](../types/index.md))
+keeps that rule: four arbitrary bytes are not a currency merely because a currency is four bytes.
+
+Nullability is unaffected: the reading says what the bytes mean, and `nullability` still says
+what an absent value means.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Int32Array, UInt32Array};
-    use yggdryl::types::{Int32Field, UInt32Field};
+    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, UInt64Array};
+    use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Representation};
 
-    let source: ArrayRef = Arc::new(UInt32Array::from(vec![
-        0,
-        0x8000_0000,
-        u32::MAX,
-    ]));
-    let signed: Int32Array = Int32Field::new("bits", true)
-        .cast_arrow_array_bits(source)?;
-    assert_eq!(signed.values(), &[0, i32::MIN, -1]);
+    let bits = ArrowCastOptions::new().with_representation(Representation::Bits);
+    let source: ArrayRef = Arc::new(UInt64Array::from(vec![0, u64::MAX]));
 
-    let restored = UInt32Field::new("bits", true)
-        .cast_arrow_array_bits(Arc::new(signed))?;
-    assert_eq!(restored.values(), &[0, 0x8000_0000, u32::MAX]);
+    let signed = Field::new("digest", DataType::Int64, true)
+        .cast_arrow_array(Arc::clone(&source), bits)?;
+    let signed = signed.as_any().downcast_ref::<Int64Array>().unwrap();
+    assert_eq!(signed.values(), &[0, -1]);
+
+    // The same eight bytes, now as raw payload - and back again exactly.
+    let stored = Field::new("digest", DataType::FixedSizeBinary(8), true)
+        .cast_arrow_array(Arc::clone(&source), bits)?;
+    let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
+    assert_eq!(bytes.value(1), &[0xff; 8]);
+    let restored = Field::new("digest", DataType::UInt64, true)
+        .cast_arrow_array(stored, bits)?;
+    let restored = restored.as_any().downcast_ref::<UInt64Array>().unwrap();
+    assert_eq!(restored.values(), &[0, u64::MAX]);
+
+    // Four bytes are not eight, so this stays the ordinary numeric widening.
+    let widened = Field::new("id", DataType::Int64, true)
+        .cast_arrow_array(Arc::new(arrow_array::Int32Array::from(vec![7])), bits)?;
+    assert_eq!(widened.data_type(), &arrow_schema::DataType::Int64);
     ```
 
 === "Python"
@@ -127,13 +148,24 @@ can overflow.
     import pyarrow as pa
     from yggdryl import Field
 
-    signed = Field("bits", "int32").cast_arrow_array_bits(
-        pa.array([0, 2**31, 2**32 - 1], type=pa.uint32())
-    )
-    assert signed.to_pylist() == [0, -(2**31), -1]
+    source = pa.array([0, 2**64 - 1], type=pa.uint64())
 
-    restored = Field("bits", "uint32").cast_arrow_array_bits(signed)
-    assert restored.to_pylist() == [0, 2**31, 2**32 - 1]
+    signed = Field("digest", "int64").cast_arrow_array(source, representation="bits")
+    assert signed.to_pylist() == [0, -1]
+
+    # The same eight bytes, now as raw payload - and back again exactly.
+    stored = Field("digest", "fixed_size_binary(8)").cast_arrow_array(
+        source, representation="bits"
+    )
+    assert stored.to_pylist()[1] == b"\xff" * 8
+    restored = Field("digest", "uint64").cast_arrow_array(stored, representation="bits")
+    assert restored.equals(source)
+
+    # Four bytes are not eight, so this stays the ordinary numeric widening.
+    widened = Field("id", "int64").cast_arrow_array(
+        pa.array([7], type=pa.uint32()), representation="bits"
+    )
+    assert widened.to_pylist() == [7]
     ```
 
 === "JavaScript"
@@ -141,21 +173,22 @@ can overflow.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { Field } = require('yggdryl')
+    const { fields } = require('yggdryl')
 
-    const source = arrow.vectorFromArray(
-      [0, 0x80000000, 0xffffffff],
-      new arrow.Uint32(),
+    const bits = { representation: 'bits' }
+    const source = arrow.vectorFromArray([0n, 2n ** 64n - 1n], new arrow.Uint64())
+
+    const signed = fields.int64('digest').castArrowArray(source, bits)
+    assert.deepEqual([...signed], [0n, -1n])
+
+    // The same eight bytes, now as raw payload - and back again exactly.
+    const stored = fields.fixedSizeBinary('digest', 8).castArrowArray(source, bits)
+    assert.deepEqual([...stored.get(1)], new Array(8).fill(255))
+    assert.deepEqual(
+      [...fields.uint64('digest').castArrowArray(stored, bits)],
+      [...source],
     )
-    const signed = new Field('bits', 'int32').castArrowArrayBits(source)
-    assert.deepEqual([...signed], [0, -0x80000000, -1])
-
-    const restored = new Field('bits', 'uint32').castArrowArrayBits(signed)
-    assert.deepEqual([...restored], [0, 0x80000000, 0xffffffff])
     ```
-
-The Rust cast shares the source value buffer unless a required target must fill source nulls with
-the canonical zero default. Nullable targets keep their nulls.
 
 ## Row values
 
@@ -530,8 +563,8 @@ no behavior of its own.
 - A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
 - Bare date into a datetime, twelve-hour clock, compact `YYYYMMDD` -> Arrow's kernel.
 - Temporal to text -> the classic form, zoned instants included.
-- Any other width, sign pairing, or target datatype in `cast_arrow_array_bits` -> error; `cast_arrow_array` stays range-checked.
-- A required bit-cast target over source nulls -> the canonical zero default, so the value buffer is rebuilt rather than shared.
+- `representation="bits"` over two different widths, or into a datatype with a value rule -> the ordinary conversion, range check and all.
+- A required `bits` target over source nulls -> the canonical default under `default`, refused by path under `strict`; the buffer is rebuilt only when a null is actually filled.
 - A batch of another schema handed to a compiled plan -> error naming both schemas; a plan is compiled for one source.
 - A reader whose source schema is already the target, under `default` -> the reader itself, unwrapped; under `strict` it is wrapped, because a non-null Arrow field can still carry a logical null in a nested child.
 
@@ -558,3 +591,26 @@ no behavior of its own.
     ```bash
     node --test node/tests/media/records.test.js
     ```
+
+## Performance
+
+Compiling the cast once against compiling it per batch, over batches of 64 rows through a
+three-column root that widens one column, drops one, and defaults one. One containerized x86_64
+Linux run: Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO. Criterion
+medians.
+
+| Batches | One compiled plan | Planned per batch |
+| --- | --- | --- |
+| 1 | 6.04 µs | 6.01 µs |
+| 10 | 39.7 µs | 60.4 µs |
+| 1,000 | 3.68 ms | 6.07 ms |
+
+One batch is the same work either way - the plan is compiled once in both - and everything after
+it is the saving: 1.5x at ten batches and 1.7x at a thousand, which is what a streamed read pulls.
+
+The benchmark asserts the two paths answer identical rows before timing either, and refuses a
+build where reusing the plan is slower than rebuilding it.
+
+```bash
+cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan
+```

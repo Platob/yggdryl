@@ -590,8 +590,19 @@ protocol is done, so a required column its protocol did not write is still refus
     assert cast_only.column("year").to_pylist() == [None]
 
     # A declared non-null column its protocol did not write is refused by path.
+    required_year = Field("year", "int32", nullable=False)
+    required_year.partition.sources = ["event"]
+    required_year.partition.transform = "year"
+    strict_root = Field(
+        "row",
+        DataType.from_fields([Field("event", "date32", nullable=False), required_year]),
+        nullable=False,
+    )
+    # With the partition step on, the column it writes satisfies its own
+    # declaration; with it off, nothing is going to write it.
+    assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
     try:
-        root.apply_arrow_batch(batch, partition=False, nullability="strict")
+        strict_root.apply_arrow_batch(batch, partition=False, nullability="strict")
     except ValueError as error:
         assert "$.year" in str(error), error
     else:

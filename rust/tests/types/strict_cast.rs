@@ -11,13 +11,11 @@
 use std::sync::Arc;
 
 use arrow_array::builder::{Int32Builder, ListBuilder, MapBuilder, StringBuilder};
+use arrow_array::types::Int16Type;
 use arrow_array::{
     Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, RecordBatch, StringArray, StructArray,
 };
-use arrow_array::types::Int16Type;
-use arrow_schema::{
-    DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef,
-};
+use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
 use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -42,9 +40,11 @@ fn refusal(target: &Field, batch: RecordBatch) -> String {
 #[test]
 fn a_required_column_the_source_does_not_carry_is_refused_by_path() {
     let source = schema(vec![ArrowField::new("id", ArrowDataType::Int32, false)]);
-    let batch =
-        RecordBatch::try_new(Arc::clone(&source), vec![Arc::new(Int32Array::from(vec![1]))])
-            .unwrap();
+    let batch = RecordBatch::try_new(
+        Arc::clone(&source),
+        vec![Arc::new(Int32Array::from(vec![1]))],
+    )
+    .unwrap();
     let target = root([
         DataType::Int64.required_field("id"),
         DataType::Utf8.required_field("symbol"),
@@ -106,8 +106,7 @@ fn a_null_in_a_required_column_is_refused_with_its_count() {
 #[test]
 fn a_missing_nullable_column_stays_all_null_under_both_policies() {
     let source = schema(vec![ArrowField::new("id", ArrowDataType::Int64, false)]);
-    let batch =
-        RecordBatch::try_new(source, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
+    let batch = RecordBatch::try_new(source, vec![Arc::new(Int64Array::from(vec![1, 2]))]).unwrap();
     let target = root([
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
@@ -184,9 +183,11 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
         ))],
     )
     .unwrap();
-    let required_child = root([DataType::from_fields([DataType::Utf8.required_field("city")])
-        .unwrap()
-        .required_field("address")]);
+    let required_child = root([
+        DataType::from_fields([DataType::Utf8.required_field("city")])
+            .unwrap()
+            .required_field("address"),
+    ]);
     assert_eq!(
         refusal(&required_child, null_batch),
         "required Arrow field $.address.city holds 1 null values"
@@ -232,7 +233,9 @@ fn a_required_map_value_is_named_under_its_entries() {
     ])
     .unwrap()
     .required_field("entries");
-    let target = root([DataType::map(entries, false).unwrap().nullable_field("tags")]);
+    let target = root([DataType::map(entries, false)
+        .unwrap()
+        .nullable_field("tags")]);
     assert_eq!(
         refusal(&target, batch),
         "required Arrow field $.tags.entries.values holds 1 null values"
@@ -287,10 +290,7 @@ fn strictness_and_conversion_safety_answer_different_questions() {
         .cast_arrow_batch(batch, strict().with_safe(false))
         .unwrap_err()
         .to_string();
-    assert!(
-        unsafe_message.contains("not a number"),
-        "{unsafe_message}"
-    );
+    assert!(unsafe_message.contains("not a number"), "{unsafe_message}");
 }
 
 #[test]
@@ -310,7 +310,10 @@ fn extension_and_schema_metadata_survive_a_strict_cast() {
         Some("book")
     );
     let projected = cast_schema.field(1);
-    assert_eq!(projected.metadata().get("owner").map(String::as_str), Some("trading"));
+    assert_eq!(
+        projected.metadata().get("owner").map(String::as_str),
+        Some("trading")
+    );
     assert_eq!(
         projected.extension_type_name(),
         Some("arrow.uuid"),

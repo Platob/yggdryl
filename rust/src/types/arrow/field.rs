@@ -128,8 +128,8 @@ impl Field {
     /// the first pass already wrote. A digest fill reconciles to this root for
     /// itself whatever `cast` says, because a holder is addressed by position.
     ///
-    /// `nullability` is the declared-absence policy the cast runs under, and
-    /// under [`Nullability::Strict`] it also holds after the protocols have
+    /// `options` carries the cast policy the first step runs under, and
+    /// under [`Nullability::Strict`](crate::Nullability::Strict) it also holds after the protocols have
     /// run: a field an enabled protocol materializes may arrive absent or
     /// holding its canonical default, because closing that hole is the
     /// protocol's job, but the applied batch is checked again once every
@@ -140,7 +140,7 @@ impl Field {
     ///
     /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
     /// use yggdryl::expression::Function;
-    /// use yggdryl::{DataType, Nullability};
+    /// use yggdryl::{ArrowCastOptions, DataType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut year = DataType::Int32.nullable_field("year");
@@ -160,7 +160,7 @@ impl Field {
     ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     /// )])?;
     ///
-    /// let applied = root.apply_arrow_batch(&batch, true, true, true, Nullability::Default)?;
+    /// let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
     ///
     /// assert_eq!(applied.num_columns(), 3);
     /// // The digest saw the derived column, because the partition step ran first.
@@ -168,7 +168,7 @@ impl Field {
     ///
     /// // Applying again changes nothing: every column now holds a written value.
     /// assert_eq!(
-    ///     root.apply_arrow_batch(&applied, true, true, true, Nullability::Default)?,
+    ///     root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
     ///     applied,
     /// );
     /// # Ok(())
@@ -180,7 +180,7 @@ impl Field {
     /// Returns an error when this is not a Struct root, when the batch cannot
     /// be cast to it, when either protocol refuses a declaration it carries, or
     /// when the applied batch leaves a declared non-null field null under
-    /// [`Nullability::Strict`].
+    /// [`Nullability::Strict`](crate::Nullability::Strict).
     #[cfg(feature = "arrow")]
     pub fn apply_arrow_batch(
         &self,
@@ -188,10 +188,9 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
-        nullability: crate::Nullability,
+        options: crate::ArrowCastOptions,
     ) -> Result<arrow_array::RecordBatch> {
-        AppliedPlan::compile(self, batch.schema(), digest, partition, cast, nullability)?
-            .apply(batch)
+        AppliedPlan::compile(self, batch.schema(), digest, partition, cast, options)?.apply(batch)
     }
 
     /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
@@ -208,7 +207,7 @@ impl Field {
     /// ```
     /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     /// use yggdryl::expression::Function;
-    /// use yggdryl::{DataType, Nullability};
+    /// use yggdryl::{ArrowCastOptions, DataType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut year = DataType::Int32.nullable_field("year");
@@ -224,7 +223,7 @@ impl Field {
     /// )]);
     ///
     /// let applied =
-    ///     root.apply_arrow_schema(stored.into(), true, true, true, Nullability::Default)?;
+    ///     root.apply_arrow_schema(stored.into(), true, true, true, ArrowCastOptions::new())?;
     ///
     /// assert_eq!(applied.fields().len(), 2);
     /// assert_eq!(applied.field(1).name(), "year");
@@ -242,9 +241,9 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
-        nullability: crate::Nullability,
+        options: crate::ArrowCastOptions,
     ) -> Result<arrow_schema::SchemaRef> {
-        Ok(AppliedPlan::compile(self, schema, digest, partition, cast, nullability)?.schema)
+        Ok(AppliedPlan::compile(self, schema, digest, partition, cast, options)?.schema)
     }
 
     /// Wrap a reader so every batch it yields has this schema applied.
@@ -269,13 +268,12 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
-        nullability: crate::Nullability,
+        options: crate::ArrowCastOptions,
     ) -> Result<crate::arrow::BatchReader> {
         if !digest && !partition && !cast {
             return Ok(inner);
         }
-        let plan =
-            AppliedPlan::compile(self, inner.schema(), digest, partition, cast, nullability)?;
+        let plan = AppliedPlan::compile(self, inner.schema(), digest, partition, cast, options)?;
         Ok(Box::new(AppliedReader { inner, plan }))
     }
 
@@ -703,11 +701,10 @@ impl AppliedPlan {
         digest: bool,
         partition: bool,
         cast: bool,
-        nullability: crate::Nullability,
+        options: crate::ArrowCastOptions,
     ) -> Result<Self> {
-        use crate::types::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
+        use crate::types::cast::{ArrowCastPlan, Deferred};
 
-        let options = ArrowCastOptions::new().with_nullability(nullability);
         let cast = if cast {
             Some(ArrowCastPlan::compile_deferring(
                 &source,
@@ -726,7 +723,8 @@ impl AppliedPlan {
         let schema = applied.schema();
         // A cast with no protocol behind it already refused every hole, so the
         // re-check exists only where something could still have left one.
-        let verify = if nullability.is_strict() && (partition || digest || cast.is_none()) {
+        let verify = if options.nullability().is_strict() && (partition || digest || cast.is_none())
+        {
             Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
         } else {
             None

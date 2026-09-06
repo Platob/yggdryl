@@ -166,7 +166,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     # Storage pads to the width; every string rendering trims the padding.
     ccy = Field("ccy", ascii32, nullable=False)
     assert ccy.arrow_scalar("USD") == pa.scalar(b"USD\x00", pa.binary(4))
-    assert ccy.default_pyvalue() == ""
+    assert ccy.default_scalar().as_py() == ""
 
     # The Arrow field is `fixed_size_binary(4)` under the `yggdryl.ascii` name.
     arrow = ccy.into_arrow()

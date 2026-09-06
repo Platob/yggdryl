@@ -54,7 +54,9 @@ fn batches(count: usize) -> Vec<RecordBatch> {
             let ids: Vec<i32> = (0..ROWS)
                 .map(|row| base + i32::try_from(row).expect("the row index fits an i32"))
                 .collect();
-            let symbols: Vec<&str> = (0..ROWS).map(|row| if row % 3 == 0 { "AAPL" } else { "MSFT" }).collect();
+            let symbols: Vec<&str> = (0..ROWS)
+                .map(|row| if row % 3 == 0 { "AAPL" } else { "MSFT" })
+                .collect();
             RecordBatch::try_new(
                 Arc::clone(&schema),
                 vec![

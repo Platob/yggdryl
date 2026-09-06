@@ -437,8 +437,8 @@ declare module './index' {
      * consumed and the returned reader casts one batch per pull.
      */
     castArrowReader(rows: BatchSource, options?: ArrowCastOptions): BatchReader
-    /** Bit-cast an opposite-signed, same-width Arrow integer vector. */
-    castArrowArrayBits(values: ArrowVector): ArrowVector
+    /** Cast one Apache Arrow JS vector to this exact Field. */
+    castArrowArray(values: ArrowVector, options?: ArrowCastOptions): ArrowVector
     /** The same cast under the generic name. */
     cast(rows: BatchSource, options?: ArrowCastOptions): unknown
   }
@@ -2562,6 +2562,14 @@ export type IcebergSource = BatchSource | RecordSource
 export type Nullability = 'default' | 'strict'
 
 /**
+ * What a cast carries across two datatypes of the same physical width:
+ * `"value"` the number they spell, `"bits"` the bytes under it - so an
+ * `int64`, a `uint64`, a `float64` and a `fixed_size_binary(8)` are one buffer
+ * under four readings. A pair that is not the same bytes converts as usual.
+ */
+export type Representation = 'value' | 'bits'
+
+/**
  * The two independent answers every Arrow cast needs: `safe` decides whether a
  * present value may be converted, `nullability` whether a declared value may be
  * absent.
@@ -2569,6 +2577,7 @@ export type Nullability = 'default' | 'strict'
 export interface ArrowCastOptions {
   safe?: boolean
   nullability?: Nullability
+  representation?: Representation
 }
 
 /** Anything that names a stream of Arrow record batches. */

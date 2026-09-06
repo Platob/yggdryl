@@ -848,18 +848,22 @@ impl PyDataType {
     }
 
     /// Casts one `PyArrow` Array through Yggdryl's native Arrow kernels.
-    #[pyo3(signature = (value, *, safe=true, nullability="default"))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_array<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
         nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let input = arrow_array_from_pyarrow(value)?;
         let array = self
             .inner
-            .cast_arrow_array(Arc::clone(&input), cast_options(safe, nullability)?)
+            .cast_arrow_array(
+                Arc::clone(&input),
+                cast_options(safe, nullability, representation)?,
+            )
             .map_err(value_error)?;
         if Arc::ptr_eq(&input, &array) {
             return Ok(value.clone());
@@ -868,20 +872,21 @@ impl PyDataType {
     }
 
     /// Reconciles one `PyArrow` `RecordBatch` to this Struct datatype.
-    #[pyo3(signature = (value, *, safe=true, nullability="default"))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
         nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
         let source_schema = batch.schema();
         let source_columns = batch.columns().to_vec();
         let cast = self
             .inner
-            .cast_arrow_batch(batch, cast_options(safe, nullability)?)
+            .cast_arrow_batch(batch, cast_options(safe, nullability, representation)?)
             .map_err(value_error)?;
         if Arc::ptr_eq(&source_schema, &cast.schema())
             && source_columns

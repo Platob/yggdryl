@@ -8,6 +8,11 @@ use arrow_array::{
 };
 
 use super::{ArrowCast, ArrowCastOptions};
+
+/// The reading that carries the bytes rather than the number they spell.
+fn bits() -> ArrowCastOptions {
+    ArrowCastOptions::new().with_representation(crate::Representation::Bits)
+}
 use crate::types::{
     DateTime64Field, GeometryField, Int32Field, Int64Field, StructField, UInt32Field, UInt64Field,
     Utf8Field, VariantField,
@@ -168,29 +173,29 @@ fn a_borrowed_typed_field_casts_the_same_way() {
 }
 
 #[test]
-fn bit_casts_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
+fn bits_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
     let source = UInt32Array::from(vec![0, 0x7fff_ffff, 0x8000_0000, u32::MAX]);
     let signed = Int32Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(source.clone()))
+        .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(signed.values(), &[0, i32::MAX, i32::MIN, -1]);
     assert!(
         signed.values().inner().ptr_eq(source.values().inner()),
-        "a bit cast shares the physical value buffer"
+        "reading the bits shares the physical value buffer"
     );
 
     let restored = UInt32Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(signed.clone()))
+        .cast_arrow_array(Arc::new(signed.clone()), bits())
         .unwrap();
     assert_eq!(restored.values(), source.values());
     assert!(
         restored.values().inner().ptr_eq(source.values().inner()),
-        "the reverse cast retains the same physical buffer"
+        "the reverse reading retains the same physical buffer"
     );
 
     assert_eq!(
         Int32Field::new("digest", true)
-            .cast_arrow_array_bits(Arc::new(UInt32Array::from(Vec::<u32>::new())))
+            .cast_arrow_array(Arc::new(UInt32Array::from(Vec::<u32>::new())), bits())
             .unwrap()
             .len(),
         0
@@ -198,7 +203,7 @@ fn bit_casts_cover_the_full_32_bit_domain_in_both_directions_without_copying() {
 }
 
 #[test]
-fn bit_casts_cover_the_full_64_bit_domain_in_both_directions_without_copying() {
+fn bits_cover_the_full_64_bit_domain_in_both_directions_without_copying() {
     let source = UInt64Array::from(vec![
         0,
         0x7fff_ffff_ffff_ffff,
@@ -206,78 +211,108 @@ fn bit_casts_cover_the_full_64_bit_domain_in_both_directions_without_copying() {
         u64::MAX,
     ]);
     let signed = Int64Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(source.clone()))
+        .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(signed.values(), &[0, i64::MAX, i64::MIN, -1]);
     assert!(signed.values().inner().ptr_eq(source.values().inner()));
 
     let restored = UInt64Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(signed))
+        .cast_arrow_array(Arc::new(signed), bits())
         .unwrap();
     assert_eq!(restored.values(), source.values());
     assert!(restored.values().inner().ptr_eq(source.values().inner()));
 }
 
 #[test]
-fn bit_casts_preserve_slices_and_apply_the_target_null_contract() {
+fn eight_bytes_read_as_an_integer_a_float_or_bytes_alike() {
+    use arrow_array::{FixedSizeBinaryArray, Float64Array};
+
+    let source: ArrayRef = Arc::new(UInt64Array::from(vec![0, u64::MAX]));
+
+    // The whole point of naming a width: an integer, its opposite sign, a
+    // float and raw bytes are one buffer under four readings.
+    let bytes = Field::new("digest", DataType::FixedSizeBinary(8), true)
+        .cast_arrow_array(Arc::clone(&source), bits())
+        .unwrap();
+    let stored: &FixedSizeBinaryArray = bytes.as_any().downcast_ref().unwrap();
+    assert_eq!(stored.value(1), &[0xff; 8]);
+
+    let floats = Field::new("digest", DataType::Float64, true)
+        .cast_arrow_array(Arc::clone(&bytes), bits())
+        .unwrap();
+    let floats: &Float64Array = floats.as_any().downcast_ref().unwrap();
+    assert!(floats.value(1).is_nan(), "{:?}", floats.value(1));
+
+    // Round-tripping the whole chain restores the exact bit pattern.
+    let restored = UInt64Field::new("digest", true)
+        .cast_arrow_array(bytes, bits())
+        .unwrap();
+    assert_eq!(restored.values(), &[0, u64::MAX]);
+    assert!(
+        restored
+            .values()
+            .inner()
+            .ptr_eq(&source.to_data().buffers()[0]),
+        "the bytes never left the buffer they arrived in"
+    );
+}
+
+#[test]
+fn bits_preserve_slices_and_apply_the_target_null_contract() {
     let source = UInt64Array::from(vec![Some(3), Some(u64::MAX), None, Some(5)]).slice(1, 2);
     let nullable = Int64Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(source.clone()))
+        .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(nullable.len(), 2);
     assert_eq!(nullable.value(0), -1);
     assert!(nullable.is_null(1));
     assert!(nullable.values().inner().ptr_eq(source.values().inner()));
 
+    // The reading says what the bytes mean; the nullability policy still says
+    // what an absent value means.
     let required = Int64Field::new("digest", false)
-        .cast_arrow_array_bits(Arc::new(source))
+        .cast_arrow_array(Arc::new(source.clone()), bits())
         .unwrap();
     assert_eq!(required.values(), &[-1, 0]);
     assert_eq!(required.null_count(), 0);
+
+    let refused = Int64Field::new("digest", false)
+        .cast_arrow_array(
+            Arc::new(source),
+            bits().with_nullability(crate::Nullability::Strict),
+        )
+        .unwrap_err()
+        .to_string();
+    assert_eq!(refused, "required Arrow field $.digest holds 1 null values");
 }
 
 #[test]
-fn generic_and_borrowed_fields_expose_the_same_strict_bit_cast() {
-    let generic = Field::new("digest", DataType::Int32, true);
-    let cast = generic
-        .cast_arrow_array_bits(Arc::new(UInt32Array::from(vec![u32::MAX])))
+fn a_pair_that_is_not_the_same_bytes_converts_as_it_always_did() {
+    // Asking for bits is a preference, not a mode: two widths that are not one
+    // buffer take the ordinary numeric conversion, and its range check with it.
+    let widened = Int64Field::new("id", true)
+        .cast_arrow_array(Arc::new(Int32Array::from(vec![7])), bits())
         .unwrap();
-    assert_eq!(
-        cast.as_any().downcast_ref::<Int32Array>().unwrap().value(0),
-        -1
-    );
+    assert_eq!(widened.values(), &[7]);
 
-    let target = UInt64Field::new("digest", true);
-    let restored = target
-        .as_typed_ref()
-        .cast_arrow_array_bits(Arc::new(Int64Array::from(vec![-1])))
+    let text = Field::new("id", DataType::Utf8, true)
+        .cast_arrow_array(Arc::new(Int64Array::from(vec![7])), bits())
         .unwrap();
-    assert_eq!(restored.value(0), u64::MAX);
+    assert_eq!(text.data_type(), &arrow_schema::DataType::Utf8);
 
-    let wrong_width = Int64Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(UInt32Array::from(vec![1])))
+    // A datatype whose values follow a rule keeps that rule: four bytes are
+    // not an ASCII code merely because they are four bytes.
+    let refused = Field::new("ccy", DataType::FixedAscii(4), true)
+        .cast_arrow_array(
+            Arc::new(
+                arrow_array::FixedSizeBinaryArray::try_from_iter([[0xff_u8; 4]].into_iter())
+                    .unwrap(),
+            ),
+            bits(),
+        )
         .unwrap_err()
         .to_string();
-    assert!(wrong_width.contains("digest"), "{wrong_width}");
-    assert!(wrong_width.contains("uint64"), "{wrong_width}");
-    assert!(wrong_width.contains("UInt32"), "{wrong_width}");
-
-    let same_sign = Int32Field::new("digest", true)
-        .cast_arrow_array_bits(Arc::new(Int32Array::from(Vec::<i32>::new())))
-        .unwrap_err()
-        .to_string();
-    assert!(same_sign.contains("uint32"), "{same_sign}");
-    assert!(same_sign.contains("Int32"), "{same_sign}");
-
-    let unsupported = Field::new("digest", DataType::Float64, true)
-        .cast_arrow_array_bits(Arc::new(UInt64Array::from(vec![1])))
-        .unwrap_err()
-        .to_string();
-    assert!(unsupported.contains("digest"), "{unsupported}");
-    assert!(unsupported.contains("int32"), "{unsupported}");
-    assert!(unsupported.contains("uint64"), "{unsupported}");
-    assert!(unsupported.contains("float64"), "{unsupported}");
-    assert!(unsupported.contains("UInt64"), "{unsupported}");
+    assert!(refused.contains("ccy"), "{refused}");
 }
 
 #[test]
@@ -292,7 +327,7 @@ fn ordinary_integer_casting_remains_numeric() {
             )
             .is_err()
     );
-    assert_eq!(field.cast_arrow_array_bits(source).unwrap().value(0), -1);
+    assert_eq!(field.cast_arrow_array(source, bits()).unwrap().value(0), -1);
 }
 
 /// One little-endian ISO WKB point.

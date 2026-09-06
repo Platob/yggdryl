@@ -27,7 +27,9 @@ import type {
 
 const id: Int32Field = fields.int32('id', { nullable: false })
 declare const unsignedBits: ArrowVector
-const signedBits: ArrowVector = id.castArrowArrayBits(unsignedBits)
+const signedBits: ArrowVector = id.castArrowArray(unsignedBits, {
+  representation: 'bits',
+})
 // `kind` is the coarse family a variant belongs to; `id` is the variant itself.
 const idKind: 'integer' = id.dtype.kind
 const idId: 'int32' = id.dtype.id
@@ -112,8 +114,10 @@ const defaultedValue: number | null = defaulted.defaultJSValue()
 
 // @ts-expect-error internal factory bridges are not part of the package API
 DataType._simple('int32')
-// @ts-expect-error bit casts accept an Arrow Vector, not a JavaScript array
-id.castArrowArrayBits([0])
+// @ts-expect-error an array cast accepts an Arrow Vector, not a JavaScript array
+id.castArrowArray([0])
+// @ts-expect-error `representation` is a closed vocabulary, not any name
+id.castArrowArray(unsignedBits, { representation: 'raw' })
 // @ts-expect-error `nullability` is a closed vocabulary, not any name
 id.castArrowReader(castSource, { nullability: 'lenient' })
 // @ts-expect-error the native diff bridge is hidden behind showDiffs

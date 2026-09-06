@@ -351,10 +351,12 @@ The core computes one default; each binding projects it.
         Field("id", "int32", nullable=False),
         Field("note", "utf8", nullable=True),
     ])
-    row = value.default_pyvalue()
+    # A default is a value, so it answers as one `Scalar`; `as_py` is the one
+    # conversion, and a struct reads as its ordered children.
+    row = value.default_scalar()
 
-    assert (row.id, row.note) == (0, None)
-    assert DataType("utf8").default_pyvalue() == ""
+    assert row.as_py() == [0, None]
+    assert DataType("utf8").default_scalar().as_py() == ""
     assert DataType("int64").default_pyhint() is int
     assert value.default_arrow_scalar().as_py() == {"id": 0, "note": None}
     ```

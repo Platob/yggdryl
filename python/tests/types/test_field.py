@@ -1327,17 +1327,19 @@ class TestArrowNullability:
             )
 
 
-def test_arrow_integer_bits_cast_across_the_full_signed_domain() -> None:
+def test_the_bits_reading_crosses_every_same_width_pair() -> None:
     import pyarrow as pa
+
+    bits: dict[str, Any] = {"representation": "bits"}
 
     unsigned32 = pa.array(
         [0, 2**31 - 1, 2**31, 2**32 - 1, None],
         type=pa.uint32(),
     )
-    signed32 = Field("digest", "int32").cast_arrow_array_bits(unsigned32)
+    signed32 = Field("digest", "int32").cast_arrow_array(unsigned32, **bits)
     assert signed32.type == pa.int32()
     assert signed32.to_pylist() == [0, 2**31 - 1, -(2**31), -1, None]
-    assert Field("digest", "uint32").cast_arrow_array_bits(signed32).equals(
+    assert Field("digest", "uint32").cast_arrow_array(signed32, **bits).equals(
         unsigned32
     )
 
@@ -1345,22 +1347,52 @@ def test_arrow_integer_bits_cast_across_the_full_signed_domain() -> None:
         [0, 2**63 - 1, 2**63, 2**64 - 1, None],
         type=pa.uint64(),
     )
-    signed64 = Field("digest", "int64").cast_arrow_array_bits(unsigned64)
+    signed64 = Field("digest", "int64").cast_arrow_array(unsigned64, **bits)
     assert signed64.type == pa.int64()
     assert signed64.to_pylist() == [0, 2**63 - 1, -(2**63), -1, None]
-    assert Field("digest", "uint64").cast_arrow_array_bits(signed64).equals(
+    assert Field("digest", "uint64").cast_arrow_array(signed64, **bits).equals(
         unsigned64
     )
 
-    required = Field("digest", "int64", nullable=False).cast_arrow_array_bits(
-        pa.array([None, 2**64 - 1], type=pa.uint64())
+    # Eight bytes are eight bytes: the integer, its opposite sign and the raw
+    # payload are one buffer under three readings, and the chain round-trips.
+    stored = Field("digest", "fixed_size_binary(8)").cast_arrow_array(
+        unsigned64, **bits
+    )
+    assert stored.type == pa.binary(8)
+    assert stored.to_pylist()[3] == b"\xff" * 8
+    assert Field("digest", "uint64").cast_arrow_array(stored, **bits).equals(
+        unsigned64
+    )
+
+    # The reading says what the bytes mean; nullability still says what an
+    # absent value means.
+    required = Field("digest", "int64", nullable=False).cast_arrow_array(
+        pa.array([None, 2**64 - 1], type=pa.uint64()), **bits
     )
     assert required.to_pylist() == [0, -1]
+    with pytest.raises(ValueError, match=r"\$\.digest"):
+        Field("digest", "int64", nullable=False).cast_arrow_array(
+            pa.array([None], type=pa.uint64()), nullability="strict", **bits
+        )
 
-    with pytest.raises(ValueError, match="uint64"):
-        Field("digest", "int64").cast_arrow_array_bits(unsigned32)
-    with pytest.raises(ValueError, match="bit-preserving Arrow integer casts require"):
-        Field("digest", "utf8").cast_arrow_array_bits(unsigned32)
+
+def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
+    import pyarrow as pa
+
+    bits: dict[str, Any] = {"representation": "bits"}
+
+    # Four bytes are not eight, so this is the ordinary numeric widening.
+    widened = Field("digest", "int64").cast_arrow_array(
+        pa.array([7], type=pa.uint32()), **bits
+    )
+    assert widened.to_pylist() == [7]
+
+    # And a datatype whose values follow a rule keeps that rule.
+    with pytest.raises(ValueError, match="ccy"):
+        Field("ccy", "ascii(4)").cast_arrow_array(
+            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
+        )
 
 
 def test_item_access_on_a_schema_node_reaches_a_nested_child() -> None:

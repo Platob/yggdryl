@@ -69,7 +69,7 @@ mod typed;
 
 pub use batch::{preflight_arrow_batch_cast, validate_arrow_batch};
 pub(crate) use kernel::arrow_cast_exposed;
-pub use options::{ArrowCastOptions, Nullability};
+pub use options::{ArrowCastOptions, Nullability, Representation};
 pub use plan::ArrowCastPlan;
 pub use typed::ArrowFieldType;
 
@@ -287,6 +287,10 @@ impl ArrayCastPlan {
 enum ArrayCastKind {
     Exact,
     Kernel,
+    /// Two fixed-width layouts of the same byte width read as one another:
+    /// the value buffer and the null buffer are handed over unchanged and only
+    /// the datatype that reads them differs.
+    BitCast,
     /// Bytes entering a geometry or geography: same bytes out, but every
     /// exposed value is validated as WKB on the way in. A non-Binary binary
     /// layout is first cast to the Binary storage through Arrow's kernel.
@@ -478,6 +482,16 @@ impl ArrayCastPlan {
             && !ingest_validated
         {
             ArrayCastKind::Exact
+        // Asked for the bytes, and the two layouts really are the same bytes:
+        // nothing is converted, so no conversion rule applies. The same guard
+        // that forces a validating target onto its own path excludes it here
+        // too - an ASCII width or a code is a rule about values, and sharing a
+        // buffer past it would store bytes the datatype promises are not there.
+        } else if options.representation().is_bits()
+            && !ingest_validated
+            && same_bit_layout(source_type, &expected)
+        {
+            ArrayCastKind::BitCast
         } else {
             Self::nested_kind(
                 field,
@@ -938,6 +952,7 @@ impl ArrayCastPlan {
         }
         let mut cast = match &self.kind {
             ArrayCastKind::Exact => array,
+            ArrayCastKind::BitCast => reinterpret(&array, &self.expected)?,
             ArrayCastKind::Kernel => arrow_cast_exposed(
                 &array,
                 &self.expected,
@@ -1286,6 +1301,49 @@ pub(crate) fn named_cell<T>(field: &Field, index: usize, read: crate::Result<T>)
         };
         Error::IncompatibleSchema(format!("field {:?} row {index}: {reason}", field.name()))
     })
+}
+
+/// The byte width of a datatype laid out as one fixed-width value buffer.
+///
+/// `None` is everything else - a bitmap, a variable-length payload, an
+/// encoding, or anything with children - because those have no single buffer
+/// two datatypes could share.
+fn bit_layout_width(dtype: &ArrowDataType) -> Option<usize> {
+    match dtype {
+        // Arrow answers the width for every fixed-width primitive, decimal and
+        // temporal; a fixed binary is the same layout under a length it states
+        // itself, which is what puts raw bytes on both sides of this cast.
+        ArrowDataType::FixedSizeBinary(width) => usize::try_from(*width).ok(),
+        other => other.primitive_width(),
+    }
+}
+
+/// Whether two datatypes are the same bytes under two readings.
+fn same_bit_layout(source: &ArrowDataType, target: &ArrowDataType) -> bool {
+    match (bit_layout_width(source), bit_layout_width(target)) {
+        (Some(source), Some(target)) => source == target,
+        _ => false,
+    }
+}
+
+/// Read one array's buffers as the target datatype, copying nothing.
+///
+/// The two layouts agree by construction - [`same_bit_layout`] is what selected
+/// this path - so the value buffer, the null buffer, the length and the offset
+/// all carry over, and Arrow validates the result against the datatype that now
+/// reads them.
+fn reinterpret(array: &ArrayRef, expected: &ArrowDataType) -> Result<ArrayRef> {
+    let data = array.to_data();
+    // The null buffer is carried whole rather than as a raw bitmap plus the
+    // array's offset: a sliced array's validity keeps an offset of its own,
+    // and rebuilding it from the two separately would shift it.
+    let rebuilt = arrow_data::ArrayDataBuilder::new(expected.clone())
+        .len(data.len())
+        .offset(data.offset())
+        .buffers(data.buffers().to_vec())
+        .nulls(data.nulls().cloned())
+        .build()?;
+    Ok(arrow_array::make_array(rebuilt))
 }
 
 pub(crate) fn downcast<T: Array + 'static>(array: &dyn Array) -> Result<&T> {

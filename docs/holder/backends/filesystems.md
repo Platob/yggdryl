@@ -57,6 +57,9 @@ Pass the filesystem and its opaque path separately.
     from yggdryl import IOBase
 
     filesystem = pafs._MockFileSystem()
+    # A mock filesystem starts with no directories, and a write creates the
+    # file rather than the tree above it.
+    filesystem.create_dir("bucket")
     handle = IOBase.from_fs(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -160,6 +163,16 @@ A zero-byte file, an unknown mtime, and an absent path therefore stay three diff
 === "Python"
 
     ```python
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    filesystem = pafs._MockFileSystem()
+    filesystem.create_dir("bucket")
+    handle = lambda name: IOBase.from_fs(filesystem, f"bucket/{name}")
+
+    source, target, archive = handle("a.bin"), handle("b.bin"), handle("c.bin")
+    source.write_bytes(b"literal")
+
     copied = source.copy_into(target)
     moved = target.move_into(archive)
 
