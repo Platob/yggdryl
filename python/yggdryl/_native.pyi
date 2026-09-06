@@ -2303,6 +2303,8 @@ class S3File(IOBase):
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
+        *,
+        options: Mapping[str, object] | None = None,
     ) -> None: ...
 
 class S3Folder(IOBase):
@@ -2312,6 +2314,8 @@ class S3Folder(IOBase):
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
+        *,
+        options: Mapping[str, object] | None = None,
     ) -> None: ...
 
 class S3Path(IOBase):
@@ -2321,6 +2325,8 @@ class S3Path(IOBase):
         self,
         location: str | PathLike[str],
         key: str | PathLike[str] | None = None,
+        *,
+        options: Mapping[str, object] | None = None,
     ) -> None: ...
 
 class Buffered(IOBase):

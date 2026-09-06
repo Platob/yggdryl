@@ -357,3 +357,39 @@ class TestTheS3Roles:
     def test_a_location_naming_no_bucket_is_refused(self) -> None:
         with pytest.raises(ValueError, match="naming a bucket"):
             S3File("file:///tmp/part.parquet")
+
+    def test_options_are_read_in_whichever_vocabulary_they_are_written(self) -> None:
+        # A PyIceberg catalog's properties, handed over whole: what is not
+        # about a store is ignored, and nothing contacts one either way.
+        handle = S3File(
+            "s3://trades/lake/part.parquet",
+            options={
+                "warehouse": "s3://trades/lake",
+                "s3.endpoint": "http://localhost:9000",
+                "s3.access-key-id": "minioadmin",
+                "s3.secret-access-key": "minioadmin",
+                "s3.force-virtual-addressing": False,
+                "s3.request-timeout": 30,
+            },
+        )
+        assert str(handle.url) == "s3://trades/lake/part.parquet"
+
+        # PyArrow's argument names reach the same knobs, and a bucket and a
+        # raw key are named the same way with them.
+        prefix = S3Folder(
+            "trades",
+            "lake/a b",
+            options={"endpoint_override": "localhost:9000", "scheme": "http"},
+        )
+        assert str(prefix.url) == "s3://trades/lake/a%20b"
+
+        located = S3Path("s3://trades/lake/", options=None)
+        assert located.is_dir()
+
+    def test_an_option_that_will_not_parse_is_an_argument_error(self) -> None:
+        # Nothing is contacted, so every failure a constructor can report is
+        # about what it was handed.
+        with pytest.raises(ValueError, match="seconds"):
+            S3File("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
+        with pytest.raises(ValueError, match="does not do"):
+            S3Folder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})

@@ -45,7 +45,7 @@
     Path / File / Folder: the local roles, each constructible from a location; Path is what a name declaring nothing takes, and what addresses the stored bytes of a coded name
     Folder: classmethods temporary, home, config
     FsPath / FsFile / FsFolder: the same three roles on a foreign filesystem, each constructible as (filesystem, path, *, uri=None)
-    S3Path / S3File / S3Folder: the same three roles on Amazon S3, each constructible as (location) or as (bucket, key) for the raw name a store uses
+    S3Path / S3File / S3Folder: the same three roles on Amazon S3, each constructible as (location) or as (bucket, key) for the raw name a store uses, with an optional options= mapping in PyIceberg's, PyArrow's, or the AWS environment's names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle
   media: Avro, Ipc, Media, MediaType, MimeType, Parquet, RecordOptions, Text, TextOptions, avro, iceberg
   media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
