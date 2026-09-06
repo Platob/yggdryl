@@ -11,6 +11,7 @@
 pub(crate) mod server;
 
 mod accounting;
+mod encryption;
 mod protocol;
 mod roles;
 

@@ -154,7 +154,10 @@ impl FakeS3 {
             .buckets
             .entry(bucket.to_owned())
             .or_default()
-            .insert(key.to_owned(), Object::new(bytes.to_vec(), None));
+            .insert(
+                key.to_owned(),
+                Object::new(bytes.to_vec(), None, Encryption::None),
+            );
     }
 
     /// The bytes of one object.
@@ -165,6 +168,23 @@ impl FakeS3 {
             .get(bucket)?
             .get(key)
             .map(|object| object.bytes.clone())
+    }
+
+    /// How `key` was encrypted, as the store recorded it.
+    ///
+    /// `"none"`, `"AES256"`, `"aws:kms"` with the key it named, or
+    /// `"customer"` with the MD5 the write presented - which is all a store
+    /// keeps of a key it was handed.
+    pub fn stored_encryption(&self, bucket: &str, key: &str) -> Option<String> {
+        Some(
+            self.inner
+                .store()
+                .buckets
+                .get(bucket)?
+                .get(key)?
+                .encryption
+                .described(),
+        )
     }
 
     /// Every key of `bucket` in byte order; empty for a missing bucket.
@@ -501,17 +521,180 @@ struct Object {
     etag: String,
     /// `Content-Type` as stored; `None` answers the default.
     content_type: Option<String>,
+    /// How the object was encrypted, as the store remembers it.
+    encryption: Encryption,
 }
 
 impl Object {
-    fn new(bytes: Vec<u8>, content_type: Option<String>) -> Self {
+    fn new(bytes: Vec<u8>, content_type: Option<String>, encryption: Encryption) -> Self {
         let etag = etag_of(&bytes);
         Self {
             bytes,
             etag,
             content_type,
+            encryption,
         }
     }
+}
+
+/// What a request said about encrypting an object, as the store keeps it.
+///
+/// The store keeps everything about its own keys and nothing about a
+/// caller's, which is exactly why `SSE-C` has to be presented again on a read.
+#[derive(Clone, Default, PartialEq, Eq)]
+enum Encryption {
+    /// Nothing was said, so nothing is remembered.
+    #[default]
+    None,
+    /// `AES256`, keys the store manages.
+    Managed,
+    /// `aws:kms` or `aws:kms:dsse`, with whatever the write named.
+    Kms {
+        algorithm: String,
+        key_id: Option<String>,
+        context: Option<String>,
+        bucket_key: Option<String>,
+    },
+    /// A key the caller holds: only its stated MD5 is kept.
+    Customer { md5: String },
+}
+
+impl Encryption {
+    /// Read what a write says about encryption, or refuse an unusable one.
+    ///
+    /// A customer key is checked the way S3 checks it: the algorithm has to be
+    /// `AES256`, the key has to be base64 of 32 bytes, and its MD5 has to come
+    /// with it.
+    fn of(request: &Request) -> std::result::Result<Self, Box<Response>> {
+        if let Some(algorithm) = request.header("x-amz-server-side-encryption-customer-algorithm") {
+            if algorithm != "AES256" {
+                return Err(Box::new(invalid_encryption(
+                    "Requests specifying Server Side Encryption with Customer \
+                     provided keys must provide a valid encryption algorithm.",
+                )));
+            }
+            let key = request
+                .header("x-amz-server-side-encryption-customer-key")
+                .and_then(|key| {
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key).ok()
+                })
+                .filter(|key| key.len() == 32);
+            if key.is_none() {
+                return Err(Box::new(invalid_encryption(
+                    "Requests specifying Server Side Encryption with Customer \
+                     provided keys must provide an appropriate secret key.",
+                )));
+            }
+            let Some(md5) = request.header("x-amz-server-side-encryption-customer-key-md5") else {
+                return Err(Box::new(invalid_encryption(
+                    "Requests specifying Server Side Encryption with Customer \
+                     provided keys must provide the client calculated MD5 of \
+                     the secret key.",
+                )));
+            };
+            return Ok(Self::Customer {
+                md5: md5.to_owned(),
+            });
+        }
+        match request.header("x-amz-server-side-encryption") {
+            None => Ok(Self::None),
+            Some("AES256") => Ok(Self::Managed),
+            Some(algorithm @ ("aws:kms" | "aws:kms:dsse")) => Ok(Self::Kms {
+                algorithm: algorithm.to_owned(),
+                key_id: request
+                    .header("x-amz-server-side-encryption-aws-kms-key-id")
+                    .map(str::to_owned),
+                context: request
+                    .header("x-amz-server-side-encryption-context")
+                    .map(str::to_owned),
+                bucket_key: request
+                    .header("x-amz-server-side-encryption-bucket-key-enabled")
+                    .map(str::to_owned),
+            }),
+            Some(_) => Err(Box::new(invalid_encryption(
+                "The encryption method specified is not supported",
+            ))),
+        }
+    }
+
+    /// Refuse a read that does not present the key the object needs.
+    ///
+    /// S3 refuses both ways round: a customer-encrypted object read without
+    /// the key, and any other object read with one.
+    fn admits(&self, request: &Request) -> Option<Response> {
+        let presented = request.header("x-amz-server-side-encryption-customer-key-md5");
+        match (self, presented) {
+            (Self::Customer { md5 }, Some(given)) if md5 == given => None,
+            (Self::Customer { .. }, _) => Some(invalid_encryption(
+                "The object was stored using a form of Server Side Encryption. \
+                 The correct parameters must be provided to retrieve the object.",
+            )),
+            (_, Some(_)) => Some(invalid_encryption(
+                "The object was not stored using a form of Server Side \
+                 Encryption with customer provided keys.",
+            )),
+            (_, None) => None,
+        }
+    }
+
+    /// What an answer says about how the object is encrypted.
+    fn headers(&self) -> Vec<(&'static str, String)> {
+        match self {
+            Self::None => Vec::new(),
+            Self::Managed => vec![("x-amz-server-side-encryption", "AES256".to_owned())],
+            Self::Kms {
+                algorithm,
+                key_id,
+                context,
+                bucket_key,
+            } => {
+                let mut headers = vec![("x-amz-server-side-encryption", algorithm.clone())];
+                if let Some(key_id) = key_id {
+                    headers.push((
+                        "x-amz-server-side-encryption-aws-kms-key-id",
+                        key_id.clone(),
+                    ));
+                }
+                if let Some(context) = context {
+                    headers.push(("x-amz-server-side-encryption-context", context.clone()));
+                }
+                if let Some(enabled) = bucket_key {
+                    headers.push((
+                        "x-amz-server-side-encryption-bucket-key-enabled",
+                        enabled.clone(),
+                    ));
+                }
+                headers
+            }
+            Self::Customer { md5 } => vec![
+                (
+                    "x-amz-server-side-encryption-customer-algorithm",
+                    "AES256".to_owned(),
+                ),
+                ("x-amz-server-side-encryption-customer-key-MD5", md5.clone()),
+            ],
+        }
+    }
+
+    /// How a test names what was recorded.
+    fn described(&self) -> String {
+        match self {
+            Self::None => "none".to_owned(),
+            Self::Managed => "AES256".to_owned(),
+            Self::Kms {
+                algorithm, key_id, ..
+            } => match key_id {
+                Some(key_id) => format!("{algorithm} {key_id}"),
+                None => algorithm.clone(),
+            },
+            Self::Customer { md5 } => format!("customer {md5}"),
+        }
+    }
+}
+
+/// The refusal S3 answers a malformed or mismatched encryption request with.
+fn invalid_encryption(message: &str) -> Response {
+    Response::error(400, "InvalidArgument", message, &[])
 }
 
 /// One multipart upload in flight.
@@ -522,6 +705,8 @@ struct Upload {
     key: String,
     /// `Content-Type` given at initiation, applied to the assembled object.
     content_type: Option<String>,
+    /// How the initiation said the assembled object is to be encrypted.
+    encryption: Encryption,
     /// Part number to its bytes and quoted `ETag`.
     parts: BTreeMap<u32, (Vec<u8>, String)>,
 }
@@ -639,11 +824,20 @@ impl Store {
                 return precondition_failed();
             }
         }
+        let encryption = match Encryption::of(request) {
+            Ok(encryption) => encryption,
+            Err(refusal) => return *refusal,
+        };
         let content_type = request.header("content-type").map(str::to_owned);
-        let object = Object::new(std::mem::take(&mut request.body), content_type);
+        let object = Object::new(std::mem::take(&mut request.body), content_type, encryption);
         let etag = object.etag.clone();
+        let answered = object.encryption.headers();
         objects.insert(key.to_owned(), object);
-        Response::new(200).with_header("ETag", &etag)
+        let mut response = Response::new(200).with_header("ETag", &etag);
+        for (name, value) in answered {
+            response = response.with_header(name, &value);
+        }
+        response
     }
 
     fn upload_part(&mut self, bucket: &str, key: &str, request: &mut Request) -> Response {
@@ -667,6 +861,9 @@ impl Store {
         let Some(upload) = upload else {
             return no_such_upload();
         };
+        if let Some(refusal) = upload.encryption.admits(request) {
+            return refusal;
+        }
         let bytes = std::mem::take(&mut request.body);
         let etag = etag_of(&bytes);
         upload.parts.insert(number, (bytes, etag.clone()));
@@ -677,6 +874,10 @@ impl Store {
         if !self.buckets.contains_key(bucket) {
             return no_such_bucket();
         }
+        let encryption = match Encryption::of(request) {
+            Ok(encryption) => encryption,
+            Err(refusal) => return *refusal,
+        };
         self.next_upload += 1;
         let id = format!("upload-{}", self.next_upload);
         self.uploads.insert(
@@ -685,6 +886,7 @@ impl Store {
                 bucket: bucket.to_owned(),
                 key: key.to_owned(),
                 content_type: request.header("content-type").map(str::to_owned),
+                encryption,
                 parts: BTreeMap::new(),
             },
         );
@@ -734,7 +936,7 @@ impl Store {
         let Some(upload) = self.uploads.remove(id) else {
             return no_such_upload();
         };
-        let mut object = Object::new(bytes, upload.content_type);
+        let mut object = Object::new(bytes, upload.content_type, upload.encryption);
         object.etag = format!("\"{}-{}\"", trim_quotes(&object.etag), listed.len());
         let etag = object.etag.clone();
         objects.insert(key.to_owned(), object);
@@ -780,6 +982,9 @@ impl Store {
                 &[("Key", key)],
             );
         };
+        if let Some(refusal) = object.encryption.admits(request) {
+            return refusal;
+        }
         let size = object.bytes.len();
         let range = request.header("range").and_then(ByteRange::parse);
         let Some(range) = range else {
@@ -839,7 +1044,7 @@ impl Store {
 
 /// The headers every successful object answer carries.
 fn object_response(status: u16, object: &Object) -> Response {
-    Response::new(status)
+    let mut response = Response::new(status)
         .with_header("ETag", &object.etag)
         .with_header("Last-Modified", LAST_MODIFIED_HTTP)
         .with_header(
@@ -849,7 +1054,11 @@ fn object_response(status: u16, object: &Object) -> Response {
                 .as_deref()
                 .unwrap_or(DEFAULT_CONTENT_TYPE),
         )
-        .with_header("Accept-Ranges", "bytes")
+        .with_header("Accept-Ranges", "bytes");
+    for (name, value) in object.encryption.headers() {
+        response = response.with_header(name, &value);
+    }
+    response
 }
 
 /// One `Range: bytes=` spec: `a-b`, `a-`, or `-n`.

@@ -25,6 +25,10 @@ const BUCKET: &str = "yggdryl-interop";
 const FROM_RUST: &str = "from-rust";
 /// The prefix `boto3` writes under.
 const FROM_BOTO: &str = "from-boto3";
+/// The KMS key the encryption cross-check names, which nothing has to exist.
+const KMS_KEY_ID: &str = "arn:aws:kms:eu-west-1:123456789012:key/abcd-ef01";
+/// The encryption context it binds the ciphertext to.
+const KMS_CONTEXT: &str = r#"{"desk":"power","book":"eu-gas"}"#;
 
 /// The endpoint the suite runs against, or `None` to skip.
 fn endpoint() -> Option<String> {
@@ -222,4 +226,39 @@ fn a_removal_here_is_a_removal_there() {
     assert!(tree.exists());
     tree.remove(true).expect("a recursive removal");
     assert!(!tree.exists());
+}
+
+/// The exchange key for the encryption cross-check: 32 fixed bytes.
+///
+/// A fixed key is the point - both sides derive the same header values from
+/// it, so a disagreement is about the encoding rather than about the key.
+fn exchange_key() -> Vec<u8> {
+    (0..32_u8)
+        .map(|index| index.wrapping_mul(7).wrapping_add(3))
+        .collect()
+}
+
+/// Put the headers this client sends beside the ones `botocore` computes.
+///
+/// This one needs no store, and it is the half `boto3` can check without one:
+/// `SSE-C` is refused over plain HTTP by most implementations, so what is
+/// exchanged here is the *headers* - their names and the base64 spellings of a
+/// key, of its MD5, and of a KMS encryption context. `botocore` derives all of
+/// them from the same inputs, and the driver compares them line by line.
+#[test]
+fn the_encryption_headers_are_what_botocore_computes() {
+    let customer =
+        yggdryl::holder::s3::Encryption::customer(&exchange_key()).expect("a 32-byte key");
+    for (name, value) in customer.write_headers() {
+        println!("SSE-C {name} {value}");
+    }
+
+    let kms = yggdryl::holder::s3::Encryption::Kms(
+        yggdryl::holder::s3::KmsKey::new(KMS_KEY_ID)
+            .with_context(KMS_CONTEXT)
+            .with_bucket_key(true),
+    );
+    for (name, value) in kms.write_headers() {
+        println!("SSE-KMS {name} {value}");
+    }
 }

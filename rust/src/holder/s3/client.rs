@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime};
 use base64::Engine as _;
 
 use super::credentials::{CredentialCache, CredentialSource, Credentials, variable};
+use super::encryption::Encryption;
 use super::options::S3Options;
 use super::sign::{self, Signer};
 use super::xml;
@@ -199,6 +200,33 @@ impl<'body> Request<'body> {
 
     fn body(mut self, body: &'body [u8]) -> Self {
         self.body = body;
+        self
+    }
+
+    /// Say how the object this request stores is to be encrypted.
+    ///
+    /// `PutObject` and `CreateMultipartUpload` are the two that decide it.
+    fn storing(mut self, encryption: &Encryption) -> Self {
+        self.headers.extend(
+            encryption
+                .write_headers()
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value)),
+        );
+        self
+    }
+
+    /// Carry the key needed to touch an already-encrypted object's bytes.
+    ///
+    /// Nothing at all unless the key is the caller's, which is the whole
+    /// difference `SSE-C` makes to a read.
+    fn keyed(mut self, encryption: &Encryption) -> Self {
+        self.headers.extend(
+            encryption
+                .read_headers()
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value)),
+        );
         self
     }
 }
@@ -426,6 +454,11 @@ impl Client {
     }
 
     /// The options this client was built with.
+    /// How this client encrypts what it writes.
+    pub(super) const fn encryption(&self) -> &Encryption {
+        self.options.encryption()
+    }
+
     pub(super) const fn options(&self) -> &S3Options {
         &self.options
     }
@@ -765,7 +798,7 @@ impl Client {
     ///
     /// Returns the store's refusal for anything that is not a 404.
     pub(super) fn head_object(&self, bucket: &str, key: &str) -> Result<Option<ObjectMeta>> {
-        let request = Request::new("HEAD", "HeadObject", bucket, key);
+        let request = Request::new("HEAD", "HeadObject", bucket, key).keyed(self.encryption());
         let answer = self.send(&request)?;
         if answer.status == 404 {
             return Ok(None);
@@ -881,6 +914,7 @@ impl Client {
     ) -> Result<Option<(Box<dyn Read + Send>, Window)>> {
         let last = offset.saturating_add(length - 1);
         let request = Request::new("GET", "GetObject", bucket, key)
+            .keyed(self.encryption())
             .header("range", format!("bytes={offset}-{last}"));
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
@@ -940,7 +974,7 @@ impl Client {
     ///
     /// Returns the store's refusal, or a read failure part way through.
     pub(super) fn get_all(&self, bucket: &str, key: &str) -> Result<Vec<u8>> {
-        let request = Request::new("GET", "GetObject", bucket, key);
+        let request = Request::new("GET", "GetObject", bucket, key).keyed(self.encryption());
         let (status, headers, mut reader) = self.stream(&request)?;
         let answer = Answer {
             status,
@@ -1011,7 +1045,7 @@ impl Client {
         offset: u64,
         last: Option<u64>,
     ) -> Result<Box<dyn Read + Send>> {
-        let mut request = Request::new("GET", "GetObject", bucket, key);
+        let mut request = Request::new("GET", "GetObject", bucket, key).keyed(self.encryption());
         match last {
             Some(last) => request = request.header("range", format!("bytes={offset}-{last}")),
             None if offset > 0 => request = request.header("range", format!("bytes={offset}-")),
@@ -1064,7 +1098,9 @@ impl Client {
         bytes: &[u8],
         content_type: Option<&str>,
     ) -> Result<Option<String>> {
-        let mut request = Request::new("PUT", "PutObject", bucket, key).body(bytes);
+        let mut request = Request::new("PUT", "PutObject", bucket, key)
+            .storing(self.encryption())
+            .body(bytes);
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
         }
@@ -1185,6 +1221,7 @@ impl Client {
         content_type: Option<&str>,
     ) -> Result<String> {
         let mut request = Request::new("POST", "CreateMultipartUpload", bucket, key)
+            .storing(self.encryption())
             .query("uploads", String::new());
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
@@ -1210,7 +1247,10 @@ impl Client {
         part: u32,
         bytes: &[u8],
     ) -> Result<String> {
+        // A part inherits how the upload was created, so it says nothing
+        // about that - but a customer key is not kept, so it says that.
         let request = Request::new("PUT", "UploadPart", bucket, key)
+            .keyed(self.encryption())
             .query("partNumber", part.to_string())
             .query("uploadId", upload)
             .body(bytes);
@@ -1547,7 +1587,7 @@ fn transport_failure(request: &Request<'_>, path: String, error: ureq::Error) ->
 }
 
 /// MD5 of `bytes`, which `DeleteObjects` still requires as `Content-MD5`.
-fn md5_of(bytes: &[u8]) -> [u8; 16] {
+pub(super) fn md5_of(bytes: &[u8]) -> [u8; 16] {
     use md5::Digest as _;
     md5::Md5::digest(bytes).into()
 }

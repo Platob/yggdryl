@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use super::credentials::Credentials;
+use super::encryption::Encryption;
 
 /// Part size when nothing else is said: 16 MiB, well above S3's 5 MiB floor.
 const DEFAULT_PART_SIZE: u64 = 16 * 1024 * 1024;
@@ -80,6 +81,7 @@ pub struct S3Options {
     connect_timeout: Duration,
     read_environment: bool,
     payload_signing: Option<bool>,
+    encryption: Encryption,
 }
 
 impl Default for S3Options {
@@ -99,6 +101,7 @@ impl Default for S3Options {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             read_environment: true,
             payload_signing: None,
+            encryption: Encryption::Default,
         }
     }
 }
@@ -218,6 +221,17 @@ impl S3Options {
         self
     }
 
+    /// Encrypt what is written, and carry what is needed to read it back.
+    ///
+    /// The choice belongs to the client rather than to one write because a
+    /// customer-supplied key has to be presented again on every read; see
+    /// [`Encryption`] for what each kind says on the wire.
+    #[must_use]
+    pub fn with_encryption(mut self, encryption: Encryption) -> Self {
+        self.encryption = encryption;
+        self
+    }
+
     /// Consult, or ignore, the process environment and the shared AWS files.
     ///
     /// Off, only explicit values and the URL decide, which is what a test
@@ -298,6 +312,11 @@ impl S3Options {
         self.payload_signing
     }
 
+    /// How writes are encrypted at rest.
+    pub const fn encryption(&self) -> &Encryption {
+        &self.encryption
+    }
+
     /// Whether a write to an endpoint of `scheme` signs its body.
     ///
     /// Explicit wins; otherwise TLS decides, because TLS is what the hash
@@ -333,6 +352,8 @@ impl std::fmt::Debug for S3Options {
             .field("connect_timeout", &self.connect_timeout)
             .field("read_environment", &self.read_environment)
             .field("payload_signing", &self.payload_signing)
+            // `Encryption` redacts a customer key.
+            .field("encryption", &self.encryption)
             .finish()
     }
 }

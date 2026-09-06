@@ -73,6 +73,7 @@ use crate::{Error, Result, Url};
 
 mod client;
 mod credentials;
+mod encryption;
 mod file;
 mod folder;
 mod options;
@@ -83,6 +84,7 @@ mod xml;
 
 pub use client::StatsSnapshot;
 pub use credentials::Credentials;
+pub use encryption::{CustomerKey, Encryption, KmsKey};
 pub use file::File;
 pub use folder::Folder;
 pub use options::S3Options;

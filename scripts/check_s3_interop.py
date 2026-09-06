@@ -18,7 +18,11 @@ implementation, cross-checked by the reference client:
    fails on that word, so a skipped half can never read as a pass;
 4. ``boto3`` reads back every object the Rust side wrote and asserts the bytes,
    the sizes, and the exact key names - including the multipart upload, whose
-   assembled content and part count are checked from the outside.
+   assembled content and part count are checked from the outside;
+5. both clients derive the server-side-encryption headers from one fixed key,
+   and every name and base64 spelling is compared. That half needs no store:
+   ``SSE-C`` is refused over plain HTTP by most implementations, so the request
+   ``botocore`` builds is captured and dropped rather than sent.
 
 boto3 and MinIO are checking tools of this script only, never dependencies of
 the crate.
@@ -34,6 +38,7 @@ Point it at a store you already have, and nothing is provisioned::
 
 from __future__ import annotations
 
+import base64
 import os
 import platform
 import shutil
@@ -78,6 +83,14 @@ RUST_KEYS = [
     "données/prix.txt",
     "tilde~and.dots..txt",
 ]
+
+
+# The encryption cross-check: fixed inputs both halves derive headers from.
+# SSE-C is refused over plain HTTP by most implementations, so what is compared
+# here is the headers themselves rather than a stored object.
+SSE_KEY = bytes((index * 7 + 3) % 256 for index in range(32))
+KMS_KEY_ID = "arn:aws:kms:eu-west-1:123456789012:key/abcd-ef01"
+KMS_CONTEXT = '{"desk":"power","book":"eu-gas"}'
 
 
 def minio_url() -> str:
@@ -236,6 +249,74 @@ def read_with_boto3(s3) -> None:
     print(f"boto3 verified {len(expected)} objects and the multipart upload")
 
 
+def botocore_headers(s3, **encryption) -> dict[str, str]:
+    """What botocore puts on a PutObject carrying `encryption`, unsent.
+
+    The request is built and signed the way a real one would be, and then
+    dropped at the last moment: nothing reaches the store, so this works over
+    plain HTTP against any endpoint, or none.
+    """
+
+    class Built(Exception):
+        """Raised once the prepared request has been captured."""
+
+    captured: dict[str, str] = {}
+
+    def capture(request, **_):
+        for name, value in request.headers.items():
+            captured[name.lower()] = (
+                value.decode() if isinstance(value, bytes) else str(value)
+            )
+        raise Built
+
+    s3.meta.events.register("before-send.s3.PutObject", capture)
+    try:
+        s3.put_object(Bucket=BUCKET, Key="sse-probe", Body=b"x", **encryption)
+    except Exception:  # noqa: BLE001 - Built, or whatever botocore wraps it in
+        pass
+    finally:
+        s3.meta.events.unregister("before-send.s3.PutObject", capture)
+    if not captured:
+        raise SystemExit("botocore built no request for the encryption check")
+    return captured
+
+
+def check_encryption_headers(s3, printed: str) -> None:
+    """Compare the encryption headers both clients derive from one key."""
+    ours: dict[str, dict[str, str]] = {"SSE-C": {}, "SSE-KMS": {}}
+    for line in printed.splitlines():
+        kind, _, rest = line.partition(" ")
+        if kind in ours and rest:
+            name, _, value = rest.partition(" ")
+            ours[kind][name.lower()] = value
+    if not ours["SSE-C"] or not ours["SSE-KMS"]:
+        raise SystemExit("the Rust half printed no encryption headers")
+
+    theirs = {
+        "SSE-C": botocore_headers(
+            s3, SSECustomerAlgorithm="AES256", SSECustomerKey=SSE_KEY
+        ),
+        "SSE-KMS": botocore_headers(
+            s3,
+            ServerSideEncryption="aws:kms",
+            SSEKMSKeyId=KMS_KEY_ID,
+            SSEKMSEncryptionContext=base64.b64encode(KMS_CONTEXT.encode()).decode(),
+            BucketKeyEnabled=True,
+        ),
+    }
+    for kind, mine in ours.items():
+        for name, value in mine.items():
+            if name not in theirs[kind]:
+                raise SystemExit(f"{kind}: botocore sends no {name}")
+            if theirs[kind][name] != value:
+                raise SystemExit(
+                    f"{kind}: {name} is {value!r} here and "
+                    f"{theirs[kind][name]!r} in botocore"
+                )
+    checked = sum(len(mine) for mine in ours.values())
+    print(f"botocore agrees on {checked} encryption headers")
+
+
 def run_cargo(endpoint: str, provisioned: bool) -> str:
     """Run the Rust half against `endpoint`, failing on a skipped half."""
     command = [
@@ -286,8 +367,9 @@ def main() -> int:
     try:
         s3 = client(endpoint, provisioned)
         write_with_boto3(s3)
-        run_cargo(endpoint, provisioned)
+        printed = run_cargo(endpoint, provisioned)
         read_with_boto3(s3)
+        check_encryption_headers(s3, printed)
     finally:
         if server is not None:
             server.terminate()
