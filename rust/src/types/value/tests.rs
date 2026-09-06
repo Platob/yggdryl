@@ -171,6 +171,39 @@ mod readings {
     }
 
     #[test]
+    fn every_spelling_of_one_number_reaches_a_decimal_column_at_its_scale() {
+        let column = dtype("decimal128(12, 2)");
+        let hundred = Scalar::d128(10_000, 2);
+
+        // A whole number is a decimal of scale zero, so writing it into a
+        // column of scale two is one hundred, not one: the coefficient is
+        // restated, never taken as though it were already unscaled.
+        assert_eq!(column.scalar(100_i64).unwrap(), hundred);
+        assert_eq!(column.scalar(Scalar::d128(100, 0)).unwrap(), hundred);
+        assert_eq!(column.scalar("100.00").unwrap(), hundred);
+        assert_eq!(column.scalar(Scalar::from(100_u8)).unwrap(), hundred);
+
+        // The same holds at every declared width, and through a Field.
+        for spelling in ["decimal32(9, 2)", "decimal64(12, 2)", "decimal256(40, 2)"] {
+            let column = dtype(spelling);
+            assert_eq!(
+                column
+                    .clone()
+                    .required_field("size")
+                    .scalar(100_i64)
+                    .unwrap(),
+                column.scalar(Scalar::d128(100, 0)).unwrap(),
+                "{spelling}"
+            );
+        }
+
+        // A negative scale removes digits, and only exactly.
+        let tens = dtype("decimal128(12, -1)");
+        assert_eq!(tens.scalar(100_i64).unwrap(), Scalar::d128(10, -1));
+        assert!(tens.scalar(105_i64).is_err());
+    }
+
+    #[test]
     fn every_value_with_a_spelling_prints_it_into_a_text_column() {
         assert_eq!(DataType::Utf8.scalar(7_i64).unwrap(), Scalar::from("7"));
         assert_eq!(

@@ -512,6 +512,25 @@ fn temporal_matches(
     }
 }
 
+/// Read a value's coefficient at the scale a decimal column declares.
+///
+/// A decimal is restated at that scale. A whole number is a decimal of scale
+/// zero and is restated the same way, because that is what it is: one hundred
+/// written into `decimal(12, 2)` is `100.00`, which is already what the same
+/// value answers spelled as a decimal, spelled as text, and cast into that
+/// column by Arrow itself.
+///
+/// `None` when no exact restatement exists, which every caller reports naming
+/// the width it was writing into.
+fn decimal_coefficient_at(value: &Scalar, scale: i8) -> Option<crate::I256> {
+    if value.is_decimal() {
+        return value.decimal256_unscaled_at(scale);
+    }
+    // Scale zero is the whole number's own scale, so the one restatement
+    // implementation answers this too rather than being written out again.
+    Scalar::d256(crate::I256::from_i128(value.as_i128()?), 0).decimal256_unscaled_at(scale)
+}
+
 #[allow(clippy::too_many_lines)]
 fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     use DataType as D;
@@ -524,15 +543,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     }
     match dtype {
         D::Decimal32 { scale, .. } => {
-            let coefficient = if value.is_decimal() {
-                value.decimal_unscaled_at(*scale)
-            } else {
-                value.as_i128()
-            }
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected a d32 representable at scale {scale}"),
-            })?;
+            let coefficient = decimal_coefficient_at(value, *scale)
+                .and_then(|wide| wide.as_i128())
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected a d32 representable at scale {scale}"),
+                })?;
             let coefficient = i32::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal32 coefficient does not fit signed 32 bits")
             })?;
@@ -541,15 +557,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             return Ok((canonical, changed));
         }
         D::Decimal64 { scale, .. } => {
-            let coefficient = if value.is_decimal() {
-                value.decimal_unscaled_at(*scale)
-            } else {
-                value.as_i128()
-            }
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected a d64 representable at scale {scale}"),
-            })?;
+            let coefficient = decimal_coefficient_at(value, *scale)
+                .and_then(|wide| wide.as_i128())
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected a d64 representable at scale {scale}"),
+                })?;
             let coefficient = i64::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal64 coefficient does not fit signed 64 bits")
             })?;
@@ -558,29 +571,22 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             return Ok((canonical, changed));
         }
         D::Decimal128 { scale, .. } => {
-            let coefficient = if value.is_decimal() {
-                value.decimal_unscaled_at(*scale)
-            } else {
-                value.as_i128()
-            }
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected a d128 representable at scale {scale}"),
-            })?;
+            let coefficient = decimal_coefficient_at(value, *scale)
+                .and_then(|wide| wide.as_i128())
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected a d128 representable at scale {scale}"),
+                })?;
             let canonical = Scalar::Decimal(Decimal::D128(Decimal128::new(coefficient, *scale)));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
         D::Decimal256 { scale, .. } => {
-            let coefficient = if value.is_decimal() {
-                value.decimal256_unscaled_at(*scale)
-            } else {
-                value.as_i128().map(crate::I256::from_i128)
-            }
-            .ok_or_else(|| Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!("expected a d256 representable at scale {scale}"),
-            })?;
+            let coefficient =
+                decimal_coefficient_at(value, *scale).ok_or_else(|| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected a d256 representable at scale {scale}"),
+                })?;
             let canonical = Scalar::d256(coefficient, *scale);
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
