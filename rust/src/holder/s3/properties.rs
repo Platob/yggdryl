@@ -285,7 +285,15 @@ impl Parts {
                 // A key with no type is still a key: `sse.key` alone means the
                 // customer key, because nothing else takes one.
                 match (&self.sse_key, &self.kms_key_id) {
-                    (Some(key), None) => customer(key).map(Some),
+                    (Some(key), None) => match customer(key) {
+                        Ok(encryption) => Ok(Some(encryption)),
+                        // A key with no type could have been either; say so
+                        // rather than only that it is not a customer key.
+                        Err(error) if self.sse_md5.is_none() => Err(refusal(&format!(
+                            "{error}; name an sse type of aws:kms if the key is a KMS key"
+                        ))),
+                        Err(error) => Err(error),
+                    },
                     (_, Some(_)) => Ok(Some(Encryption::Kms(kms()))),
                     (None, None) => Ok(None),
                 }

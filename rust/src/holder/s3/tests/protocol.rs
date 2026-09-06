@@ -676,7 +676,7 @@ fn a_named_role_is_traded_for_a_session_once_and_signs_everything_after() {
             .find(|(held, _)| held == name)
             .map(|(_, value)| value.as_str())
     };
-    assert_eq!(asked("Version"), Some("2011-04-15"));
+    assert_eq!(asked("Version"), Some("2011-06-15"));
     assert_eq!(
         asked("RoleArn"),
         Some("arn:aws:iam::123456789012:role/lake-reader")

@@ -279,9 +279,9 @@ fn s3_holder(
 
 /// Read an options mapping in whichever vocabulary it is written in.
 ///
-/// PyIceberg's `s3.*` property names, PyArrow's `S3FileSystem` arguments, and
-/// the AWS environment's names are all read; anything else is ignored, so a
-/// catalog's properties can be handed over whole. Values are taken as their
+/// `PyIceberg`'s `s3.*` property names, `PyArrow`'s `S3FileSystem` arguments,
+/// and the AWS environment's names are all read; anything else is ignored, so
+/// a catalog's properties can be handed over whole. Values are taken as their
 /// text, so `True` and `30` are as good as `"true"` and `"30"`.
 fn s3_options(options: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<S3Options> {
     let Some(options) = options else {
@@ -308,7 +308,7 @@ impl PyS3Path {
     /// key a store uses. Neither contacts the store.
     ///
     /// `options` is a mapping of endpoint, credentials, encryption, and the
-    /// rest, in PyIceberg's names, PyArrow's, or the AWS environment's.
+    /// rest, in `PyIceberg`'s names, `PyArrow`'s, or the AWS environment's.
     #[new]
     #[pyo3(signature = (location, key = None, *, options = None))]
     fn new(

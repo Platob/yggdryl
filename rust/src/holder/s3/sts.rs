@@ -13,7 +13,7 @@ use super::sign::{self, Signer};
 use crate::{Error, Result};
 
 /// The STS API version every request names.
-const VERSION: &str = "2011-04-15";
+const VERSION: &str = "2011-06-15";
 /// How long a session is asked to last when nothing else is said.
 const DEFAULT_DURATION: Duration = Duration::from_secs(3600);
 /// The shortest and longest session STS will issue.

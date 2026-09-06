@@ -21,6 +21,7 @@ use crate::{Error, IOBase, IOFile, Listing, MediaType, MimeType, Result, Url};
 /// | [`IOBase::read_range_bytes`] | one ranged `GET` |
 /// | [`IOBase::pstream_bytes`] to the end | one `GET` |
 /// | [`IOBase::read_digest`] | one `GET` |
+/// | [`IOBase::read_range_digest`] | one ranged `GET`, of that range |
 /// | [`IOBase::size`] | one `HEAD`, or none while open |
 /// | [`IOBase::write_all_bytes`] | one `PUT`, or a multipart upload above the threshold |
 /// | [`IOBase::append_bytes`] | one `GET` and one `PUT` |
