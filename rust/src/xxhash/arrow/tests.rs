@@ -464,7 +464,7 @@ fn identical_rows_answer_identical_digests() {
 }
 
 #[test]
-fn row_digest_roles_exclude_holders_and_explicit_components_narrow_the_input() {
+fn row_digest_roles_exclude_holders_and_nothing_else_narrows_the_input() {
     let symbol = Arc::new(StringArray::from(vec!["AAPL", "MSFT"])) as ArrayRef;
     let quantity = Arc::new(Int64Array::from(vec![100, 250])) as ArrayRef;
     let stored = Arc::new(Int64Array::from(vec![11, 22])) as ArrayRef;
@@ -494,43 +494,11 @@ fn row_digest_roles_exclude_holders_and_explicit_components_narrow_the_input() {
     )
     .unwrap();
 
-    let mut component = Field::new("quantity", DataType::Int64, false);
-    component.as_digest_mut().set_component().unwrap();
-    let mut holder = Field::new("row_digest", DataType::Int64, false);
-    holder.as_digest_mut().set_holder().unwrap();
-    let explicit = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![
-            ArrowField::new("symbol", ArrowDataType::Utf8, false),
-            component.into_arrow().unwrap(),
-            holder.into_arrow().unwrap(),
-        ])),
-        vec![
-            Arc::new(StringArray::from(vec!["changed", "too"])),
-            Arc::clone(&quantity),
-            Arc::new(Int64Array::from(vec![99, 88])),
-        ],
-    )
-    .unwrap();
-    let quantity_only = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![ArrowField::new(
-            "quantity",
-            ArrowDataType::Int64,
-            false,
-        )])),
-        vec![Arc::clone(&quantity)],
-    )
-    .unwrap();
-
     for algorithm in DigestAlgorithm::ALL {
         assert_eq!(
             digests(&row_digests(&fallback, algorithm).unwrap(), algorithm),
             digests(&row_digests(&plain, algorithm).unwrap(), algorithm),
             "a holder is excluded for {algorithm}"
-        );
-        assert_eq!(
-            digests(&row_digests(&explicit, algorithm).unwrap(), algorithm),
-            digests(&row_digests(&quantity_only, algorithm).unwrap(), algorithm),
-            "an explicit component is the whole input for {algorithm}"
         );
     }
 }
@@ -636,7 +604,7 @@ fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
     state.write_bytes(b"prior bytes are not row input");
     let before = state.as_u64();
     let filled = state
-        .fill_arrow_batch(&required_root, source, false)
+        .apply_arrow_batch(&required_root, source, false)
         .unwrap();
     assert_eq!(state.as_u64(), before, "the prototype is unchanged");
     assert!(Arc::ptr_eq(filled.column(0), &values));
@@ -651,14 +619,14 @@ fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
         vec![Arc::clone(&values), populated],
     );
     let conditional = state
-        .fill_arrow_batch(&required_root, source.clone(), false)
+        .apply_arrow_batch(&required_root, source.clone(), false)
         .unwrap();
     assert_eq!(
         conditional.column(1).as_primitive::<UInt64Type>().values(),
         &[seeded_xxh64_row(7, 1), 99]
     );
     let forced = state
-        .fill_arrow_batch(&required_root, source, true)
+        .apply_arrow_batch(&required_root, source, true)
         .unwrap();
     assert_eq!(
         forced.column(1).as_primitive::<UInt64Type>().values(),
@@ -676,7 +644,7 @@ fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
         ],
     );
     let conditional = state
-        .fill_arrow_batch(&nullable_root, source, false)
+        .apply_arrow_batch(&nullable_root, source, false)
         .unwrap();
     let conditional = conditional.column(1).as_primitive::<UInt64Type>();
     assert_eq!(conditional.value(0), seeded_xxh64_row(7, 1));
@@ -692,21 +660,26 @@ fn fill_casts_missing_holders_and_preserves_or_forces_existing_values() {
         vec![Arc::new(Int64Array::from(Vec::<i64>::new()))],
     );
     let empty = state
-        .fill_arrow_batch(&required_root, empty, false)
+        .apply_arrow_batch(&required_root, empty, false)
         .unwrap();
     assert_eq!(empty.num_rows(), 0);
     assert_eq!(empty.num_columns(), 2);
 }
 
 #[test]
-fn holder_paths_are_ordered_override_roles_and_preserve_explicit_empty() {
-    let mut a = DataType::Int64.required_field("a");
-    a.as_digest_mut().set_component().unwrap();
+fn holder_sources_are_ordered_and_preserve_explicit_empty() {
+    // A source states nothing on the field it names: `a` and `b` stay ordinary
+    // columns, and only the holder carries metadata.
+    let a = DataType::Int64.required_field("a");
+    assert!(a.as_digest().is_empty());
     let b = DataType::Utf8.required_field("b");
     let mut ordered = holder("ordered", DataType::UInt64);
-    ordered.as_digest_mut().set_paths(["b", "a"]).unwrap();
+    ordered.as_digest_mut().set_sources(["b", "a"]).unwrap();
     let mut empty = holder("empty", DataType::UInt64);
-    empty.as_digest_mut().set_paths(Vec::<&str>::new()).unwrap();
+    empty
+        .as_digest_mut()
+        .set_sources(Vec::<&str>::new())
+        .unwrap();
     let root = root([a, b, ordered, empty]);
     let rows = Scalar::from_sequence([Scalar::from_sequence([
         Scalar::from(7),
@@ -715,7 +688,7 @@ fn holder_paths_are_ordered_override_roles_and_preserve_explicit_empty() {
         Scalar::from(0_u64),
     ])]);
     let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
-    let filled = Xxh3::new().fill_arrow_batch(&root, source, false).unwrap();
+    let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
 
     let expected_ordered = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(7)])
         .digest(DigestAlgorithm::Xxh3)
@@ -759,7 +732,7 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
 
     let conditional = Xxh3::new()
-        .fill_arrow_batch(&root, source.clone(), false)
+        .apply_arrow_batch(&root, source.clone(), false)
         .unwrap();
     let conditional_nested = conditional
         .column(0)
@@ -782,7 +755,7 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
         "the parent consumes the preserved holder's unsigned payload"
     );
 
-    let filled = Xxh3::new().fill_arrow_batch(&root, source, true).unwrap();
+    let filled = Xxh3::new().apply_arrow_batch(&root, source, true).unwrap();
 
     let nested = filled
         .column(0)
@@ -828,7 +801,7 @@ fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
     );
 
     let filled = Xxh3::new()
-        .fill_arrow_batch(&all_holders_root, source, false)
+        .apply_arrow_batch(&all_holders_root, source, false)
         .unwrap();
     let signed32 = filled.column(1).as_primitive::<Int32Type>();
     let unsigned32 = filled.column(2).as_primitive::<UInt32Type>();
@@ -867,13 +840,13 @@ fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
         )
     };
     let conditional = Xxh3::new()
-        .fill_arrow_batch(&root, source.clone(), false)
+        .apply_arrow_batch(&root, source.clone(), false)
         .unwrap();
     assert_eq!(
         conditional.column(1).as_primitive::<Int64Type>().values(),
         &[stored("AAPL"), -1]
     );
-    let forced = Xxh3::new().fill_arrow_batch(&root, source, true).unwrap();
+    let forced = Xxh3::new().apply_arrow_batch(&root, source, true).unwrap();
     assert_eq!(
         forced.column(1).as_primitive::<Int64Type>().values(),
         &[stored("AAPL"), stored("MSFT")]
@@ -900,7 +873,7 @@ fn mixed_holder_widths_resolve_algorithms_per_holder() {
     let mut state = Xxh64::with_seed(9);
     state.write_bytes(b"ignored");
     let before = state.as_u64();
-    let filled = state.fill_arrow_batch(&root, source, false).unwrap();
+    let filled = state.apply_arrow_batch(&root, source, false).unwrap();
     assert_eq!(state.as_u64(), before);
     assert_eq!(
         filled.column(1).as_primitive::<UInt32Type>().value(0),
@@ -935,28 +908,28 @@ fn every_concrete_state_and_the_dispatcher_expose_batch_fill() {
     let empty = RecordBatch::new_empty(Arc::new(Schema::empty()));
     assert_eq!(
         Xxh32::new()
-            .fill_arrow_batch(&empty_root, empty.clone(), false)
+            .apply_arrow_batch(&empty_root, empty.clone(), false)
             .unwrap()
             .num_rows(),
         0
     );
     assert_eq!(
         Xxh64::new()
-            .fill_arrow_batch(&empty_root, empty.clone(), false)
+            .apply_arrow_batch(&empty_root, empty.clone(), false)
             .unwrap()
             .num_rows(),
         0
     );
     assert_eq!(
         Xxh3::new()
-            .fill_arrow_batch(&empty_root, empty.clone(), false)
+            .apply_arrow_batch(&empty_root, empty.clone(), false)
             .unwrap()
             .num_rows(),
         0
     );
     assert_eq!(
         Xxh128::new()
-            .fill_arrow_batch(&empty_root, empty.clone(), false)
+            .apply_arrow_batch(&empty_root, empty.clone(), false)
             .unwrap()
             .num_rows(),
         0
@@ -964,7 +937,7 @@ fn every_concrete_state_and_the_dispatcher_expose_batch_fill() {
     assert_eq!(
         DigestAlgorithm::Xxh3
             .digester()
-            .fill_arrow_batch(&empty_root, empty, false)
+            .apply_arrow_batch(&empty_root, empty, false)
             .unwrap()
             .num_rows(),
         0
@@ -998,7 +971,7 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
     )
     .unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([wrong_width]), empty_batch(), false)
+        .apply_arrow_batch(&root([wrong_width]), empty_batch(), false)
         .unwrap_err();
     assert_metadata_error(error, "digest:algorithm", "$.digest");
 
@@ -1010,20 +983,20 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
     )
     .unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([non_holder_algorithm]), empty_batch(), false)
+        .apply_arrow_batch(&root([non_holder_algorithm]), empty_batch(), false)
         .unwrap_err();
     assert_metadata_error(error, "digest:algorithm", "$.value");
 
     let non_holder_paths =
-        Field::from_parts("value", DataType::UInt64, false, [("digest:paths", "[]")]).unwrap();
+        Field::from_parts("value", DataType::UInt64, false, [("digest:sources", "[]")]).unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([non_holder_paths]), empty_batch(), false)
+        .apply_arrow_batch(&root([non_holder_paths]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:paths", "$.value");
+    assert_metadata_error(error, "digest:sources", "$.value");
 
     let non_struct_root = DataType::Int64.required_field("value");
     let error = Xxh3::new()
-        .fill_arrow_batch(&non_struct_root, empty_batch(), false)
+        .apply_arrow_batch(&non_struct_root, empty_batch(), false)
         .unwrap_err();
     assert!(
         matches!(error, crate::arrow::Error::IncompatibleSchema(_)),
@@ -1032,14 +1005,17 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
 }
 
 #[test]
-fn digest_paths_reject_peer_outputs_ambiguity_duplicates_and_collection_descent() {
+fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descent() {
     let peer = holder("peer", DataType::UInt64);
     let mut selecting_peer = holder("digest", DataType::UInt64);
-    selecting_peer.as_digest_mut().set_paths(["peer"]).unwrap();
+    selecting_peer
+        .as_digest_mut()
+        .set_sources(["peer"])
+        .unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([peer, selecting_peer]), empty_batch(), false)
+        .apply_arrow_batch(&root([peer, selecting_peer]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:paths", "$.digest");
+    assert_metadata_error(error, "digest:sources", "$.digest");
 
     let nested_value = DataType::Int64.required_field("value");
     let nested_holder = holder("digest", DataType::UInt64);
@@ -1049,12 +1025,12 @@ fn digest_paths_reject_peer_outputs_ambiguity_duplicates_and_collection_descent(
     let mut duplicate = holder("digest", DataType::UInt64);
     duplicate
         .as_digest_mut()
-        .set_paths(["nested", "nested.digest"])
+        .set_sources(["nested", "nested.digest"])
         .unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([nested.clone(), duplicate]), empty_batch(), false)
+        .apply_arrow_batch(&root([nested.clone(), duplicate]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:paths", "$.digest");
+    assert_metadata_error(error, "digest:sources", "$.digest");
 
     let nested = DataType::from_fields([
         holder("left", DataType::UInt64),
@@ -1063,11 +1039,11 @@ fn digest_paths_reject_peer_outputs_ambiguity_duplicates_and_collection_descent(
     .unwrap()
     .required_field("nested");
     let mut ambiguous = holder("digest", DataType::UInt64);
-    ambiguous.as_digest_mut().set_paths(["nested"]).unwrap();
+    ambiguous.as_digest_mut().set_sources(["nested"]).unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([nested, ambiguous]), empty_batch(), false)
+        .apply_arrow_batch(&root([nested, ambiguous]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:paths", "$.digest");
+    assert_metadata_error(error, "digest:sources", "$.digest");
 
     let items = DataType::from_str("array<struct<value:int64>>")
         .unwrap()
@@ -1075,16 +1051,16 @@ fn digest_paths_reject_peer_outputs_ambiguity_duplicates_and_collection_descent(
     let mut collection = holder("digest", DataType::UInt64);
     collection
         .as_digest_mut()
-        .set_paths(["items.value"])
+        .set_sources(["items.value"])
         .unwrap();
     let error = Xxh3::new()
-        .fill_arrow_batch(&root([items, collection]), empty_batch(), false)
+        .apply_arrow_batch(&root([items, collection]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:paths", "$.digest");
+    assert_metadata_error(error, "digest:sources", "$.digest");
 }
 
 #[test]
-fn digest_paths_try_later_literal_prefixes_and_allow_terminal_collections() {
+fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
     let scalar_prefix = DataType::Int64.required_field("a");
     let dotted_prefix = DataType::from_fields([DataType::Int64.required_field("c")])
         .unwrap()
@@ -1095,7 +1071,7 @@ fn digest_paths_try_later_literal_prefixes_and_allow_terminal_collections() {
     let mut digest = holder("digest", DataType::UInt64);
     digest
         .as_digest_mut()
-        .set_paths(["a.b.c", "items"])
+        .set_sources(["a.b.c", "items"])
         .unwrap();
     let root = root([scalar_prefix, dotted_prefix, items, digest]);
     let item_value = Scalar::from_sequence([Scalar::from(3), Scalar::from(4)]);
@@ -1106,7 +1082,7 @@ fn digest_paths_try_later_literal_prefixes_and_allow_terminal_collections() {
         Scalar::from(0_u64),
     ])]);
     let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
-    let filled = Xxh3::new().fill_arrow_batch(&root, source, false).unwrap();
+    let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
     let expected = Scalar::from_sequence([Scalar::from(2), item_value])
         .digest(DigestAlgorithm::Xxh3)
         .as_u64()
@@ -1114,5 +1090,124 @@ fn digest_paths_try_later_literal_prefixes_and_allow_terminal_collections() {
     assert_eq!(
         filled.column(3).as_primitive::<UInt64Type>().value(0),
         expected
+    );
+}
+
+#[test]
+fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
+    let inner_value = DataType::Int64.required_field("value");
+    let inner_digest = holder("inner_digest", DataType::UInt64);
+    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+        .unwrap()
+        .required_field("nested");
+    let root = root([nested, holder("row_digest", DataType::UInt64)]);
+
+    let inner = StructArray::from(vec![(
+        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+    )]);
+    let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();
+
+    let applied = root.as_digest().apply_arrow_batch(&source).unwrap();
+
+    // The view is the seedless state: no configuration crosses into it.
+    assert_eq!(
+        applied,
+        Xxh3::new()
+            .apply_arrow_batch(&root, source.clone(), false)
+            .unwrap()
+    );
+    let nested = applied.column(0).as_struct();
+    assert_eq!(nested.num_columns(), 2);
+    assert_eq!(nested.column(1).null_count(), 0);
+    assert_eq!(applied.column(1).null_count(), 0);
+
+    // Every holder now carries a written value, so a second pass changes none.
+    assert_eq!(
+        root.as_digest().apply_arrow_batch(&applied).unwrap(),
+        applied
+    );
+}
+
+#[test]
+fn the_star_source_is_the_same_selection_as_naming_none() {
+    let a = DataType::Int64.required_field("a");
+    let b = DataType::Utf8.required_field("b");
+    let mut starred = holder("digest", DataType::UInt64);
+    starred.as_digest_mut().set_sources(["*"]).unwrap();
+    let implied = holder("digest", DataType::UInt64);
+
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(7),
+        Scalar::from("AAPL"),
+        Scalar::from(0_u64),
+    ])]);
+    let starred_root = root([a.clone(), b.clone(), starred]);
+    let implied_root = root([a, b, implied]);
+    let starred_source = crate::arrow::batch_from_value(&starred_root, &rows).unwrap();
+    let implied_source = crate::arrow::batch_from_value(&implied_root, &rows).unwrap();
+
+    let starred_filled = starred_root
+        .as_digest()
+        .apply_arrow_batch(&starred_source)
+        .unwrap();
+    let implied_filled = implied_root
+        .as_digest()
+        .apply_arrow_batch(&implied_source)
+        .unwrap();
+
+    let expected = Scalar::from_sequence([Scalar::from(7), Scalar::from("AAPL")])
+        .digest(DigestAlgorithm::Xxh3)
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        starred_filled
+            .column(2)
+            .as_primitive::<UInt64Type>()
+            .value(0),
+        expected
+    );
+    assert_eq!(
+        implied_filled
+            .column(2)
+            .as_primitive::<UInt64Type>()
+            .value(0),
+        expected
+    );
+}
+
+#[test]
+fn a_nested_struct_holder_is_read_rather_than_recomputed() {
+    // The bypass a nested holder earns: the level above feeds that holder's
+    // value instead of hashing the whole Struct a second time.
+    let inner_value = DataType::Int64.required_field("value");
+    let inner_digest = holder("inner_digest", DataType::UInt64);
+    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+        .unwrap()
+        .required_field("nested");
+    let root = root([nested, holder("row_digest", DataType::UInt64)]);
+
+    let inner = StructArray::from(vec![(
+        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(Int64Array::from(vec![7])) as ArrayRef,
+    )]);
+    let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();
+
+    let filled = root.as_digest().apply_arrow_batch(&source).unwrap();
+
+    let inner_digest = filled
+        .column(0)
+        .as_struct()
+        .column(1)
+        .as_primitive::<UInt64Type>()
+        .value(0);
+    let expected = Scalar::from_sequence([Scalar::from(inner_digest)])
+        .digest(DigestAlgorithm::Xxh3)
+        .as_u64()
+        .unwrap();
+    assert_eq!(
+        filled.column(1).as_primitive::<UInt64Type>().value(0),
+        expected,
+        "the outer row feeds the nested digest, not the nested Struct"
     );
 }

@@ -20,15 +20,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch, StringArray, UInt32Array};
+use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt32Array};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
+use crate::expression::{Expression, Function};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::cast_field_array;
-use crate::{ArrowCast, DataType, Error, Field, Result, Url};
+use crate::types::cast::{ArrowCastOptions, cast_field_array};
+use crate::{ArrowCast, DataType, Error, Field, PartitionField, PartitionFieldMut, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
@@ -102,7 +103,10 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
 fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<ArrayRef> {
     let text: ArrayRef = Arc::new(StringArray::from(vec![value; rows]));
     match child {
-        Some(child) => Ok(child.cast_arrow_array(text, child.is_nullable())?),
+        Some(child) => {
+            Ok(child
+                .cast_arrow_array(text, ArrowCastOptions::new().with_safe(child.is_nullable()))?)
+        }
         None => Ok(text),
     }
 }
@@ -175,8 +179,23 @@ pub fn with_partitions(
         columns.push(array);
     }
 
+    rebuilt_batch(batch, fields, columns)
+}
+
+/// Rebuild one batch over a new column list, keeping what a rebuild loses.
+///
+/// `Schema::new` drops the schema-level metadata, and a batch left with no
+/// columns forgets how many rows it had. Both are restored here rather than at
+/// each call site, and the row count doubles as the check that every column
+/// handed in is as long as the batch it is replacing a column of.
+fn rebuilt_batch(
+    batch: &RecordBatch,
+    fields: Vec<Arc<ArrowField>>,
+    columns: Vec<ArrayRef>,
+) -> Result<RecordBatch> {
     let schema = Arc::new(Schema::new(fields).with_metadata(batch.schema().metadata().clone()));
-    RecordBatch::try_new(schema, columns).map_err(Error::Arrow)
+    let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
+    RecordBatch::try_new_with_options(schema, columns, &options).map_err(Error::Arrow)
 }
 
 /// Drop the columns a path already spells out from one batch.
@@ -212,14 +231,362 @@ pub fn without_partitions(
         .iter()
         .map(|index| Arc::clone(batch.column(*index)))
         .collect();
-    let schema = Arc::new(Schema::new(fields).with_metadata(batch.schema().metadata().clone()));
+    rebuilt_batch(batch, fields, columns)
+}
 
-    // A batch with no columns left still has to remember how many rows it had.
-    if columns.is_empty() {
-        let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
-        return RecordBatch::try_new_with_options(schema, columns, &options).map_err(Error::Arrow);
+/// The partition property naming how a column derives its value.
+const TRANSFORM: &str = "transform";
+
+/// The partition property naming the fields a column derives its value from.
+const SOURCES: &str = "sources";
+
+impl<'field> PartitionField<'field> {
+    /// Parses the field paths this column derives its value from.
+    ///
+    /// The shape is the one every `sources` property has, the
+    /// [digest holder's](crate::DigestField::sources) included: a JSON array
+    /// of dotted paths, spelled the way [`Field::get_field_by_path`] and the
+    /// expression grammar both spell one, so a partition column can read a
+    /// struct child as easily as a top-level one.
+    ///
+    /// One source is every transform this crate evaluates today, and
+    /// [`Self::expression`] is where a longer list is refused; the list shape
+    /// is what leaves room for the transforms that read more than one column.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming `partition:sources` when the stored text is not
+    /// that array.
+    pub fn sources(&self) -> Result<Option<Vec<String>>> {
+        self.get(SOURCES)
+            .map(|stored| crate::metadata::parse_source_list(&self.key(SOURCES), stored))
+            .transpose()
     }
-    RecordBatch::try_new(schema, columns).map_err(Error::Arrow)
+
+    /// Parses how this column derives its value from that field.
+    ///
+    /// The vocabulary is the expression grammar's own [`Function`] set, which
+    /// is what keeps one implementation behind a derived partition column and
+    /// behind a predicate over the same value. An absent transform is the
+    /// identity: the source value unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the stored text names no function, or names one
+    /// that cannot take a single argument.
+    pub fn transform(&self) -> Result<Option<Function>> {
+        self.get(TRANSFORM)
+            .map(|stored| crate::metadata::parse_partition_transform(&self.key(TRANSFORM), stored))
+            .transpose()
+    }
+
+    /// Returns the expression that fills this column, if it declares one.
+    ///
+    /// `None` is a column no `partition:sources` names, which is every column
+    /// a directory spells out rather than derives.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Function;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    ///
+    /// assert_eq!(year.as_partition().sources()?, Some(vec!["event".to_owned()]));
+    /// assert_eq!(year.get_metadata("partition:sources"), Some(r#"["event"]"#));
+    /// assert_eq!(year.get_metadata("partition:transform"), Some("year"));
+    /// assert_eq!(
+    ///     year.as_partition().expression()?.map(|value| value.to_string()),
+    ///     Some("year(event)".to_owned()),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a transform is declared with no sources beside
+    /// it, when the list does not name exactly one - the only shape a
+    /// transform of one argument reads - or when the transform is not such a
+    /// function.
+    pub fn expression(&self) -> Result<Option<Expression>> {
+        let Some(sources) = self.sources()? else {
+            if self.contains_key(TRANSFORM) {
+                return Err(self.invalid_sources(smol_str::format_smolstr!(
+                    "expected a {} beside {}, got none",
+                    self.key(SOURCES),
+                    self.key(TRANSFORM)
+                )));
+            }
+            return Ok(None);
+        };
+        // One source is every transform this crate evaluates today; the list
+        // is what a transform reading more than one column will grow into.
+        let [source] = sources.as_slice() else {
+            return Err(self.invalid_sources(crate::text::expected_got(
+                "exactly one source, the only shape a transform reads today",
+                format_args!("{} of them", sources.len()),
+            )));
+        };
+        let mut segments = source.split('.');
+        let root = segments.next().unwrap_or_default();
+        let read = segments.fold(Expression::column(root), Expression::child);
+        Ok(Some(match self.transform()? {
+            Some(function) => Expression::call(function, [read]),
+            None => read,
+        }))
+    }
+
+    /// Name the full source key a declaration was refused under.
+    fn invalid_sources(&self, reason: smol_str::SmolStr) -> Error {
+        Error::InvalidMetadataValue {
+            key: smol_str::SmolStr::new(self.key(SOURCES)),
+            reason,
+        }
+    }
+
+    /// Add the derived partition columns this schema declares to one batch.
+    ///
+    /// The view is taken on the Struct root: its children are the declarations,
+    /// and the batch supplies the rows they are computed from. A partition
+    /// column is *declared* by the pair this view owns - the
+    /// [`transform`](Self::transform) that produces its value and the
+    /// [`sources`](Self::sources) field path it reads. That is what separates
+    /// this from [`with_partitions`], which restores the columns a *directory*
+    /// spells out: there the value comes from the path, here it is computed
+    /// from another column of the same rows.
+    ///
+    /// A batch that declares its own partition columns is its own schema:
+    /// [`Field::from_arrow_schema`] over `batch.schema()` answers the root to
+    /// take this view on, which is what fills a batch already cast to its root.
+    ///
+    /// Every declared Struct is walked, and a source path is read relative to
+    /// the Struct that declares it, exactly as
+    /// [`digest:sources`](crate::DigestField::sources) are. Descendants are final
+    /// before the level above them reads them, so a column can derive from one
+    /// a nested declaration just filled.
+    ///
+    /// A column holding anything but its canonical
+    /// [default](crate::Field::default_value) is left alone, the rule
+    /// [`with_partitions`] and [`DigestField::apply_arrow_batch`](crate::DigestField::apply_arrow_batch) both follow:
+    /// recomputing a written value would hide a mismatch. A column that is
+    /// absent, or present holding nothing but that default, was never written
+    /// and is filled.
+    ///
+    /// The filled column keeps its declaration verbatim, extension identity
+    /// and all. It is not marked `field:partition`: that marker says a
+    /// directory spells the column out, which is a fact about the layout and
+    /// not about the derivation.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Function;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+    ///     .required_field("row");
+    ///
+    /// let batch = RecordBatch::try_from_iter([(
+    ///     "event",
+    ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
+    /// )])?;
+    ///
+    /// let filled = root.as_partition().apply_arrow_batch(&batch)?;
+    ///
+    /// assert_eq!(filled.num_columns(), 2);
+    /// assert_eq!(filled.schema().field(1).name(), "year");
+    /// assert_eq!(
+    ///     filled.column(1).as_ref(),
+    ///     &Int32Array::from(vec![2024]) as &dyn arrow_array::Array,
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this view is not on a Struct root, when a
+    /// declaration is incomplete, when the batch does not carry the source
+    /// column a declaration reads, or when a computed value does not fit the
+    /// type its column declares.
+    pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch> {
+        let root = self.as_field();
+        root.require_struct()?;
+        Ok(filled_struct(root, batch)?.unwrap_or_else(|| batch.clone()))
+    }
+}
+
+/// Fill one Struct level, its own declared Structs first.
+///
+/// `None` is a level nothing was written to, which is what lets an unchanged
+/// batch keep the exact arrays it arrived with.
+fn filled_struct(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
+    // Descendants must be final before this level reads them: a column here
+    // may derive from one a nested declaration just filled.
+    let nested = filled_children(declared, batch)?;
+    let level = nested.as_ref().unwrap_or(batch);
+    Ok(filled_columns(declared, level)?.or(nested))
+}
+
+/// Fill every declared Struct column of one level, bottom-up.
+fn filled_children(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
+    let rows = batch.num_rows();
+    let mut fields: Vec<Arc<ArrowField>> = batch.schema().fields().iter().map(Arc::clone).collect();
+    let mut columns = batch.columns().to_vec();
+    let mut changed = false;
+
+    for child in declared.fields() {
+        if !child.is_struct() {
+            continue;
+        }
+        let Ok(index) = batch.schema().index_of(child.name()) else {
+            continue;
+        };
+        let Some(held) = columns[index].as_any().downcast_ref::<StructArray>() else {
+            continue;
+        };
+        // A struct's own null mask has no place in a batch, so it stays here
+        // and goes back on the array this level rebuilds.
+        let inner = rebuilt_batch(
+            batch,
+            held.fields().iter().map(Arc::clone).collect(),
+            held.columns().to_vec(),
+        )?;
+        let Some(filled) = filled_struct(child, &inner)? else {
+            continue;
+        };
+        let widened = StructArray::try_new_with_length(
+            filled.schema().fields().clone(),
+            filled.columns().to_vec(),
+            held.nulls().cloned(),
+            rows,
+        )
+        .map_err(Error::Arrow)?;
+        fields[index] = Arc::new(
+            ArrowField::new(
+                fields[index].name(),
+                widened.data_type().clone(),
+                fields[index].is_nullable(),
+            )
+            .with_metadata(fields[index].metadata().clone()),
+        );
+        columns[index] = Arc::new(widened);
+        changed = true;
+    }
+
+    if !changed {
+        return Ok(None);
+    }
+    rebuilt_batch(batch, fields, columns).map(Some)
+}
+
+/// Fill the derived columns one level declares directly.
+fn filled_columns(declared: &Field, batch: &RecordBatch) -> Result<Option<RecordBatch>> {
+    // What an expression binds against is the rows that exist: this level's own
+    // columns, at the positions they sit at, which is not the declared level
+    // when the declared level is what is missing from it.
+    let stored = field_from_arrow_schema(declared.name(), batch.schema().as_ref())?;
+    let rows = batch.num_rows();
+    let mut fields: Vec<Arc<ArrowField>> = batch.schema().fields().iter().map(Arc::clone).collect();
+    let mut columns = batch.columns().to_vec();
+    let mut changed = false;
+
+    for child in declared.fields() {
+        let held = batch.schema().index_of(child.name()).ok();
+        if let Some(index) = held {
+            if !is_unwritten(child, columns[index].as_ref(), rows)? {
+                continue;
+            }
+        }
+        let Some(expression) = child.as_partition().expression()? else {
+            continue;
+        };
+        // Strict: a declared type the computed value does not fit is an error,
+        // not a column of silent nulls.
+        let array = child.cast_arrow_array(
+            expression.bind(&stored)?.evaluate(batch)?,
+            ArrowCastOptions::new().with_safe(false),
+        )?;
+        match held {
+            Some(index) => columns[index] = array,
+            None => {
+                fields.push(child.clone().into_arrow_ref()?);
+                columns.push(array);
+            }
+        }
+        changed = true;
+    }
+
+    if !changed {
+        return Ok(None);
+    }
+    rebuilt_batch(batch, fields, columns).map(Some)
+}
+
+/// Return whether every row of a column still holds its canonical default.
+///
+/// This is the one rule a derived partition column and a
+/// [digest holder](crate::DigestField::apply_arrow_batch) both answer to: a cell
+/// equal to its Field's own default was never written, and one holding
+/// anything else was.
+fn is_unwritten(field: &Field, array: &dyn arrow_array::Array, rows: usize) -> Result<bool> {
+    let default = field.default_value()?;
+    if default.is_null() {
+        // For the ordinary nullable declaration the null mask is the answer.
+        return Ok(array.null_count() == rows);
+    }
+    for row in 0..rows {
+        if crate::arrow::value::value_from_array(field.dtype(), array, row)? != default {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+impl PartitionFieldMut<'_> {
+    /// Records the field paths this column derives its value from.
+    ///
+    /// The list is stored in the one canonical spelling every `sources`
+    /// property has. One path is every transform this crate evaluates today,
+    /// and [`PartitionField::expression`] is where a longer list is refused -
+    /// storing one states the intent without pretending it runs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a path is empty or repeated, or when the property
+    /// write fails the validation every metadata write goes through, leaving
+    /// the field unchanged. Both writes here fail the same way.
+    pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<str>,
+    {
+        let rendered = crate::metadata::render_source_list(&self.key(SOURCES), sources)?;
+        self.insert(SOURCES, rendered)?;
+        Ok(())
+    }
+
+    /// Records how this column derives its value from that field.
+    ///
+    /// The function is stored in its canonical spelling, so a dialect alias a
+    /// caller resolved reads back as the one name the grammar owns.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::set_sources`] carries the rule, and a function that cannot take
+    /// a single argument is refused before anything is written.
+    pub fn set_transform(&mut self, transform: Function) -> Result<()> {
+        self.insert(TRANSFORM, transform.as_str())?;
+        Ok(())
+    }
 }
 
 /// A batch reader that restores the partition columns of a location.
@@ -479,7 +846,7 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 &DataType::Utf8.nullable_field(column.as_str()),
                 Some(schema.field(index).metadata()),
                 Arc::clone(batch.column(index)),
-                false,
+                ArrowCastOptions::new().with_safe(false),
             )?
         } else {
             Arc::clone(batch.column(index))
@@ -762,7 +1129,11 @@ fn part_reader(
     }
     let reader = crate::iobase::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
-    Ok(crate::arrow::cast_reader(restored, field, options.safe())?)
+    Ok(crate::arrow::cast_reader(
+        restored,
+        field,
+        ArrowCastOptions::new().with_safe(options.safe()),
+    )?)
 }
 
 /// One stable routing plan for every cadence of a folder write.

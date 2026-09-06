@@ -49,13 +49,13 @@ macro_rules! arrow_batch_fill {
         ///
         /// Returns an error for an invalid root, holder, digest path, or batch.
         #[cfg(feature = "arrow")]
-        pub fn fill_arrow_batch(
+        pub fn apply_arrow_batch(
             &self,
             root: &crate::Field,
             batch: arrow_array::RecordBatch,
             force: bool,
         ) -> crate::arrow::Result<arrow_array::RecordBatch> {
-            crate::xxhash::arrow::fill_arrow_batch_with(self, root, batch, force)
+            crate::xxhash::arrow::apply_arrow_batch_with(self, root, batch, force)
         }
     };
 }

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
-use yggdryl::{ArrowCast, AsciiEnum, DataType, Field};
+use yggdryl::{ArrowCast, ArrowCastOptions, AsciiEnum, DataType, Field};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
@@ -57,7 +57,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     group.bench_function("utf8_to_ascii32_ingest", |bencher| {
         bencher.iter(|| {
             black_box(&target)
-                .cast_arrow_array(Arc::clone(&text), false)
+                .cast_arrow_array(Arc::clone(&text), ArrowCastOptions::new().with_safe(false))
                 .expect("the codes fit the width")
         });
     });
@@ -65,7 +65,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     // The padded column under the ASCII root's own schema, so the render
     // sees the extension identity exactly as a stored column carries it.
     let padded = target
-        .cast_arrow_array(Arc::clone(&text), false)
+        .cast_arrow_array(Arc::clone(&text), ArrowCastOptions::new().with_safe(false))
         .expect("the codes fit the width");
     let batch = RecordBatch::try_new(
         root([DataType::FixedAscii(4).required_field("ccy")])
@@ -78,7 +78,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     group.bench_function("ascii32_to_utf8_render", |bencher| {
         bencher.iter(|| {
             black_box(&text_root)
-                .cast_arrow_batch(batch.clone(), false)
+                .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
                 .expect("the stored codes are valid")
         });
     });

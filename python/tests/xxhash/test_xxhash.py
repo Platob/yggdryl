@@ -178,7 +178,7 @@ class TestStates:
         assert copy.deepcopy(state).as_digest() == state.as_digest()
         assert repr(state) == "Xxh3(seed=3)"
 
-    def test_fill_arrow_batch_adds_a_missing_holder_without_consuming_state(
+    def test_apply_arrow_batch_adds_a_missing_holder_without_consuming_state(
         self,
     ) -> None:
         holder = yggdryl.Field("row_digest", "uint64", nullable=False)
@@ -197,7 +197,7 @@ class TestStates:
         state.write_bytes(b"running")
         before = state.as_digest()
 
-        filled = state.fill_arrow_batch(root, batch)
+        filled = state.apply_arrow_batch(root, batch)
 
         expected: list[int] = []
         for symbol in ("AAPL", "MSFT"):
@@ -208,7 +208,7 @@ class TestStates:
         assert filled.column("row_digest").to_pylist() == expected
         assert state.as_digest() == before
 
-    def test_fill_arrow_batch_replaces_only_default_holders(self) -> None:
+    def test_apply_arrow_batch_replaces_only_default_holders(self) -> None:
         holder = yggdryl.Field("row_digest", "uint64", nullable=False)
         holder.digest["role"] = "holder"
         root = yggdryl.Field(
@@ -228,13 +228,13 @@ class TestStates:
         expected = xxhash.Xxh64()
         expected.write_scalar(Scalar.from_py(["AAPL"]))
 
-        filled = xxhash.Xxh64().fill_arrow_batch(root, batch)
+        filled = xxhash.Xxh64().apply_arrow_batch(root, batch)
 
         assert filled.column("row_digest").to_pylist() == [
             int(expected.as_digest()),
             123,
         ]
-        forced = xxhash.Xxh64().fill_arrow_batch(root, batch, force=True)
+        forced = xxhash.Xxh64().apply_arrow_batch(root, batch, force=True)
         forced_expected = xxhash.Xxh64()
         forced_expected.write_scalar(Scalar.from_py(["MSFT"]))
         assert forced.column("row_digest").to_pylist() == [
@@ -242,7 +242,7 @@ class TestStates:
             int(forced_expected.as_digest()),
         ]
 
-    def test_fill_arrow_batch_infers_the_algorithm_from_the_holder_width(self) -> None:
+    def test_apply_arrow_batch_infers_the_algorithm_from_the_holder_width(self) -> None:
         holder = yggdryl.Field("row_digest", "uint32", nullable=False)
         holder.digest["role"] = "holder"
         root = yggdryl.Field(
@@ -256,7 +256,7 @@ class TestStates:
         expected = xxhash.Xxh32()
         expected.write_scalar(Scalar.from_py(["AAPL"]))
 
-        filled = xxhash.Xxh3().fill_arrow_batch(root, batch)
+        filled = xxhash.Xxh3().apply_arrow_batch(root, batch)
 
         assert filled.column("row_digest").type == pa.uint32()
         assert filled.column("row_digest").to_pylist() == [int(expected.as_digest())]
@@ -281,7 +281,7 @@ class TestStates:
             [pa.array(["AAPL", "8"], type=pa.string())], names=["symbol"]
         )
 
-        filled = xxhash.Xxh3().fill_arrow_batch(root, source)
+        filled = xxhash.Xxh3().apply_arrow_batch(root, source)
         expected32 = [
             int.from_bytes(bytes(Scalar.from_py([value]).digest("xxh32")), "big", signed=True)
             for value in ("AAPL", "8")
@@ -315,9 +315,9 @@ class TestStates:
             ],
             names=["symbol", "signed64"],
         )
-        conditional = xxhash.Xxh3().fill_arrow_batch(conditional_root, populated)
+        conditional = xxhash.Xxh3().apply_arrow_batch(conditional_root, populated)
         assert conditional.column("signed64").to_pylist() == [expected64[0], -1]
-        forced = xxhash.Xxh3().fill_arrow_batch(
+        forced = xxhash.Xxh3().apply_arrow_batch(
             conditional_root, populated, force=True
         )
         assert forced.column("signed64").to_pylist() == expected64

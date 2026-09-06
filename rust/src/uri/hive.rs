@@ -24,7 +24,7 @@ impl Url {
     /// # }
     /// ```
     pub fn hive_partitions(&self) -> Vec<(String, String)> {
-        self.path_segments().filter_map(hive_pair).collect()
+        hive_partitions_of(self.path_segments())
     }
 
     /// Read the Hive partition pairs this location spells out *below* `root`.
@@ -54,7 +54,7 @@ impl Url {
     /// ```
     pub fn hive_partitions_under(&self, root: &Self) -> Vec<(String, String)> {
         self.segments_under(root)
-            .map(|segments| segments.into_iter().filter_map(hive_pair).collect())
+            .map(|segments| hive_partitions_of(segments.into_iter()))
             .unwrap_or_default()
     }
 
@@ -78,6 +78,17 @@ impl Url {
     pub fn with_hive_partition(&self, column: &str, value: &str) -> crate::Result<Self> {
         self.joinpath(&format!("{column}={value}"))
     }
+}
+
+/// Read the Hive partition pairs a sequence of path segments spells out.
+///
+/// A location whose segments are not URL path segments - an archive member's
+/// own name, say - reads its partitions here rather than by being turned into
+/// a URL first.
+pub(crate) fn hive_partitions_of<'segment>(
+    segments: impl Iterator<Item = &'segment str>,
+) -> Vec<(String, String)> {
+    segments.filter_map(hive_pair).collect()
 }
 
 /// Read the `column=value` pair one path segment spells out.

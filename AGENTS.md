@@ -93,9 +93,11 @@ pin an unsettled design by implementing a binding first.
 - `Field` alone owns metadata and cache-aware mutation. `DataType` has no
   metadata. Protocol metadata is inert `<scheme>:<property>` text in one map.
   A protocol view borrows a whole `Field` and dereferences to it. Protocol-owned
-  typed vocabulary, including `digest:role`, and generic `identity:` /
-  `partition:` metadata live on those views, never on `Field`. The only
-  digest roles are `holder` and `component`. `Field`
+  typed vocabulary, including `digest:role` and the `partition:` derivation
+  pair, lives on those views, never on `Field`. `holder` is the only digest
+  role: a declaration states what a field holds or derives, never what another
+  field contributes, so a schema marks one field and leaves the ones it reads
+  ordinary columns. `Field`
   owns its own state whatever key it is stored under: `field:init`,
   `field:partition`, `alias`, `comment`, `display`, `location`.
   `PARQUET:field_id` is the reserved typed exception.
@@ -132,11 +134,13 @@ pin an unsettled design by implementing a binding first.
 - Integer digest holders accept signed or unsigned storage at the algorithm's
   exact width. Signed storage is a bit-preserving view of the unsigned digest;
   nested holder reuse normalizes it back to that unsigned payload before feed.
-- A row digest reads direct Struct children in declaration order. One or more
-  `digest:role=component` fields are the exact input; with none, every field
-  except `digest:role=holder` is input. Holders never feed themselves back into
-  a recomputation. The selected values retain ordered-sequence framing,
-  including when the selection is empty.
+- A row digest reads direct Struct children in declaration order. A holder's
+  `digest:sources` is the exact input, resolved relative to its own Struct;
+  `["*"]` and an absent list both select every field except a holder, and `"*"`
+  may not travel beside a named path. Holders never feed themselves back into a
+  recomputation, and a selected Struct holding exactly one direct holder feeds
+  that holder's value rather than being hashed again. The selected values
+  retain ordered-sequence framing, including when the selection is empty.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.
@@ -259,6 +263,21 @@ scheme vocabulary.
 - `IOBase` is positional: `pread`/`pwrite` are primitives. Whole reads,
   streams, compression, records, and media derive from them. No second storage
   trait or hidden cursor in the base object.
+- Every operation issues the fewest `IOBase` calls that can answer it. One call
+  is a round trip against an object store, a syscall against a file, and a lock
+  through every wrapper, so the call count is the cost model - not the byte
+  count. Slice what a later step needs out of what a read already returned;
+  answer from an index, a listing, or a parsed footer instead of asking again;
+  record what a write already knows rather than reading it back; and make a
+  call conditional when the state already says it would change nothing.
+- An answer only the store can give about one resource - a member's data
+  offset, a footer's length - is read once and held where every handle on that
+  resource shares it, never once per handle. A wrapper that keeps its own copy
+  of the same answer is the bug that hides the call.
+- State each surface's cost model in call counts and assert it. A test pinning
+  "a warm positional read is one handle read" catches a regression that a
+  timing benchmark reports as noise, so a surface owning the handle it calls
+  exposes the counter that test reads.
 - Every derived read and append names the core type it answers, because the
   same verbs also address rows: `read_all_bytes`, `read_range_bytes`,
   `write_all_bytes`, `append_bytes`, `read_scalar`, `read_arrow_reader`. A bare
@@ -359,6 +378,14 @@ scheme vocabulary.
   decide partitions. Contradictions are typed errors naming both declarations.
 - `media::partition::partition_text` is the only partition renderer. Partition
   columns move between paths and rows through one typed implementation.
+- A derived column names its own input: `partition:transform` is an expression
+  grammar function over the field paths in `partition:sources`, both on the
+  derived column, and both stored in the one shape every `sources` property
+  has. A transform reads exactly one source today; a longer list is stored and
+  refused when the column is applied. `apply_arrow_batch` is the one verb every declaring protocol
+  answers - it walks the Structs that protocol declares and leaves a column
+  holding anything but its canonical default alone - and `Field` runs them in
+  the order their answers depend on: cast, then partition, then digest.
 
 ## Media and table formats
 
@@ -501,10 +528,17 @@ Iceberg contract:
 - `ArrowCast` owns recursive array/batch casting. Struct casts reconcile names,
   reject ambiguous folds, follow target order, fill valid missing fields, and
   preserve exact arrays after logical validation.
-- `Field::cast_arrow_array_bits` is the explicit full-domain `int32`/`uint32`
-  and `int64`/`uint64` representation cast. It shares value buffers unless a
-  required target must fill nulls, preserves every present value's bits, and
-  never changes ordinary numeric cast semantics.
+- `ArrowCastOptions` carries the three independent answers a cast needs and
+  every entry point takes it: `safe` decides whether a present value may be
+  converted, `Nullability` whether a declared value may be absent, and
+  `Representation` what a same-width pair carries. `Representation::Bits`
+  reads two fixed-width layouts of one byte width as the same bytes, sharing
+  the value buffer; it is a preference, so a pair that is not the same bytes,
+  or a target whose values follow a rule, converts as it always did.
+- `ArrowCastPlan` is the schema-dependent half of a cast compiled once:
+  immutable, `Send + Sync`, `compile`/`preflight`/`apply`, one plan per reader.
+  Only masks, offsets, and dictionary reachability vary per batch, and an exact
+  cast returns the caller's own batch.
 - Wrapper exposure propagates: hidden child failures/nulls remain hidden.
   Preflight slot and fixed-buffer budgets before allocating.
 - IPC dictionary IDs are transport-local. Preserve native IDs in one reserved

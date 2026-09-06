@@ -262,17 +262,17 @@ const assert = require('node:assert/strict')
 const field = new Field('price', 'int64', false)
 field.iceberg.set('doc', 'closing price')
 field.postgres.update({ type: 'numeric' })
-field.digest.set('role', 'component')
+field.digest.set('role', 'holder')
 field.identity.update({ role: 'primary', nulls: 'distinct' })
-field.partition.update({ transform: 'bucket[16]', order: '0' })
+field.partition.update({ transform: 'year', sources: '["event"]' })
 
 assert.equal(field.iceberg.get('doc'), 'closing price')
 assert.deepEqual([...field.postgres], [['type', 'numeric']])
 assert.equal(field.iceberg.size, 1)
 assert.equal(field.postgres.has('doc'), false)
-assert.equal(field.digest.get('role'), 'component')
+assert.equal(field.digest.get('role'), 'holder')
 assert.equal(field.identity.get('role'), 'primary')
-assert.equal(field.partition.get('transform'), 'bucket[16]')
+assert.equal(field.partition.get('transform'), 'year')
 
 // The bare name is all the view needs; the full key is what the field stores.
 assert.equal(field.iceberg.key('doc'), 'iceberg:doc')
@@ -326,20 +326,19 @@ const fallback = new Field(
   'row', DataType.fromFields([identifier, price, holder]), false,
 )
 assert.deepEqual(fallback.digestFieldNames(), ['id', 'price'])
-assert.equal(fallback.hasDigestComponents, false)
+assert.equal(fallback.digestFieldLen, 2)
 
-identifier.digest.set('role', 'component')
-const explicit = new Field(
-  'row', DataType.fromFields([identifier, price, holder]), false,
-)
-assert.deepEqual(explicit.digestFieldNames(), ['id'])
-assert.equal(explicit.digestFieldLen, 1)
-assert.equal(explicit.onlyDigestFields().dtype.length, 1)
+// A holder narrows its own input; the fields it reads stay unmarked.
+holder.digest.set('sources', '["id"]')
+assert.deepEqual(identifier.digest.entries(), [])
+assert.equal(holder.digest.get('sources'), '["id"]')
+assert.equal(fallback.onlyDigestFields().dtype.length, 2)
 ```
 
 Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the
-64-bit algorithms. `field.castArrowArrayBits(...)` is the same explicit,
-reversible representation cast outside holder filling.
+64-bit algorithms. `field.castArrowArray(values, { representation: 'bits' })` is
+the same reversible [same-width reading](../types/cast.md#reading-the-bits)
+outside holder filling.
 
 ## A filesystem is whatever answers seven calls
 
@@ -672,7 +671,7 @@ Every immutable wrapper here follows the same convention: `equals`, `compare`,
 hashed in place, an `ArrayBuffer` is narrowed to a `Buffer` window, and a
 `string` is encoded as UTF-8.
 
-Each resumable state also exposes `fillArrowBatch(root, batch, force = false)`.
+Each resumable state also exposes `applyArrowBatch(root, batch, force = false)`.
 The root Field's digest metadata selects the row values, and the state supplies
 its algorithm, seed, and secret.
 
@@ -792,9 +791,9 @@ and validates a plain object. Resolution and merging are the core's, on the
 - Rust field metadata -> `http:` headers on `as_http()`, while
   `parquet_field_id`, `alias`, `comment`, `display`, and `location` stay on
   `Field`.
-- `fillArrowBatch` -> fills default holder cells; a populated holder is
+- `applyArrowBatch` -> fills default holder cells; a populated holder is
   preserved unless `force` is true.
-- `fillArrowBatch` -> ignores bytes already written to the state, leaves it
+- `applyArrowBatch` -> ignores bytes already written to the state, leaves it
   unchanged, and copies Arrow batches as IPC in both directions.
 - A signed digest holder -> high-bit results read as a negative `number` or
   `bigint`, with the complete digest bits retained.

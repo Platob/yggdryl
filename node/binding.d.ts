@@ -423,18 +423,29 @@ declare module './index' {
     intoSchemeCompat(target: CompatibilityScheme): Field
     /**
      * Cast whatever Arrow JS holds - a Table, RecordBatch, BatchReader, or
-     * IPC bytes - to this exact Field, batch by batch, as a Table.
+     * IPC bytes - to this exact Field, batch by batch, as a Table. Eager: the
+     * stream is drained here.
      */
-    castArrow(rows: BatchSource, options?: { safe?: boolean }): unknown
-    /** Bit-cast an opposite-signed, same-width Arrow integer vector. */
-    castArrowArrayBits(values: ArrowVector): ArrowVector
+    castArrow(rows: BatchSource, options?: ArrowCastOptions): unknown
+    /** Cast one Apache Arrow JS record batch to this exact Field. */
+    castArrowBatch(
+      batch: ArrowRecordBatch,
+      options?: ArrowCastOptions,
+    ): ArrowRecordBatch
+    /**
+     * Cast a whole stream to this exact Field, lazily. The source reader is
+     * consumed and the returned reader casts one batch per pull.
+     */
+    castArrowReader(rows: BatchSource, options?: ArrowCastOptions): BatchReader
+    /** Cast one Apache Arrow JS vector to this exact Field. */
+    castArrowArray(values: ArrowVector, options?: ArrowCastOptions): ArrowVector
     /** The same cast under the generic name. */
-    cast(rows: BatchSource, options?: { safe?: boolean }): unknown
+    cast(rows: BatchSource, options?: ArrowCastOptions): unknown
   }
 
   interface Xxh32 {
     /** Fill default XXH32 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -443,7 +454,7 @@ declare module './index' {
 
   interface Xxh64 {
     /** Fill default XXH64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -452,7 +463,7 @@ declare module './index' {
 
   interface Xxh3 {
     /** Fill default XXH3-64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -461,7 +472,7 @@ declare module './index' {
 
   interface Xxh128 {
     /** Fill default XXH3-128 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -2544,6 +2555,31 @@ declare module './index' {
  * record batches, plus the JavaScript rows the record surface accepts.
  */
 export type IcebergSource = BatchSource | RecordSource
+
+/**
+ * What a cast does about a non-nullable target field the source cannot fill:
+ * `"default"` writes its canonical default, `"strict"` refuses by path.
+ */
+export type Nullability = 'default' | 'strict'
+
+/**
+ * What a cast carries across two datatypes of the same physical width:
+ * `"value"` the number they spell, `"bits"` the bytes under it - so an
+ * `int64`, a `uint64`, a `float64` and a `fixed_size_binary(8)` are one buffer
+ * under four readings. A pair that is not the same bytes converts as usual.
+ */
+export type Representation = 'value' | 'bits'
+
+/**
+ * The two independent answers every Arrow cast needs: `safe` decides whether a
+ * present value may be converted, `nullability` whether a declared value may be
+ * absent.
+ */
+export interface ArrowCastOptions {
+  safe?: boolean
+  nullability?: Nullability
+  representation?: Representation
+}
 
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =

@@ -34,14 +34,14 @@ use arrow_select::zip::zip;
 
 use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
+use crate::metadata::is_all_sources;
+use crate::types::cast::{ArrowCast, ArrowCastOptions, Representation};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{
-    ArrowCast, DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone,
-};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
 use super::field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, expected_holder_dtypes, has_explicit_components,
-    holder_accepts, is_effective_component,
+    DIGEST_ALGORITHM_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes, holder_accepts,
+    is_digest_source,
 };
 use super::scalar::{
     write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
@@ -51,7 +51,7 @@ use super::scalar::{
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
 /// This stays private to the implementation: the public surface remains the
-/// inherent `fill_arrow_batch` method on each state.
+/// inherent `apply_arrow_batch` method on each state.
 pub(crate) trait ArrowDigestState: Clone + Hasher {
     fn algorithm(&self) -> DigestAlgorithm;
     fn reset(&mut self);
@@ -151,13 +151,13 @@ impl<S: ArrowDigestState> ArrowDigestState for FillState<S> {
 /// holders are filled bottom-up, then each containing holder streams one row
 /// through the canonical scalar feed. Unless `force` is set, only holder cells
 /// equal to that Field's canonical default are replaced.
-pub(crate) fn fill_arrow_batch_with<S: ArrowDigestState>(
+pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     prototype: &S,
     root: &Field,
     batch: RecordBatch,
     force: bool,
 ) -> Result<RecordBatch> {
-    let batch = root.cast_arrow_batch(batch, true)?;
+    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
     let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
     let row_count = batch.num_rows();
     let (columns, changed) =
@@ -204,8 +204,8 @@ impl<'field> StructPlan<'field> {
         let mut holders = Vec::new();
         for (index, field) in fields.iter().enumerate() {
             let field_path = child_path(path, field.name());
-            let paths = field.as_digest().paths().map_err(|error| {
-                digest_paths_error(&field_path, format!("cannot read stored paths: {error}"))
+            let sources = field.as_digest().sources().map_err(|error| {
+                digest_sources_error(&field_path, format!("cannot read stored sources: {error}"))
             })?;
             let declared_algorithm = field.as_digest().algorithm().map_err(|error| {
                 digest_algorithm_error(
@@ -214,10 +214,10 @@ impl<'field> StructPlan<'field> {
                 )
             })?;
             if !field.as_digest().is_holder() {
-                if paths.is_some() {
-                    return Err(digest_paths_error(
+                if sources.is_some() {
+                    return Err(digest_sources_error(
                         &field_path,
-                        "digest:paths belongs only to a digest holder",
+                        "digest:sources belongs only to a digest holder",
                     ));
                 }
                 if declared_algorithm.is_some() {
@@ -230,8 +230,13 @@ impl<'field> StructPlan<'field> {
             }
             let holder_algorithm =
                 resolve_holder_algorithm(field, declared_algorithm, algorithm, &field_path)?;
-            let selected = match paths {
-                Some(paths) => paths
+            // An absent list and the `["*"]` spelling are the same selection:
+            // every field of this Struct the holder does not hold. Naming
+            // sources on the holder is what keeps the fields it reads
+            // unmarked.
+            let named = sources.filter(|sources| !is_all_sources(sources));
+            let selected = match named {
+                Some(sources) => sources
                     .iter()
                     .map(|path| {
                         let selection = resolve_selection(fields, path, &field_path)?;
@@ -240,10 +245,10 @@ impl<'field> StructPlan<'field> {
                             .first()
                             .is_some_and(|selected| fields[*selected].as_digest().is_holder())
                         {
-                            return Err(digest_paths_error(
+                            return Err(digest_sources_error(
                                 &field_path,
                                 format!(
-                                    "path {path:?} selects same-Struct digest holder {:?}; holders are outputs, not peer components",
+                                    "source {path:?} selects same-Struct digest holder {:?}; holders are outputs, not sources",
                                     fields[selection.steps[0]].name()
                                 ),
                             ));
@@ -251,31 +256,28 @@ impl<'field> StructPlan<'field> {
                         shortcut_struct_holder(selection, path, Some(&field_path))
                     })
                     .collect::<Result<Vec<_>>>()?,
-                None => {
-                    let explicit = has_explicit_components(fields);
-                    fields
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, candidate)| is_effective_component(candidate, explicit))
-                        .map(|(selected, candidate)| {
-                            shortcut_struct_holder(
-                                Selection {
-                                    steps: vec![selected],
-                                    field: candidate,
-                                },
-                                candidate.name(),
-                                None,
-                            )
-                        })
-                        .collect::<Result<Vec<_>>>()?
-                }
+                None => fields
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, candidate)| is_digest_source(candidate))
+                    .map(|(selected, candidate)| {
+                        shortcut_struct_holder(
+                            Selection {
+                                steps: vec![selected],
+                                field: candidate,
+                            },
+                            candidate.name(),
+                            None,
+                        )
+                    })
+                    .collect::<Result<Vec<_>>>()?,
             };
             let mut targets = HashSet::with_capacity(selected.len());
             for selection in &selected {
                 if !targets.insert(selection.steps.clone()) {
-                    return Err(digest_paths_error(
+                    return Err(digest_sources_error(
                         &field_path,
-                        "multiple digest paths resolve to the same selected value",
+                        "multiple digest sources resolve to the same selected value",
                     ));
                 }
             }
@@ -300,8 +302,8 @@ fn child_path(parent: &str, name: &str) -> String {
     format!("{parent}.{name}")
 }
 
-fn digest_paths_error(holder: &str, reason: impl std::fmt::Display) -> Error {
-    digest_metadata_error(DIGEST_PATHS_KEY, holder, reason)
+fn digest_sources_error(holder: &str, reason: impl std::fmt::Display) -> Error {
+    digest_metadata_error(DIGEST_SOURCES_KEY, holder, reason)
 }
 
 fn digest_algorithm_error(holder: &str, reason: impl std::fmt::Display) -> Error {
@@ -395,7 +397,7 @@ fn resolve_selection<'field>(
         }
         offset = boundary + 1;
     }
-    Err(digest_paths_error(
+    Err(digest_sources_error(
         holder,
         blocked.unwrap_or_else(|| format!("path {path:?} does not name a field")),
     ))
@@ -425,7 +427,7 @@ fn shortcut_struct_holder<'field>(
             selection.field.name()
         );
         return Err(match holder_path {
-            Some(holder) => digest_paths_error(holder, reason),
+            Some(holder) => digest_sources_error(holder, reason),
             None => Error::IncompatibleSchema(reason),
         });
     }
@@ -511,8 +513,13 @@ fn fill_struct<S: ArrowDigestState>(
             continue;
         }
         let computed = collect(&values, holder.algorithm);
+        // A signed holder stores the unsigned digest's bits, not a narrower
+        // number: the same bytes under the width the schema declared.
         let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
-            holder.field.cast_arrow_array_bits(computed)?
+            holder.field.cast_arrow_array(
+                computed,
+                ArrowCastOptions::new().with_representation(Representation::Bits),
+            )?
         } else {
             computed
         };
@@ -637,11 +644,10 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
         .map(|field| Field::from_arrow_ref(Arc::clone(field)).map_err(Error::from))
         .collect::<Result<_>>()?;
     let columns = batch.columns();
-    let explicit = has_explicit_components(&fields);
     let selected: Vec<usize> = fields
         .iter()
         .enumerate()
-        .filter_map(|(index, field)| is_effective_component(field, explicit).then_some(index))
+        .filter_map(|(index, field)| is_digest_source(field).then_some(index))
         .collect();
     let mut digests = Vec::with_capacity(batch.num_rows());
     let mut digester = algorithm.digester();

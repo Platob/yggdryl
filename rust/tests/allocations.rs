@@ -812,3 +812,194 @@ fn borrowed_value_bytes_allocate_nothing() {
         });
     }
 }
+
+/// A row schema over the payload-carrying columns, and one row that satisfies
+/// it exactly. These are the columns whose canonical form used to be built and
+/// thrown away once per row: the payload is unbounded, so the copy was too.
+fn payload_row() -> (Field, Scalar) {
+    let root = DataType::from_fields([
+        Field::new("symbol", DataType::Utf8, false),
+        Field::new("payload", DataType::Binary, false),
+        Field::new("ccy", DataType::Currency, false),
+        Field::new("venue", DataType::Ascii, false),
+    ])
+    .expect("the row schema is valid")
+    .required_field("row");
+    let long = "a symbol far longer than any inline string buffer can hold";
+    let row = Scalar::from_sequence([
+        Scalar::from(long),
+        Scalar::from(vec![0x42_u8; 4_096]),
+        root.fields()[2]
+            .scalar("USD")
+            .expect("the currency code is valid"),
+        root.fields()[3]
+            .scalar("XNAS")
+            .expect("the venue text is ASCII"),
+    ]);
+    let row = root
+        .canonicalize_value(row)
+        .expect("the row satisfies its schema");
+    (root, row)
+}
+
+#[test]
+fn canonicalizing_a_row_a_schema_already_holds_allocates_nothing() {
+    // Ingest canonicalizes every row, and a row read back out of a batch is
+    // already in its declared representation. Deciding before building is what
+    // makes that case free: the alternative built each string, payload, and
+    // code only to compare it against the value already in hand.
+    let (root, row) = payload_row();
+    free(
+        "canonicalizing a row already in its declared representation",
+        || {
+            black_box(
+                root.canonicalize_value(black_box(&row).clone())
+                    .expect("the row satisfies its schema"),
+            );
+        },
+    );
+}
+
+#[test]
+fn rewriting_a_layout_shares_the_storage_it_rewrites() {
+    // An offset width is a layout, not a payload. Rewriting between two of
+    // them retags one storage handle, so the bytes are never copied and the
+    // rewritten value still points at the buffer it came from.
+    let payload = vec![0x42_u8; 4_096];
+    let source = Scalar::from(payload);
+    let address = |value: &Scalar| value.as_bytes().expect("the payload is there").as_ptr();
+    let from = address(&source);
+    for dtype in [DataType::LargeBinary, DataType::BinaryView] {
+        let field = Field::new("payload", dtype, false);
+        let rewritten = field.scalar(source.clone()).expect("the payload is bytes");
+        assert_ne!(rewritten.id(), source.id());
+        assert_eq!(address(&rewritten), from, "a rewrite copied the payload");
+    }
+
+    let text = Scalar::from("a symbol far longer than any inline string buffer can hold");
+    let characters = |value: &Scalar| value.as_str().expect("the text is there").as_ptr();
+    let from = characters(&text);
+    for dtype in [DataType::LargeUtf8, DataType::Utf8View] {
+        let field = Field::new("symbol", dtype, false);
+        let rewritten = field.scalar(text.clone()).expect("the value is text");
+        assert_ne!(rewritten.id(), text.id());
+        assert_eq!(characters(&rewritten), from, "a rewrite copied the text");
+    }
+}
+
+#[test]
+fn building_a_sequence_costs_one_allocation() {
+    // A row is a sequence, so this runs once per row on every ingest path.
+    // The children are written straight into the storage the value keeps;
+    // collecting them into a `Vec` first would cost a second buffer and a
+    // copy of the whole run between the two.
+    for width in [4_usize, 64, 1_024] {
+        let children = (0..width)
+            .map(|index| Scalar::from(i64::try_from(index).expect("the index fits")))
+            .collect::<Vec<_>>();
+        costs(&format!("building a {width}-column row"), 1, || {
+            black_box(Scalar::from_sequence(black_box(&children).iter().cloned()));
+        });
+    }
+    free("building the shared empty sequence", || {
+        black_box(Scalar::from_sequence([]));
+    });
+}
+
+/// The two batches every cast-budget case reads, and the root they answer to.
+///
+/// The batches differ only in their values, so anything that varies between
+/// casting one and casting the other is per-batch work rather than schema work.
+#[cfg(feature = "arrow")]
+fn cast_corpus() -> (
+    arrow_schema::SchemaRef,
+    [arrow_array::RecordBatch; 2],
+    Field,
+) {
+    use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+
+    let schema = Arc::new(Schema::new(vec![
+        ArrowField::new("id", ArrowDataType::Int32, false),
+        ArrowField::new("symbol", ArrowDataType::Utf8, true),
+    ]));
+    let batch = |offset: i32| {
+        RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![
+                Arc::new(Int32Array::from(vec![offset, offset + 1])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["AAPL", "MSFT"])) as ArrayRef,
+            ],
+        )
+        .expect("the benchmark batch matches its schema")
+    };
+    let root = Field::new(
+        "row",
+        DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Utf8.nullable_field("symbol"),
+            DataType::Utf8.required_field("venue"),
+        ])
+        .expect("the root fields are valid"),
+        false,
+    );
+    (Arc::clone(&schema), [batch(0), batch(2)], root)
+}
+
+#[test]
+#[cfg(feature = "arrow")]
+fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
+
+    let (schema, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+        .expect("the cast is plannable");
+
+    // The budget belongs to a batch, not to the stream: applying the plan a
+    // thousand times costs a thousand times one batch, because nothing about
+    // the previous batch is retained. Reading it as a total would hide exactly
+    // the leak this pins - a plan that grew with every batch it saw.
+    let mut index = 0;
+    let (once, repeated) = counted_once_and_repeated(|| {
+        let batch = batches[index % batches.len()].clone();
+        index += 1;
+        black_box(plan.apply(batch).expect("the batch fits the plan"));
+    });
+    assert_eq!(
+        repeated,
+        once * 1_000,
+        "applying one compiled plan cost {once} for one batch and {repeated} for a thousand"
+    );
+}
+
+#[test]
+#[cfg(feature = "arrow")]
+fn planning_once_is_what_a_reused_plan_saves_per_batch() {
+    use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
+
+    let (schema, batches, root) = cast_corpus();
+    let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
+        .expect("the cast is plannable");
+    let batch = batches[0].clone();
+
+    // Warm both paths so neither is charged for a first-call cache fill.
+    let _ = plan.apply(batch.clone());
+    let _ = root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new());
+
+    let (applied, ()) = counted(|| {
+        black_box(plan.apply(batch.clone()).expect("the batch fits the plan"));
+    });
+    let (planned, ()) = counted(|| {
+        black_box(
+            root.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+                .expect("the batch fits the root"),
+        );
+    });
+
+    // The same batch, the same answer, and the difference is the plan: a
+    // reader that compiles per batch pays that difference on every one.
+    assert!(
+        planned > applied,
+        "compiling per batch cost {planned} and reusing one plan cost {applied}"
+    );
+}

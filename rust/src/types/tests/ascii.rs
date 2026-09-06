@@ -342,6 +342,15 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
         .unwrap_err()
         .to_string();
     assert!(refused.contains("expected fixed_ascii"), "{refused}");
+
+    // A fixed value carries its own padded width, so one written at another
+    // width is restated at the column's rather than kept as it arrived: the
+    // column declares the storage, and the value must name the same one.
+    let wider = Scalar::Ascii(crate::types::AsciiFamily::FixedAscii(
+        crate::types::FixedAscii::new("USD", 8).unwrap(),
+    ));
+    root.validate_value(&row(wider.clone())).unwrap();
+    assert_eq!(canonical(wider), row(fixed("USD")));
 }
 
 #[test]

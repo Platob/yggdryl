@@ -148,7 +148,7 @@ def main() -> int:
     )
     holder = Field("row_digest", "uint64", nullable=False)
     holder.digest["role"] = "holder"
-    holder.digest["paths"] = '["symbol"]'
+    holder.digest["sources"] = '["symbol"]'
     root = Field(
         "row",
         DataType.from_fields([Field("symbol", "utf8", nullable=False), holder]),
@@ -165,7 +165,7 @@ def main() -> int:
     )
     signed_holder = Field("row_digest", "int64", nullable=False)
     signed_holder.digest["role"] = "holder"
-    signed_holder.digest["paths"] = '["symbol"]'
+    signed_holder.digest["sources"] = '["symbol"]'
     signed_root = Field(
         "row",
         DataType.from_fields(
@@ -175,16 +175,16 @@ def main() -> int:
     )
     state = xxhash.Xxh3(seed=7)
     fill_cases = [
-        ("fill batch (missing holder)", lambda: state.fill_arrow_batch(root, missing)),
+        ("fill batch (missing holder)", lambda: state.apply_arrow_batch(root, missing)),
         (
             "fill batch (missing signed holder)",
-            lambda: state.fill_arrow_batch(signed_root, missing),
+            lambda: state.apply_arrow_batch(signed_root, missing),
         ),
-        ("fill batch (default holders)", lambda: state.fill_arrow_batch(root, defaults)),
-        ("fill batch (preserve populated)", lambda: state.fill_arrow_batch(root, populated)),
+        ("fill batch (default holders)", lambda: state.apply_arrow_batch(root, defaults)),
+        ("fill batch (preserve populated)", lambda: state.apply_arrow_batch(root, populated)),
         (
             "fill batch (force populated)",
-            lambda: state.fill_arrow_batch(root, populated, force=True),
+            lambda: state.apply_arrow_batch(root, populated, force=True),
         ),
     ]
     for label, callable_ in fill_cases:

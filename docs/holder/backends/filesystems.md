@@ -14,6 +14,7 @@
 | Streams | four opens, one retained backend stream each; output streams rather than buffering the whole object |
 | Secrets | `uri` may carry them; `masked_uri` / `maskedUri` is the credential-free spelling |
 | Ships | `MemoryFileSystem` and `LocalFileSystem`, complete references for the public object-safe `FileSystem` trait |
+| Roles | `fs::{Path, File, Folder}`, Python `FsPath` / `FsFile` / `FsFolder`; every wrapper over one keeps its bound location |
 | Bindings | Python over `pyarrow.fs` returning `NativeFile`; JavaScript over a synchronous handler protocol |
 | Feature flag | none; tests gate on `arrow` and `iceberg` |
 
@@ -26,13 +27,19 @@ Pass the filesystem and its opaque path separately.
     ```rust
     use std::sync::Arc;
 
+    use yggdryl::IOBase;
     use yggdryl::holder::fs::{
-        File, FileSystem, MemoryFileSystem, OutputMetadata,
+        File, FileSystem, Folder, MemoryFileSystem, OutputMetadata,
     };
 
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+<<<<<<< HEAD
     // A memory filesystem starts empty, where a real bucket already exists.
     filesystem.create_dir("bucket", true)?;
+=======
+    // The bucket is a directory to the filesystem, and an object write needs it.
+    Folder::from_path(Arc::clone(&filesystem), "bucket", None)?.create(false)?;
+>>>>>>> origin/main
     let file = File::from_path(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -44,6 +51,11 @@ Pass the filesystem and its opaque path separately.
     let mut output = file.open_output_stream(Some(&metadata))?;
     output.write(b"literal")?;
     output.close()?;
+<<<<<<< HEAD
+=======
+
+    assert_eq!(file.read_all_bytes()?, b"literal");
+>>>>>>> origin/main
     ```
 
 === "Python"
@@ -53,6 +65,9 @@ Pass the filesystem and its opaque path separately.
     from yggdryl import IOBase
 
     filesystem = pafs._MockFileSystem()
+    # The bucket is a directory to the filesystem, and an object write needs it.
+    IOBase.from_fs(filesystem, "bucket").create_dir()
+
     handle = IOBase.from_fs(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -76,6 +91,52 @@ Pass the filesystem and its opaque path separately.
     ```
 
 The filesystem receives the literal object name `bucket/v=a%2Fb.bin`, and the percent escape is not decoded into a slash. The same rule preserves `%25`, `+`, repeated slashes, non-ASCII text, and a literal `://`.
+
+## The three foreign roles
+
+A bound location is one of three roles, and `from_fs` answers the one the name declares.
+
+| Rust | Python | Role |
+| --- | --- | --- |
+| `fs::Path` | `FsPath` | a location that resolves when an operation needs to know what is there |
+| `fs::File` | `FsFile` | a file, read and written through its four streams |
+| `fs::Folder` | `FsFolder` | a directory, listed and walked |
+
+A name declaring a coding or a record encoding composes over that role, and the composition keeps the bound location, so it still answers where it is. `FsPath(filesystem, path, uri=None)`, `FsFile`, and `FsFolder` commit to a role and skip the composition, which is how the stored bytes of a coded name are addressed.
+
+=== "Python"
+
+    ```python
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+    from yggdryl.holder import FsFolder, FsPath
+    from yggdryl.media import Text
+
+    filesystem = pafs._MockFileSystem()
+    folder = IOBase.from_fs(filesystem, "bucket").create_dir()
+    assert isinstance(folder, FsFolder)
+
+    handle = IOBase.from_fs(
+        filesystem,
+        "bucket/trades.txt.gz",
+        uri="s3://bucket/trades.txt.gz",
+    )
+    assert isinstance(handle, Text)
+    assert repr(handle) == 'Text(Gzip(FsPath("s3://bucket/trades.txt.gz")))'
+
+    handle.write_bytes(b"AAPL,10\n")
+    assert handle.read_bytes() == b"AAPL,10\n"
+
+    assert handle.filesystem is filesystem
+    assert handle.path == "bucket/trades.txt.gz"
+    assert handle.uri == "s3://bucket/trades.txt.gz"
+
+    stored = FsPath(filesystem, "bucket/trades.txt.gz")
+    assert stored.read_bytes()[:2] == b"\x1f\x8b"
+    assert handle.info().size == stored.size
+    ```
+
+JavaScript has one `IOBase` class and no role classes.
 
 ## Resolve a URI once
 
@@ -117,7 +178,7 @@ The `options` mapping overrides URI query configuration, and Python forwards it 
 
 ## Bound facts and identity
 
-Every parent, child, listing result, and glob result retains four facts.
+Every parent, child, listing result, glob result, and wrapper the name composes retains four facts.
 
 - the same filesystem equality domain;
 - the exact raw filesystem path;
@@ -156,11 +217,24 @@ A zero-byte file, an unknown mtime, and an absent path therefore stay three diff
 === "Python"
 
     ```python
+    import pyarrow.fs as pafs
+    from yggdryl import IOBase
+
+    filesystem = pafs._MockFileSystem()
+    IOBase.from_fs(filesystem, "bucket").create_dir()
+    IOBase.from_fs(filesystem, "archive").create_dir()
+
+    source = IOBase.from_fs(filesystem, "bucket/events.bin")
+    source.write_bytes(b"literal")
+    target = IOBase.from_fs(filesystem, "bucket/events.copy.bin")
+    archive = IOBase.from_fs(filesystem, "archive/events.bin")
+
     copied = source.copy_into(target)
     moved = target.move_into(archive)
 
     assert copied == source.info().size
     assert moved.same_location(archive)
+    assert not target.exists()
     ```
 
 Equal filesystems receive exactly one native `copy_file` or `move` call and no client-side byte stream. A cross-filesystem move copies completely before deleting the source.
@@ -169,7 +243,7 @@ Equal filesystems receive exactly one native `copy_file` or `move` call and no c
 
 | Operation | Result |
 | --- | --- |
-| `create_dir(recursive)` | create with the backend's exact recursive policy |
+| `create_dir(recursive)` | create with the backend's exact recursive policy, answering the `FsFolder` that reads it |
 | `delete_dir()` | remove an empty directory itself; refuse a non-empty directory |
 | `delete_dir_contents(missing_dir_ok)` | remove descendants and retain the selected directory |
 | `delete_root_dir_contents()` | explicitly clear the filesystem root only |
@@ -200,6 +274,8 @@ Handler calls stay synchronous and on the JavaScript isolate that supplied the h
 ## Edges
 
 - `from_fs(fs, "bucket/v=a%2Fb.bin")` -> the filesystem receives that literal name; `%2F` never becomes a slash.
+- `from_fs(fs, "trades.txt.gz")` -> `Text` over `Gzip` over `FsPath`, composed from the name and reading nothing.
+- stored bytes of a coded name -> `FsPath(fs, path)` or `FsFile(fs, path)`; a composed handle reads and writes the decoded value.
 - `%25`, `+`, repeated slashes, non-ASCII text, a literal `://` -> preserved byte for byte in the bound path.
 - custom Rust filesystem -> implement the same public object-safe `FileSystem` trait; nothing above the seam changes.
 - `same_location` / `sameLocation` -> true only for filesystem equality plus byte-for-byte path equality.

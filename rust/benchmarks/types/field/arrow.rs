@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, UInt64Array};
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::{DataType, Field};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Representation};
 
 use super::nested_field;
 
@@ -91,16 +91,27 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 
-    let target = Field::new("digest", DataType::Int64, true);
+    let bits = ArrowCastOptions::new().with_representation(Representation::Bits);
     let source: ArrayRef = Arc::new(UInt64Array::from_iter_values(0..65_536));
     let mut group = criterion.benchmark_group("arrow_integer_bits");
     group.throughput(Throughput::Elements(source.len() as u64));
-    group.bench_function("uint64_to_int64", |bencher| {
-        bencher.iter(|| {
-            black_box(&target)
-                .cast_arrow_array_bits(black_box(Arc::clone(&source)))
-                .expect("equal-width integer bits always cast")
+    for (name, target) in [
+        (
+            "uint64_to_int64",
+            Field::new("digest", DataType::Int64, true),
+        ),
+        (
+            "uint64_to_bytes",
+            Field::new("digest", DataType::FixedSizeBinary(8), true),
+        ),
+    ] {
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                black_box(&target)
+                    .cast_arrow_array(black_box(Arc::clone(&source)), bits)
+                    .expect("one width read two ways always crosses")
+            });
         });
-    });
+    }
     group.finish();
 }

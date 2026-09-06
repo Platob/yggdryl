@@ -86,7 +86,7 @@ const contentEncoding = 'gzip, zstd'
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
 benchmark('schema/cast_arrow_array_bits', () =>
-  digestBits.castArrowArrayBits(unsignedDigest),
+  digestBits.castArrowArray(unsignedDigest, { representation: 'bits' }),
 )
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))

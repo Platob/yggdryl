@@ -7,7 +7,7 @@
 | key | value |
 | --- | --- |
 | Owns | `yggdryl::holder::Buffer` |
-| Bindings | Rust only; Python and JavaScript reach it through `IOBase.from_bytes` / `fromBytes` |
+| Bindings | Rust, and Python as `yggdryl.holder.Buffer`, the class `IOBase.from_bytes` answers with; JavaScript has one `IOBase` and reaches it through `fromBytes` |
 | Construction | `Buffer::with_capacity`, `Buffer::from_bytes` |
 | Direct bytes | `as_slice`, `as_mut_slice`, `into_bytes` |
 | Growth | the allocation doubles, so many small appends stay amortized constant; `reserve` pre-sizes a known final length |
@@ -17,7 +17,7 @@
 
 ## Use
 
-Rust only.
+Capacity, direct slices, and a declared media type are Rust only.
 
 ```rust
 use yggdryl::IOBase;
@@ -38,10 +38,28 @@ let csv = Buffer::from_bytes(handle.into_bytes()).with_media_type(MimeType::CSV.
 assert_eq!(csv.media_type().base(), &MimeType::CSV);
 ```
 
+## In Python
+
+`IOBase.from_bytes` answers a `Buffer`. The class names the implementation and adds nothing to [`IOBase`](../iobase/bytes.md).
+
+```python
+from yggdryl import IOBase
+from yggdryl.holder import Buffer
+
+handle = IOBase.from_bytes(b"symbol,price\n")
+assert type(handle) is Buffer
+assert handle.read_bytes() == b"symbol,price\n"
+
+# Raw bytes declare no format, so the media type stays generic.
+assert str(handle.media_type) == "application/octet-stream"
+assert handle.url.scheme == "mem"
+```
+
 ## Edges
 
 - `as_mut_slice()` -> discards any inferred media type; the content's identity may change through it.
 - `url()` -> a synthetic `mem:` identity naming the process and the allocation; the bytes are stored nowhere.
+- `Buffer(...)` in Python -> `TypeError`; the class has no constructor, and `IOBase.from_bytes` is how one is built.
 
 ## Commands
 

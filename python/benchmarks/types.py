@@ -185,8 +185,14 @@ def _cached_default_hint() -> object:
     return DEFAULT_STRUCT.default_pyhint()
 
 
+def _default_scalar() -> object:
+    return DEFAULT_STRUCT.default_scalar()
+
+
+# The crossing and the conversion are measured apart because a caller who
+# materializes the default never pays for `as_py`.
 def _default_python_value() -> object:
-    return DEFAULT_STRUCT.default_pyvalue()
+    return DEFAULT_STRUCT.default_scalar().as_py()
 
 
 def _global_field() -> Field:
@@ -230,7 +236,7 @@ def _spark_compatibility() -> DataType:
 
 
 def _cast_arrow_array_bits() -> object:
-    return BIT_CAST_FIELD.cast_arrow_array_bits(BIT_CAST_SOURCE)
+    return BIT_CAST_FIELD.cast_arrow_array(BIT_CAST_SOURCE, representation="bits")
 
 
 # The protocol cases measure the boundary the live view adds: creating one is a
@@ -263,6 +269,33 @@ def _protocol_view_items() -> object:
 
 def _write_through_protocol_view() -> None:
     PROTOCOL_FIELD.iceberg["doc"] = "closing price"
+
+
+# The partition cases measure the boundary a derived column crosses: reading
+# the declaration, and computing the whole column through the native evaluator
+# rather than through a Python loop over PyArrow scalars.
+PARTITION_YEAR = Field("year", "int32", nullable=True)
+PARTITION_YEAR.partition.sources = ["event"]
+PARTITION_YEAR.partition.transform = "year"
+PARTITION_ROOT = Field(
+    "row",
+    DataType.from_fields([Field("event", "date32", nullable=False), PARTITION_YEAR]),
+    nullable=False,
+)
+PARTITION_BATCH = pa.record_batch(
+    {"event": pa.array(range(1_024), pa.date32())}
+)
+
+
+PARTITION_HELD = PARTITION_ROOT.get_field(1).partition
+
+
+def _read_partition_transform() -> object:
+    return PARTITION_HELD.transform
+
+
+def _apply_arrow_batch() -> object:
+    return PARTITION_ROOT.partition.apply_arrow_batch(PARTITION_BATCH)
 
 
 CURRENCY = DataType("currency")
@@ -325,6 +358,7 @@ def main() -> None:
         )
         _measure("wide diff first line", _first_wide_difference, args.iterations)
         _measure("cached default hint", _cached_default_hint, args.iterations)
+        _measure("default Scalar", _default_scalar, args.iterations)
         _measure("default Python value", _default_python_value, args.iterations)
         _measure(
             "cached static field",
@@ -387,6 +421,12 @@ def main() -> None:
         _measure("protocol metadata key", _read_through_metadata_key, args.iterations)
         _measure("protocol view items", _protocol_view_items, args.iterations)
         _measure("protocol view write", _write_through_protocol_view, args.iterations)
+        _measure("partition transform read", _read_partition_transform, args.iterations)
+        _measure(
+            "partition apply_arrow_batch 1024",
+            _apply_arrow_batch,
+            max(1, args.iterations // 100),
+        )
         _measure(
             "MIME known parse",
             lambda: MimeType.from_str(KNOWN_MIME),

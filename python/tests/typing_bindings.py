@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
+
+from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
+from yggdryl.holder import Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath
+from yggdryl.holder import Path as Path_
+from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 from yggdryl import (
     AsciiEnum,
@@ -180,8 +186,8 @@ default_field_scalar: pa.Scalar = field.default_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 cast_dtype_array: pa.Array = DataType("int64").cast_arrow_array(source_array)
 cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(source_array)
-bit_cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array_bits(
-    pa.array([2**64 - 1], type=pa.uint64())
+bit_cast_field_array: pa.Array = Field("value", "int64").cast_arrow_array(
+    pa.array([2**64 - 1], type=pa.uint64()), representation="bits"
 )
 source_batch = pa.record_batch([source_array], names=["value"])
 cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
@@ -190,7 +196,23 @@ cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
-filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
+applied_root = Field(
+    "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
+)
+applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
+    source_batch, digest=True, partition=True, cast=True
+)
+applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
+applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
+)
+applied_partition_batch: pa.RecordBatch = applied_root.partition.apply_arrow_batch(
+    source_batch
+)
+applied_digest_batch: pa.RecordBatch = applied_root.digest.apply_arrow_batch(source_batch)
+partition_sources: list[str] | None = applied_root.partition.sources
+partition_transform: str | None = applied_root.partition.transform
+filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     Field(
         "rows",
         DataType.from_fields([Field("value", "int64")]),
@@ -199,8 +221,8 @@ filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
     source_batch,
     force=True,
 )
-default_dtype_value: object = DataType("int32").default_pyvalue()
-default_field_value: object = field.default_pyvalue()
+default_dtype_native_scalar: Scalar = DataType("int32").default_scalar()
+default_field_native_scalar: Scalar = field.default_scalar()
 default_dtype_hint: object = DataType("int32").default_pyhint()
 default_field_hint: object = field.default_pyhint()
 arrow_compatible: DataType = DataType("uint32").into_scheme_compat("arrow")
@@ -210,12 +232,12 @@ pandas_compatible: Field = field.into_scheme_compat("pandas")
 iceberg_compatible: Field = field.into_scheme_compat("iceberg")
 typed_id: Int32Field = types.int32("id", nullable=False)
 typed_id_kind: Literal["int32"] = typed_id.dtype.id
-typed_id_value: int | None = typed_id.default_pyvalue()
-typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
+typed_id_default_scalar: Scalar = typed_id.default_scalar()
+typed_id_dtype_default_scalar: Scalar = typed_id.dtype.default_scalar()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
-typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array_bits(
-    pa.array([2**32 - 1], type=pa.uint32())
+typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array(
+    pa.array([2**32 - 1], type=pa.uint32()), representation="bits"
 )
 typed_clock: TimeField = types.time("clock", "microseconds", nullable=False)
 typed_ids: ListField[int] = types.list("ids", typed_id)
@@ -223,14 +245,10 @@ nullable_item: Int32Field = types.int32("item")
 typed_fixed: FixedSizeListField[int] = types.fixed_size_list(
     "fixed", nullable_item, 2, nullable=False
 )
-typed_fixed_value: list[int | None] | None = typed_fixed.default_pyvalue()
-typed_fixed_dtype_value: list[int | None] = (
-    typed_fixed.dtype.default_pyvalue()
-)
+typed_fixed_default_scalar: Scalar = typed_fixed.default_scalar()
+typed_fixed_dtype_default_scalar: Scalar = typed_fixed.dtype.default_scalar()
 typed_struct = types.struct("row", [typed_id], nullable=False)
-typed_struct_value: object | Mapping[str, object] | None = (
-    typed_struct.default_pyvalue()
-)
+typed_struct_default_scalar: Scalar = typed_struct.default_scalar()
 
 avro_schema: avro.Schema = avro.Schema(
     "long", max_depth=8, max_input_bytes=1_024, max_nodes=32
@@ -277,9 +295,7 @@ range_text: str = byte_handle.read_range(0, 6, cls=str)
 byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
-typed_struct_dtype_value: object | Mapping[str, object] = (
-    typed_struct.dtype.default_pyvalue()
-)
+typed_struct_dtype_default_scalar: Scalar = typed_struct.dtype.default_scalar()
 native_instant = Scalar.datetime(0, "us", "UTC")
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 native_enum = Scalar.from_enum("io_mode", "append")
@@ -308,7 +324,7 @@ typed_dense_union: DenseUnionField = types.dense_union(
     nullable=False,
 )
 typed_dense_union_kind: Literal["union"] = typed_dense_union.dtype.id
-typed_dense_union_value: object = typed_dense_union.default_pyvalue()
+typed_dense_union_default_scalar: Scalar = typed_dense_union.default_scalar()
 
 # The parenthesis disambiguates: a bare DataType.variant() is the Variant
 # datatype, and the three geospatial-era factories carry their own literals.
@@ -318,11 +334,11 @@ typed_variant_kind: Literal["variant"] = typed_variant.dtype.id
 geometry_dtype: DataType = DataType.geometry("EPSG:3857")
 typed_geometry: GeometryField = types.geometry("shape", nullable=False)
 typed_geometry_kind: Literal["geometry"] = typed_geometry.dtype.id
-typed_geometry_value: bytes = typed_geometry.dtype.default_pyvalue()
+typed_geometry_default_scalar: Scalar = typed_geometry.dtype.default_scalar()
 geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
 typed_geography: GeographyField = types.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
-typed_geography_value: bytes | None = typed_geography.default_pyvalue()
+typed_geography_default_scalar: Scalar = typed_geography.default_scalar()
 ascii_dtype: DataType = DataType.ascii(3)
 ascii_width: int | None = ascii_dtype.ascii_width
 currency_dtype: DataType = DataType.from_logical_name("currency")
@@ -344,10 +360,11 @@ typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
-typed_uuid_value: str = typed_uuid.dtype.default_pyvalue()
-typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
+typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
+typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
 typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
-typed_ascii_isin_value: str | None = typed_ascii_isin.default_pyvalue()
+# Reading one is the generic conversion, so it lands as ``object``.
+typed_ascii_isin_value: object = typed_ascii_isin.default_scalar().as_py()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 
@@ -397,23 +414,39 @@ cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_b
     batch_size=3
 )
 
+# Every storage role is an ``IOBase``; the wrappers descend one layer at a time.
+role_path: Path_ = Path_("trades.txt")
+role_file: File = File("trades.bin")
+role_folder: Folder = Folder("lake")
+role_temporary: Folder = Folder.temporary()
+role_home: Folder = Folder.home()
+role_config: Folder = Folder.config()
+role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
+role_fs_path: FsPath = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
+role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
+role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
+role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
+coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
+encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro]
+storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]
+
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
-# becomes unused if a typed view regresses to ``Any`` or drops its nullable /
-# generated-dataclass branch.
-field_default_cannot_be_assumed_present: int = (
-    nullable_item.default_pyvalue()  # type: ignore[assignment]
+# becomes unused if a typed view regresses to ``Any`` or answers a default as
+# anything but the one ``Scalar`` every value crosses as.
+field_default_is_a_scalar_not_its_value: int = (
+    nullable_item.default_scalar()  # type: ignore[assignment]
 )
-fixed_children_cannot_be_assumed_present: list[int] = (
-    typed_fixed.dtype.default_pyvalue()  # type: ignore[assignment]
+nested_default_is_a_scalar_not_its_children: list[int] = (
+    typed_fixed.dtype.default_scalar()  # type: ignore[assignment]
 )
-struct_default_is_not_always_a_mapping: Mapping[str, object] = (
-    typed_struct.dtype.default_pyvalue()  # type: ignore[assignment]
+struct_default_is_not_a_mapping: Mapping[str, object] = (
+    typed_struct.dtype.default_scalar()  # type: ignore[assignment]
 )
 dynamic_default_needs_narrowing: int = (
-    DataType("int32").default_pyvalue()  # type: ignore[assignment]
+    DataType("int32").default_scalar().as_py()  # type: ignore[assignment]
 )
 dynamic_field_default_needs_narrowing: str = (
-    field.default_pyvalue()  # type: ignore[assignment]
+    field.default_scalar().as_py()  # type: ignore[assignment]
 )
 hint_is_a_runtime_typing_object: type[int] = (
     typed_id.default_pyhint()  # type: ignore[assignment]
@@ -483,7 +516,6 @@ digest_root: Field = Field(
 digest_children: list[Field] = digest_root.digest_fields
 digest_names: list[str] = digest_root.digest_field_names
 digest_count: int = digest_root.digest_field_len
-digest_explicit: bool = digest_root.has_digest_components
 digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(
@@ -544,8 +576,8 @@ assert dtype_scalar
 assert field_scalar
 assert default_dtype_scalar
 assert default_field_scalar
-assert default_dtype_value == 0
-assert default_field_value == ""
+assert default_dtype_native_scalar.as_py() == 0
+assert default_field_native_scalar.as_py() == ""
 assert default_dtype_hint
 assert default_field_hint
 assert arrow_compatible
@@ -1180,3 +1212,9 @@ assert fix_message_item and (fix_message_default is None or fix_message_default)
 assert fix_message_pairs == [] or fix_message_pairs
 assert fix_message_len >= 0 and fix_message_hash
 assert fix_global is not None and fix_message_explicit == fix_message_explicit
+assert role_path is not None and role_file is not None and role_folder is not None
+assert role_temporary is not None and role_home is not None and role_config is not None
+assert role_cached is not None
+assert coding_roles and encoding_roles and storage_roles
+assert role_fs_path is not None and role_fs_file is not None
+assert role_fs_folder is not None and role_created is not None

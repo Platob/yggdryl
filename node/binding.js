@@ -226,8 +226,8 @@ const nativeScalarIntoArrowBatch =
   NativeScalar.prototype._intoArrowBatchIpcNative
 const nativeScalarIntoArrowTable =
   NativeScalar.prototype._intoArrowTableIpcNative
-const nativeFieldCastArrowArrayBits =
-  NativeField.prototype._castArrowArrayBitsIpcNative
+const nativeFieldCastArrowArray =
+  NativeField.prototype._castArrowArrayIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -279,7 +279,7 @@ delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
 delete NativeScalar.prototype._intoArrowBatchIpcNative
 delete NativeScalar.prototype._intoArrowTableIpcNative
-delete NativeField.prototype._castArrowArrayBitsIpcNative
+delete NativeField.prototype._castArrowArrayIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -2381,14 +2381,17 @@ Object.defineProperty(Field, 'fromArrow', {
   },
 })
 
-Object.defineProperty(Field.prototype, 'castArrowArrayBits', {
+Object.defineProperty(Field.prototype, 'castArrowArray', {
   configurable: true,
-  value(value) {
+  value(value, options) {
     return arrowVectorFromIPC(
-      Reflect.apply(nativeFieldCastArrowArrayBits, this, [
-        arrowVectorIntoIPC(value, 'Field.castArrowArrayBits input'),
+      Reflect.apply(nativeFieldCastArrowArray, this, [
+        arrowVectorIntoIPC(value, 'Field.castArrowArray input'),
+        options?.safe,
+        options?.nullability,
+        options?.representation,
       ]),
-      'Field.castArrowArrayBits output',
+      'Field.castArrowArray output',
     )
   },
 })
@@ -3461,29 +3464,29 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     binding.Xxh3,
     binding.Xxh128,
   ]) {
-    const fillArrowBatchNative = State.prototype._fillArrowBatchIpcNative
-    if (typeof fillArrowBatchNative !== 'function') {
+    const applyArrowBatchNative = State.prototype._applyArrowBatchIpcNative
+    if (typeof applyArrowBatchNative !== 'function') {
       throw new TypeError(
-        `native binding is missing ${State.name}._fillArrowBatchIpcNative`,
+        `native binding is missing ${State.name}._applyArrowBatchIpcNative`,
       )
     }
-    delete State.prototype._fillArrowBatchIpcNative
-    Object.defineProperty(State.prototype, 'fillArrowBatch', {
+    delete State.prototype._applyArrowBatchIpcNative
+    Object.defineProperty(State.prototype, 'applyArrowBatch', {
       configurable: true,
       value(root, batch, force = false) {
         if (typeof force !== 'boolean') {
           throw new TypeError(
-            `${State.name}.fillArrowBatch force must be a boolean`,
+            `${State.name}.applyArrowBatch force must be a boolean`,
           )
         }
         return arrowBatchFromIPC(
-          fillArrowBatchNative.call(
+          applyArrowBatchNative.call(
             this,
             intoField(root),
-            arrowBatchIntoIPC(batch, `${State.name}.fillArrowBatch input`),
+            arrowBatchIntoIPC(batch, `${State.name}.applyArrowBatch input`),
             force,
           ),
-          `${State.name}.fillArrowBatch output`,
+          `${State.name}.applyArrowBatch output`,
         )
       },
     })

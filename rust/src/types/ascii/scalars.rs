@@ -16,6 +16,11 @@ pub trait AsciiValue: crate::ScalarValue {
 
     /// Borrow the validated ASCII text.
     fn as_str(&self) -> &str;
+    /// Borrow the shared storage behind the validated text.
+    ///
+    /// The stored text is already trimmed and checked, so a rewrite that
+    /// keeps it clones this handle rather than re-validating and copying.
+    fn storage(&self) -> &SmolStr;
 }
 
 /// Variable-width validated ASCII text.
@@ -34,6 +39,11 @@ impl Ascii {
     /// Borrow the validated text.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
+    }
+
+    /// Borrow the shared storage without copying the text.
+    pub fn storage(&self) -> &SmolStr {
+        &self.0
     }
 }
 
@@ -64,6 +74,11 @@ impl FixedAscii {
     /// Borrow the validated text.
     pub fn as_str(&self) -> &str {
         self.value.as_str()
+    }
+
+    /// Borrow the shared storage without copying the text.
+    pub fn storage(&self) -> &SmolStr {
+        &self.value
     }
 
     /// Return the padded storage width.
@@ -98,6 +113,11 @@ macro_rules! ascii_code_leaf {
             /// Borrow the validated code.
             pub fn as_str(&self) -> &str {
                 self.0.as_str()
+            }
+
+            /// Borrow the shared storage without copying the code.
+            pub fn storage(&self) -> &SmolStr {
+                &self.0
             }
         }
 
@@ -532,6 +552,24 @@ impl AsciiFamily {
             Self::MsgDirection(value) => value.as_str(),
         }
     }
+
+    /// Borrow the shared storage independently of the storage identity.
+    ///
+    /// Every member holds the same trimmed, validated text, so a rewrite
+    /// between two of them clones this handle instead of the characters.
+    pub fn storage(&self) -> &SmolStr {
+        match self {
+            Self::Ascii(value) => value.storage(),
+            Self::FixedAscii(value) => value.storage(),
+            Self::Country(value) => value.storage(),
+            Self::Currency(value) => value.storage(),
+            Self::Mic(value) => value.storage(),
+            Self::Cfi(value) => value.storage(),
+            Self::Side(value) => value.storage(),
+            Self::MsgType(value) => value.storage(),
+            Self::MsgDirection(value) => value.storage(),
+        }
+    }
 }
 
 impl fmt::Display for AsciiFamily {
@@ -607,6 +645,10 @@ macro_rules! ascii_value {
 
             fn as_str(&self) -> &str {
                 <$leaf>::as_str(self)
+            }
+
+            fn storage(&self) -> &SmolStr {
+                <$leaf>::storage(self)
             }
         }
     };
@@ -688,6 +730,10 @@ impl AsciiValue for FixedAscii {
 
     fn as_str(&self) -> &str {
         Self::as_str(self)
+    }
+
+    fn storage(&self) -> &SmolStr {
+        Self::storage(self)
     }
 }
 

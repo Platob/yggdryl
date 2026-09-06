@@ -5,7 +5,24 @@
 //! green build proves nothing; these are the invariants a wildcard cannot
 //! satisfy by accident.
 
-use yggdryl::{AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar, types::AsciiFamily};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
+use arrow_schema::DataType as ArrowDataType;
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::types::{AsciiFamily, CfiField, CountryField, CurrencyField, MicField};
+use yggdryl::types::{CurrencyScalar, MicScalar};
+use yggdryl::{
+    ArrowCast, ArrowCastOptions, AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar,
+};
+
+fn root(fields: impl IntoIterator<Item = Field>) -> Field {
+    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+}
+
+fn text(values: &[&str]) -> ArrayRef {
+    Arc::new(StringArray::from(values.to_vec()))
+}
 
 /// The three, with the width each fixes and the vocabulary it publishes.
 const CODED: [(&str, DataType, i32); 3] = [
@@ -146,6 +163,54 @@ fn a_msgtype_is_case_sensitive_and_the_crate_fold_never_touches_a_wire_value() {
         let stored = DataType::MsgType.scalar(Scalar::from(value)).unwrap();
         assert_eq!(stored.as_str(), Some(value));
     }
+}
+
+#[test]
+fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
+    let venue = Field::new("venue", DataType::Mic, false);
+    let padded = venue
+        .cast_arrow_array(
+            text(&["XPAR", "XLON"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+    let bytes = padded
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .unwrap();
+    assert_eq!(bytes.value_length(), 4);
+    assert_eq!(bytes.value(0), b"XPAR");
+
+    // A shorter value pads; the column read under `utf8` trims it back.
+    let short = venue
+        .cast_arrow_array(text(&["BX"]), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
+    let short = short
+        .as_any()
+        .downcast_ref::<FixedSizeBinaryArray>()
+        .unwrap();
+    assert_eq!(short.value(0), b"BX\0\0");
+
+    let row = root([venue.clone()]);
+    let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![padded]).unwrap();
+    let as_text = root([DataType::Utf8.required_field("venue")]);
+    let trimmed = as_text
+        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
+    let trimmed = trimmed
+        .column(0)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(trimmed.value(0), "XPAR");
+    assert_eq!(trimmed.value(1), "XLON");
+
+    // The refusal names the code's own width, not the next ASCII one up.
+    let refused = venue
+        .cast_arrow_array(text(&["XPARIS"]), ArrowCastOptions::new().with_safe(false))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("at most 4 bytes"), "{refused}");
 }
 
 #[test]

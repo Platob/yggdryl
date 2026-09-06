@@ -251,7 +251,11 @@ impl<H: IOBase> Coding<H> {
         use crate::media::IORecordOptions;
 
         let reader = match options.field() {
-            Some(field) => crate::arrow::cast_reader(reader, &field, options.safe())?,
+            Some(field) => crate::arrow::cast_reader(
+                reader,
+                &field,
+                crate::ArrowCastOptions::new().with_safe(options.safe()),
+            )?,
             None => reader,
         };
         let reader = crate::media::partition::filtered_reader(reader, options)?;
@@ -457,6 +461,16 @@ impl<H: IOBase> IOBase for Coding<H> {
 
     fn url(&self) -> Option<&Url> {
         self.handle.url()
+    }
+
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.handle.bound_location()
+    }
+
+    /// The storage role is the wrapped handle's; a coding changes the bytes,
+    /// not where they live, so an absent location stays absent through it.
+    fn kind(&self) -> crate::IOKind {
+        self.handle.kind()
     }
 
     fn media_type(&self) -> &MediaType {

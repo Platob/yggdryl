@@ -1005,8 +1005,6 @@ export declare class Field {
   digestFieldNames(): Array<string>
   /** Number of fields contributing to each row digest. */
   get digestFieldLen(): number
-  /** Whether any child explicitly declares the digest-component role. */
-  get hasDigestComponents(): boolean
   /** Return this struct root holding only its effective digest components. */
   onlyDigestFields(): Field
   /** Whether this field carries the values a path spells out. */

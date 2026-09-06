@@ -103,6 +103,180 @@ impl Field {
         crate::arrow::arrow_schema_from_field(&self)
     }
 
+    /// Apply this schema's metadata-declared columns to one Arrow batch.
+    ///
+    /// A [`Field`] states more about a batch than its shape: a
+    /// [`partition:`](crate::PartitionField::apply_arrow_batch) declaration
+    /// says a column is *derived* from another, and a
+    /// [`digest:`](crate::DigestField::apply_arrow_batch) role says a column
+    /// *holds* the row's hash. Each protocol owns how it answers, including
+    /// how far down it walks, and this is the one entry point that asks them
+    /// all in the order their answers depend on.
+    ///
+    /// That order is the argument order reversed, because a later step reads
+    /// what an earlier one wrote:
+    ///
+    /// - `cast` reconciles the batch to this root first - the columns it
+    ///   declares, in its order and its types, missing ones materialized as
+    ///   their canonical defaults.
+    /// - `partition` fills the derived columns, so a value computed from
+    ///   another column exists before anything hashes it.
+    /// - `digest` fills the holders last, over the rows as they finally stand.
+    ///
+    /// Each protocol leaves a column holding anything but its canonical
+    /// [default](Self::default_value) alone, so applying twice changes nothing
+    /// the first pass already wrote. A digest fill reconciles to this root for
+    /// itself whatever `cast` says, because a holder is addressed by position.
+    ///
+    /// `options` carries the cast policy the first step runs under, and
+    /// under [`Nullability::Strict`](crate::Nullability::Strict) it also holds after the protocols have
+    /// run: a field an enabled protocol materializes may arrive absent or
+    /// holding its canonical default, because closing that hole is the
+    /// protocol's job, but the applied batch is checked again once every
+    /// protocol is done, so what a protocol left null is refused by path.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
+    /// use yggdryl::expression::Function;
+    /// use yggdryl::{ArrowCastOptions, DataType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let mut stored = DataType::UInt64.nullable_field("row_digest");
+    /// stored.as_digest_mut().set_holder()?;
+    /// let root = DataType::from_fields([
+    ///     DataType::Date32.required_field("event"),
+    ///     year,
+    ///     stored,
+    /// ])?
+    /// .required_field("row");
+    ///
+    /// let batch = RecordBatch::try_from_iter([(
+    ///     "event",
+    ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
+    /// )])?;
+    ///
+    /// let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+    ///
+    /// assert_eq!(applied.num_columns(), 3);
+    /// // The digest saw the derived column, because the partition step ran first.
+    /// assert_eq!(applied.column(2).null_count(), 0);
+    ///
+    /// // Applying again changes nothing: every column now holds a written value.
+    /// assert_eq!(
+    ///     root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
+    ///     applied,
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this is not a Struct root, when the batch cannot
+    /// be cast to it, when either protocol refuses a declaration it carries, or
+    /// when the applied batch leaves a declared non-null field null under
+    /// [`Nullability::Strict`](crate::Nullability::Strict).
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        options: crate::ArrowCastOptions,
+    ) -> Result<arrow_array::RecordBatch> {
+        AppliedPlan::compile(self, batch.schema(), digest, partition, cast, options)?.apply(batch)
+    }
+
+    /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
+    ///
+    /// A reader has to report its schema before it yields anything, and a
+    /// caller planning a write needs the same answer. Both get it here: the
+    /// declarations name every column they add, so the applied shape is a
+    /// property of two schemas and never of the data. The batch is the empty
+    /// one, so nothing is decoded and no column is materialized beyond its
+    /// zero-length arrays - and a declaration that cannot be satisfied, a
+    /// source column the reader does not carry above all, fails here rather
+    /// than on the first batch.
+    ///
+    /// ```
+    /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    /// use yggdryl::expression::Function;
+    /// use yggdryl::{ArrowCastOptions, DataType};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+    ///     .required_field("row");
+    ///
+    /// let stored = Schema::new(vec![ArrowField::new(
+    ///     "event",
+    ///     ArrowDataType::Date32,
+    ///     false,
+    /// )]);
+    ///
+    /// let applied =
+    ///     root.apply_arrow_schema(stored.into(), true, true, true, ArrowCastOptions::new())?;
+    ///
+    /// assert_eq!(applied.fields().len(), 2);
+    /// assert_eq!(applied.field(1).name(), "year");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::apply_arrow_batch`] carries the rule.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_schema(
+        &self,
+        schema: arrow_schema::SchemaRef,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        options: crate::ArrowCastOptions,
+    ) -> Result<arrow_schema::SchemaRef> {
+        Ok(AppliedPlan::compile(self, schema, digest, partition, cast, options)?.schema)
+    }
+
+    /// Wrap a reader so every batch it yields has this schema applied.
+    ///
+    /// The stream form of [`Self::apply_arrow_batch`], and a reader for the
+    /// reason every streaming shape in this crate is one: a lake being read
+    /// into a lake being written should not have to be held in memory to gain
+    /// its derived columns. The applied plan - the cast, the applied schema,
+    /// and the strict re-check - is compiled once from the reader's schema, so
+    /// the returned reader answers that schema before the first batch is
+    /// pulled and no batch is planned for twice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the applied schema cannot be derived. A failure
+    /// on one batch surfaces as that batch's `Err`, and the reader is not
+    /// fused after it: it yields whatever the inner reader yields next.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_reader(
+        &self,
+        inner: crate::arrow::BatchReader,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        options: crate::ArrowCastOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        if !digest && !partition && !cast {
+            return Ok(inner);
+        }
+        let plan = AppliedPlan::compile(self, inner.schema(), digest, partition, cast, options)?;
+        Ok(Box::new(AppliedReader { inner, plan }))
+    }
+
     /// Materializes [`Field::default_value`] as an exact one-row array.
     ///
     /// The bounded core default planner selects the value under this Field's
@@ -264,6 +438,11 @@ impl RecognizedExtension {
 /// that code fixes, and the canonical `arrow.uuid` over
 /// `FixedSizeBinary(16)`, each with an empty or absent document.
 ///
+/// The answer is what the extension describes, which is the *values* of a
+/// dictionary-encoded column: [`encoded_values`] peels the encoding here and
+/// [`imported_parts`] puts it back, so no extension is recognized in one
+/// layout and lost in the other.
+///
 /// Any other pairing keeps today's behavior exactly - a foreign extension
 /// name, one of ours over a storage it does not spell, a variant or an ASCII
 /// width with a non-empty document: the field imports as its storage type
@@ -272,7 +451,8 @@ impl RecognizedExtension {
 /// # Errors
 ///
 /// Returns an error when a recognized `geoarrow.wkb` field carries a GeoArrow
-/// metadata document that does not parse.
+/// metadata document that does not parse, or when a dictionary key is not an
+/// Arrow type this crate imports.
 pub(crate) fn recognized_arrow_extension(
     metadata: &HashMap<String, String>,
     storage: &ArrowDataType,
@@ -283,6 +463,7 @@ pub(crate) fn recognized_arrow_extension(
     let document = metadata
         .get(EXTENSION_TYPE_METADATA_KEY)
         .map(String::as_str);
+    let (storage, _) = encoded_values(storage)?;
     match name.as_str() {
         GEOARROW_WKB_EXTENSION_NAME if storage == &ArrowDataType::Binary => {
             let geospatial =
@@ -302,19 +483,13 @@ pub(crate) fn recognized_arrow_extension(
         // The storage shape alone tells the two ASCII datatypes apart: the
         // variable form is Arrow's `Binary`, and a width is that width's
         // `FixedSizeBinary`.
-        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
-            let (values, key) = encoded_values(storage)?;
-            Ok(match values {
-                ArrowDataType::Binary => Some(RecognizedExtension::Ascii(re_encoded(
-                    DataType::Ascii,
-                    key,
-                )?)),
-                ArrowDataType::FixedSizeBinary(width) => Some(RecognizedExtension::Ascii(
-                    re_encoded(DataType::ascii(*width)?, key)?,
-                )),
-                _ => None,
-            })
-        }
+        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
+            ArrowDataType::Binary => Some(RecognizedExtension::Ascii(DataType::Ascii)),
+            ArrowDataType::FixedSizeBinary(width) => {
+                Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
+            }
+            _ => None,
+        }),
         UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Uuid))
@@ -322,16 +497,12 @@ pub(crate) fn recognized_arrow_extension(
         VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))
         }
-        code if document.unwrap_or("").is_empty() => {
-            let (values, key) = encoded_values(storage)?;
-            Ok(match values {
-                ArrowDataType::FixedSizeBinary(width) => match code_for_extension(code, *width) {
-                    Some(dtype) => Some(RecognizedExtension::Code(re_encoded(dtype, key)?)),
-                    None => None,
-                },
-                _ => None,
-            })
-        }
+        code if document.unwrap_or("").is_empty() => Ok(match storage {
+            ArrowDataType::FixedSizeBinary(width) => {
+                code_for_extension(code, *width).map(RecognizedExtension::Code)
+            }
+            _ => None,
+        }),
         _ => Ok(None),
     }
 }
@@ -341,9 +512,10 @@ pub(crate) fn recognized_arrow_extension(
 /// Arrow's `Dictionary` carries a bare datatype for its values rather than a
 /// field, so a dictionary-encoded extension column has nowhere but the field
 /// itself to declare its identity. Peeling here is what lets a caller's own
-/// `dictionary(int32, currency)` import as itself rather than as anonymous
-/// bytes; no datatype here *is* a dictionary - a code is its own fixed
-/// binary - so this is only about not losing what a caller composed.
+/// `dictionary(int32, currency)` - or `dictionary(int32, uuid)`, or any other
+/// extension - import as itself rather than as anonymous storage; no datatype
+/// this crate recognizes *is* a dictionary - a code is its own fixed binary -
+/// so this is only about not losing what a caller composed.
 ///
 /// # Errors
 ///
@@ -387,7 +559,13 @@ fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadat
             })
             .map(|(key, held)| (key.clone(), held.clone()))
             .collect();
-        return Ok((recognized.into_dtype(), Metadata::from_arrow(&stripped)?));
+        // The extension describes the values; the encoding it was found under
+        // is the caller's, and goes back on.
+        let (_, key) = encoded_values(value.data_type())?;
+        return Ok((
+            re_encoded(recognized.into_dtype(), key)?,
+            Metadata::from_arrow(&stripped)?,
+        ));
     }
     let metadata = Metadata::from_arrow(value.metadata())?;
     let dtype = DataType::from_arrow_at_depth(value.data_type(), depth)?;
@@ -496,6 +674,149 @@ impl TryFrom<ArrowField> for Field {
 
     fn try_from(value: ArrowField) -> Result<Self> {
         Self::from_arrow_owned_at_depth(value, 0)
+    }
+}
+
+/// One root's declarations, compiled once against one source schema.
+///
+/// A reader applies the same three steps to every batch, and all three answer
+/// from the schemas alone: which columns the cast reconciles, which columns
+/// each protocol declares, and what the applied shape therefore is. Compiling
+/// that once is what lets a stream pay for it once.
+#[cfg(feature = "arrow")]
+pub(crate) struct AppliedPlan {
+    root: Field,
+    cast: Option<crate::types::cast::ArrowCastPlan>,
+    partition: bool,
+    digest: bool,
+    /// The strict re-check over the finished batch, compiled only when a
+    /// protocol was allowed to leave a hole for itself, or when no cast ran.
+    verify: Option<crate::types::cast::ArrowCastPlan>,
+    /// The schema every applied batch carries.
+    schema: arrow_schema::SchemaRef,
+}
+
+#[cfg(feature = "arrow")]
+impl AppliedPlan {
+    /// Compiles the three steps and derives the applied schema, without rows.
+    pub(crate) fn compile(
+        root: &Field,
+        source: arrow_schema::SchemaRef,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        options: crate::ArrowCastOptions,
+    ) -> Result<Self> {
+        use crate::types::cast::{ArrowCastPlan, Deferred};
+
+        let cast = if cast {
+            Some(ArrowCastPlan::compile_deferring(
+                &source,
+                root,
+                options,
+                Deferred { partition, digest },
+            )?)
+        } else {
+            None
+        };
+        // The applied shape is a property of the two schemas, so it is read off
+        // an empty batch: nothing is decoded, and a declaration that cannot be
+        // satisfied fails here rather than on the first batch.
+        let empty = arrow_array::RecordBatch::new_empty(source);
+        let applied = Self::stages(root, cast.as_ref(), partition, digest, &empty)?;
+        let schema = applied.schema();
+        // A cast with no protocol behind it already refused every hole, so the
+        // re-check exists only where something could still have left one.
+        let verify = if options.nullability().is_strict() && (partition || digest || cast.is_none())
+        {
+            Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
+        } else {
+            None
+        };
+        Ok(Self {
+            root: root.clone(),
+            cast,
+            partition,
+            digest,
+            verify,
+            schema,
+        })
+    }
+
+    /// Run cast, then partition, then digest - the order their answers depend
+    /// on, and the order this crate publishes.
+    fn stages(
+        root: &Field,
+        cast: Option<&crate::types::cast::ArrowCastPlan>,
+        partition: bool,
+        digest: bool,
+        batch: &arrow_array::RecordBatch,
+    ) -> Result<arrow_array::RecordBatch> {
+        let mut applied = match cast {
+            Some(plan) => plan.apply(batch.clone())?,
+            None => batch.clone(),
+        };
+        if partition {
+            applied = root.as_partition().apply_arrow_batch(&applied)?;
+        }
+        if digest {
+            applied = root.as_digest().apply_arrow_batch(&applied)?;
+        }
+        Ok(applied)
+    }
+
+    /// Apply the compiled declarations to one batch of the source schema.
+    pub(crate) fn apply(
+        &self,
+        batch: &arrow_array::RecordBatch,
+    ) -> Result<arrow_array::RecordBatch> {
+        let applied = Self::stages(
+            &self.root,
+            self.cast.as_ref(),
+            self.partition,
+            self.digest,
+            batch,
+        )?;
+        if let Some(verify) = &self.verify {
+            // The applied batch is already the declared shape, so this is a
+            // zero-copy pass whose only product is the refusal it may raise.
+            verify.apply(applied.clone())?;
+        }
+        Ok(applied)
+    }
+}
+
+/// A reader applying one root's declarations to every batch it yields.
+///
+/// The schema is the applied one from the start, so a consumer reads the shape
+/// it will get rather than the shape the inner reader stores.
+#[cfg(feature = "arrow")]
+struct AppliedReader {
+    inner: crate::arrow::BatchReader,
+    plan: AppliedPlan,
+}
+
+#[cfg(feature = "arrow")]
+impl Iterator for AppliedReader {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(self.plan.apply(&batch).map_err(|error| {
+            arrow_schema::ArrowError::ComputeError(format!(
+                "the declared columns could not be applied: {error}"
+            ))
+        }))
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl arrow_array::RecordBatchReader for AppliedReader {
+    fn schema(&self) -> arrow_schema::SchemaRef {
+        Arc::clone(&self.plan.schema)
     }
 }
 

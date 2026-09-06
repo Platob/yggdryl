@@ -6,16 +6,16 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 
 | Key | Value |
 | --- | --- |
-| Owns | `as_value_bytes`, `write_bytes`, `Scalar::digest`, `stable_hash`, `fill_arrow_batch`, `xxhash::arrow::row_digests`, `column_digests` |
+| Owns | `as_value_bytes`, `write_bytes`, `Scalar::digest`, `stable_hash`, `apply_arrow_batch` on a state and on `DigestField`, `xxhash::arrow::row_digests`, `column_digests` |
 | `as_value_bytes` | payload alone, no tag, no length; borrows, never allocates; `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `write_bytes` | total prefix-free feed: one [`DataTypeId`](../types/datatype.md) tag byte, then the family's canonical form; integers little-endian |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](../types/field.md), [`Uri`](../uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
 | `row_digests` | the selected values as one `Scalar::Sequence` through `write_bytes`, on every datatype family, nulls, nesting, dictionaries, unions, geospatial |
-| Selection | fields carrying `digest:role=component` exactly, otherwise every field except a `digest:role=holder` |
-| `fill_arrow_batch` | fills every holder in a batch under a non-null Struct root; the state's running digest is untouched |
+| Selection | a holder's `digest:sources`, relative to its own Struct; `["*"]` and absence both mean every field except a `digest:role=holder` |
+| `apply_arrow_batch` | fills every holder in a batch under a non-null Struct root; the state's running digest is untouched |
 | Arrow column | `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Feature flag | `xxhash::arrow` needs the default `arrow` feature |
-| Bindings | `Scalar.digest`, `stable_hash`, a [state's](streaming.md) `write_scalar`, and `fill_arrow_batch`; `as_value_bytes` and the digest arrays are Rust only |
+| Bindings | `Scalar.digest`, `stable_hash`, a [state's](streaming.md) `write_scalar`, and `apply_arrow_batch`; `as_value_bytes` and the digest arrays are Rust only |
 
 ## Use
 
@@ -139,7 +139,12 @@ let _ = text::Format::Json;
 
 ## Filling digest holders
 
-A digest holder is a field carrying `digest:role=holder`. A state fills every holder in one Arrow `RecordBatch` under an authoritative non-null Struct root.
+A digest holder is a field carrying `digest:role=holder`. `root.as_digest().apply_arrow_batch(&batch)`
+fills every holder the root declares, walking each declared Struct beneath it. That view carries no
+seed or secret, so its answer is the same [`stable_hash`](../types/scalar.md) every other reader
+computes; a state does the same with its own configuration and a `force` switch.
+[`Field::apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) is the entry point
+that runs this step beside the partition one.
 
 ```rust
 use std::sync::Arc;
@@ -154,7 +159,7 @@ use yggdryl::{DataType, DigestAlgorithm, Field, Scalar};
 let symbol = Field::new("symbol", DataType::Utf8, false);
 let mut holder = Field::new("row_digest", DataType::UInt64, false);
 holder.as_digest_mut().set_holder()?;
-holder.as_digest_mut().set_paths(["symbol"])?;
+holder.as_digest_mut().set_sources(["symbol"])?;
 holder
     .as_digest_mut()
     .set_algorithm(DigestAlgorithm::Xxh3)?;
@@ -173,7 +178,7 @@ let batch = RecordBatch::try_new(
 let mut state = Xxh3::with_seed(7);
 state.write_bytes(b"an unrelated running stream");
 let running = state.as_u64();
-let filled = state.fill_arrow_batch(&root, batch, false)?;
+let filled = state.apply_arrow_batch(&root, batch, false)?;
 
 let mut expected = Xxh3::with_seed(7);
 expected.write_scalar(&Scalar::from_sequence([Scalar::from("AAPL")]));
@@ -188,16 +193,17 @@ Each visible row is framed as an ordered `Scalar::Sequence` and streamed through
 
 | Holder setting | Effect |
 | --- | --- |
-| `digest:paths` | canonical JSON array of unique non-empty paths, for example `["id","line.price"]`; its order is the feed order |
-| Path syntax | relative to the containing Struct: an exact whole field name wins, then dots descend through Struct fields only |
-| No `digest:paths` | the containing Struct's component fallback; `[]` hashes an empty sequence |
-| Selected nested Struct with one direct holder | feeds that holder's digest payload instead of hashing the Struct again |
+| `digest:sources` | canonical JSON array of unique non-empty paths, for example `["id","line.price"]`; its order is the feed order, and it states nothing on the fields it names |
+| Source syntax | relative to the containing Struct: an exact whole field name wins, then dots descend through Struct fields only |
+| `["*"]` or no `digest:sources` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a path is refused |
+| Selected nested Struct with one direct holder | feeds that holder's digest payload instead of hashing the Struct again, which is the bypass a nested holder earns |
 | `digest:algorithm` | `xxh32`, `xxh64`, `xxh3-64`, or `xxh3-128`; it must fit the holder's storage mapping |
 | No `digest:algorithm` | a receiver whose output width fits the holder, with its seed and secret |
 | Fresh default by holder type | `int32`/`uint32` picks XXH32, `int64`/`uint64` picks XXH3-64, `fixed_size_binary(16)` picks XXH3-128 |
 | `force=false` | a cell equal to the holder `Field`'s default is computed, every non-default value preserved |
 | `force=true` | every visible holder is recomputed |
-| Bindings | `state.fill_arrow_batch(root, batch, force=True)`; `state.fillArrowBatch(root, batch, true)` copies the batch through Arrow IPC |
+| `root.as_digest().apply_arrow_batch` | the seedless form: no configuration crosses into it, and `force` is never on |
+| Bindings | `field.digest.apply_arrow_batch(batch)` and `field.apply_arrow_batch(batch)` in Python; `state.apply_arrow_batch(root, batch, force=True)`; `state.applyArrowBatch(root, batch, true)` copies the batch through Arrow IPC |
 
 ## Arrow row digests
 
@@ -215,8 +221,7 @@ use arrow_schema::Schema;
 use yggdryl::{DataType, DigestAlgorithm, Field};
 use yggdryl::xxhash::arrow::row_digests;
 
-let mut symbol = Field::new("symbol", DataType::Utf8, false);
-symbol.as_digest_mut().set_component()?;
+let symbol = Field::new("symbol", DataType::Utf8, false);
 let quantity = Field::new("quantity", DataType::Int64, false);
 let mut stored = Field::new("row_digest", DataType::UInt64, false);
 stored.as_digest_mut().set_holder()?;
@@ -236,19 +241,18 @@ let batch = RecordBatch::try_new(
 
 let digests = row_digests(&batch, DigestAlgorithm::Xxh3)?;
 let digests = digests.as_primitive::<UInt64Type>();
-// `symbol` is the explicit component. Differences in the unmarked quantity
-// and the prior holder do not feed the digest.
-assert_eq!(digests.value(0), digests.value(2));
+// Every column but the holder feeds the digest. Rows 0 and 2 differ only in
+// the quantity, so they differ here; the prior holder value never feeds.
+assert_ne!(digests.value(0), digests.value(2));
 assert_ne!(digests.value(0), digests.value(1));
 ```
 
 | Schema | Selected values |
 | --- | --- |
-| One or more `digest:role=component` fields | exactly those, in schema order |
-| No explicit component | every field except a `digest:role=holder` |
+| Any schema | every field except a `digest:role=holder`, in schema order |
 | Only holders | the empty sequence, for every row |
 
-Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](../types/protocol.md) answer the same set without hashing a batch.
+`row_digests` reads a batch, not a holder, so it always takes that whole selection; narrowing is a holder's `digest:sources` and belongs to [`apply_arrow_batch`](#filling-digest-holders). Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](../types/protocol.md) answer the same set without hashing a batch.
 
 `row_digests` always uses its `algorithm` argument and the selection above. `column_digests` is the single-column form, each answer the cell's own value with no row framing.
 
@@ -258,7 +262,7 @@ Names, roles, and other metadata choose the values but never enter the byte feed
 - Subtree past `DataType::PARSE_RECURSION_LIMIT` -> one reserved `0xff` replaces it; no allocation, no panic; values differing only below that depth collide.
 - Null cell in `column_digests` -> feeds the null tag, so it never collides with an empty string.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
-- Holder-local `digest:paths` or `digest:algorithm` -> ignored by `row_digests`; they configure [`fill_arrow_batch`](#filling-digest-holders) only.
+- Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#filling-digest-holders) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.
 - A holder that selects itself or another holder in the same Struct -> refused.
 - A Struct with several direct holders -> ambiguous; name the intended nested holder by a path.
@@ -267,6 +271,7 @@ Names, roles, and other metadata choose the values but never enter the byte feed
 - A non-default holder under `force=false` -> preserved, though nothing proves which algorithm, seed, or secret produced it.
 - A nullable holder -> null is unfilled and a present zero is kept; a required integer holder reads zero as unfilled.
 - An explicit algorithm differing from the receiver -> a fresh unseeded state, because the receiver's configuration belongs to another algorithm.
+- `DigestField::apply_arrow_batch` -> the seedless state's answer, never forcing; a seed, a secret, or a recompute is a state's `apply_arrow_batch`.
 - A signed holder -> bit-cast to the same-width unsigned payload, so `int32`/`uint32` and `int64`/`uint64` schemas answer one digest.
 - A set high bit in a signed holder -> reads as a negative integer, with no overflow and no loss.
 

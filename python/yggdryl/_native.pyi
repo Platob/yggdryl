@@ -13,6 +13,8 @@ _T = TypeVar("_T")
 __version__: str
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
+Nullability = Literal["default", "strict"]
+Representation = Literal["value", "bits"]
 
 # Anything an Iceberg write takes: every Arrow holder the record surface reads,
 # a foreign frame, and the plain rows `append_records` accepts.
@@ -726,7 +728,9 @@ class DataType:
     def from_fields(fields: Iterable[Field]) -> DataType: ...
     @staticmethod
     def from_json(value: str | bytes | bytearray | Any) -> DataType: ...
-    def default_pyvalue(self) -> object: ...
+    # A default is a value, and a value is a `Scalar`: read it with
+    # `as_py`, materialize it, or feed it back into a cast.
+    def default_scalar(self) -> Scalar: ...
     def default_pyhint(self) -> object: ...
     def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> DataType: ...
@@ -734,10 +738,20 @@ class DataType:
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
     def cast_arrow_array(
-        self, value: pyarrow.Array, *, safe: bool = True
+        self,
+        value: pyarrow.Array,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Array: ...
     def cast_arrow_batch(
-        self, value: pyarrow.RecordBatch, *, safe: bool = True
+        self,
+        value: pyarrow.RecordBatch,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     def into_arrow(self) -> Any: ...
     # Three formats, one structural model: `into_dict` is the model every
@@ -884,6 +898,20 @@ class ProtocolField:
     def description(self) -> str | None: ...
     @description.setter
     def description(self, value: str) -> None: ...
+    # The typed `partition:` vocabulary, answered only by `field.partition`.
+    @property
+    def sources(self) -> list[str] | None: ...
+    @sources.setter
+    def sources(self, paths: Iterable[str]) -> None: ...
+    @property
+    def transform(self) -> str | None: ...
+    @transform.setter
+    def transform(self, transform: str) -> None: ...
+    # Answered by `field.partition` and `field.digest`; every other view
+    # raises `TypeError` naming its own scheme.
+    def apply_arrow_batch(
+        self, batch: pyarrow.RecordBatch
+    ) -> pyarrow.RecordBatch: ...
     def key(self, name: str) -> str: ...
     def get(self, name: str, default: object = None, /) -> object: ...
     def keys(self) -> Iterator[str]: ...
@@ -939,25 +967,113 @@ class Field:
     ) -> type[Any]: ...
     @staticmethod
     def from_json(value: str | bytes | bytearray | Any) -> Field: ...
-    def default_pyvalue(self) -> object: ...
+    # A default is a value, and a value is a `Scalar`: read it with
+    # `as_py`, materialize it, or feed it back into a cast.
+    def default_scalar(self) -> Scalar: ...
     def default_pyhint(self) -> object: ...
     def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> Field: ...
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
+    # `safe` decides whether a present value may be converted; `nullability`
+    # decides whether a declared value may be absent - "default" writes the
+    # canonical default, "strict" refuses by path.
     def cast_arrow_array(
-        self, value: pyarrow.Array, *, safe: bool = True
+        self,
+        value: pyarrow.Array,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Array: ...
-    def cast_arrow_array_bits(self, value: pyarrow.Array) -> pyarrow.Array: ...
+    # `cast` reconciles the batch to this root, `partition` computes every
+    # column a `partition:transform` over `partition:sources` declares, and
+    # `digest` fills every holder last, over the rows as they finally stand.
+    def apply_arrow_batch(
+        self,
+        value: pyarrow.RecordBatch,
+        *,
+        digest: bool = True,
+        partition: bool = True,
+        cast: bool = True,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.RecordBatch: ...
+    # The applied shape, derived from the two schemas without reading a row.
+    def apply_arrow_schema(
+        self,
+        value: pyarrow.Schema,
+        *,
+        digest: bool = True,
+        partition: bool = True,
+        cast: bool = True,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.Schema: ...
+    def apply_arrow_reader(
+        self,
+        value: pyarrow.RecordBatchReader,
+        *,
+        digest: bool = True,
+        partition: bool = True,
+        cast: bool = True,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.RecordBatchReader: ...
     def cast_arrow_batch(
-        self, value: pyarrow.RecordBatch, *, safe: bool = True
+        self,
+        value: pyarrow.RecordBatch,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     def cast_arrow_scalar(
-        self, value: object, *, safe: bool = True
+        self,
+        value: object,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Scalar: ...
-    def cast_arrow(self, value: Any, *, safe: bool = True) -> Any: ...
-    def cast(self, value: Any, *, safe: bool = True) -> Any: ...
+    # Eager: the table is already held, so its reader is drained here.
+    def cast_arrow_table(
+        self,
+        value: pyarrow.Table,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.Table: ...
+    # Lazy: one compiled plan, one source batch at a time, nothing collected.
+    def cast_arrow_reader(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.RecordBatchReader: ...
+    def cast_arrow(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Any: ...
+    def cast(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Any: ...
     def into_arrow(self) -> Any: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.
@@ -1150,8 +1266,6 @@ class Field:
     def digest_field_names(self) -> list[str]: ...
     @property
     def digest_field_len(self) -> int: ...
-    @property
-    def has_digest_components(self) -> bool: ...
     def only_digest_fields(self) -> Field: ...
     @property
     def is_partition(self) -> bool: ...
@@ -1893,12 +2007,12 @@ class IOBase:
     def pwrite(self, offset: int, data: bytes) -> int: ...
     def append_bytes(self, data: bytes) -> int: ...
     def append(self, data: bytes | bytearray | memoryview | str) -> int: ...
-    def create_dir(self, recursive: bool = False) -> None: ...
+    def create_dir(self, recursive: bool = False) -> FsFolder: ...
     def delete_dir(self) -> None: ...
     def delete_dir_contents(self, missing_dir_ok: bool = False) -> None: ...
     def delete_root_dir_contents(self) -> None: ...
     def delete_file(self) -> None: ...
-    def mkdir(self) -> None: ...
+    def mkdir(self) -> Folder | FsFolder: ...
     def touch(self) -> None: ...
     def unlink(self) -> None: ...
     def clear(self) -> None: ...
@@ -2203,6 +2317,114 @@ class IOBase:
     def __iter__(self) -> Iterator[IOBase]: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
+
+# The role a handle turned out to be. `IOBase(...)` and every handle it leads
+# to answer one of these, so `type(handle)` names the implementation doing the
+# work; the classes add no state, only the name and what only that role can do.
+
+class Buffer(IOBase):
+    """In-memory bytes, with no location behind them."""
+
+class File(IOBase):
+    """One memory-mapped local file, mapped by the first operation to need it."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+
+class Folder(IOBase):
+    """One local directory, listed and walked without being opened."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+    @classmethod
+    def temporary(cls) -> Folder: ...
+    @classmethod
+    def home(cls) -> Folder: ...
+    @classmethod
+    def config(cls) -> Folder: ...
+
+class Path(IOBase):
+    """One local location that resolves to `File` or `Folder` when asked."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+
+class FsFile(IOBase):
+    """One file on a foreign filesystem, read and written through its streams."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class FsFolder(IOBase):
+    """One directory on a foreign filesystem."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class FsPath(IOBase):
+    """One location on a foreign filesystem that resolves when asked."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class Buffered(IOBase):
+    """Any handle read through the core's bounded page cache."""
+
+    @property
+    def cached_bytes(self) -> int: ...
+    @property
+    def cached_pages(self) -> int: ...
+    def has_cached_page(self, index: int) -> bool: ...
+    def clear_cache(self) -> None: ...
+    def into_handle(self) -> IOBase: ...
+
+class Coded(IOBase):
+    """Any handle presenting the decoded bytes of a content coding."""
+
+    def into_handle(self) -> IOBase: ...
+
+class Identity(Coded):
+    """Bytes that pass through unchanged."""
+
+class Gzip(Coded):
+    """RFC 1952 gzip framing over DEFLATE."""
+
+class Zlib(Coded):
+    """RFC 1950 zlib framing over DEFLATE, and where raw DEFLATE lands."""
+
+class Zstd(Coded):
+    """RFC 8878 Zstandard."""
+
+class Media(IOBase):
+    """Any handle retaining the record implementation its name declares."""
+
+    def into_handle(self) -> IOBase: ...
+
+class Ipc(Media):
+    """An Arrow IPC stream or file."""
+
+class Parquet(Media):
+    """An Apache Parquet file."""
+
+class Avro(Media):
+    """An Apache Avro object container."""
+
+class Text(IOBase):
+    """Plain-text rows under one retained flat configuration."""
+
+    def into_handle(self) -> IOBase: ...
 
 # A root Field, however Python spells one: the native wrapper, a field
 # expression, a PyArrow Schema, or a PyArrow Field.
@@ -3219,7 +3441,7 @@ class Xxh32:
     def seed(self) -> int: ...
     def write_bytes(self, data: str | bytes | bytearray | memoryview) -> None: ...
     def write_scalar(self, value: Scalar) -> None: ...
-    def fill_arrow_batch(
+    def apply_arrow_batch(
         self, root: FieldLike, batch: pyarrow.RecordBatch, *, force: bool = False
     ) -> pyarrow.RecordBatch: ...
     def as_digest(self) -> Digest: ...
@@ -3236,7 +3458,7 @@ class Xxh64:
     def seed(self) -> int: ...
     def write_bytes(self, data: str | bytes | bytearray | memoryview) -> None: ...
     def write_scalar(self, value: Scalar) -> None: ...
-    def fill_arrow_batch(
+    def apply_arrow_batch(
         self, root: FieldLike, batch: pyarrow.RecordBatch, *, force: bool = False
     ) -> pyarrow.RecordBatch: ...
     def as_digest(self) -> Digest: ...
@@ -3255,7 +3477,7 @@ class Xxh3:
     def secret(self) -> bytes | None: ...
     def write_bytes(self, data: str | bytes | bytearray | memoryview) -> None: ...
     def write_scalar(self, value: Scalar) -> None: ...
-    def fill_arrow_batch(
+    def apply_arrow_batch(
         self, root: FieldLike, batch: pyarrow.RecordBatch, *, force: bool = False
     ) -> pyarrow.RecordBatch: ...
     def as_digest(self) -> Digest: ...
@@ -3274,7 +3496,7 @@ class Xxh128:
     def secret(self) -> bytes | None: ...
     def write_bytes(self, data: str | bytes | bytearray | memoryview) -> None: ...
     def write_scalar(self, value: Scalar) -> None: ...
-    def fill_arrow_batch(
+    def apply_arrow_batch(
         self, root: FieldLike, batch: pyarrow.RecordBatch, *, force: bool = False
     ) -> pyarrow.RecordBatch: ...
     def as_digest(self) -> Digest: ...

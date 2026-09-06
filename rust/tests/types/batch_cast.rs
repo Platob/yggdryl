@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{ArrowCast, DataType, Field};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new("row", DataType::from_fields(fields).unwrap(), false)
@@ -23,7 +23,9 @@ fn a_missing_column_is_filled_with_its_canonical_default() {
         DataType::Int64.required_field("id"),
         DataType::Utf8.required_field("symbol"),
     ]);
-    let cast = target.cast_arrow_batch(batch, true).unwrap();
+    let cast = target
+        .cast_arrow_batch(batch, ArrowCastOptions::new())
+        .unwrap();
 
     assert_eq!(cast.num_columns(), 2);
     assert_eq!(cast.num_rows(), 2);
@@ -52,7 +54,9 @@ fn columns_reconcile_by_name_and_extra_columns_are_dropped() {
         DataType::Int64.required_field("id"),
         DataType::Utf8.nullable_field("symbol"),
     ]);
-    let cast = target.cast_arrow_batch(batch, true).unwrap();
+    let cast = target
+        .cast_arrow_batch(batch, ArrowCastOptions::new())
+        .unwrap();
 
     assert_eq!(cast.num_columns(), 2);
     assert_eq!(cast.schema().field(0).name(), "id");
@@ -68,7 +72,9 @@ fn an_exact_batch_keeps_its_own_arrays() {
     let column: arrow_array::ArrayRef = Arc::new(Int32Array::from(vec![7]));
     let batch = RecordBatch::try_new(schema, vec![Arc::clone(&column)]).unwrap();
 
-    let cast = target.cast_arrow_batch(batch, true).unwrap();
+    let cast = target
+        .cast_arrow_batch(batch, ArrowCastOptions::new())
+        .unwrap();
     assert!(Arc::ptr_eq(cast.column(0), &column));
 }
 
@@ -82,7 +88,9 @@ fn a_zero_column_batch_keeps_its_row_count() {
     .unwrap();
 
     let target = root([]);
-    let cast = target.cast_arrow_batch(batch, true).unwrap();
+    let cast = target
+        .cast_arrow_batch(batch, ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(cast.num_rows(), 3);
     assert_eq!(cast.num_columns(), 0);
 }

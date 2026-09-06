@@ -11,19 +11,22 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
+use yggdryl::expression::Function as CoreFunction;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
 use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
+use crate::types::scalar::PyScalar;
 use crate::uri::{PyUrl, core_url_from_value};
-use crate::{PyDifferenceIterator, compare, value_error};
+use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
 pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
@@ -208,7 +211,11 @@ impl PyField {
         py: Python<'py>,
         frame: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
+        let nullability = nullability.to_owned();
+        let representation = representation.to_owned();
         // Plan-only: proves the frame answers schema questions without rows.
         frame.call_method0("collect_schema")?;
 
@@ -244,7 +251,7 @@ impl PyField {
                 let py = frame.py();
                 let this = Self::from_inner(field.clone());
                 let table = crate::iomedia::polars_to_arrow(&frame)?;
-                let cast = this.cast_arrow(py, &table, safe)?;
+                let cast = this.cast_arrow(py, &table, safe, &nullability, &representation)?;
                 Ok(py
                     .import("polars")?
                     .call_method1("from_arrow", (cast,))?
@@ -429,14 +436,18 @@ impl PyField {
         default_arrow_scalar_to_pyarrow(py, &self.inner, &array)
     }
 
-    /// Returns the core-selected Field default in its cached Python type plan.
-    fn default_pyvalue<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.default_arrow_array().map_err(value_error)?;
-        let scalar = default_arrow_scalar_to_pyarrow(py, &self.inner, &array)?;
-        let field = Py::new(py, self.clone())?;
-        py.import("yggdryl.types._defaults")?
-            .getattr("_default_pyvalue_from_field")?
-            .call1((field, scalar))
+    /// Returns the core-selected Field default as one generic `Scalar`.
+    ///
+    /// A default is a value, and every value in this runtime is a `Scalar`:
+    /// the same one an array or a row is built from, the same one `as_py`
+    /// renders. So a default is answered as that, and what a caller does with
+    /// it - read it, materialize an array of it, feed it back into a cast - is
+    /// the one conversion vocabulary rather than a second per-default one.
+    fn default_scalar(&self) -> PyResult<PyScalar> {
+        self.inner
+            .default_value()
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
     }
 
     /// Returns a recursively normalized field for a named compatibility target.
@@ -480,18 +491,27 @@ impl PyField {
         Ok(scalar)
     }
 
-    /// Casts and null/default-fills one `PyArrow` Array through the exact Field.
-    #[pyo3(signature = (value, *, safe=true))]
+    /// Casts one `PyArrow` Array through the exact Field.
+    ///
+    /// `safe` decides whether a failed conversion becomes null; `nullability`
+    /// decides what a non-null Field does with a null it cannot hold -
+    /// `"default"` writes its canonical default, `"strict"` refuses by path.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_array<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let input = arrow_array_from_pyarrow(value)?;
         let array = self
             .inner
-            .cast_arrow_array(Arc::clone(&input), safe)
+            .cast_arrow_array(
+                Arc::clone(&input),
+                cast_options(safe, nullability, representation)?,
+            )
             .map_err(value_error)?;
         if Arc::ptr_eq(&input, &array) {
             let has_extension_metadata = self.inner.has_metadata("ARROW:extension:name")
@@ -511,33 +531,109 @@ impl PyField {
         arrow_array_to_pyarrow(py, &array, Some(&self.inner))
     }
 
-    /// Bit-casts one opposite-signed, same-width `PyArrow` integer Array.
-    fn cast_arrow_array_bits<'py>(
+    /// Applies this schema's metadata-declared columns to one `RecordBatch`.
+    ///
+    /// `cast` reconciles the batch to this root first, `partition` computes
+    /// every column a `partition:transform` over `partition:sources`
+    /// declares, and `digest` fills every holder last, over the rows as they
+    /// finally stand. Each protocol walks the declared Structs beneath this
+    /// root and leaves a column holding anything but its canonical default
+    /// alone, so applying twice writes nothing the first pass already did.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let array = self
+        let options = cast_options(safe, nullability, representation)?;
+        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        self.inner
+            .apply_arrow_batch(&batch, digest, partition, cast, options)
+            .map_err(value_error)?
+            .to_pyarrow(py)
+    }
+
+    /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
+    ///
+    /// The declarations name every column they add, so the applied shape is a
+    /// property of two schemas: nothing is decoded, and a declaration that
+    /// cannot be satisfied fails here rather than on the first batch.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_schema<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
+        self.inner
+            .apply_arrow_schema(schema, digest, partition, cast, options)
+            .map_err(value_error)?
+            .to_pyarrow(py)
+    }
+
+    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
+    ///
+    /// The applied schema is derived once, so the returned reader answers it
+    /// before the first batch is pulled and can be handed straight to a write.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let options = cast_options(safe, nullability, representation)?;
+        let reader = batch_reader_from_arrow_reader(value)?;
+        let applied = self
             .inner
-            .cast_arrow_array_bits(arrow_array_from_pyarrow(value)?)
+            .apply_arrow_reader(reader, digest, partition, cast, options)
             .map_err(value_error)?;
-        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+        batch_reader_to_pyarrow(py, applied)
     }
 
     /// Reconciles one `PyArrow` `RecordBatch` to this exact Struct Field.
-    #[pyo3(signature = (value, *, safe=true))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
         let source_schema = batch.schema();
         let source_columns = batch.columns().to_vec();
         let cast = self
             .inner
-            .cast_arrow_batch(batch, safe)
+            .cast_arrow_batch(batch, cast_options(safe, nullability, representation)?)
             .map_err(value_error)?;
         if Arc::ptr_eq(&source_schema, &cast.schema())
             && source_columns
@@ -551,13 +647,19 @@ impl PyField {
     }
 
     /// Casts one `PyArrow` scalar - or a one-row Array - to this exact Field.
-    #[pyo3(signature = (value, *, safe=true))]
+    ///
+    /// A scalar has no row to repair, so a null entering a non-nullable Field
+    /// is refused under either nullability policy.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_scalar<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
+        cast_options(safe, nullability, representation)?;
         if value.is_instance(&py.import("pyarrow")?.getattr("Array")?)? {
             if value.len()? != 1 {
                 return Err(PyValueError::new_err(format!(
@@ -570,39 +672,98 @@ impl PyField {
         self.arrow_scalar(py, value, safe)
     }
 
+    /// Casts one `pyarrow.Table` to this exact Struct Field, eagerly.
+    ///
+    /// A table is already held whole, so this is the eager half of the pair:
+    /// the reader is drained here rather than handed back. One
+    /// [`cast_arrow_reader`](Self::cast_arrow_reader) plan serves every batch
+    /// it holds.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_table<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let pyarrow = py.import("pyarrow")?;
+        if !value.is_instance(&pyarrow.getattr("Table")?)? {
+            return Err(PyTypeError::new_err(format!(
+                "expected a pyarrow.Table, got {}",
+                crate::iomedia::type_name(value)
+            )));
+        }
+        let reader = value.call_method0("to_reader")?;
+        self.cast_arrow_reader(py, &reader, safe, nullability, representation)?
+            .call_method0("read_all")
+    }
+
+    /// Casts anything that streams to this exact Struct Field, lazily.
+    ///
+    /// The returned `pyarrow.RecordBatchReader` holds one compiled cast plan
+    /// and one source batch at a time: nothing is collected, no Python row loop
+    /// runs, and a batch's failure surfaces when that batch is pulled. Closing
+    /// or dropping the reader releases the source C stream.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = crate::iomedia::batch_reader_from_any(
+            value,
+            &yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
+                .map_err(value_error)?,
+        )?;
+        let cast = yggdryl::arrow::cast_reader(
+            reader,
+            &self.inner,
+            cast_options(safe, nullability, representation)?,
+        )
+        .map_err(value_error)?;
+        crate::iomedia::batch_reader_to_pyarrow(py, cast)
+    }
+
     /// Casts whatever Arrow-shaped thing `value` is to this exact Field.
     ///
-    /// The kind is inferred and the result keeps it: a `pyarrow` `Scalar`,
-    /// `Array`, `ChunkedArray`, `RecordBatch`, `Table`, `RecordBatchReader`,
-    /// `Dataset`, or `Scanner` comes back as a scalar, array, batch, table,
-    /// or streamed reader; a `polars` `DataFrame` crosses at the newest
-    /// compat level - view arrays stay view arrays - and comes back a
-    /// `DataFrame`; a `polars` `LazyFrame` stays lazy, its schema read with
-    /// `collect_schema` and the cast mapped over its batches, so nothing is
-    /// collected until the caller collects; a `pandas` `DataFrame` or
-    /// `Series` crosses through Arrow and comes back as itself. Streams are
-    /// cast batch by batch - nothing is collected that could flow.
-    #[pyo3(signature = (value, *, safe=true))]
+    /// The kind is inferred and the result keeps it, by delegating to the named
+    /// method for that kind: a `pyarrow` `Scalar`, `Array`, `ChunkedArray`,
+    /// `RecordBatch`, `Table`, `RecordBatchReader`, `Dataset`, or `Scanner`
+    /// comes back as a scalar, array, batch, table, or streamed reader; a
+    /// `polars` `DataFrame` crosses at the newest compat level - view arrays
+    /// stay view arrays - and comes back a `DataFrame`; a `polars` `LazyFrame`
+    /// stays lazy, its schema read with `collect_schema` and the cast mapped
+    /// over its batches, so nothing is collected until the caller collects; a
+    /// `pandas` `DataFrame` or `Series` crosses through Arrow and comes back as
+    /// itself. A table is drained here and a reader is not - which is the
+    /// difference between the two named methods this delegates to.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         use crate::iomedia::declared_by;
 
         // polars: the frame comes back a frame, the lazy frame stays lazy.
         if declared_by(value, "polars", "DataFrame") {
             let table = crate::iomedia::polars_to_arrow(value)?;
-            let cast = self.cast_arrow(py, &table, safe)?;
+            let cast = self.cast_arrow(py, &table, safe, nullability, representation)?;
             return py.import("polars")?.call_method1("from_arrow", (cast,));
         }
         if declared_by(value, "polars", "LazyFrame") {
-            return self.cast_polars_lazy(py, value, safe);
+            return self.cast_polars_lazy(py, value, safe, nullability, representation);
         }
         if declared_by(value, "polars", "Series") {
             let array = value.call_method0("to_arrow")?;
-            let cast = self.cast_arrow_array(py, &array, safe)?;
+            let cast = self.cast_arrow_array(py, &array, safe, nullability, representation)?;
             return py.import("polars")?.call_method1("from_arrow", (cast,));
         }
         // pandas: through Arrow and back, with pandas' own compat checks.
@@ -611,7 +772,7 @@ impl PyField {
                 .import("pyarrow")?
                 .getattr("Table")?
                 .call_method1("from_pandas", (value,))?;
-            let cast = self.cast_arrow(py, &table, safe)?;
+            let cast = self.cast_arrow(py, &table, safe, nullability, representation)?;
             return cast.call_method0("to_pandas");
         }
         if declared_by(value, "pandas", "Series") {
@@ -619,49 +780,44 @@ impl PyField {
                 .import("pyarrow")?
                 .getattr("Array")?
                 .call_method1("from_pandas", (value,))?;
-            let cast = self.cast_arrow_array(py, &array, safe)?;
+            let cast = self.cast_arrow_array(py, &array, safe, nullability, representation)?;
             return cast.call_method0("to_pandas");
         }
 
         let pyarrow = py.import("pyarrow")?;
         let is = |name: &str| -> PyResult<bool> { value.is_instance(&pyarrow.getattr(name)?) };
         if is("Scalar")? {
-            return self.arrow_scalar(py, value, safe);
+            return self.cast_arrow_scalar(py, value, safe, nullability, representation);
         }
         if is("ChunkedArray")? {
             let combined = value.call_method0("combine_chunks")?;
-            let cast = self.cast_arrow_array(py, &combined, safe)?;
+            let cast = self.cast_arrow_array(py, &combined, safe, nullability, representation)?;
             return pyarrow.call_method1("chunked_array", (vec![cast],));
         }
         if is("Array")? {
-            return self.cast_arrow_array(py, value, safe);
+            return self.cast_arrow_array(py, value, safe, nullability, representation);
         }
         if is("RecordBatch")? {
-            return self.cast_arrow_batch(py, value, safe);
+            return self.cast_arrow_batch(py, value, safe, nullability, representation);
         }
         if is("Table")? {
-            let reader = self.cast_arrow(py, &value.call_method0("to_reader")?, safe)?;
-            return reader.call_method0("read_all");
+            return self.cast_arrow_table(py, value, safe, nullability, representation);
         }
-        // Everything that streams - a RecordBatchReader, a Dataset, a
-        // Scanner, anything exporting the C stream - casts batch by batch.
-        let reader = crate::iomedia::batch_reader_from_any(
-            value,
-            &yggdryl::media::RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM)
-                .map_err(value_error)?,
-        )?;
-        let cast = yggdryl::arrow::cast_reader(reader, &self.inner, safe).map_err(value_error)?;
-        crate::iomedia::batch_reader_to_pyarrow(py, cast)
+        // Everything else that streams - a RecordBatchReader, a Dataset, a
+        // Scanner, anything exporting the C stream - stays a lazy reader.
+        self.cast_arrow_reader(py, value, safe, nullability, representation)
     }
 
     /// The generic cast: [`cast_arrow`](Self::cast_arrow) for anything
     /// Arrow-shaped, and a typed scalar for a plain Python value.
-    #[pyo3(signature = (value, *, safe=true))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
+        representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         use crate::iomedia::declared_by;
 
@@ -677,9 +833,10 @@ impl PyField {
             || value.hasattr("__arrow_c_stream__")?
             || value.hasattr("__arrow_c_array__")?;
         if arrow_shaped {
-            return self.cast_arrow(py, value, safe);
+            return self.cast_arrow(py, value, safe, nullability, representation);
         }
         // A plain Python value becomes the typed scalar this Field declares.
+        cast_options(safe, nullability, representation)?;
         self.arrow_scalar(py, value, safe)
     }
 
@@ -1522,7 +1679,7 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::PANDAS)
     }
 
-    /// Returns the effective row-digest components in declaration order.
+    /// Returns the children a row digest reads by default, in declaration order.
     #[getter]
     fn digest_fields(&self) -> Vec<Self> {
         self.inner
@@ -1532,7 +1689,7 @@ impl PyField {
             .collect()
     }
 
-    /// Returns the names of the effective row-digest components.
+    /// Returns the names of the children a row digest reads by default.
     #[getter]
     fn digest_field_names(&self) -> Vec<&str> {
         self.inner.digest_field_names().collect()
@@ -1544,13 +1701,7 @@ impl PyField {
         self.inner.digest_field_len()
     }
 
-    /// Returns whether any child explicitly declares the digest-component role.
-    #[getter]
-    fn has_digest_components(&self) -> bool {
-        self.inner.has_digest_components()
-    }
-
-    /// Returns this struct root holding only its effective digest components.
+    /// Returns this struct root holding only the children a digest reads.
     fn only_digest_fields(&self) -> PyResult<Self> {
         self.inner
             .only_digest_fields()
@@ -2028,6 +2179,20 @@ impl PyProtocolField {
             self.scheme.as_str()
         )))
     }
+
+    /// Refuse a typed partition property on a view of another protocol.
+    ///
+    /// [`Self::require_fix`] carries the rule; this is the same one for the
+    /// view `field.partition` returns.
+    fn require_partition(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a partition property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
 }
 
 #[pymethods]
@@ -2328,6 +2493,102 @@ impl PyProtocolField {
             .as_fix_mut()
             .set_description(text)
             .map_err(value_error)
+    }
+
+    /// The field paths this partition column derives its value from.
+    ///
+    /// Dotted paths, the way `Field.get_field` spells a nested one, in the one
+    /// shape every `sources` property has. One path is every transform the
+    /// core evaluates today; a longer list is stored and refused when the
+    /// column is applied.
+    #[getter]
+    fn sources(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
+        self.require_partition("sources")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_partition().sources().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_sources(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_partition("sources")?;
+        let mut paths = Vec::new();
+        for path in value.try_iter()? {
+            paths.push(path?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_partition_mut()
+            .set_sources(paths)
+            .map_err(value_error)
+    }
+
+    /// How this partition column derives its value, on the `partition` view.
+    ///
+    /// The vocabulary is the [expression](../expression/grammar.md) grammar's
+    /// own function set, and it crosses as its canonical name: a dialect alias
+    /// resolves on the way in, so `dayofmonth` reads back as `day`. An absent
+    /// transform is the identity - the source value unchanged.
+    #[getter]
+    fn transform(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_partition("transform")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_partition()
+            .transform()
+            .map_err(value_error)?
+            .map(|transform| transform.as_str().to_owned()))
+    }
+
+    #[setter]
+    fn set_transform(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_partition("transform")?;
+        let name = value.extract::<String>()?;
+        let transform = CoreFunction::from_name(&name).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "expected one of {}, got {name:?}",
+                CoreFunction::vocabulary()
+            ))
+        })?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_partition_mut()
+            .set_transform(transform)
+            .map_err(value_error)
+    }
+
+    /// Apply this protocol's declarations to one `pyarrow.RecordBatch`.
+    ///
+    /// The view is taken on the Struct root, and every declared Struct beneath
+    /// it is walked. `field.partition` computes each column its `transform`
+    /// and `source` declare; `field.digest` fills each holder. Both leave a
+    /// column holding anything but its canonical default alone, so applying
+    /// twice writes nothing the first pass already did.
+    ///
+    /// Every other protocol's view raises `TypeError` naming its own scheme.
+    // The signature is the Python keyword surface: one parameter per keyword,
+    // so it is as wide as the contract is and cannot be narrowed here.
+    #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let field = self.borrow_field(py)?;
+        let applied = if self.scheme == CoreScheme::PARTITION {
+            field.inner.as_partition().apply_arrow_batch(&batch)
+        } else if self.scheme == CoreScheme::DIGEST {
+            field.inner.as_digest().apply_arrow_batch(&batch)
+        } else {
+            return Err(PyTypeError::new_err(format!(
+                "apply_arrow_batch is a partition or digest operation, and this is a {} view",
+                self.scheme.as_str()
+            )));
+        };
+        applied.map_err(value_error)?.to_pyarrow(py)
     }
 
     /// Merges another protocol view's properties into this one, in place.

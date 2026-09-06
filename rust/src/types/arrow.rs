@@ -65,6 +65,14 @@ impl DataType {
     }
 
     /// Imports an Arrow datatype and validates every nested invariant.
+    ///
+    /// An Arrow datatype carries no metadata, so an extension type arrives as
+    /// the storage it is written over: `fixed_size_binary(3)` and not
+    /// `currency`, `binary` and not `geometry`. The identity lives on the
+    /// field - [`Field::from_arrow`](crate::Field::from_arrow) reads it, and
+    /// [`Self::into_arrow_ffi`] projects a node that carries it - so a schema
+    /// round trip keeps every first-class datatype and only this bare pair
+    /// answers storage.
     pub fn from_arrow(value: &ArrowDataType) -> Result<Self> {
         Self::from_arrow_at_depth(value, 0)
     }
@@ -266,6 +274,11 @@ impl DataType {
     /// and preserves datatype flags recursively, including sorted map keys.
     /// Arrow 59's generic Field-to-C-schema conversion overwrites those flags
     /// when adding field flags, so Yggdryl owns the corrected recursive path.
+    ///
+    /// A C schema is a field node, so unlike [`Self::into_arrow`] this keeps
+    /// an extension identity - a code, a UUID, a version, a variant, a
+    /// geospatial parameter set - including under a dictionary encoding,
+    /// where the entries belong to the outer node.
     pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema> {
         native_dtype_to_ffi(&self)
     }
@@ -275,6 +288,10 @@ impl DataType {
     /// Scalar conversion is allocation-free. Shared nested fields reuse their
     /// Arrow projections; uniquely owned child state can be consumed by
     /// [`Field::into_arrow_ref`].
+    ///
+    /// An extension type projects as its storage: an Arrow datatype has
+    /// nowhere to carry the `ARROW:extension:*` entries, which is what
+    /// [`Self::into_arrow_ffi`] and the field projections do carry.
     pub fn into_arrow(self) -> Result<ArrowDataType> {
         ArrowDataType::try_from(self)
     }
@@ -832,10 +849,18 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         DataType::Dictionary(dictionary) => {
             validate_dictionary_key(&dictionary.key)?;
             let key = dictionary.key.clone().into_arrow_ffi()?;
+            // An encoded extension declares its identity once, on the node
+            // the field is: Arrow's dictionary values are a bare datatype, so
+            // an importer reads the outer entries and never the ones a values
+            // projection would carry. The tail below writes them there.
+            let mut values = dictionary.value.clone().into_arrow_ffi()?;
+            if arrow_extension_parts(&dictionary.value).is_some() {
+                values = values.with_metadata::<[(&str, &str); 0], _>([])?;
+            }
             (
                 key.format().to_owned(),
                 Vec::new(),
-                Some(dictionary.value.clone().into_arrow_ffi()?),
+                Some(values),
                 Flags::empty(),
             )
         }
@@ -902,8 +927,22 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
             return FFI_ArrowSchema::try_from(&arrow).map_err(Error::from);
         }
     };
-    FFI_ArrowSchema::try_new(&format, children, dictionary)
-        .and_then(|schema| schema.with_flags(flags))
+    let schema = FFI_ArrowSchema::try_new(&format, children, dictionary)
+        .and_then(|schema| schema.with_flags(flags))?;
+    // A dictionary-encoded extension is still that extension, and the C
+    // schema is the field that says so: the entries the plain projection
+    // writes above ride here for the encoded shape too.
+    let Some((name, metadata)) = arrow_extension_parts(dtype) else {
+        return Ok(schema);
+    };
+    schema
+        .with_metadata([
+            (arrow_schema::extension::EXTENSION_TYPE_NAME_KEY, name),
+            (
+                arrow_schema::extension::EXTENSION_TYPE_METADATA_KEY,
+                metadata.as_str(),
+            ),
+        ])
         .map_err(Error::from)
 }
 

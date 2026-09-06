@@ -159,14 +159,6 @@ impl<H: IOBase> crate::IOMedia for Cursor<H> {
 
 impl<H: IOBase> IOBase for Cursor<H> {
     crate::delegate_iobase!(handle);
-
-    fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        self.handle.read_all_bytes()
-    }
-
-    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.handle.read_range_bytes(offset, length)
-    }
 }
 
 impl<H: IOBase> IOCursor for Cursor<H> {

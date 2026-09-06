@@ -8,7 +8,7 @@ from decimal import Decimal
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, types
+from yggdryl import DataType, Field, Scalar, types
 
 # Every Arrow datatype variant the core distinguishes. It is asserted as a
 # constant so that adding a variant to the core without adding it here fails,
@@ -124,7 +124,41 @@ def test_every_datatype_variant_has_one_python_and_arrow_default(
 
     assert scalar.type.equals(dtype.into_arrow())
     dtype.default_pyhint()
-    dtype.default_pyvalue()
+    assert isinstance(dtype.default_scalar(), Scalar)
+    dtype.default_scalar().as_py()
+
+
+def test_a_default_is_one_scalar_that_materializes_the_same_value() -> None:
+    required = Field(
+        "row",
+        DataType.from_fields(
+            (
+                Field("count", "uint32", nullable=False),
+                Field("label", "utf8", nullable=True),
+            )
+        ),
+        nullable=False,
+    )
+    nullable = Field("row", required.dtype, nullable=True)
+
+    default = required.default_scalar()
+
+    assert isinstance(default, Scalar)
+    assert default.as_py() == [0, None]
+    # The materialized default is that same Scalar rather than a second
+    # answer: rendered into Arrow it reproduces `default_arrow_scalar`
+    # exactly, and a required cast fills its nulls with it.
+    assert default.into_arrow_scalar(required).equals(required.default_arrow_scalar())
+    filled = required.dtype.cast_arrow_array(
+        pa.nulls(2, required.dtype.into_arrow())
+    )
+    assert filled.to_pylist() == [{"count": 0, "label": None}] * 2
+
+    # Nullability is the core's answer over one layout: the datatype answers
+    # its canonical value, and a Field that may be absent answers null.
+    assert required.dtype.default_scalar() == default
+    assert nullable.default_scalar().kind == "null"
+    assert nullable.default_scalar().as_py() is None
 
 
 def test_default_pyhint_is_cached_nullable_and_arrow_free() -> None:
@@ -207,15 +241,15 @@ def test_typed_factory_defaults_cover_field_and_nested_child_nullability() -> No
     nullable_item = types.int32("item")
     required_item = types.int32("item", nullable=False)
 
-    assert nullable_item.default_pyvalue() is None
-    assert required_item.default_pyvalue() == 0
-    assert required_item.dtype.default_pyvalue() == 0
+    assert nullable_item.default_scalar().as_py() is None
+    assert required_item.default_scalar().as_py() == 0
+    assert required_item.dtype.default_scalar().as_py() == 0
 
     fixed = types.fixed_size_list(
         "values", nullable_item, 2, nullable=False
     )
-    assert fixed.default_pyvalue() == [None, None]
-    assert fixed.dtype.default_pyvalue() == [None, None]
+    assert fixed.default_scalar().as_py() == [None, None]
+    assert fixed.dtype.default_scalar().as_py() == [None, None]
 
     valid_struct = types.struct(
         "row", (required_item,), nullable=False
@@ -223,132 +257,28 @@ def test_typed_factory_defaults_cover_field_and_nested_child_nullability() -> No
     invalid_struct = types.struct(
         "row", (Field("not-valid", "int32", nullable=False),), nullable=False
     )
-    assert dataclasses.is_dataclass(valid_struct.default_pyvalue())
-    assert invalid_struct.default_pyvalue() == {"not-valid": 0}
+    # A record default is positional, so both spell the same value; only the
+    # hint splits on whether the child names are Python identifiers.
+    assert valid_struct.default_scalar().as_py() == [0]
+    assert invalid_struct.default_scalar().as_py() == [0]
+    assert dataclasses.is_dataclass(valid_struct.default_pyhint())
+    assert typing.is_typeddict(invalid_struct.default_pyhint())
 
 
-def test_struct_default_is_cached_exact_record_materialization() -> None:
-    arrow_type = pa.struct(
-        [
-            pa.field("identifier", pa.uint32(), nullable=False),
-            pa.field("amount", pa.decimal128(18, 4), nullable=False),
-            pa.field("optional", pa.string(), nullable=True),
-            pa.field(
-                "child",
-                pa.struct(
-                    [
-                        pa.field("label", pa.string(), nullable=False),
-                        pa.field("created", pa.timestamp("us", tz="UTC"), False),
-                    ]
-                ),
-                nullable=False,
-                metadata={b"role": b"nested"},
-            ),
-        ]
-    )
-    dtype = DataType.from_arrow(arrow_type)
-    hint = dtype.default_pyhint()
-    assert hint.field().dtype["child"].metadata.get("role") is None
-
-    value = dtype.default_pyvalue()
-
-    assert isinstance(value, hint)
-    assert type(value) is not hint
-    assert dataclasses.is_dataclass(value)
-    assert dataclasses.is_dataclass(value.child)
-    assert dataclasses.asdict(value) == {
-        "identifier": 0,
-        "amount": Decimal("0.0000"),
-        "optional": None,
-        "child": {
-            "label": "",
-            "created": dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc),
-        },
-    }
-    assert type(value).field().dtype == dtype
-    assert hint.field().dtype["child"].metadata.get("role") is None
-    assert (
-        type(value.child).field().dtype
-        == dtype["child"].dtype
-    )
-    schema = type(value).field().into_arrow_schema()
-    assert schema.field("identifier").type == pa.uint32()
-    assert schema.field("amount").type == pa.decimal128(18, 4)
-    assert schema.field("child").metadata == {b"role": b"nested"}
-
-
-@pytest.mark.parametrize("first", ["left", "right"])
-def test_struct_value_classes_do_not_poison_metadata_free_hints(first: str) -> None:
+def test_struct_field_metadata_never_reaches_the_cached_hint() -> None:
     dtype = DataType.from_fields(
-        (Field(f"count_{first}_first", "int32", nullable=False),)
+        (Field("count", "int32", nullable=False),)
     )
-    left = Field(
-        "left",
-        dtype,
-        nullable=False,
-        metadata={"owner": "left"},
-    )
-    right = Field(
-        "right",
-        dtype,
-        nullable=False,
-        metadata={"owner": "right"},
-    )
+    left = Field("left", dtype, nullable=False, metadata={"owner": "left"})
+    right = Field("right", dtype, nullable=False, metadata={"owner": "right"})
 
     hint = left.default_pyhint()
+
+    # Name and metadata are not part of hint identity, so two Fields over one
+    # layout share a single hint whose own Field carries neither of theirs.
     assert right.default_pyhint() is hint
-
-    fields = {"left": left, "right": right}
-    values = {
-        name: fields[name].default_pyvalue()
-        for name in (first, "right" if first == "left" else "left")
-    }
-    right_value = values["right"]
-    left_value = values["left"]
-    assert isinstance(right_value, hint)
-    assert isinstance(left_value, hint)
-    assert type(right_value) is not type(left_value)
-    assert type(right.default_pyvalue()) is type(right_value)
-    assert type(left.default_pyvalue()) is type(left_value)
-    assert type(right_value).field().name == "right"
-    assert type(left_value).field().name == "left"
-    assert type(right_value).field().metadata.get("owner") == "right"
-    assert type(left_value).field().metadata.get("owner") == "left"
     assert hint.field().metadata.get("owner") is None
-
-
-@pytest.mark.parametrize("first", ["hint", "value"])
-def test_datatype_nested_metadata_never_mutates_public_hint(first: str) -> None:
-    child_name = f"child_{first}_first"
-    dtype = DataType.from_fields(
-        (
-            Field(
-                child_name,
-                DataType.from_fields(
-                    (Field("label", "utf8", nullable=False),)
-                ),
-                nullable=False,
-                metadata={"role": "nested"},
-            ),
-        )
-    )
-
-    if first == "hint":
-        hint = dtype.default_pyhint()
-        value = dtype.default_pyvalue()
-    else:
-        value = dtype.default_pyvalue()
-        hint = dtype.default_pyhint()
-
-    assert isinstance(value, hint)
-    assert hint.field().dtype[child_name].metadata.get("role") is None
-    assert (
-        type(value)
-        .field()
-        .dtype[child_name]
-        .metadata.get("role")
-        == "nested"
-    )
+    assert hint.field().name not in ("left", "right")
 
 
 def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
@@ -367,19 +297,51 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
     dtype = DataType.from_arrow(arrow_type)
 
     hint = dtype.default_pyhint()
-    value = dtype.default_pyvalue()
 
     assert typing.is_typeddict(hint)
     assert tuple(hint.__annotations__) == ("a-b", "class", "1child")
     nested_hint = hint.__annotations__["1child"]
     assert nested_hint.field().metadata.get("role") is None
-    assert value["a-b"] == 0
-    assert value["class"] is None
-    assert dataclasses.is_dataclass(value["1child"])
-    assert dataclasses.asdict(value["1child"]) == {"label": ""}
-    assert type(value["1child"]).field().metadata.get("role") == "nested"
-    assert nested_hint.field().metadata.get("role") is None
+    # The fallback names the hint's keys only: the default stays positional.
+    assert dtype.default_scalar().as_py() == [0, None, [""]]
     assert dtype.default_arrow_scalar().type.equals(arrow_type)
+
+
+def test_a_default_scalar_reads_as_generic_python_values() -> None:
+    dtype = DataType.from_arrow(
+        pa.struct(
+            [
+                pa.field("identifier", pa.uint32(), nullable=False),
+                pa.field("amount", pa.decimal128(18, 4), nullable=False),
+                pa.field("optional", pa.string(), nullable=True),
+                pa.field("day", pa.date32(), nullable=False),
+                pa.field("tags", pa.map_(pa.string(), pa.int32()), nullable=False),
+                pa.field("blob", pa.binary(2), nullable=False),
+                pa.field(
+                    "child",
+                    pa.struct([pa.field("label", pa.string(), nullable=False)]),
+                    nullable=False,
+                ),
+            ]
+        )
+    )
+
+    # A record is a positional list and a map is a dict; nothing here is a
+    # generated class, and the hint alone names the children.
+    assert dtype.default_scalar().as_py() == [
+        0,
+        Decimal("0.0000"),
+        None,
+        dt.date(1970, 1, 1),
+        {},
+        b"\x00\x00",
+        [""],
+    ]
+    assert Field("id", "uuid", nullable=False).default_scalar().as_py() == (
+        "00000000-0000-0000-0000-000000000000"
+    )
+    assert Field("release", "version", nullable=False).default_scalar().as_py() == "0"
+    assert DataType.ascii(3).default_scalar().as_py() == ""
 
 
 @pytest.mark.parametrize(
@@ -405,32 +367,34 @@ def test_scalar_defaults_share_exact_arrow_and_python_projection(
 
     assert scalar.type.equals(arrow_type)
     assert scalar.as_py() == expected
-    assert dtype.default_pyvalue() == expected
+    assert dtype.default_scalar().as_py() == expected
 
 
 def test_field_default_nullability_comes_from_native_core() -> None:
-    # `decimal(18, 4)` is a decimal64, whose Arrow type id a PyArrow below 19
-    # cannot import at all. `default_pyvalue` is no way around that: it builds
-    # the same PyArrow scalar `default_arrow_scalar` does and then converts it,
-    # so both cross the boundary and the whole narrow-decimal half runs only
-    # where the release can spell one.
-    if hasattr(pa, "decimal64"):
-        nullable = Field("amount", DataType.decimal(18, 4), nullable=True)
-        required = Field("amount", DataType.decimal(18, 4), nullable=False)
+    nullable = Field("amount", DataType.decimal(18, 4), nullable=True)
+    required = Field("amount", DataType.decimal(18, 4), nullable=False)
 
+    assert nullable.default_scalar().as_py() is None
+    assert required.default_scalar().as_py() == Decimal("0.0000")
+
+    # `decimal(18, 4)` is a decimal64, whose Arrow type id a PyArrow below 19
+    # cannot import at all. The Scalar never crosses that boundary, so only
+    # the Arrow half runs where the release can spell one.
+    if hasattr(pa, "decimal64"):
         nullable_scalar = nullable.default_arrow_scalar()
         required_scalar = required.default_arrow_scalar()
         assert nullable_scalar.type == pa.decimal64(18, 4)
         assert not nullable_scalar.is_valid
-        assert nullable.default_pyvalue() is None
         assert required_scalar.as_py() == Decimal("0.0000")
-        assert required.default_pyvalue() == Decimal("0.0000")
 
     null_type = DataType("null")
     assert not null_type.default_arrow_scalar().is_valid
-    assert null_type.default_pyvalue() is None
+    assert null_type.default_scalar().as_py() is None
+    impossible = Field("impossible", null_type, nullable=False)
     with pytest.raises(ValueError, match="non-nullable|no constructible|default"):
-        Field("impossible", null_type, nullable=False).default_arrow_scalar()
+        impossible.default_arrow_scalar()
+    with pytest.raises(ValueError, match="non-nullable|no constructible|default"):
+        impossible.default_scalar()
 
 
 def test_nullable_struct_default_masks_uninhabited_nested_physical_children() -> None:
@@ -448,7 +412,8 @@ def test_nullable_struct_default_masks_uninhabited_nested_physical_children() ->
     )
 
     scalar = outer.default_arrow_scalar()
-    assert outer.default_pyvalue() is None
+    assert outer.default_scalar().kind == "null"
+    assert outer.default_scalar().as_py() is None
     assert scalar.type.equals(outer.dtype.into_arrow())
     assert not scalar.is_valid
     assert scalar.as_py() is None
@@ -464,13 +429,7 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
     fixed = DataType.from_arrow(
         pa.list_(pa.field("item", item_type, nullable=False), 2)
     )
-    fixed_value = fixed.default_pyvalue()
-    assert len(fixed_value) == 2
-    assert all(dataclasses.is_dataclass(value) for value in fixed_value)
-    assert [dataclasses.asdict(value) for value in fixed_value] == [
-        {"code": 0, "note": None},
-        {"code": 0, "note": None},
-    ]
+    assert fixed.default_scalar().as_py() == [[0, None], [0, None]]
 
     union_type = pa.dense_union(
         [
@@ -483,7 +442,9 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
     union_scalar = union.default_arrow_scalar()
     assert union_scalar.type.equals(union_type)
     assert union_scalar.type_code == 7
-    assert union.default_pyvalue() == 0
+    # A union Scalar spells the selected branch beside its value, so the code
+    # the Arrow scalar carries is the head of the pair.
+    assert union.default_scalar().as_py() == [7, 0]
 
     dictionary_type = pa.dictionary(pa.int8(), pa.string(), ordered=True)
     dictionary = DataType.from_arrow(dictionary_type)
@@ -491,7 +452,7 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
     assert dictionary_scalar.type.equals(dictionary.into_arrow())
     assert dictionary_scalar.as_py() == ""
     assert dictionary.default_pyhint() is str
-    assert dictionary.default_pyvalue() == ""
+    assert dictionary.default_scalar().as_py() == ""
     ordered_dictionary = Field.from_arrow(
         pa.field("ordered", dictionary_type, nullable=False)
     )
@@ -504,7 +465,7 @@ def test_fixed_struct_union_dictionary_and_run_end_defaults() -> None:
     run_end_scalar = run_end.default_arrow_scalar()
     assert run_end_scalar.type.equals(run_end_type)
     assert run_end.default_pyhint() is int
-    assert run_end.default_pyvalue() == 0
+    assert run_end.default_scalar().as_py() == 0
 
 
 def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
@@ -518,16 +479,18 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
         int,
         type(None),
     }
-    assert duplicate_python_hint.default_pyvalue() == 0
+    assert duplicate_python_hint.default_scalar().as_py() == [0, 0]
 
     nullable_choice = Field("choice", duplicate_python_hint, nullable=True)
     nullable_scalar = nullable_choice.default_arrow_scalar()
     assert nullable_scalar.type_code == 0
     assert not nullable_scalar.is_valid
-    assert nullable_choice.default_pyvalue() is None
+    # The branch survives the absence: a nullable choice is the first branch
+    # holding null, not a bare null.
+    assert nullable_choice.default_scalar().as_py() == [0, None]
 
     nullable_nested = DataType.from_fields((nullable_choice,))
-    assert nullable_nested.default_pyvalue().choice is None
+    assert nullable_nested.default_scalar().as_py() == [[0, None]]
 
     impossible = Field(
         "fixed",
@@ -545,7 +508,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
     )
     selected_second = DataType.variant((impossible, selected))
     assert selected_second.default_arrow_scalar().type_code == 1
-    assert selected_second.default_pyvalue() == []
+    assert selected_second.default_scalar().as_py() == [1, []]
 
     uninhabited_struct = DataType.from_fields(
         (Field("required", "null", nullable=False),)
@@ -564,13 +527,8 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
             ),
         )
     )
-    structured_hint = structured.default_pyhint()
-    structured_value = structured.default_pyvalue()
     assert structured.default_arrow_scalar().type_code == 1
-    assert isinstance(structured_value, typing.get_args(structured_hint)[1])
-    assert dataclasses.asdict(structured_value) == {"value": 0}
-    assert type(structured_value).field().name == "present"
-    assert type(structured_value).field().metadata["branch"] == "selected"
+    assert structured.default_scalar().as_py() == [1, [0]]
 
     nested = DataType.from_fields(
         (
@@ -586,9 +544,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
             ),
         )
     )
-    value = nested.default_pyvalue()
-    assert value.choice == 0
-    assert value.repeated == [0, 0]
+    assert nested.default_scalar().as_py() == [[0, 0], [[0, 0], [0, 0]]]
 
 
 def test_default_arrow_scalar_rehydrates_registered_extension() -> None:
@@ -617,15 +573,15 @@ def test_default_arrow_scalar_rehydrates_registered_extension() -> None:
         missing = nullable.default_arrow_scalar()
         assert present.type.equals(extension)
         assert present.as_py() == 0
-        assert required.default_pyvalue() == 0
+        assert required.default_scalar().as_py() == 0
         assert missing.type.equals(extension)
         assert not missing.is_valid
-        assert nullable.default_pyvalue() is None
+        assert nullable.default_scalar().as_py() is None
     finally:
         pa.unregister_extension_type(extension.extension_name)
 
 
-def test_struct_extension_default_keeps_exact_field_and_record_storage() -> None:
+def test_struct_extension_default_keeps_its_storage_and_metadata_free_hint() -> None:
     class StructExtension(pa.ExtensionType):
         def __init__(self) -> None:
             super().__init__(
@@ -659,14 +615,11 @@ def test_struct_extension_default_keeps_exact_field_and_record_storage() -> None
         )
         hint = field.default_pyhint()
         scalar = field.default_arrow_scalar()
-        value = field.default_pyvalue()
 
         assert scalar.type.equals(extension)
         assert scalar.as_py() == {"count": 0}
-        assert isinstance(value, hint)
-        exact_root = type(value).field()
-        assert exact_root.into_arrow().type.equals(extension)
-        assert exact_root.metadata.get("owner") == "tests"
+        assert field.default_scalar().as_py() == [0]
+        assert dataclasses.is_dataclass(hint)
         assert hint.field().metadata.get("owner") is None
     finally:
         pa.unregister_extension_type(extension.extension_name)

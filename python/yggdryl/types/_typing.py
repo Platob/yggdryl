@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from .._native import DataType, Field
+from .._native import DataType, Field, Scalar
 
 _KindT = TypeVar("_KindT", bound=str)
+# The second parameter names what this alias's values read as in Python -
+# what `default_scalar().as_py()` and a row cell yield. It documents the
+# alias rather than narrowing a return: every value crosses as one `Scalar`,
+# and `Scalar.as_py` is the one conversion, not a per-alias one.
 _ValueT = TypeVar("_ValueT")
 
 if TYPE_CHECKING:
@@ -20,7 +24,7 @@ if TYPE_CHECKING:
         @property
         def id(self) -> _KindT: ...
 
-        def default_pyvalue(self) -> _ValueT: ...
+        def default_scalar(self) -> Scalar: ...
 
         def default_pyhint(self) -> object: ...
 
@@ -30,7 +34,7 @@ if TYPE_CHECKING:
         @property
         def dtype(self) -> TypedDataType[_KindT, _ValueT]: ...
 
-        def default_pyvalue(self) -> _ValueT | None: ...
+        def default_scalar(self) -> Scalar: ...
 
         def default_pyhint(self) -> object: ...
 

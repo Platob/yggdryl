@@ -190,9 +190,9 @@ Rust only.
 1. equal types are that type;
 2. `null` yields to the defined side;
 3. same-family nesting recurses; a struct takes the union of its fields;
-4. bytes win;
-5. text wins next; ASCII widths meet at the wider width, or the narrower when narrowing. A width beside variable text meets at the variable text, or the width when narrowing;
-6. numbers meet by width, temporals by unit.
+4. bytes win; a fixed width both sides store keeps that storage, the plain bytes when widening and the side constraining them - an ASCII width, a code, `uuid` - when narrowing;
+5. text wins next; ASCII widths meet at the wider width, or the narrower when narrowing. A width beside variable text meets at the variable text, or the width when narrowing; a registered code beside plainer text meets at the width it stores, or at the code itself when narrowing;
+6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
 Anything left is refused.
 
@@ -228,6 +228,16 @@ Rust only.
     // Bytes win over text, and text over numbers.
     assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
     assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+
+    // Narrowing keeps the tighter type: the code over the width it stores in.
+    assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, false)?, DataType::Currency);
+
+    // Widening never re-encodes a decimal's storage to fit the precision.
+    assert_eq!(
+        DataType::decimal128(10, 2)?.merge_with(&DataType::Int16, true)?,
+        DataType::decimal128(10, 2)?,
+    );
 
     // A field merge carries nullability and metadata across.
     let a = Field::new("price", DataType::Int32, false);
@@ -479,6 +489,147 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 
 No name, `None`/`null`, or the existing name returns the cached native value; another name returns a renamed clone. The root must be a non-null struct field.
 
+## Applying a schema's declarations
+
+A `Field` states more about a batch than its shape. A
+[`partition:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
+column is *derived* from another; a [`digest:`](../xxhash/values.md) role says a column *holds*
+the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
+in the order their answers depend on: `cast` reconciles the batch to this root, `partition`
+computes the derived columns, and `digest` fills the holders last, over the rows as they
+finally stand.
+
+Each protocol walks the Structs it declares and leaves a column holding anything but its
+canonical default alone, so applying twice writes nothing the first pass already did.
+
+The declarations name every column they add, so the applied shape is a property of two schemas
+and never of the data: `apply_arrow_schema` answers it without reading a row, and
+`apply_arrow_reader` uses that to report the shape a stream will have before its first batch is
+pulled - which is what lets a partitioned read be handed straight to a write. The whole applied
+plan is compiled from those two schemas once, so a stream pays for it once.
+
+`options` carries the [cast policy](cast.md#strict-nullability) the first step runs under, and
+under `strict` nullability it also holds after the protocols have run. A field an enabled protocol
+materializes may arrive absent or holding its canonical default - closing that hole is the
+protocol's job, and it has not run yet - but the applied batch is checked again once every
+protocol is done, so a required column its protocol did not write is still refused by path.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Date32Array, RecordBatch};
+    use yggdryl::expression::Function;
+    use yggdryl::{ArrowCastOptions, DataType};
+
+    let mut year = DataType::Int32.nullable_field("year");
+    year.as_partition_mut().set_sources(["event"])?;
+    year.as_partition_mut().set_transform(Function::Year)?;
+    let mut row_digest = DataType::UInt64.nullable_field("row_digest");
+    row_digest.as_digest_mut().set_holder()?;
+    let root = DataType::from_fields([
+        DataType::Date32.required_field("event"),
+        year,
+        row_digest,
+    ])?
+    .required_field("row");
+
+    let batch = RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
+    )])?;
+
+    let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+
+    assert_eq!(applied.num_columns(), 3);
+    // The digest saw the derived column, because the partition step ran first.
+    assert_eq!(applied.column(2).null_count(), 0);
+    // Applying again writes nothing: every column now holds a written value.
+    assert_eq!(
+        root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
+        applied,
+    );
+
+    // The same shape, with no rows read and no batch pulled.
+    let shape =
+        root.apply_arrow_schema(batch.schema(), true, true, true, ArrowCastOptions::new())?;
+    assert_eq!(shape, applied.schema());
+
+    let mut stream = root.apply_arrow_reader(
+        yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        true,
+        true,
+        true,
+        ArrowCastOptions::new(),
+    )?;
+    assert_eq!(arrow_array::RecordBatchReader::schema(&stream), shape);
+    assert_eq!(stream.next().expect("one batch")?.num_columns(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field
+
+    year = Field("year", "int32", nullable=True)
+    year.partition.sources = ["event"]
+    year.partition.transform = "year"
+    row_digest = Field("row_digest", "uint64", nullable=True)
+    row_digest.digest["role"] = "holder"
+    root = Field(
+        "row",
+        DataType.from_fields(
+            [Field("event", "date32", nullable=False), year, row_digest]
+        ),
+        nullable=False,
+    )
+    batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
+
+    applied = root.apply_arrow_batch(batch)
+
+    assert applied.column_names == ["event", "year", "row_digest"]
+    assert applied.column("year").to_pylist() == [2024]
+    assert applied.column("row_digest").null_count == 0
+    assert root.apply_arrow_batch(applied).equals(applied)
+
+    # Each step is separately switchable; a cast alone materializes and writes nothing.
+    cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
+    assert cast_only.column("year").to_pylist() == [None]
+
+    # A declared non-null column its protocol did not write is refused by path.
+    required_year = Field("year", "int32", nullable=False)
+    required_year.partition.sources = ["event"]
+    required_year.partition.transform = "year"
+    strict_root = Field(
+        "row",
+        DataType.from_fields([Field("event", "date32", nullable=False), required_year]),
+        nullable=False,
+    )
+    # With the partition step on, the column it writes satisfies its own
+    # declaration; with it off, nothing is going to write it.
+    assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
+    try:
+        strict_root.apply_arrow_batch(batch, partition=False, nullability="strict")
+    except ValueError as error:
+        assert "$.year" in str(error), error
+    else:
+        raise AssertionError("a strict apply must refuse the unwritten column")
+
+    # The same shape, with no rows read and no batch pulled.
+    assert root.apply_arrow_schema(batch.schema) == applied.schema
+    stream = root.apply_arrow_reader(
+        pa.RecordBatchReader.from_batches(batch.schema, [batch])
+    )
+    assert stream.schema == applied.schema
+    assert stream.read_all().num_rows == 1
+    ```
+
+    !!! note "Rust-only"
+        JavaScript has no counterpart yet; a batch crosses it as copied IPC.
+
 ## Serializing a schema
 
 One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../text/index.md) option, `indent` in Python.
@@ -662,7 +813,8 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
 - both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
-- `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both.
+- `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or an ASCII width over the plainer shape storing it.
+- widening a decimal -> the widest backing either side declared, never a re-encoding down to what the merged precision needs.
 - `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.
 - boolean beside datetime, decimal beside float -> refused.
@@ -679,6 +831,13 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `with_metadata=false` -> metadata dropped at every depth.
 - `return_equal` -> false for `show_diffs`, true for `show_diff`; only `show_diff` prints `✓ equal`.
 - diff paths -> `$`-rooted places such as `$.nullable` and `$.fields[2]`.
+- `apply_arrow_batch` -> `cast`, then `partition`, then `digest`; a later step reads what an earlier one wrote.
+- `apply_arrow_batch(digest=True, cast=False)` -> the digest step reconciles to the root for itself, because a holder is addressed by position.
+- a column holding anything but its canonical default -> left alone by every step, so applying twice changes nothing.
+- `apply_arrow_schema` -> the empty batch through the same steps; a declaration that cannot be satisfied fails here, not on the first batch.
+- `nullability="strict"` -> a field an enabled protocol materializes may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
+- `apply_arrow_reader` with all three off -> the reader itself, unwrapped; otherwise the applied schema is derived once and reported before the first pull.
+- a batch that fails inside `apply_arrow_reader` -> that batch's `Err`; the reader is not fused after it.
 
 ## Commands
 
@@ -686,6 +845,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::generic field::nested field::serde field::comparison field::typed field::arrow field::integer field::floating field::decimal field::temporal field::binary field::scalar
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc types::arrow
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::field types::typed types::diff types::merge
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_field_clone|field_stable_hash|metadata_)'
