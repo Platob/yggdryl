@@ -170,3 +170,48 @@ fn a_composed_absent_location_is_still_absent() {
     assert_eq!(handle.kind(), crate::IOKind::Unknown);
     assert!(handle.read_all_bytes().unwrap().is_empty());
 }
+
+#[test]
+fn a_composed_whole_read_decodes_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// A handle that counts how many times its bytes are streamed.
+    #[derive(Debug)]
+    struct Counted {
+        handle: Buffer,
+        streams: std::sync::Arc<AtomicUsize>,
+    }
+
+    impl crate::IOMedia for Counted {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Counted {
+        crate::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, url,
+            media_type, set_media_type, flush, kind);
+
+        fn pstream_bytes(
+            &self,
+            position: u64,
+            batch_size: usize,
+        ) -> crate::Result<crate::ByteStream<'_>> {
+            self.streams.fetch_add(1, Ordering::Relaxed);
+            self.handle.pstream_bytes(position, batch_size)
+        }
+    }
+
+    let streams = std::sync::Arc::new(AtomicUsize::new(0));
+    let url = Url::from_str("file:///trades.txt.gz").unwrap();
+    let source = Counted {
+        handle: Buffer::from_bytes(Codec::Gzip.dump(PLAIN).unwrap())
+            .with_media_type(url.media_type()),
+        streams: std::sync::Arc::clone(&streams),
+    };
+
+    // Text over a coding answers the whole read through the coding rather than
+    // through the trait's `size`-then-read default, which would decode the
+    // value once to measure it and again to read it.
+    let text = crate::media::text::Text::new(crate::coding::Coding::new(source, Codec::Gzip));
+    assert_eq!(text.read_all_bytes().unwrap(), PLAIN);
+    assert_eq!(streams.load(Ordering::Relaxed), 1);
+}
