@@ -1,5 +1,6 @@
 //! The mounted archive: one index over one byte handle.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -81,11 +82,63 @@ pub struct Archive {
 }
 
 /// The archive's mutable state, held under one lock.
+///
+/// Every call this backend makes into the handle beneath it goes through the
+/// counted methods below, so the cost model is a number a test can assert
+/// rather than a claim in a comment.
 #[derive(Debug)]
 struct Inner {
     handle: Holder,
     /// The parsed index, materialized on first use.
     index: Option<Index>,
+    /// Questions asked of the handle.
+    reads: u64,
+    /// Operations that changed the handle.
+    writes: u64,
+}
+
+impl Inner {
+    /// Read into `buffer` at `offset`.
+    fn pread(&mut self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+        self.reads += 1;
+        self.handle.pread(offset, buffer)
+    }
+
+    /// Fill `buffer` at `offset`.
+    fn pread_exact(&mut self, offset: u64, buffer: &mut [u8]) -> Result<()> {
+        self.reads += 1;
+        self.handle.pread_exact(offset, buffer)
+    }
+
+    /// Read `length` bytes at `offset`.
+    fn read_range(&mut self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        self.reads += 1;
+        self.handle.read_range_bytes(offset, length)
+    }
+
+    /// Ask the handle its byte length.
+    fn size(&mut self) -> u64 {
+        self.reads += 1;
+        self.handle.size()
+    }
+
+    /// Write every byte at `offset`.
+    fn pwrite_all(&mut self, offset: u64, bytes: &[u8]) -> Result<()> {
+        self.writes += 1;
+        self.handle.pwrite_all(offset, bytes)
+    }
+
+    /// Set the handle's byte length.
+    fn truncate(&mut self, size: u64) -> Result<()> {
+        self.writes += 1;
+        self.handle.truncate(size)
+    }
+
+    /// Publish the handle's buffered bytes.
+    fn flush(&mut self) -> Result<()> {
+        self.writes += 1;
+        self.handle.flush()
+    }
 }
 
 /// The central directory, as this crate holds it between operations.
@@ -101,6 +154,19 @@ struct Index {
     dirty: bool,
     /// Whether a removal left dead space the next flush must reclaim.
     compact: bool,
+    /// Where each member's bytes start, once a local header has said so.
+    ///
+    /// A member's data offset is only knowable from its own local header, so
+    /// it is read once and shared: every handle on that member, and every
+    /// resolution of a location naming it, answers from here instead of
+    /// reading the header again.
+    data: BTreeMap<SmolStr, u64>,
+    /// The byte length the stored archive had when this index last matched it.
+    ///
+    /// A publish only has to shorten the archive when the trailer it writes
+    /// ends before the previous one did, which is what this answers without
+    /// asking the handle its size.
+    stored_end: u64,
 }
 
 impl Archive {
@@ -115,6 +181,8 @@ impl Archive {
             inner: Mutex::new(Inner {
                 handle,
                 index: None,
+                reads: 0,
+                writes: 0,
             }),
             codec: Codec::Deflate,
             level: Level::DEFAULT,
@@ -371,6 +439,8 @@ impl Archive {
         let removed =
             index.entries.remove(&name).is_some() | index.entries.remove(&directory).is_some();
         if removed {
+            index.data.remove(&name);
+            index.data.remove(&directory);
             index.dirty = true;
             index.compact = true;
         }
@@ -387,6 +457,7 @@ impl Archive {
         let index = Self::index(&mut guard)?;
         if !index.entries.is_empty() {
             index.entries.clear();
+            index.data.clear();
             index.compact = true;
         }
         index.dirty = true;
@@ -483,6 +554,7 @@ impl Archive {
         let mut guard = self.locked()?;
         // The index goes first, so a later flush cannot recreate what is gone.
         guard.index = None;
+        guard.writes += 1;
         guard.handle.remove(false)
     }
 
@@ -494,12 +566,41 @@ impl Archive {
     #[cfg(test)]
     pub(super) fn image(&self) -> Result<Vec<u8>> {
         self.flush()?;
-        self.locked()?.handle.read_all_bytes()
+        let mut guard = self.locked()?;
+        guard.reads += 1;
+        guard.handle.read_all_bytes()
     }
 
     /// The byte length of the archive itself.
+    ///
+    /// A parsed index already knows it - it is where the next record goes,
+    /// plus the trailer behind it - so this asks the handle only while the
+    /// archive is still unopened, exactly as any other cached metadata does.
     pub fn size(&self) -> u64 {
-        self.locked().map_or(0, |guard| guard.handle.size())
+        self.locked()
+            .map_or(0, |mut guard| match guard.index.as_ref() {
+                Some(index) => index.stored_end,
+                None => guard.size(),
+            })
+    }
+
+    /// How many questions this archive has asked the handle beneath it.
+    ///
+    /// The backend's cost model is stated in these terms, so it can be
+    /// asserted in them: mounting an archive whose directory lies in its last
+    /// 64 KiB is two reads, a warm positional read of a stored member is one,
+    /// and a listing of any size is none.
+    pub fn handle_reads(&self) -> u64 {
+        self.locked().map_or(0, |guard| guard.reads)
+    }
+
+    /// How many operations this archive has run that changed that handle.
+    ///
+    /// Publishing `n` members is `n` record writes plus one trailer, one
+    /// shortening only when the trailer ends earlier than the last one did,
+    /// and one flush.
+    pub fn handle_writes(&self) -> u64 {
+        self.locked().map_or(0, |guard| guard.writes)
     }
 
     /// The URL a member of this archive is addressed by.
@@ -636,26 +737,108 @@ impl Archive {
     ///
     /// Returns the backing store's read failure.
     pub(super) fn pread_raw(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        self.locked()?.handle.pread(offset, buffer)
+        self.locked()?.pread(offset, buffer)
     }
 
     /// Where a member's bytes start, read from its own local file header.
     ///
     /// The local header repeats the name and can carry different extra fields
-    /// from the central record, so this is the one read a member's first byte
-    /// costs. A caller that reads a member more than once caches the answer.
+    /// from the central record, so the answer is only knowable from the header
+    /// itself. It is therefore read once per member and held in the index: a
+    /// second handle on that member, and every resolution of a location naming
+    /// it, answer from there. A member this archive wrote never costs the read
+    /// at all, because the write already knew where it put the bytes.
     ///
     /// # Errors
     ///
     /// Returns the read failure, or [`Error::Codec`] when the local header is
     /// not one.
     pub(super) fn data_offset(&self, entry: &Entry) -> Result<u64> {
+        let mut guard = self.locked()?;
+        Self::member_data(&mut guard, entry)
+    }
+
+    /// Where a member's bytes start, from state already borrowed.
+    fn member_data(inner: &mut Inner, entry: &Entry) -> Result<u64> {
+        if let Some(data) = Self::index_of(inner)?.data.get(entry.name()).copied() {
+            return Ok(data);
+        }
         let mut header = [0_u8; format::LOCAL_LEN];
-        let guard = self.locked()?;
-        guard
-            .handle
-            .pread_exact(entry.header_offset(), &mut header)?;
-        format::local_data_offset(&header, entry.header_offset())
+        inner.pread_exact(entry.header_offset(), &mut header)?;
+        let data = format::local_data_offset(&header, entry.header_offset())?;
+        Self::index_of(inner)?
+            .data
+            .insert(SmolStr::new(entry.name()), data);
+        Ok(data)
+    }
+
+    /// The decoded length of one member, or zero when there is none.
+    ///
+    /// The index already holds it, so this answers without copying the record
+    /// out of the map - which matters because every ranged read asks it first.
+    pub(super) fn member_size(&self, name: &str) -> u64 {
+        self.locked().map_or(0, |mut guard| {
+            Self::index_of(&mut guard)
+                .ok()
+                .and_then(|index| index.entries.get(name))
+                .map_or(0, Entry::size)
+        })
+    }
+
+    /// Read from one member, when its bytes can pass straight through.
+    ///
+    /// A stored member is the archive's own bytes over a range, so the whole
+    /// answer - which member, where its bytes start, and the read itself - is
+    /// one lock and one call into the handle, with nothing copied and nothing
+    /// allocated. `None` says the member needs a decode instead, and says it
+    /// without having asked the handle anything.
+    ///
+    /// # Errors
+    ///
+    /// Returns the read failure, or [`Error::Codec`] when the local header the
+    /// data offset comes from is not one.
+    pub(super) fn pread_member(
+        &self,
+        name: &str,
+        offset: u64,
+        buffer: &mut [u8],
+    ) -> Result<Option<usize>> {
+        let mut guard = self.locked()?;
+        let inner = &mut *guard;
+        let index = Self::index_of(inner)?;
+        let Some(entry) = index.entries.get(name) else {
+            return Ok(None);
+        };
+        if entry.is_encrypted() || !matches!(entry.codec(), Ok(Codec::Identity)) {
+            return Ok(None);
+        }
+        // A stored member decodes to itself, so the two sizes agree - and
+        // where a malformed record says otherwise, the shorter one bounds the
+        // read rather than letting it run into the next member.
+        let stored = entry.size().min(entry.compressed_size());
+        let header_offset = entry.header_offset();
+        let cached = index.data.get(name).copied();
+
+        let Some(available) = stored.checked_sub(offset) else {
+            return Ok(Some(0));
+        };
+        let length = usize::try_from(available)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        if length == 0 {
+            return Ok(Some(0));
+        }
+        let data = match cached {
+            Some(data) => data,
+            None => {
+                let mut header = [0_u8; format::LOCAL_LEN];
+                inner.pread_exact(header_offset, &mut header)?;
+                let data = format::local_data_offset(&header, header_offset)?;
+                Self::index_of(inner)?.data.insert(SmolStr::new(name), data);
+                data
+            }
+        };
+        inner.pread(data + offset, &mut buffer[..length]).map(Some)
     }
 
     /// Decode one member whole, without verifying its digest.
@@ -664,6 +847,17 @@ impl Archive {
     ///
     /// Returns the read or decode failure.
     pub(super) fn read_entry(self: &Arc<Self>, entry: &Entry) -> Result<Vec<u8>> {
+        // A stored member is already the bytes it decodes to, so reading one
+        // whole is one ranged read of the archive rather than a stream over
+        // it - and the offset it reads at comes from the same lock.
+        if !entry.is_encrypted() && entry.codec()?.is_identity() {
+            let length = usize::try_from(entry.size().min(entry.compressed_size()))
+                .map_err(|_| crate::iobase::oversized(entry.size()))?;
+            let mut guard = self.locked()?;
+            let inner = &mut *guard;
+            let data = Self::member_data(inner, entry)?;
+            return inner.read_range(data, length);
+        }
         let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
         self.entry_reader(entry, 0)?.read_to_end(&mut bytes)?;
         Ok(bytes)
@@ -733,7 +927,7 @@ impl Archive {
     /// Borrow the index of already-borrowed state.
     fn index_of(inner: &mut Inner) -> Result<&mut Index> {
         if inner.index.is_none() {
-            inner.index = Some(parse(&inner.handle)?);
+            inner.index = Some(parse(inner)?);
         }
         inner
             .index
@@ -742,20 +936,27 @@ impl Archive {
     }
 
     /// Append one member record after the last member.
+    ///
+    /// The header and the bytes it introduces go out as one write, because
+    /// they are one record: against a store where a write is a round trip,
+    /// two writes would be two of them for no gain.
     fn append_record(inner: &mut Inner, entry: &Entry, encoded: &[u8]) -> Result<()> {
         let offset = entry.header_offset();
-        let mut header = Vec::with_capacity(format::LOCAL_LEN + entry.name().len());
-        format::write_local(entry, &mut header);
+        let mut record = Vec::with_capacity(format::LOCAL_LEN + entry.name().len() + encoded.len());
+        format::write_local(entry, &mut record);
+        let data = offset + record.len() as u64;
+        record.extend_from_slice(encoded);
+
+        let name = SmolStr::new(entry.name());
         let index = Self::index_of(inner)?;
-        index.directory_offset = offset + header.len() as u64 + encoded.len() as u64;
-        index
-            .entries
-            .insert(SmolStr::new(entry.name()), entry.clone());
+        index.directory_offset = offset + record.len() as u64;
+        index.stored_end = index.stored_end.max(index.directory_offset);
+        index.entries.insert(name.clone(), entry.clone());
+        // The write knows where it put the bytes, so reading them back never
+        // costs the local header read that would otherwise find out.
+        index.data.insert(name, data);
         index.dirty = true;
-        inner.handle.pwrite_all(offset, &header)?;
-        inner
-            .handle
-            .pwrite_all(offset + header.len() as u64, encoded)
+        inner.pwrite_all(offset, &record)
     }
 
     /// Write the central directory and its trailer, compacting first when a
@@ -787,10 +988,17 @@ impl Archive {
             &index.comment,
             &mut trailer,
         );
+        let end = offset + trailer.len() as u64;
+        let shrinks = end < index.stored_end;
         index.dirty = false;
-        inner.handle.pwrite_all(offset, &trailer)?;
-        inner.handle.truncate(offset + trailer.len() as u64)?;
-        inner.handle.flush()
+        index.stored_end = end;
+        inner.pwrite_all(offset, &trailer)?;
+        // Shortening is only needed when this trailer ends before the last one
+        // did; an archive that only grew has nothing beyond it to discard.
+        if shrinks {
+            inner.truncate(end)?;
+        }
+        inner.flush()
     }
 
     /// Move every surviving member to the front, reclaiming dead space.
@@ -808,40 +1016,39 @@ impl Archive {
         let mut moved = Vec::with_capacity(ordered.len());
         let mut buffer = vec![0_u8; COMPACT_CHUNK];
         for entry in ordered {
-            let mut fixed = [0_u8; format::LOCAL_LEN];
-            inner
-                .handle
-                .pread_exact(entry.header_offset(), &mut fixed)?;
-            let data = format::local_data_offset(&fixed, entry.header_offset())?;
+            // Only the fixed head of the header is rewritten, so only it is
+            // read: the name and extra fields behind it are unchanged, and
+            // travel with the member's bytes in the copy below. A record whose
+            // sizes need 64 bits is the exception - its ZIP64 extra carries
+            // them, so that one is read and settled too.
+            let mut settled = vec![0_u8; format::LOCAL_LEN];
+            inner.pread_exact(entry.header_offset(), &mut settled)?;
+            let data = format::local_data_offset(&settled, entry.header_offset())?;
             let header_len = usize::try_from(data - entry.header_offset()).map_err(|_| {
                 format::malformed(
                     clamp(entry.header_offset()),
                     "the local header is longer than this platform can address",
                 )
             })?;
+            if format::settles_extra(&entry) {
+                settled.resize(header_len, 0);
+                inner.pread_exact(entry.header_offset(), &mut settled)?;
+            }
+            format::settle_local(&mut settled, &entry);
+            inner.pwrite_all(cursor, &settled)?;
 
-            // The header is rewritten rather than copied, so a record a
-            // streaming writer left incomplete states its own sizes once it
-            // has moved away from the trailer that carried them. Its length
-            // never changes, which is what keeps the copy below moving only
-            // backwards.
-            let mut header = vec![0_u8; header_len];
-            inner
-                .handle
-                .pread_exact(entry.header_offset(), &mut header)?;
-            format::settle_local(&mut header, &entry);
-            inner.handle.pwrite_all(cursor, &header)?;
-
+            // Whatever the head did not cover moves verbatim, in one pass with
+            // the member's bytes rather than in a pass of its own.
+            let copied = settled.len() as u64;
+            let remaining = header_len as u64 - copied + entry.compressed_size();
             let mut done = 0_u64;
-            while done < entry.compressed_size() {
-                let step = usize::try_from(entry.compressed_size() - done)
+            while done < remaining {
+                let step = usize::try_from(remaining - done)
                     .unwrap_or(COMPACT_CHUNK)
                     .min(COMPACT_CHUNK);
                 let window = &mut buffer[..step];
-                inner.handle.pread_exact(data + done, window)?;
-                inner
-                    .handle
-                    .pwrite_all(cursor + header_len as u64 + done, window)?;
+                inner.pread_exact(entry.header_offset() + copied + done, window)?;
+                inner.pwrite_all(cursor + copied + done, window)?;
                 done += step as u64;
             }
             let record_len = header_len as u64 + entry.compressed_size();
@@ -856,6 +1063,8 @@ impl Archive {
             .collect();
         index.directory_offset = cursor;
         index.compact = false;
+        // Every member moved, so no data offset the index held still holds.
+        index.data.clear();
         Ok(())
     }
 }
@@ -980,8 +1189,8 @@ fn now_nanos() -> i64 {
 /// An archive with no bytes indexes as empty rather than failing: under the
 /// laziness contract absence is emptiness, and the first write is what brings
 /// the archive into being.
-fn parse(handle: &Holder) -> Result<Index> {
-    let size = handle.size();
+fn parse(inner: &mut Inner) -> Result<Index> {
+    let size = inner.size();
     if size == 0 {
         return Ok(Index::default());
     }
@@ -996,7 +1205,15 @@ fn parse(handle: &Holder) -> Result<Index> {
     }
     let window = size.min(END_SEARCH_LEN);
     let start = size - window;
-    let tail = handle.read_range_bytes(start, usize::try_from(window).unwrap_or(usize::MAX))?;
+    let tail = inner.read_range(start, usize::try_from(window).unwrap_or(usize::MAX))?;
+    // Everything the mount still needs - the ZIP64 pair, the directory itself
+    // - usually lies inside the tail already read, so it is sliced out of it
+    // rather than asked for again. Only an archive whose directory is larger
+    // than the search window costs a second read.
+    let held = |at: u64, len: usize| -> Option<&[u8]> {
+        let from = usize::try_from(at.checked_sub(start)?).ok()?;
+        tail.get(from..from.checked_add(len)?)
+    };
     let end_at = find_end(&tail).ok_or_else(|| {
         format::malformed(
             clamp(start),
@@ -1015,9 +1232,15 @@ fn parse(handle: &Holder) -> Result<Index> {
         && end_offset >= format::ZIP64_LOCATOR_LEN as u64
     {
         let locator_at = end_offset - format::ZIP64_LOCATOR_LEN as u64;
-        let locator = handle.read_range_bytes(locator_at, format::ZIP64_LOCATOR_LEN)?;
+        let locator = match held(locator_at, format::ZIP64_LOCATOR_LEN) {
+            Some(held) => Cow::Borrowed(held),
+            None => Cow::Owned(inner.read_range(locator_at, format::ZIP64_LOCATOR_LEN)?),
+        };
         if let Some(record_at) = format::read_zip64_locator(&locator, clamp(locator_at))? {
-            let record = handle.read_range_bytes(record_at, format::ZIP64_END_LEN)?;
+            let record = match held(record_at, format::ZIP64_END_LEN) {
+                Some(held) => Cow::Borrowed(held),
+                None => Cow::Owned(inner.read_range(record_at, format::ZIP64_END_LEN)?),
+            };
             end = format::read_zip64_end(&record, clamp(record_at))?;
             trailer_offset = record_at;
         }
@@ -1045,7 +1268,10 @@ fn parse(handle: &Holder) -> Result<Index> {
         )
     })?;
 
-    let records = handle.read_range_bytes(directory_offset, directory_size)?;
+    let records = match held(directory_offset, directory_size) {
+        Some(held) => Cow::Borrowed(held),
+        None => Cow::Owned(inner.read_range(directory_offset, directory_size)?),
+    };
     let mut scan = format::Scan::new(&records, clamp(directory_offset));
     let mut entries = BTreeMap::new();
     for _ in 0..end.entries {
@@ -1067,6 +1293,8 @@ fn parse(handle: &Holder) -> Result<Index> {
         comment,
         dirty: false,
         compact: false,
+        data: BTreeMap::new(),
+        stored_end: size,
     })
 }
 

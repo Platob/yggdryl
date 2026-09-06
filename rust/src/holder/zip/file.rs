@@ -1,6 +1,6 @@
 //! One member of an archive, as a byte leaf.
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 use smol_str::SmolStr;
 
@@ -74,12 +74,6 @@ pub struct File {
     plain: Option<Vec<u8>>,
     /// Whether `plain` holds changes the archive has not seen.
     dirty: bool,
-    /// The data offset last resolved, beside the header offset it was for.
-    ///
-    /// A member's bytes start after a local header whose length only that
-    /// header states, so the answer is cached - and keyed by the header it
-    /// came from, so a republished member never reads at the old one.
-    data: Mutex<Option<(u64, u64)>>,
 }
 
 impl File {
@@ -94,7 +88,6 @@ impl File {
             codec: None,
             plain: None,
             dirty: false,
-            data: Mutex::new(None),
         }
     }
 
@@ -161,23 +154,6 @@ impl File {
         let bytes = self.archive.read_entry(&entry)?;
         archive::verify_crc(&entry, &bytes)?;
         Ok(bytes)
-    }
-
-    /// Where this member's bytes start, reading its local header at most once
-    /// per position the member has been published at.
-    fn data_offset(&self, entry: &Entry) -> Result<u64> {
-        if let Ok(cached) = self.data.lock() {
-            if let Some((header, data)) = *cached {
-                if header == entry.header_offset() {
-                    return Ok(data);
-                }
-            }
-        }
-        let data = self.archive.data_offset(entry)?;
-        if let Ok(mut cached) = self.data.lock() {
-            *cached = Some((entry.header_offset(), data));
-        }
-        Ok(data)
     }
 
     /// The coding a write stores this member under.
@@ -277,28 +253,14 @@ impl IOBase for File {
         if buffer.is_empty() {
             return Ok(0);
         }
+        // The stored answer is one lock and one read, so it is asked for
+        // first; `None` says this member needs a decode instead.
+        if let Some(read) = self.archive.pread_member(&self.name, offset, buffer)? {
+            return Ok(read);
+        }
         let Some(entry) = self.get_entry()? else {
             return Ok(0);
         };
-        if entry.codec()?.is_identity() && !entry.is_encrypted() {
-            // A stored member decodes to itself, so both sizes agree - and
-            // where a malformed record says otherwise, the shorter one bounds
-            // the read rather than letting it run into the next member.
-            let stored = entry.size().min(entry.compressed_size());
-            let Some(available) = stored.checked_sub(offset) else {
-                return Ok(0);
-            };
-            let length = usize::try_from(available)
-                .unwrap_or(usize::MAX)
-                .min(buffer.len());
-            if length == 0 {
-                return Ok(0);
-            }
-            let start = self.data_offset(&entry)?;
-            return self
-                .archive
-                .pread_raw(start + offset, &mut buffer[..length]);
-        }
         Ok(std::io::Read::read(
             &mut self.archive.entry_reader(&entry, offset)?,
             buffer,
@@ -355,10 +317,7 @@ impl IOBase for File {
         if let Some(plain) = self.materialized() {
             return plain.len() as u64;
         }
-        self.get_entry()
-            .ok()
-            .flatten()
-            .map_or(0, |entry| entry.size())
+        self.archive.member_size(&self.name)
     }
 
     fn capacity(&self) -> u64 {

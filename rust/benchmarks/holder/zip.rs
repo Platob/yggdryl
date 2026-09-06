@@ -105,6 +105,53 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
         });
     }
 
+    // The route a caller actually takes: resolve a location, then read it.
+    // A resolving location owns no state of its own, so every handle call it
+    // makes is one the archive answers or one it has to issue.
+    group.throughput(Throughput::Bytes(READ_LEN as u64));
+    stored
+        .child_by_path("blob.bin")
+        .expect("a member")
+        .read_range_bytes(0, READ_LEN)
+        .expect("a range");
+    group.bench_function("read/through_path", |bencher| {
+        bencher.iter(|| {
+            black_box(&stored)
+                .child_by_path("blob.bin")
+                .expect("a member")
+                .read_range_bytes((MEMBER_LEN / 2) as u64, READ_LEN)
+                .expect("a range")
+        });
+    });
+
+    // Mounting parses the directory, which is the archive's one fixed cost.
+    let image = {
+        let path = std::env::temp_dir().join(format!("yggdryl-bench-zip-{MEMBERS}.zip"));
+        let _ = std::fs::remove_file(&path);
+        let lake = Archive::from_path(&path).expect("a local archive").mount();
+        let payload = payload(64);
+        for member in 0..MEMBERS {
+            lake.archive()
+                .write_member(
+                    &format!("part={:02}/part-{member:06}.csv", member % 10),
+                    &payload,
+                )
+                .expect("the member writes");
+        }
+        lake.archive().flush().expect("publishes");
+        let image = std::fs::read(&path).expect("the archive reads");
+        let _ = std::fs::remove_file(&path);
+        image
+    };
+    group.throughput(Throughput::Elements(MEMBERS as u64));
+    group.bench_function("mount/index", |bencher| {
+        bencher.iter(|| {
+            let root = Archive::new(Holder::buffer(Buffer::from_bytes(image.clone()))).mount();
+            root.archive().open().expect("the index");
+            black_box(root.archive().handle_reads())
+        });
+    });
+
     // Listing reads no member byte, so it is a walk of the index alone.
     group.throughput(Throughput::Elements(MEMBERS as u64));
     let lake = many_members(MEMBERS);

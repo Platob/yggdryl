@@ -670,6 +670,14 @@ pub(super) fn write_end(end: End, comment: &[u8], target: &mut Vec<u8>) {
     target.extend_from_slice(comment);
 }
 
+/// Whether settling a moved record has to reach past its fixed head.
+///
+/// Only a size the 32-bit slot cannot hold is stated in the ZIP64 extra, so
+/// only that case makes compaction read the variable part of a local header.
+pub(super) fn settles_extra(entry: &Entry) -> bool {
+    entry.size() >= u64::from(ZIP64_MARK_32) || entry.compressed_size() >= u64::from(ZIP64_MARK_32)
+}
+
 /// Make a copied local header state what its central record states.
 ///
 /// A streaming writer leaves the digest and both sizes out of the local header
@@ -690,8 +698,7 @@ pub(super) fn settle_local(header: &mut [u8], entry: &Entry) {
 
     // A size the 32-bit slot cannot hold is stated in the ZIP64 extra beside
     // it, in the same order the record was read in.
-    if entry.size() < u64::from(ZIP64_MARK_32) && entry.compressed_size() < u64::from(ZIP64_MARK_32)
-    {
+    if !settles_extra(entry) {
         return;
     }
     let name_len = usize::from(u16::from_le_bytes([header[26], header[27]]));

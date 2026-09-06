@@ -23,6 +23,8 @@ A file system that lives inside one file: the archive is the container, its memb
 | Streamed input | A member whose sizes follow its bytes reads from the directory; compaction settles them into the header it moves |
 | ZIP64 | Read and written when an offset, a size, or the member count needs 64 bits |
 | Digest | Every whole-member read verifies the record's CRC-32 |
+| Handle calls | Mount 2 reads, warm stored `pread` 1, stored `read_all_bytes` 1, listing 0, publish `n` members `n` writes + trailer + flush |
+| Counters | `Archive::handle_reads` / `handle_writes` report every call the archive made into the handle |
 | Interop | `python3 scripts/check_zip_interop.py` exchanges archives with Python's `zipfile`, both directions |
 
 ## Use
@@ -279,6 +281,57 @@ assert_eq!(root.archive().comment()?, b"day one");
 
 `open` parses the directory once and holds it for the scope; `close` publishes anything pending and releases it.
 
+## What an operation costs the handle
+
+A call into the handle beneath the archive is a round trip against an object
+store, a syscall against a file, and a lock through every wrapper, so the
+backend's cost is its call count rather than its byte count.
+`Archive::handle_reads` and `handle_writes` report it, which is how the cost
+model below is asserted rather than asserted-to.
+
+```rust
+use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{Codec, IOBase};
+
+let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+root.archive().write_member_with("blob.bin", &vec![4_u8; 4_096], Codec::Identity)?;
+root.archive().write_member_with("notes.txt", b"symbol", Codec::Identity)?;
+
+// One write per record, then the trailer and the flush behind it. Nothing
+// shortens the archive, because it only grew.
+assert_eq!(root.archive().handle_writes(), 2);
+root.archive().flush()?;
+assert_eq!(root.archive().handle_writes(), 4);
+
+// A listing walks the index the archive already holds.
+let quiet = root.archive().handle_reads();
+assert_eq!(root.ls(true, true).count(), 2);
+assert_eq!(root.archive().handle_reads(), quiet);
+
+// The write knew where it put the bytes, so reading them back is one read.
+root.as_file("blob.bin")?.read_range_bytes(0, 16)?;
+assert_eq!(root.archive().handle_reads() - quiet, 1);
+```
+
+Where the calls went:
+
+| operation | reads | writes |
+| --- | --- | --- |
+| Mount and parse the directory | 2 | 0 |
+| The same, directory larger than the 64 KiB tail | 3 | 0 |
+| Listing, glob, `size`, `partitions`, member metadata | 0 | 0 |
+| Positional read of a stored member, warm | 1 | 0 |
+| Whole read of a stored member | 1 | 0 |
+| First read of a member this archive did not write | +1 | 0 |
+| Write one member | 0 | 1 |
+| Publish | 0 | 2, or 3 when the archive shrank |
+
+The one extra read is the member's local file header, which is the only place
+a member's data offset is stated. It is read once per member and held in the
+index, so a second handle on that member, and every resolution of a location
+naming it, answer from there - and a member this archive wrote never costs it
+at all, because the write already knew the answer.
+
 ## Records inside an archive
 
 A member is a leaf like any other, so the [record surface](../iobase/records.md) reaches it by name, and the directory above it reads as the table beneath it.
@@ -321,6 +374,7 @@ assert!(root.is_tabular());
 - A self-extracting archive reads: the trailer says where the directory really ends, and every recorded offset is shifted by the difference.
 - A member another writer streamed states its digest and sizes after its bytes. Compaction moves the record but not that trailer, so the header it writes carries the values from the directory instead and drops the bit that promised them.
 - `flush` is not a write: an archive nothing has touched is not created by one.
+- A member handle publishes the directory when it flushes, because a member is only durably in the archive once the directory indexes it. Writing many members through many handles therefore publishes many times: for a batch, write them with `Archive::write_member` and flush once.
 
 ## Commands
 
@@ -341,18 +395,19 @@ One 1 MiB member, read positionally at its midpoint, 512 bytes at a time:
 
 | leg | | |
 | --- | --- | --- |
-| `read/stored` | 178.74 ns | the archive's own `pread`, no decode |
-| `read/deflate_opened` | 66.785 ns | a copy out of the decoded member `open` holds |
-| `read/deflate_closed` | 40.202 µs | decoded from the member's first byte, nothing retained |
+| `read/stored` | 110.51 ns | the archive's own `pread`, no decode |
+| `read/deflate_opened` | 56.56 ns | a copy out of the decoded member `open` holds |
+| `read/through_path` | 593.03 ns | the same read, resolving the member's name each time |
+| `read/deflate_closed` | 40.43 µs | decoded from the member's first byte, nothing retained |
 
-A stored member is **225x** cheaper to read positionally than a closed compressed one, because there is nothing between the caller's buffer and the archive's bytes. That is the whole reason the stored path exists; it is also why `open` is the answer for many positional reads over a compressed member, and why a closed one is still the right default for one read.
+A stored member is **366x** cheaper to read positionally than a closed compressed one, because there is nothing between the caller's buffer and the archive's bytes. That is the whole reason the stored path exists; it is also why `open` is the answer for many positional reads over a compressed member, and why a closed one is still the right default for one read.
 
 Whole-member reads over the same 1 MiB, digest check included:
 
 | leg | | |
 | --- | --- | --- |
-| `read_all/stored` | 114.34 µs | 8.54 GiB/s |
-| `read_all/deflate` | 136.54 µs | 7.15 GiB/s |
+| `read_all/stored` | 119.50 µs | 8.06 GiB/s |
+| `read_all/deflate` | 127.31 µs | 7.67 GiB/s |
 
 The two are close because both are dominated by the CRC-32 pass over the decoded bytes, which every whole-member read performs.
 
@@ -360,12 +415,27 @@ An archive of 2,000 members across ten directories:
 
 | leg | | |
 | --- | --- | --- |
-| `listing/first_entry` | 729.04 µs | the index snapshot a recursive listing walks |
-| `listing/drain` | 1.3771 ms | every entry |
-| `listing/glob` | 2.2513 ms | `part=03/**/*.csv` over the same tree |
-| `write/members` | 28.494 ms | 2,000 members and one directory, ~14 µs each |
+| `mount/index` | 899.39 µs | two handle reads, then parsing 2,000 records |
+| `listing/first_entry` | 662.45 µs | the index snapshot a recursive listing walks |
+| `listing/drain` | 1.2993 ms | every entry |
+| `listing/glob` | 2.1634 ms | `part=03/**/*.csv` over the same tree |
+| `write/members` | 27.840 ms | 2,000 members and one directory, ~14 µs each |
 
 Listing reads no member byte at all: the cost is building the name snapshot out of the index. Unlike a directory backend, then, time to first entry is not cheaper than the drain - the index is one map, and a recursive listing walks all of it before yielding.
+
+### What the call budget bought
+
+Holding the cost model to the counts above moved the timings with it, measured against the same group before the handle calls were cut:
+
+| leg | before | after | |
+| --- | --- | --- | --- |
+| `read/stored` | 178.74 ns | 110.51 ns | **1.6x faster** |
+| `read/deflate_opened` | 66.79 ns | 56.56 ns | 1.2x faster |
+| `listing/first_entry` | 729.04 µs | 662.45 µs | 1.1x faster |
+| `read_all/deflate` | 136.54 µs | 127.31 µs | 1.1x faster |
+| `read_all/stored` | 114.34 µs | 119.50 µs | 1.04x slower |
+
+The positional read is where it shows: it went from three lock acquisitions, a copied record, and an allocated lookup key down to one lock, one borrow, and one handle read. The one leg that lost is the whole stored read, which now fills a zeroed buffer in one ranged call where it used to stream into spare capacity - a constant-factor cost against one fewer round trip, which is the trade the call budget asks for and the one a real store rewards.
 
 ```bash
 cargo bench --bench holder -- io_zip

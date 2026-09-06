@@ -824,6 +824,128 @@ fn the_index_is_parsed_once_and_released_by_a_close() {
     assert!(!reopened.opened());
 }
 
+#[test]
+fn mounting_an_archive_reads_its_size_and_its_tail() {
+    let root = root();
+    root.archive()
+        .write_member("a/b.txt", b"one")
+        .expect("writes");
+    root.archive()
+        .write_member("a/c.txt", b"two")
+        .expect("writes");
+    let image = bytes(root.archive());
+
+    let reopened = mounted(image);
+    assert_eq!(
+        reopened.archive().handle_reads(),
+        0,
+        "mounting touches nothing"
+    );
+
+    reopened.archive().open().expect("the index");
+    // The size, then one tail read the whole directory came out of.
+    assert_eq!(reopened.archive().handle_reads(), 2);
+
+    // A listing walks the index, so it asks the handle nothing at all.
+    assert_eq!(reopened.ls(true, true).count(), 3);
+    assert_eq!(reopened.archive().entries().expect("the index").len(), 2);
+    assert_eq!(reopened.archive().handle_reads(), 2);
+}
+
+#[test]
+fn a_positional_read_of_a_stored_member_is_one_handle_read() {
+    let root = root();
+    root.archive()
+        .write_member_with("blob.bin", &vec![4_u8; 4096], Codec::Identity)
+        .expect("writes");
+    let reopened = mounted(bytes(root.archive()));
+    let member = reopened.as_file("blob.bin").expect("a member");
+
+    // The first read pays for the index and for the member's local header.
+    member.read_range_bytes(0, 16).expect("a range");
+    let warm = reopened.archive().handle_reads();
+
+    for offset in [64, 1024, 2048] {
+        member.read_range_bytes(offset, 16).expect("a range");
+    }
+    assert_eq!(reopened.archive().handle_reads() - warm, 3);
+
+    // And a second handle on the same member reads no header of its own.
+    let second = reopened.as_file("blob.bin").expect("a member");
+    let before = reopened.archive().handle_reads();
+    second.read_range_bytes(0, 16).expect("a range");
+    assert_eq!(reopened.archive().handle_reads() - before, 1);
+}
+
+#[test]
+fn a_member_this_archive_wrote_needs_no_header_read() {
+    let root = root();
+    root.archive()
+        .write_member_with("blob.bin", &[4_u8; 64], Codec::Identity)
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    // The write knew where it put the bytes, so reading them back is the read
+    // of the bytes and nothing else.
+    let before = root.archive().handle_reads();
+    root.as_file("blob.bin")
+        .expect("a member")
+        .read_range_bytes(0, 16)
+        .expect("a range");
+    assert_eq!(root.archive().handle_reads() - before, 1);
+}
+
+#[test]
+fn reading_a_stored_member_whole_is_one_handle_read() {
+    let root = root();
+    root.archive()
+        .write_member_with("blob.bin", &vec![4_u8; 4096], Codec::Identity)
+        .expect("writes");
+    let reopened = mounted(bytes(root.archive()));
+    let member = reopened.as_file("blob.bin").expect("a member");
+
+    // Warm the index and the member's data offset.
+    member.read_all_bytes().expect("the member");
+    let warm = reopened.archive().handle_reads();
+    assert_eq!(member.read_all_bytes().expect("the member").len(), 4096);
+    assert_eq!(reopened.archive().handle_reads() - warm, 1);
+}
+
+#[test]
+fn a_parsed_index_answers_the_archive_length() {
+    let root = root();
+    root.archive()
+        .write_member("a.txt", b"one")
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    let before = root.archive().handle_reads();
+    let size = root.archive().size();
+    assert!(size > 0);
+    assert_eq!(root.archive().size(), size);
+    assert_eq!(root.archive().handle_reads(), before);
+}
+
+#[test]
+fn publishing_writes_one_record_each_and_one_trailer() {
+    let root = root();
+    for member in 0..5 {
+        root.archive()
+            .write_member(&format!("part-{member}.csv"), b"symbol")
+            .expect("writes");
+    }
+    // Five records and nothing else: the directory waits for the flush.
+    assert_eq!(root.archive().handle_writes(), 5);
+
+    root.archive().flush().expect("publishes");
+    // The trailer and the flush behind it; an archive that only grew has
+    // nothing past the trailer to discard.
+    assert_eq!(root.archive().handle_writes(), 7);
+
+    root.archive().flush().expect("nothing pending");
+    assert_eq!(root.archive().handle_writes(), 7);
+}
+
 #[cfg(feature = "arrow")]
 #[test]
 fn a_member_reads_through_the_record_surface() {
