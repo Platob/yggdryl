@@ -186,7 +186,7 @@ impl<H: IOBase> std::io::Read for Cursor<H> {
 
     /// Take the whole remainder in one call rather than in a ladder of them.
     ///
-    /// [`Read::read_to_end`] grows its buffer by doubling and asks for what
+    /// [`std::io::Read::read_to_end`] grows its buffer by doubling and asks for what
     /// fits each time, so draining a value costs a call per doubling - on a
     /// store, a round trip per doubling, which for a four-megabyte object is
     /// seventeen of them. The handle answers the remainder in one.

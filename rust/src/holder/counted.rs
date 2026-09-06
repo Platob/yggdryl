@@ -35,8 +35,8 @@
 //! # Two instruments, two questions
 //!
 //! This counts **how many times a stack asks storage**. The S3 backend's own
-//! [`StatsSnapshot`](crate::holder::s3::StatsSnapshot) counts **how many
-//! requests storage then makes**. A layer that asks twice for what one call
+//! `StatsSnapshot` (behind the `s3` feature) counts **how many requests
+//! storage then makes**. A layer that asks twice for what one call
 //! answers is caught here; a backend that answers one call with two requests
 //! is caught there. Both are exact numbers, so both belong in assertions
 //! rather than in intentions.
