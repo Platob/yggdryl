@@ -60,7 +60,7 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
         .as_sequence()
         .unwrap_or_default()
         .iter()
-        .map(|row| crate::text::typed::prepared(row.clone(), &root))
+        .map(|row| crate::text::typed::prepare(row.clone(), &root))
         .collect::<Result<Vec<_>>>()?;
     Ok(ArrowValue::from_rows(
         &root,

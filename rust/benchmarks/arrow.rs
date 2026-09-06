@@ -198,31 +198,40 @@ fn construction_benchmarks(criterion: &mut Criterion) {
     let one = Scalar::d128(632_500, 4);
 
     let mut group = criterion.benchmark_group("arrow_value_construct");
-    group.throughput(Throughput::Elements(1));
     group.bench_function("from_value", |bencher| {
         bencher.iter(|| {
             ArrowValue::from_value(black_box(&price), black_box(&one))
                 .expect("one price materializes")
         });
     });
+    // Pairing an existing payload with its Field reads the layout and stops,
+    // so it costs the same at either row count and reports no rate: elements
+    // per second would describe elements it never touches. Criterion carries a
+    // group's throughput forward once set, which is why the arm that does
+    // scale with the row count is measured after these rather than among them.
     for count in ROWS {
         let column = prices(count);
-        let native = rows(count);
         let batch = batch(&root, count);
         let schema = batch.schema();
         let parts = parts(&batch);
 
-        group.throughput(Throughput::Elements(count as u64));
+        // Each arm is handed its argument by a setup step outside the timer,
+        // so none of them measures the clone that produced it.
         group.bench_function(format!("from_array/{count}"), |bencher| {
-            bencher.iter(|| {
-                ArrowValue::from_array(price.clone(), Arc::clone(black_box(&column)))
-                    .expect("the price column pairs")
-            });
+            bencher.iter_batched(
+                || (price.clone(), Arc::clone(&column)),
+                |(field, column)| {
+                    ArrowValue::from_array(field, column).expect("the price column pairs")
+                },
+                BatchSize::SmallInput,
+            );
         });
         group.bench_function(format!("from_batch/{count}"), |bencher| {
-            bencher.iter(|| {
-                ArrowValue::from_batch(black_box(&batch).clone()).expect("the batch names its root")
-            });
+            bencher.iter_batched(
+                || batch.clone(),
+                |batch| ArrowValue::from_batch(batch).expect("the batch names its root"),
+                BatchSize::SmallInput,
+            );
         });
         group.bench_function(format!("from_reader/{count}"), |bencher| {
             bencher.iter_batched(
@@ -231,6 +240,13 @@ fn construction_benchmarks(criterion: &mut Criterion) {
                 BatchSize::SmallInput,
             );
         });
+    }
+
+    // Materializing every row is the one shape whose cost is the row count, so
+    // it is the one that reports a rate.
+    for count in ROWS {
+        let native = rows(count);
+        group.throughput(Throughput::Elements(count as u64));
         group.bench_function(format!("from_rows/{count}"), |bencher| {
             bencher.iter(|| {
                 ArrowValue::from_rows(black_box(&root), black_box(&native))

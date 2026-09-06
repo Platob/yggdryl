@@ -1,5 +1,6 @@
 //! One Arrow value across every encoding the public surface reaches.
 
+use super::root;
 use arrow_array::RecordBatch;
 use yggdryl::arrow::{batch_reader, batch_to_value};
 use yggdryl::holder::Buffer;
@@ -14,12 +15,6 @@ fn handle(name: &str) -> Buffer {
             .expect("the URL parses")
             .media_type(),
     )
-}
-
-fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields)
-        .expect("the root datatype is valid")
-        .required_field("row")
 }
 
 fn quote_root() -> Field {
@@ -151,9 +146,15 @@ mod structured_text {
 
     #[test]
     fn every_shape_lands_as_the_same_rows_in_every_structured_format() {
+        // The fixture table is the claim that all four shapes are covered, so
+        // it is checked against the shape list itself rather than against the
+        // label written beside each value.
+        let covered: Vec<_> = shaped_values().into_iter().map(|entry| entry.0).collect();
+        assert_eq!(covered, ArrowShape::ALL);
+
         for format in ["json", "jsonl", "yaml", "toml"] {
             for (shape, value, root, rows) in shaped_values() {
-                assert_eq!(value.shape(), shape);
+                assert_eq!(value.shape(), shape, "the {shape} fixture");
                 let mut target = handle(&format!("shaped.{format}"));
                 target
                     .write_arrow_value(value, IOMode::Overwrite)
@@ -182,14 +183,20 @@ mod structured_text {
     #[test]
     fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
         let mut target = handle("quotes.yaml");
+        target
+            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .expect("the rows write");
+        let published = target.read_all_bytes().expect("the bytes read");
+        assert!(!published.is_empty());
+
         let refused = target
             .write_arrow_value(quotes(), IOMode::Append)
             .expect_err("a document has no append");
-
         assert!(refused.to_string().contains("append"), "{refused}");
-        // The refusal precedes the encoding, so no partial document was
-        // published under a mode the format cannot honour.
-        assert!(target.read_all_bytes().expect("the bytes read").is_empty());
+
+        // The refusal precedes the encoding, so the document that was already
+        // there is byte-for-byte what it was - not truncated, not appended to.
+        assert_eq!(target.read_all_bytes().expect("the bytes read"), published);
     }
 
     #[test]

@@ -37,6 +37,7 @@ sys.path[:] = [
 ]
 
 import argparse  # noqa: E402
+import atexit  # noqa: E402
 import gc  # noqa: E402
 import importlib  # noqa: E402
 import json  # noqa: E402
@@ -103,6 +104,10 @@ HELD_COLUMN = ArrowValue.from_py(COLUMN)
 HELD_SCALAR = ArrowValue.from_py(SCALAR)
 
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
+# The store is made at import, before any argument is read, so its removal is
+# registered here too: `--help` and a refused argument both exit before `main`
+# reaches the block that would otherwise clean it up.
+atexit.register(shutil.rmtree, STORE, ignore_errors=True)
 STREAM = IOBase(STORE / "quotes.arrows")
 LINES = IOBase(STORE / "quotes.jsonl")
 BASELINE_STREAM = STORE / "baseline.arrows"
@@ -162,8 +167,16 @@ def _read_ipc_baseline() -> int:
 
 
 def _write_jsonl_baseline() -> int:
+    # The core writes a record as a sorted, separator-free object, so the
+    # baseline writes the same bytes: a 10% larger document with a different
+    # key order would make the pair a comparison of two documents rather than
+    # of two ways to write one. `main` asserts the two agree byte for byte.
     return BASELINE_LINES.write_text(
-        "".join(f"{json.dumps(row)}\n" for row in TEXT_ROWS), encoding="utf-8"
+        "".join(
+            f"{json.dumps(row, separators=(',', ':'), sort_keys=True)}\n"
+            for row in TEXT_ROWS
+        ),
+        encoding="utf-8",
     )
 
 
@@ -197,19 +210,18 @@ def _cases(
         # A table may hold many chunks, so it crosses over the C stream that
         # `to_reader` is the PyArrow spelling of: neither side pulls a batch.
         ("from Table (yggdryl)", lambda: ArrowValue.from_py(TABLE), small),
-        ("from Table (pyarrow)", TABLE.to_reader, small),
-        ("from RecordBatch (yggdryl)", lambda: ArrowValue.from_py(BATCH), small),
-        (
-            "from RecordBatch (pyarrow)",
-            lambda: pa.Table.from_batches([BATCH], schema=SCHEMA),
-            small,
-        ),
-        ("from Array (yggdryl)", lambda: ArrowValue.from_py(COLUMN), small),
-        ("from Array (pyarrow)", lambda: pa.chunked_array([COLUMN]), small),
+        ("from Table (pyarrow)", lambda: TABLE.to_reader(), small),
+        # A held container has no PyArrow counterpart to subtract: nothing else
+        # imports it across the C Data Interface, so the number beside it is
+        # the whole crossing rather than a difference. Rows without a
+        # `(pyarrow)` partner are read that way.
+        ("from RecordBatch", lambda: ArrowValue.from_py(BATCH), small),
+        ("from Array", lambda: ArrowValue.from_py(COLUMN), small),
         ("from ChunkedArray (yggdryl)", lambda: ArrowValue.from_py(CHUNKED), bulk),
-        ("from ChunkedArray (pyarrow)", CHUNKED.combine_chunks, bulk),
-        ("from Scalar (yggdryl)", lambda: ArrowValue.from_py(SCALAR), small),
-        ("from Scalar (pyarrow)", lambda: pa.array([SCALAR]), small),
+        # Combining is what the chunked arm does before it pairs, so this one
+        # really is the same work minus the wrapper.
+        ("from ChunkedArray (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
+        ("from Scalar", lambda: ArrowValue.from_py(SCALAR), small),
         (
             "from RecordBatchReader (yggdryl)",
             lambda: ArrowValue.from_py(_reader()),
@@ -272,36 +284,36 @@ def _cases(
             bulk,
         ),
         ("cast a held column", lambda: HELD_COLUMN.cast(DECLARED_COLUMN), bulk),
-        ("into_arrow_reader (yggdryl)", HELD_BATCH.into_arrow_reader, small),
+        ("into_arrow_reader (yggdryl)", lambda: HELD_BATCH.into_arrow_reader(), small),
         (
             "into_arrow_reader (pyarrow)",
             lambda: pa.RecordBatchReader.from_batches(SCHEMA, iter([BATCH])),
             small,
         ),
-        ("into_arrow_batch", HELD_BATCH.into_arrow_batch, small),
-        ("into_arrow_table (yggdryl)", HELD_BATCH.into_arrow_table, small),
+        ("into_arrow_batch", lambda: HELD_BATCH.into_arrow_batch(), small),
+        ("into_arrow_table (yggdryl)", lambda: HELD_BATCH.into_arrow_table(), small),
         (
             "into_arrow_table (pyarrow)",
             lambda: pa.Table.from_batches([BATCH], schema=SCHEMA),
             small,
         ),
-        ("into_arrow_array", HELD_COLUMN.into_arrow_array, small),
-        ("into_arrow_scalar (yggdryl)", HELD_SCALAR.into_arrow_scalar, small),
+        ("into_arrow_array", lambda: HELD_COLUMN.into_arrow_array(), small),
+        ("into_arrow_scalar (yggdryl)", lambda: HELD_SCALAR.into_arrow_scalar(), small),
         ("into_arrow_scalar (pyarrow)", lambda: ONE_ROW[0], small),
     ]
     if pandas is not None:
         cases += [
-            ("into_pandas (yggdryl)", HELD_BATCH.into_pandas, bulk),
-            ("into_pandas (pyarrow)", BATCH.to_pandas, bulk),
+            ("into_pandas (yggdryl)", lambda: HELD_BATCH.into_pandas(), bulk),
+            ("into_pandas (pyarrow)", lambda: BATCH.to_pandas(), bulk),
         ]
     if polars is not None:
         cases += [
-            ("into_polars (yggdryl)", HELD_BATCH.into_polars, bulk),
+            ("into_polars (yggdryl)", lambda: HELD_BATCH.into_polars(), bulk),
             ("into_polars (polars)", lambda: polars.from_arrow(BATCH), bulk),
         ]
     if numpy is not None:
         cases += [
-            ("into_numpy (yggdryl)", HELD_COLUMN.into_numpy, bulk),
+            ("into_numpy (yggdryl)", lambda: HELD_COLUMN.into_numpy(), bulk),
             (
                 "into_numpy (pyarrow)",
                 lambda: COLUMN.to_numpy(zero_copy_only=False),
@@ -310,8 +322,8 @@ def _cases(
         ]
     return (
         *cases,
-        ("into_scalar", HELD_BATCH.into_scalar, bulk),
-        ("as_py", HELD_BATCH.as_py, bulk),
+        ("into_scalar", lambda: HELD_BATCH.into_scalar(), bulk),
+        ("as_py", lambda: HELD_BATCH.as_py(), bulk),
         ("shape", lambda: HELD_BATCH.shape, small),
         ("row_size", lambda: HELD_BATCH.row_size, small),
         ("field", lambda: HELD_BATCH.field, small),
@@ -365,6 +377,13 @@ def main() -> None:
         LINES.write_arrow_value(TEXT_TABLE)
         _write_jsonl_baseline()
         _write_ipc_baseline()
+        # A pair that reads two different documents measures the documents,
+        # not the readers, so the two are required to be the same bytes.
+        if LINES.read_bytes() != BASELINE_LINES.read_bytes():
+            raise SystemExit(
+                "the JSON Lines baseline document differs from the one the core "
+                "wrote, so the text pair would compare two documents"
+            )
         gc.disable()
         try:
             for name, operation, iterations in _cases(small, bulk, io):

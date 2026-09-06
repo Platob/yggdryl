@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use super::root;
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use arrow_schema::SchemaRef;
 use yggdryl::arrow::{BatchReader, batch_reader, combined, combined_as};
@@ -23,12 +24,6 @@ fn ids(values: &[i64]) -> arrow_array::ArrayRef {
 
 fn text(values: &[&str]) -> arrow_array::ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
-}
-
-fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields)
-        .expect("a struct root")
-        .required_field("row")
 }
 
 /// Every batch a reader yields, drained.
