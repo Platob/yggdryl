@@ -35,7 +35,9 @@ fn document() -> String {
              \t\t</vocabulary-tag>\n"
         ));
     }
-    body.push_str("\t</vocabulary>\n\t<grammar-binding type=\"D\">\n\t\t<grammar checkordering=\"false\">\n");
+    body.push_str(
+        "\t</vocabulary>\n\t<grammar-binding type=\"D\">\n\t\t<grammar checkordering=\"false\">\n",
+    );
     for index in 0..TAGS {
         let tag = 5_000 + index;
         body.push_str(&format!(
@@ -44,7 +46,9 @@ fn document() -> String {
              \t\t\t</tag-constraint>\n"
         ));
     }
-    body.push_str("\t\t</grammar>\n\t</grammar-binding>\n\t<reject-binding />\n</cplugin-configuration>\n");
+    body.push_str(
+        "\t\t</grammar>\n\t</grammar-binding>\n\t<reject-binding />\n</cplugin-configuration>\n",
+    );
     body
 }
 

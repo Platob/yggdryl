@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use yggdryl::holder::local::Folder;
 use std::sync::Arc;
+use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{DataType, Field, FixBranch, FixRegistry, IOBase, Version};
@@ -112,8 +112,7 @@ fn handle(body: &str) -> impl IOBase {
     filesystem
         .create_dir("cblock", true)
         .expect("a container to write into");
-    let mut file =
-        File::from_path(filesystem, "cblock/one.cfb", None).expect("a path under it");
+    let mut file = File::from_path(filesystem, "cblock/one.cfb", None).expect("a path under it");
     file.write_all_bytes(body.as_bytes()).expect("the document");
     file
 }
@@ -185,7 +184,11 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
         (10015, DataType::Date32),
         (273, DataType::Time64(yggdryl::TimeUnit::Nanosecond)),
     ] {
-        assert_eq!(registry.field_by_tag(tag).unwrap().dtype(), &dtype, "tag {tag}");
+        assert_eq!(
+            registry.field_by_tag(tag).unwrap().dtype(),
+            &dtype,
+            "tag {tag}"
+        );
     }
     // `utc-timestamp` is the one that carries a zone.
     assert!(matches!(
@@ -288,7 +291,9 @@ fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
 #[test]
 fn the_root_element_is_the_branch_record() {
     let (registry, _) = parse(CBLOCK);
-    let held = registry.branch_named("bloomberg").expect("the named branch");
+    let held = registry
+        .branch_named("bloomberg")
+        .expect("the named branch");
     assert_eq!(held.version(), "4.4".parse::<Version>().unwrap());
     assert_eq!(held.sender_comp_id(), "OURDESK");
     assert_eq!(held.target_comp_id(), "BLPFIX");

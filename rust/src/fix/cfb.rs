@@ -344,7 +344,7 @@ impl<'doc> Parse<'doc> {
         // snapshot, so anything written into the `fix:` namespace before it
         // would be replaced away.
         if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase()) {
-            field.set_metadata([("display", alt.as_str())].into_iter())?;
+            field.set_metadata([("display", alt.as_str())])?;
         }
         field.as_fix_mut().set_id(&self.owner(tag), tag)?;
         if let Some(described) = described.filter(|held| !held.trim().is_empty()) {
@@ -357,8 +357,8 @@ impl<'doc> Parse<'doc> {
 
     /// Reads one `grammar-binding` into one message root.
     ///
-    /// The root is a non-null struct named by the binding's `type` **verbatim**
-    /// - spaces and case included, so `7` and `P Report Ack` are both legal
+    /// The root is a non-null struct named by the binding's `type` verbatim,
+    /// spaces and case included, so `7` and `P Report Ack` are both legal
     /// names. This is the one place the lower-case law does not reach: a
     /// MsgType is case-bearing, `A` is Logon and `a` is QuoteStatusRequest, so
     /// folding a root name would merge two messages.

@@ -82,6 +82,7 @@ class MimeType:
     ULLINK: ClassVar[MimeType]
     FIX: ClassVar[MimeType]
     FIXUL: ClassVar[MimeType]
+    KEYVALUE: ClassVar[MimeType]
     FIXML: ClassVar[MimeType]
     MARKDOWN: ClassVar[MimeType]
     HTML: ClassVar[MimeType]

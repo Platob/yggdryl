@@ -240,6 +240,12 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "KEYVALUE")]
+    fn keyvalue_constant() -> Self {
+        Self::from_core(CoreMimeType::KEYVALUE)
+    }
+
+    #[classattr]
     #[pyo3(name = "FIXML")]
     fn fixml_constant() -> Self {
         Self::from_core(CoreMimeType::FIXML)

@@ -581,7 +581,7 @@ def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
 
 def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     prebuilt = AsciiEnum.prebuilt()
-    assert set(prebuilt) == {"currency", "country", "mic", "exchange"}
+    assert set(prebuilt) == {"currency", "country", "mic", "exchange", "side", "direction"}
     # `exchange` is FIX's name for the ISO 10383 code, so it is one list.
     assert prebuilt["mic"] == prebuilt["exchange"]
 
