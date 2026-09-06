@@ -81,7 +81,7 @@ Every spelling reads to the same bytes and writes back canonical.
     assert id.arrow_scalar(text) == pa.scalar(packed.to_bytes(16, "big"), pa.binary(16))
     assert id.arrow_scalar(text.upper()) == id.arrow_scalar(text)
     assert id.arrow_scalar(packed.to_bytes(16, "big")) == id.arrow_scalar(text)
-    assert id.default_pyvalue() == "00000000-0000-0000-0000-000000000000"
+    assert id.default_scalar().as_py() == "00000000-0000-0000-0000-000000000000"
 
     # Storage is the canonical `arrow.uuid` extension, which PyArrow registers
     # itself, so a column of them reads back as `uuid.UUID`.
@@ -122,6 +122,7 @@ Every spelling reads to the same bytes and writes back canonical.
 - `not-a-uuid`, wrong digit count, misplaced hyphen -> `InvalidRecord` naming the accepted spellings.
 - `uuid_packed` or `uuid_value` on another datatype -> `InvalidDataType`.
 - Packed integer -> the same in every process, and what a stable hash hashes.
+- [Merged](field.md) with `fixed_size_binary(16)` -> those bytes widening, `uuid` narrowing; any other width -> `binary`.
 
 ## Commands
 

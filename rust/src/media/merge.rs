@@ -24,7 +24,7 @@ use arrow_row::{RowConverter, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
-use crate::types::cast::ArrowCast;
+use crate::types::cast::{ArrowCast, ArrowCastOptions};
 use crate::{Error, Field, Result};
 
 /// One key's positions in the held result, as `(batch, row)` pairs.
@@ -110,7 +110,10 @@ pub(crate) fn merged(
     }
 
     for batch in incoming {
-        let batch = field.cast_arrow_batch(batch.map_err(from_reader_error)?, safe)?;
+        let batch = field.cast_arrow_batch(
+            batch.map_err(from_reader_error)?,
+            ArrowCastOptions::new().with_safe(safe),
+        )?;
         if batch.num_rows() == 0 {
             continue;
         }

@@ -17,6 +17,8 @@ def refresh_logging() -> None: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
+Nullability = Literal["default", "strict"]
+Representation = Literal["value", "bits"]
 
 # Anything an Iceberg write takes: every Arrow holder the record surface reads,
 # a foreign frame, and the plain rows `append_records` accepts.
@@ -717,7 +719,9 @@ class DataType:
     def from_fields(fields: Iterable[Field]) -> DataType: ...
     @staticmethod
     def from_json(value: str | bytes | bytearray | Any) -> DataType: ...
-    def default_pyvalue(self) -> object: ...
+    # A default is a value, and a value is a `Scalar`: read it with
+    # `as_py`, materialize it, or feed it back into a cast.
+    def default_scalar(self) -> Scalar: ...
     def default_pyhint(self) -> object: ...
     def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> DataType: ...
@@ -725,10 +729,20 @@ class DataType:
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
     def cast_arrow_array(
-        self, value: pyarrow.Array, *, safe: bool = True
+        self,
+        value: pyarrow.Array,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Array: ...
     def cast_arrow_batch(
-        self, value: pyarrow.RecordBatch, *, safe: bool = True
+        self,
+        value: pyarrow.RecordBatch,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     def into_arrow(self) -> Any: ...
     # Three formats, one structural model: `into_dict` is the model every
@@ -944,17 +958,26 @@ class Field:
     ) -> type[Any]: ...
     @staticmethod
     def from_json(value: str | bytes | bytearray | Any) -> Field: ...
-    def default_pyvalue(self) -> object: ...
+    # A default is a value, and a value is a `Scalar`: read it with
+    # `as_py`, materialize it, or feed it back into a cast.
+    def default_scalar(self) -> Scalar: ...
     def default_pyhint(self) -> object: ...
     def default_arrow_scalar(self) -> pyarrow.Scalar: ...
     def into_scheme_compat(self, target: CompatibilityScheme) -> Field: ...
     def arrow_scalar(
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
+    # `safe` decides whether a present value may be converted; `nullability`
+    # decides whether a declared value may be absent - "default" writes the
+    # canonical default, "strict" refuses by path.
     def cast_arrow_array(
-        self, value: pyarrow.Array, *, safe: bool = True
+        self,
+        value: pyarrow.Array,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Array: ...
-    def cast_arrow_array_bits(self, value: pyarrow.Array) -> pyarrow.Array: ...
     # `cast` reconciles the batch to this root, `partition` computes every
     # column a `partition:transform` over `partition:sources` declares, and
     # `digest` fills every holder last, over the rows as they finally stand.
@@ -966,6 +989,8 @@ class Field:
         partition: bool = True,
         cast: bool = True,
         safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     # The applied shape, derived from the two schemas without reading a row.
     def apply_arrow_schema(
@@ -976,6 +1001,8 @@ class Field:
         partition: bool = True,
         cast: bool = True,
         safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Schema: ...
     def apply_arrow_reader(
         self,
@@ -985,15 +1012,59 @@ class Field:
         partition: bool = True,
         cast: bool = True,
         safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
     def cast_arrow_batch(
-        self, value: pyarrow.RecordBatch, *, safe: bool = True
+        self,
+        value: pyarrow.RecordBatch,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     def cast_arrow_scalar(
-        self, value: object, *, safe: bool = True
+        self,
+        value: object,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
     ) -> pyarrow.Scalar: ...
-    def cast_arrow(self, value: Any, *, safe: bool = True) -> Any: ...
-    def cast(self, value: Any, *, safe: bool = True) -> Any: ...
+    # Eager: the table is already held, so its reader is drained here.
+    def cast_arrow_table(
+        self,
+        value: pyarrow.Table,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.Table: ...
+    # Lazy: one compiled plan, one source batch at a time, nothing collected.
+    def cast_arrow_reader(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> pyarrow.RecordBatchReader: ...
+    def cast_arrow(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Any: ...
+    def cast(
+        self,
+        value: Any,
+        *,
+        safe: bool = True,
+        nullability: Nullability = "default",
+        representation: Representation = "value",
+    ) -> Any: ...
     def into_arrow(self) -> Any: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.

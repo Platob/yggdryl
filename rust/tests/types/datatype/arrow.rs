@@ -202,6 +202,115 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     }
 }
 
+/// Every datatype whose identity is an Arrow extension, and not the storage
+/// it is written over.
+fn extension_datatypes() -> Vec<DataType> {
+    vec![
+        DataType::Ascii,
+        DataType::FixedAscii(4),
+        DataType::Country,
+        DataType::Currency,
+        DataType::Mic,
+        DataType::Cfi,
+        DataType::Uuid,
+        DataType::Version,
+        DataType::Variant,
+        DataType::geometry(Some("EPSG:4326")).unwrap(),
+        DataType::geography(Some("EPSG:4326"), None).unwrap(),
+    ]
+}
+
+#[test]
+fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
+    for dtype in extension_datatypes() {
+        // The identity is field metadata, so every shape that puts the type
+        // under a field keeps it - including a dictionary encoding, whose
+        // Arrow values are a bare datatype with nowhere of their own to
+        // declare it.
+        for held in [
+            dtype.clone(),
+            DataType::dictionary(DataType::Int32, dtype.clone()).unwrap(),
+            DataType::list(Field::new("item", dtype.clone(), true)),
+            DataType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+            DataType::run_end_encoded(
+                Field::new("run_ends", DataType::Int32, false),
+                Field::new("values", dtype.clone(), true),
+            )
+            .unwrap(),
+        ] {
+            let field = Field::new("f", held.clone(), true);
+            let arrow = field.clone().into_arrow().unwrap();
+            assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{held}");
+
+            // The C schema is a field node too, so it carries the same
+            // identity, dictionary encoding included.
+            let ffi = field.clone().into_arrow_ffi().unwrap();
+            let imported = ArrowField::try_from(&ffi).unwrap();
+            assert_eq!(
+                Field::from_arrow(&imported).unwrap().dtype(),
+                &held,
+                "{held}"
+            );
+
+            // A bare datatype has nowhere to carry it in Arrow, but its own C
+            // schema does.
+            let ffi = held.clone().into_arrow_ffi().unwrap();
+            let imported = ArrowField::try_from(&ffi).unwrap();
+            assert_eq!(
+                Field::from_arrow(&imported).unwrap().dtype(),
+                &held,
+                "{held}"
+            );
+        }
+
+        // The documented exception: an Arrow datatype is storage, because it
+        // has no metadata to name an extension with.
+        let storage = dtype.clone().into_arrow().unwrap();
+        assert_ne!(DataType::from_arrow(&storage).unwrap(), dtype, "{dtype}");
+    }
+}
+
+#[test]
+fn an_extension_schema_survives_an_ipc_round_trip() {
+    let root = DataType::from_fields(
+        extension_datatypes()
+            .into_iter()
+            .enumerate()
+            .flat_map(|(index, dtype)| {
+                [
+                    Field::new(format!("c{index}"), dtype.clone(), true),
+                    Field::new(
+                        format!("d{index}"),
+                        DataType::dictionary(DataType::Int32, dtype).unwrap(),
+                        true,
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap()
+    .required_field("row");
+
+    let schema = root.clone().into_arrow_schema().unwrap();
+    let mut buffer = Vec::new();
+    let mut writer = arrow_ipc::writer::StreamWriter::try_new(&mut buffer, &schema).unwrap();
+    writer.finish().unwrap();
+    drop(writer);
+
+    let reader =
+        arrow_ipc::reader::StreamReader::try_new(std::io::Cursor::new(buffer), None).unwrap();
+    let back = Field::from_arrow_schema("row", reader.schema().as_ref()).unwrap();
+
+    // Datatypes, not whole fields: the IPC writer assigns each dictionary
+    // column a transport dictionary ID, which is not part of the schema the
+    // root declared.
+    assert_eq!(back.field_len(), root.field_len());
+    for (held, imported) in root.fields().iter().zip(back.fields().iter()) {
+        assert_eq!(imported.name(), held.name());
+        assert_eq!(imported.dtype(), held.dtype(), "{}", held.name());
+    }
+}
+
 #[test]
 fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
     assert!(DataType::Time32(TimeUnit::Nanosecond).validate().is_err());

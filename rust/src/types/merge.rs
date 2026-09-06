@@ -15,15 +15,22 @@
 //!    struct takes the *union* of its fields; a list, map, or run-end node
 //!    merges the children it has.
 //! 4. Bytes win. A binary type paired with anything else answers binary,
-//!    because bytes are the container every other encoding fits inside. An
-//!    ASCII width beside a fixed binary of the same byte width answers that
-//!    fixed binary, identical storage; any other pairing is variable bytes.
+//!    because bytes are the container every other encoding fits inside. A
+//!    type storing a fixed width beside a fixed binary of that same width -
+//!    an ASCII width, a registered code, a UUID - keeps the storage both
+//!    already have: widening answers the plain bytes, narrowing the side that
+//!    constrains them. Any other pairing is variable bytes.
 //! 5. Text wins next, over numbers and temporals. Two ASCII widths meet at
 //!    the wider or the narrower; ASCII beside variable text meets at the
-//!    variable text when widening and at the ASCII width when narrowing;
-//!    text absorbing a non-text side is at least `utf8`, because a number's
-//!    rendering does not fit four bytes.
-//! 6. Numbers meet by width, and temporals by unit.
+//!    variable text when widening and at the ASCII width when narrowing; a
+//!    registered code beside plainer text is the width it stores when
+//!    widening and the code itself when narrowing, so the tighter type
+//!    survives the direction that asks for it; text absorbing a non-text side
+//!    is at least `utf8`, because a number's rendering does not fit four
+//!    bytes.
+//! 6. Numbers meet by width, and temporals by unit. An exact decimal keeps
+//!    the widest storage either side declared when widening, so a merge never
+//!    re-encodes a `decimal128` column into a `decimal64` one.
 //!
 //! Anything left is an honest refusal rather than a lossy guess: a boolean and
 //! a timestamp have no meeting point that is not a re-encoding.
@@ -39,6 +46,7 @@ use crate::{DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
 use super::ascii::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
+use super::uuid::UUID_BYTES;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -105,6 +113,11 @@ impl DataType {
     /// unit. Anything left is refused rather than guessed - a boolean and a
     /// timestamp have no meeting point that is not a re-encoding.
     ///
+    /// A type that names fewer values than the shape it stores in - a
+    /// registered ASCII code, a UUID, a decimal's declared backing - survives
+    /// the direction that asks for it: widening answers the shape holding
+    /// both, narrowing answers the tighter type.
+    ///
     /// `upscale` chooses the direction width is resolved in: `true` meets at
     /// the type that holds both, `false` at the tightest type that names both.
     ///
@@ -128,6 +141,15 @@ impl DataType {
     /// // ASCII widths are text, so they meet variable text there when widening.
     /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::Utf8, true)?, DataType::Utf8);
     /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::FixedAscii(8), false)?, DataType::FixedAscii(4));
+    ///
+    /// // Narrowing keeps the tighter type: the code over the width it stores
+    /// // in, and the decimal's own backing over the one precision needs.
+    /// assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, false)?, DataType::Currency);
+    /// assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(
+    ///     DataType::decimal128(10, 2)?.merge_with(&DataType::Int16, true)?,
+    ///     DataType::decimal128(10, 2)?,
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -392,9 +414,9 @@ fn merge_scalar(
     // Bytes hold every other encoding, so a binary side decides the pair.
     if let Some(rank) = binary_rank(left) {
         return Ok(Some(match binary_rank(right) {
-            Some(other) => rebuild_binary(how.pick((rank, rank), (other, other)), left, right),
+            Some(other) => rebuild_binary(how.pick((rank, rank), (other, other)), how, left, right),
             None if recode == Recode::Allowed && is_mergeable_into_bytes(right) => {
-                rebuild_binary(rank, left, right)
+                rebuild_binary(rank, how, left, right)
             }
             None => return Ok(None),
         }));
@@ -402,7 +424,7 @@ fn merge_scalar(
     if let Some(rank) = binary_rank(right) {
         return Ok(
             if recode == Recode::Allowed && is_mergeable_into_bytes(left) {
-                Some(rebuild_binary(rank, left, right))
+                Some(rebuild_binary(rank, how, left, right))
             } else {
                 None
             },
@@ -411,7 +433,7 @@ fn merge_scalar(
     // Text is next, over numbers and temporals.
     if let Some(rank) = text_rank(left) {
         return Ok(match text_rank(right) {
-            Some(other) => Some(rebuild_text(how.widen(rank, other))),
+            Some(other) => Some(merge_text((left, rank), (right, other), how)),
             None if recode == Recode::Allowed && is_mergeable_into_text(right) => {
                 Some(rebuild_text(rank.max(TextRank::Utf8)))
             }
@@ -457,19 +479,34 @@ const fn binary_rank(dtype: &DataType) -> Option<u8> {
     }
 }
 
-/// The byte width of a fixed-width byte layout: a fixed binary or an ASCII
-/// width, whose storage is the fixed binary of the same width.
+/// The byte width of a fixed-width byte layout: a fixed binary, an ASCII
+/// width, or a UUID, each of whose storage is the fixed binary of that width.
 fn fixed_width(dtype: &DataType) -> Option<i32> {
     match dtype {
         DataType::FixedSizeBinary(width) => Some(*width),
+        // An identifier is sixteen bytes, the same fixed binary a schema
+        // naming the layout directly would declare, so the pair keeps it.
+        DataType::Uuid => Some(UUID_BYTES as i32),
         other => other.ascii_width(),
     }
 }
 
 /// Rebuild a binary layout from a width rank, keeping a shared fixed width.
-fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
+///
+/// Two sides storing the same number of bytes keep that storage, and the
+/// direction decides which of the two names it. Widening answers the plain
+/// bytes, which hold every value either side can carry; narrowing answers the
+/// side that constrains them - an ASCII width, a registered code, a UUID -
+/// because that is the tightest type naming both and the storage is identical
+/// either way.
+fn rebuild_binary(rank: u8, how: Widening, left: &DataType, right: &DataType) -> DataType {
     if let (Some(left_width), Some(right_width)) = (fixed_width(left), fixed_width(right)) {
         if left_width == right_width {
+            if how == Widening::Down {
+                if let Some(constrained) = constrained_bytes(left, right) {
+                    return constrained;
+                }
+            }
             return DataType::FixedSizeBinary(left_width);
         }
     }
@@ -478,6 +515,16 @@ fn rebuild_binary(rank: u8, left: &DataType, right: &DataType) -> DataType {
         3 => DataType::LargeBinary,
         // A fixed width the two sides do not share becomes variable bytes.
         _ => DataType::Binary,
+    }
+}
+
+/// The side of a same-width pair that constrains what its bytes may hold, when
+/// exactly one of the two does.
+fn constrained_bytes(left: &DataType, right: &DataType) -> Option<DataType> {
+    match (binary_rank(left), binary_rank(right)) {
+        (None, Some(_)) => Some(left.clone()),
+        (Some(_), None) => Some(right.clone()),
+        _ => None,
     }
 }
 
@@ -504,12 +551,10 @@ enum TextRank {
 
 /// Where a datatype sits in the text order, if it is text at all.
 ///
-/// A registered code ranks as the fixed width it stores. Two
-/// schemas that agree on a code never reach here - the merge answers an equal
-/// pair before ranking anything - so this decides only the pairs that
-/// disagree, and a code reconciled against anything else gives up its
-/// identity for the plain shape both fit in: a currency merged with a country
-/// is `ascii(3)`, never one standard's code carrying the other's values.
+/// A registered code ranks as the fixed width it stores. Two schemas that
+/// agree on a code never reach here - the merge answers an equal pair before
+/// ranking anything - so this decides only the pairs that disagree, and
+/// [`merge_text`] is what says when the code identity survives the rank.
 fn text_rank(dtype: &DataType) -> Option<TextRank> {
     match dtype {
         DataType::FixedAscii(width) => Some(TextRank::Fixed(*width)),
@@ -523,6 +568,37 @@ fn text_rank(dtype: &DataType) -> Option<TextRank> {
         DataType::LargeUtf8 => Some(TextRank::LargeUtf8),
         _ => None,
     }
+}
+
+/// Meet two text types, conserving a registered code where the direction can.
+///
+/// Widening never answers a code: a code names fewer values than the width it
+/// stores in, so the type holding both sides is the plain one - `currency`
+/// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
+/// the tightest type that names both, and there the code is the answer
+/// whenever the other side is at least as general: `currency` beside `utf8`
+/// or `ascii(3)` narrows to `currency`, and only a side narrower still, such
+/// as `ascii(2)`, outranks it.
+///
+/// Two *different* codes are the one pair neither direction answers with a
+/// code, because neither standard names the other's values: a currency merged
+/// with a country is `ascii(3)` widening and `ascii(2)` narrowing, never one
+/// standard's code carrying the other's values.
+fn merge_text(
+    left: (&DataType, TextRank),
+    right: (&DataType, TextRank),
+    how: Widening,
+) -> DataType {
+    let ((left_type, left_rank), (right_type, right_rank)) = (left, right);
+    if how == Widening::Down && !(left_type.is_code() && right_type.is_code()) {
+        if left_type.is_code() && left_rank <= right_rank {
+            return left_type.clone();
+        }
+        if right_type.is_code() && right_rank <= left_rank {
+            return right_type.clone();
+        }
+    }
+    rebuild_text(how.widen(left_rank, right_rank))
 }
 
 /// Rebuild a text layout from its rank.
@@ -549,7 +625,17 @@ fn merge_numeric(left: &DataType, right: &DataType, how: Widening) -> Result<Opt
         ) else {
             return Ok(None);
         };
-        return merge_decimal(left_parts, right_parts, how).map(Some);
+        // Widening keeps the widest storage either side declared. A column
+        // saying `decimal128` is not re-encoded to `decimal64` because the
+        // merged precision happens to fit there: that is a layout change the
+        // other side never asked for, and the same reason a dictionary does
+        // not survive a merge with a plain column. Narrowing wants the
+        // tightest type instead, so it takes whatever the precision needs.
+        let backing = match how {
+            Widening::Up => decimal_backing(left).max(decimal_backing(right)),
+            Widening::Down => None,
+        };
+        return merge_decimal(left_parts, right_parts, how, backing).map(Some);
     }
     if let (Some(left_rank), Some(right_rank)) = (float_rank(left), float_rank(right)) {
         return Ok(Some(rebuild_float(
@@ -573,7 +659,15 @@ fn merge_numeric(left: &DataType, right: &DataType, how: Widening) -> Result<Opt
 }
 
 /// The widest decimal that names both, capped at what the backing width holds.
-fn merge_decimal(left: (u8, i8), right: (u8, i8), how: Widening) -> Result<DataType> {
+///
+/// `backing` is the storage the pair has already agreed on, when either side
+/// declared one wider than the merged precision needs.
+fn merge_decimal(
+    left: (u8, i8),
+    right: (u8, i8),
+    how: Widening,
+    backing: Option<u8>,
+) -> Result<DataType> {
     let (left_precision, left_scale) = left;
     let (right_precision, right_scale) = right;
     let scale = match how {
@@ -586,7 +680,43 @@ fn merge_decimal(left: (u8, i8), right: (u8, i8), how: Widening) -> Result<DataT
     let precision = integral
         .saturating_add(u8::try_from(scale.max(0)).unwrap_or(0))
         .clamp(1, MAX_DECIMAL_PRECISION);
-    DataType::decimal(precision, scale)
+    rebuild_decimal(
+        backing.unwrap_or(0).max(required_backing(precision)),
+        precision,
+        scale,
+    )
+}
+
+/// Which of the four backings a decimal declares, as a width rank.
+const fn decimal_backing(dtype: &DataType) -> Option<u8> {
+    match dtype {
+        DataType::Decimal32 { .. } => Some(0),
+        DataType::Decimal64 { .. } => Some(1),
+        DataType::Decimal128 { .. } => Some(2),
+        DataType::Decimal256 { .. } => Some(3),
+        _ => None,
+    }
+}
+
+/// The narrowest backing a precision fits in, the one [`DataType::decimal`]
+/// picks for it.
+const fn required_backing(precision: u8) -> u8 {
+    match precision {
+        0..=9 => 0,
+        10..=18 => 1,
+        19..=38 => 2,
+        _ => 3,
+    }
+}
+
+/// Rebuild an exact decimal at a backing rank.
+fn rebuild_decimal(backing: u8, precision: u8, scale: i8) -> Result<DataType> {
+    match backing {
+        0 => DataType::decimal32(precision, scale),
+        1 => DataType::decimal64(precision, scale),
+        2 => DataType::decimal128(precision, scale),
+        _ => DataType::decimal256(precision, scale),
+    }
 }
 
 /// Arrow's widest exact decimal precision.
@@ -823,6 +953,135 @@ mod tests {
                 .merge_with(&DataType::Binary, true)
                 .unwrap(),
             DataType::Binary
+        );
+    }
+
+    #[test]
+    fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
+        // The storage is the same either way, so the direction is free to
+        // answer the tighter of the two types.
+        for (left, right) in [
+            (DataType::FixedAscii(4), DataType::FixedSizeBinary(4)),
+            (DataType::Currency, DataType::FixedSizeBinary(3)),
+            (DataType::Uuid, DataType::FixedSizeBinary(16)),
+        ] {
+            assert_eq!(
+                left.merge_with(&right, false).unwrap(),
+                left,
+                "narrowing answers {left}"
+            );
+            assert_eq!(
+                right.merge_with(&left, false).unwrap(),
+                left,
+                "in either position"
+            );
+            let width = super::fixed_width(&left).unwrap();
+            assert_eq!(
+                left.merge_with(&right, true).unwrap(),
+                DataType::FixedSizeBinary(width),
+                "widening answers the bytes"
+            );
+        }
+
+        // A width neither side shares is variable bytes, as before.
+        assert_eq!(
+            DataType::Uuid
+                .merge_with(&DataType::FixedSizeBinary(8), true)
+                .unwrap(),
+            DataType::Binary
+        );
+    }
+
+    #[test]
+    fn narrowing_keeps_a_registered_code_over_the_width_it_stores_in() {
+        let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
+        let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
+
+        // The code is the tighter type, so narrowing answers it in either
+        // position and widening answers the shape that holds both.
+        for other in [
+            DataType::FixedAscii(3),
+            DataType::Ascii,
+            DataType::Utf8,
+            DataType::LargeUtf8,
+        ] {
+            assert_eq!(down(&DataType::Currency, &other), DataType::Currency);
+            assert_eq!(down(&other, &DataType::Currency), DataType::Currency);
+            assert_ne!(up(&DataType::Currency, &other), DataType::Currency);
+        }
+        assert_eq!(
+            down(&DataType::Cfi, &DataType::FixedAscii(6)),
+            DataType::Cfi
+        );
+
+        // A side narrower than the code still outranks it: narrowing is the
+        // tightest type that names both, not the most specific one.
+        assert_eq!(
+            down(&DataType::Currency, &DataType::FixedAscii(2)),
+            DataType::FixedAscii(2)
+        );
+
+        // Two different codes are the pair neither direction answers with a
+        // code: neither standard names the other's values.
+        assert_eq!(
+            down(&DataType::Currency, &DataType::Country),
+            DataType::FixedAscii(2)
+        );
+        assert_eq!(
+            up(&DataType::Currency, &DataType::Country),
+            DataType::FixedAscii(3)
+        );
+
+        // A number's rendering does not fit a code, so absorbing one is still
+        // no less than `utf8`.
+        assert_eq!(down(&DataType::Currency, &DataType::Int32), DataType::Utf8);
+    }
+
+    #[test]
+    fn widening_a_decimal_keeps_the_widest_backing_either_side_declared() {
+        let decimal128 = DataType::decimal128(10, 2).unwrap();
+        let decimal256 = DataType::Decimal256 {
+            precision: 20,
+            scale: 2,
+        };
+
+        // The merged precision fits a narrower backing, but re-encoding the
+        // storage is not something a widening merge may impose.
+        assert_eq!(
+            decimal128.merge_with(&DataType::Int16, true).unwrap(),
+            decimal128
+        );
+        assert_eq!(
+            decimal256
+                .merge_with(&DataType::decimal128(20, 2).unwrap(), true)
+                .unwrap(),
+            decimal256
+        );
+        assert_eq!(
+            decimal256.merge_with(&DataType::Int32, true).unwrap(),
+            decimal256
+        );
+
+        // A precision wider than either backing still moves up to the one
+        // that holds it.
+        assert_eq!(
+            DataType::decimal32(9, 2)
+                .unwrap()
+                .merge_with(&DataType::Int32, true)
+                .unwrap(),
+            DataType::decimal64(12, 2).unwrap()
+        );
+
+        // Narrowing wants the tightest type, so it takes what precision needs.
+        assert_eq!(
+            decimal128.merge_with(&DataType::Int16, false).unwrap(),
+            DataType::decimal32(8, 0).unwrap()
+        );
+        assert_eq!(
+            decimal256
+                .merge_with(&DataType::decimal128(20, 2).unwrap(), false)
+                .unwrap(),
+            DataType::decimal128(20, 2).unwrap()
         );
     }
 }

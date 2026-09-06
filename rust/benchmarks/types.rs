@@ -30,6 +30,7 @@ criterion_group!(
     field::field_benches::integer::benchmarks,
     field::field_benches::comparison::benchmarks,
     field::field_benches::arrow::benchmarks,
+    field::field_benches::cast_plan::benchmarks,
     enums::mime_parsing,
     enums::media_inference,
     enums::write_modes_and_io_identity,

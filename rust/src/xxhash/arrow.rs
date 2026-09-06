@@ -36,10 +36,9 @@ use arrow_select::zip::zip;
 use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::metadata::is_all_sources;
+use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{
-    ArrowCast, DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone,
-};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
@@ -160,7 +159,7 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     force: bool,
 ) -> Result<RecordBatch> {
     let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
-    let batch = root.cast_arrow_batch(batch, true)?;
+    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
     let row_count = batch.num_rows();
     let (columns, changed) =
         fill_struct(prototype, &plan, batch.columns(), None, force, row_count)?;
@@ -582,8 +581,13 @@ fn fill_struct<S: ArrowDigestState>(
             continue;
         }
         let computed = collect(&values, holder.algorithm);
+        // A signed holder stores the unsigned digest's bits, not a narrower
+        // number: the same bytes under the width the schema declared.
         let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
-            holder.field.cast_arrow_array_bits(computed)?
+            holder.field.cast_arrow_array(
+                computed,
+                ArrowCastOptions::new().with_representation(Representation::Bits),
+            )?
         } else {
             computed
         };
@@ -746,10 +750,12 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
 /// and a struct whose children are stored in another order is the same row.
 /// Reconciling costs nothing when the array is already the declared shape.
 ///
-/// The reconciliation is strict, unlike the one that completes a stored shape
-/// on a write: a value the declaration cannot hold is named rather than
-/// nulled, because a null is a value here and two different unconvertible
-/// cells would otherwise answer one digest.
+/// The reconciliation is strict on both questions a cast asks, unlike the one
+/// that completes a stored shape on a write: a value the declaration cannot
+/// hold is named rather than nulled, because a null is a value here and two
+/// unconvertible cells must not answer one digest, and a required column the
+/// array does not carry is named rather than defaulted, because a digest of an
+/// invented value is worse than no digest.
 ///
 /// # Errors
 ///
@@ -760,7 +766,12 @@ pub fn column_digests(
     field: &Field,
     algorithm: DigestAlgorithm,
 ) -> Result<ArrayRef> {
-    let array = field.cast_arrow_array(array, false)?;
+    let array = field.cast_arrow_array(
+        array,
+        ArrowCastOptions::new()
+            .with_safe(false)
+            .with_nullability(Nullability::Strict),
+    )?;
     let array = array.as_ref();
     let mut digests = Vec::with_capacity(array.len());
     let mut digester = algorithm.digester();

@@ -10,5 +10,7 @@ mod default_scalar;
 mod enums;
 #[path = "types/field/mod.rs"]
 mod field;
+#[path = "types/strict_cast.rs"]
+mod strict_cast;
 #[path = "types/value_bounds.rs"]
 mod value_bounds;

@@ -263,6 +263,21 @@ scheme vocabulary.
 - `IOBase` is positional: `pread`/`pwrite` are primitives. Whole reads,
   streams, compression, records, and media derive from them. No second storage
   trait or hidden cursor in the base object.
+- Every operation issues the fewest `IOBase` calls that can answer it. One call
+  is a round trip against an object store, a syscall against a file, and a lock
+  through every wrapper, so the call count is the cost model - not the byte
+  count. Slice what a later step needs out of what a read already returned;
+  answer from an index, a listing, or a parsed footer instead of asking again;
+  record what a write already knows rather than reading it back; and make a
+  call conditional when the state already says it would change nothing.
+- An answer only the store can give about one resource - a member's data
+  offset, a footer's length - is read once and held where every handle on that
+  resource shares it, never once per handle. A wrapper that keeps its own copy
+  of the same answer is the bug that hides the call.
+- State each surface's cost model in call counts and assert it. A test pinning
+  "a warm positional read is one handle read" catches a regression that a
+  timing benchmark reports as noise, so a surface owning the handle it calls
+  exposes the counter that test reads.
 - Every derived read and append names the core type it answers, because the
   same verbs also address rows: `read_all_bytes`, `read_range_bytes`,
   `write_all_bytes`, `append_bytes`, `read_scalar`, `read_arrow_reader`. A bare
@@ -513,10 +528,17 @@ Iceberg contract:
 - `ArrowCast` owns recursive array/batch casting. Struct casts reconcile names,
   reject ambiguous folds, follow target order, fill valid missing fields, and
   preserve exact arrays after logical validation.
-- `Field::cast_arrow_array_bits` is the explicit full-domain `int32`/`uint32`
-  and `int64`/`uint64` representation cast. It shares value buffers unless a
-  required target must fill nulls, preserves every present value's bits, and
-  never changes ordinary numeric cast semantics.
+- `ArrowCastOptions` carries the three independent answers a cast needs and
+  every entry point takes it: `safe` decides whether a present value may be
+  converted, `Nullability` whether a declared value may be absent, and
+  `Representation` what a same-width pair carries. `Representation::Bits`
+  reads two fixed-width layouts of one byte width as the same bytes, sharing
+  the value buffer; it is a preference, so a pair that is not the same bytes,
+  or a target whose values follow a rule, converts as it always did.
+- `ArrowCastPlan` is the schema-dependent half of a cast compiled once:
+  immutable, `Send + Sync`, `compile`/`preflight`/`apply`, one plan per reader.
+  Only masks, offsets, and dictionary reachability vary per batch, and an exact
+  cast returns the caller's own batch.
 - Wrapper exposure propagates: hidden child failures/nulls remain hidden.
   Preflight slot and fixed-buffer budgets before allocating.
 - IPC dictionary IDs are transport-local. Preserve native IDs in one reserved

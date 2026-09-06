@@ -499,8 +499,13 @@ where
         let batch = if Arc::ptr_eq(&stored, &schema) {
             batch
         } else if crate::arrow::same_columns(&schema, &stored) {
-            root.cast_arrow_batch(batch, false)
-                .map_err(|error| mismatch(&error))?
+            root.cast_arrow_batch(
+                batch,
+                crate::ArrowCastOptions::new()
+                    .with_safe(false)
+                    .with_nullability(crate::Nullability::Strict),
+            )
+            .map_err(|error| mismatch(&error))?
         } else {
             return Err(mismatch(&"names different columns than the written root"));
         };

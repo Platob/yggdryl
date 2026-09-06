@@ -39,7 +39,7 @@ use super::value::single_to_value;
 use crate::arrow::BatchReader;
 use crate::expression::{Bound, Bounds, Selector};
 use crate::holder::Holder;
-use crate::types::cast::ArrowCast;
+use crate::types::cast::{ArrowCast, ArrowCastOptions};
 use crate::{DataType, Error, Expression, Field, Result, Scalar};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
@@ -561,11 +561,17 @@ impl Refine {
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
             .and_then(|batch| align_by_field_id(batch, &self.read_root))
-            .and_then(|batch| Ok(self.read_root.cast_arrow_batch(batch, false)?))
+            .and_then(|batch| {
+                Ok(self
+                    .read_root
+                    .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?)
+            })
             .and_then(|batch| apply_predicates(batch, &self.predicates, residual))
             .and_then(|batch| {
                 if self.project {
-                    return Ok(self.root.cast_arrow_batch(batch, false)?);
+                    return Ok(self
+                        .root
+                        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?);
                 }
                 Ok(batch)
             })

@@ -57,6 +57,7 @@ use smol_str::SmolStr;
 
 use crate::Level;
 use crate::media::ipc::IpcOptions;
+use crate::types::cast::{ArrowCast, ArrowCastOptions};
 use crate::{DataType, Error, Field, IOMode, MediaType, Metadata, MimeType, Result};
 
 /// Default rows materialized in one native-record conversion batch.
@@ -454,21 +455,23 @@ pub trait IORecordOptions: Sized {
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
-        let safe = self.safe();
+        let options = ArrowCastOptions::new().with_safe(self.safe());
         let batch = match self.field() {
-            Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, safe)?,
+            Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
             None => batch,
         };
         let root = crate::arrow::field_from_arrow_schema(self.name(), batch.schema().as_ref())?;
         let batch = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())? {
-            Some(target) => crate::types::cast::cast_record_batch(&target, batch, safe)?,
+            Some(target) => target.cast_arrow_batch(batch, options)?,
             None => batch,
         };
         match existing {
             // A holder already holding a value is left alone, so this fills
             // only what the destination declares and the incoming rows do not
             // already carry.
-            Some(stored) => Ok(stored.apply_arrow_batch(&batch, true, true, true, true)?),
+            Some(stored) => {
+                Ok(stored.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?)
+            }
             None => Ok(batch),
         }
     }
@@ -487,19 +490,21 @@ pub trait IORecordOptions: Sized {
         reader: crate::arrow::BatchReader,
         existing: Option<&Field>,
     ) -> Result<crate::arrow::BatchReader> {
-        let safe = self.safe();
+        let options = ArrowCastOptions::new().with_safe(self.safe());
         let reader = match self.field() {
-            Some(declared) => declared.apply_arrow_reader(reader, true, true, true, safe)?,
+            Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
             None => reader,
         };
         let root = crate::arrow::field_from_arrow_schema(self.name(), reader.schema().as_ref())?;
         let reader = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())?
         {
-            Some(target) => crate::arrow::cast_reader(reader, &target, safe)?,
+            Some(target) => crate::arrow::cast_reader(reader, &target, options)?,
             None => reader,
         };
         match existing {
-            Some(stored) => Ok(stored.apply_arrow_reader(reader, true, true, true, true)?),
+            Some(stored) => {
+                Ok(stored.apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())?)
+            }
             None => Ok(reader),
         }
     }

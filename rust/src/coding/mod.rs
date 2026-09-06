@@ -254,7 +254,13 @@ impl<H: IOBase> Coding<H> {
             // Applied, not cast, for the reason `leaf_reader` applies: a
             // declared derived column arrives written from every read seam or
             // from none of them.
-            Some(field) => field.apply_arrow_reader(reader, true, true, true, options.safe())?,
+            Some(field) => field.apply_arrow_reader(
+                reader,
+                true,
+                true,
+                true,
+                crate::ArrowCastOptions::new().with_safe(options.safe()),
+            )?,
             None => reader,
         };
         let reader = crate::media::partition::filtered_reader(reader, options)?;

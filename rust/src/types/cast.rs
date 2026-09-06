@@ -14,6 +14,7 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{ArrayRef, StringArray};
+//! use yggdryl::ArrowCastOptions;
 //! use yggdryl::types::Int64Field;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +22,7 @@
 //! let source: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
 //!
 //! // The result is an Int64Array, not an ArrayRef needing a downcast.
-//! let ids = field.cast_arrow_array(source, false)?;
+//! let ids = field.cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))?;
 //! assert_eq!(ids.values(), &[1, 2]);
 //! # Ok(())
 //! # }
@@ -33,6 +34,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use smol_str::SmolStr;
 
 use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
@@ -48,23 +51,26 @@ use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
 use crate::types::version::casts::{ingest_version_array, is_text_storage};
 use crate::types::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_refusal};
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
-use crate::{DataType, Field};
-use arrow_array::{
-    Array, ArrayRef, RecordBatch, RecordBatchOptions, Scalar as ArrowScalar, StructArray,
-};
+use crate::{DataType, Field, Scalar};
+use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
 use arrow_buffer::BooleanBuffer;
 use arrow_cast::can_cast_types;
 use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef};
 
 use crate::arrow::{Error, Result};
+use crate::path::{Path, Segment};
 use crate::types::budget::MaterializationBudget;
 
 mod batch;
 mod kernel;
+mod options;
+mod plan;
 mod typed;
 
 pub use batch::{preflight_arrow_batch_cast, validate_arrow_batch};
 pub(crate) use kernel::arrow_cast_exposed;
+pub use options::{ArrowCastOptions, Nullability, Representation};
+pub use plan::ArrowCastPlan;
 pub use typed::ArrowFieldType;
 
 /// Arrow array and record-batch casting owned by a canonical Yggdryl schema.
@@ -75,10 +81,13 @@ pub use typed::ArrowFieldType;
 pub trait ArrowCast {
     /// Casts an Arrow array to this exact physical datatype.
     ///
-    /// `safe` is passed directly to Arrow's [`CastOptions`](arrow_cast::CastOptions). With Arrow 59,
-    /// supported conversion failures become null when it is true and are
-    /// errors when it is false. A non-nullable target Field replaces resulting
-    /// nulls with its canonical default; a nullable Field retains them.
+    /// [`ArrowCastOptions::is_safe`] is passed to Arrow's
+    /// [`CastOptions`](arrow_cast::CastOptions): with Arrow 59 a supported
+    /// conversion failure becomes null when it is true and an error when it is
+    /// false. [`ArrowCastOptions::nullability`] then decides what happens to a
+    /// null a non-nullable target cannot hold - the canonical default under
+    /// [`Nullability::Default`], an error naming the path under
+    /// [`Nullability::Strict`]. A nullable Field retains its nulls either way.
     ///
     /// Temporals cross a text boundary through this crate's own spellings, so
     /// a column reads and prints what a row reads and prints; Arrow's kernel
@@ -88,20 +97,29 @@ pub trait ArrowCast {
     ///
     /// Returns an error for an unsupported cast, an ambiguous case-insensitive
     /// Struct match, or a result that cannot satisfy the target Field.
-    fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<ArrayRef>;
+    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef>;
 
     /// Reconciles an Arrow record batch to this Struct schema.
     ///
     /// Struct children are selected in target order by ASCII-case-insensitive
-    /// name. Extra source columns are dropped, missing nullable columns are
-    /// null-filled, and missing required columns use canonical defaults.
-    /// An already exact batch is returned unchanged.
+    /// name. Extra source columns are dropped and missing nullable columns are
+    /// null-filled. A missing required column uses the canonical default under
+    /// [`Nullability::Default`] and is refused by path under
+    /// [`Nullability::Strict`]. An already exact batch is returned unchanged -
+    /// the same batch object, not a rebuilt one.
+    ///
+    /// One batch compiles one [`ArrowCastPlan`]; a caller with many batches of
+    /// one schema compiles the plan itself and reuses it.
     ///
     /// # Errors
     ///
     /// Returns an error unless this value is a Struct schema, or when a child
     /// cast or missing-column default cannot be materialized.
-    fn cast_arrow_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch>;
+    fn cast_arrow_batch(
+        &self,
+        batch: RecordBatch,
+        options: ArrowCastOptions,
+    ) -> Result<RecordBatch>;
 
     /// Casts a one-row Arrow array to this exact schema, as a scalar.
     ///
@@ -113,86 +131,53 @@ pub trait ArrowCast {
     ///
     /// Returns an error when the array does not hold exactly one row, or any
     /// error the array cast returns.
-    fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<ArrowScalar<ArrayRef>> {
+    fn cast_arrow_scalar(
+        &self,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> Result<ArrowScalar<ArrayRef>> {
         if array.len() != 1 {
             return Err(Error::IncompatibleSchema(format!(
                 "a scalar cast takes exactly one row, got {}",
                 array.len()
             )));
         }
-        Ok(ArrowScalar::new(self.cast_arrow_array(array, safe)?))
+        Ok(ArrowScalar::new(self.cast_arrow_array(array, options)?))
     }
 }
 
 impl ArrowCast for DataType {
-    fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<ArrayRef> {
-        let plan = ArrayCastPlan::new_dtype(self, array.data_type(), safe)?;
+    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef> {
+        let plan = ArrayCastPlan::new_dtype(self, array.data_type(), options)?;
         let mut budget = MaterializationBudget::default();
         plan.cast(array, &mut budget)
     }
 
-    fn cast_arrow_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch> {
-        Field::new("record", self.clone(), false).cast_arrow_batch(batch, safe)
+    fn cast_arrow_batch(
+        &self,
+        batch: RecordBatch,
+        options: ArrowCastOptions,
+    ) -> Result<RecordBatch> {
+        Field::new("record", self.clone(), false).cast_arrow_batch(batch, options)
     }
 }
 
 impl ArrowCast for Field {
-    fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<ArrayRef> {
-        cast_field_array(self, None, array, safe)
+    fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef> {
+        cast_field_array(self, None, array, options)
     }
 
-    fn cast_arrow_batch(&self, batch: RecordBatch, safe: bool) -> Result<RecordBatch> {
-        cast_record_batch(self, batch, safe)
+    fn cast_arrow_batch(
+        &self,
+        batch: RecordBatch,
+        options: ArrowCastOptions,
+    ) -> Result<RecordBatch> {
+        ArrowCastPlan::compile(batch.schema_ref(), self, options)?.apply(batch)
     }
-}
-
-/// Cast a record batch by casting the struct array it already is.
-///
-/// A [`RecordBatch`] is a [`StructArray`] plus a schema, so there is no second
-/// cast engine here: the batch becomes an array, goes through the same
-/// recursive field cast every array uses - name reconciliation, defaults for
-/// missing columns, nested repair - and comes back as a batch.
-pub(crate) fn cast_record_batch(
-    target: &Field,
-    batch: RecordBatch,
-    safe: bool,
-) -> Result<RecordBatch> {
-    target.validate_bounded()?;
-    if target.is_nullable() {
-        return Err(Error::IncompatibleSchema(
-            "record-batch cast target Struct Field must be non-nullable".to_owned(),
-        ));
-    }
-    if target.dtype().as_fields().is_none() {
-        return Err(Error::IncompatibleSchema(format!(
-            "record-batch cast target {:?} must have a struct datatype",
-            target.name()
-        )));
-    }
-
-    let row_count = batch.num_rows();
-    let source = struct_array_from_batch(batch);
-    let cast = cast_field_array(target, None, source, safe)?;
-    let columns = cast
-        .as_any()
-        .downcast_ref::<StructArray>()
-        .ok_or_else(|| {
-            Error::IncompatibleSchema(
-                "a struct cast must produce a struct array; the cast table disagrees".to_owned(),
-            )
-        })?
-        .columns()
-        .to_vec();
-
-    // A batch carries its row count even with no columns, which a struct array
-    // cannot, so the count is restored explicitly.
-    let schema = crate::arrow::arrow_schema_from_field(target)?;
-    let options = RecordBatchOptions::new().with_row_count(Some(row_count));
-    RecordBatch::try_new_with_options(schema, columns, &options).map_err(Into::into)
 }
 
 /// View a batch as one struct array, keeping the row count of an empty batch.
-fn struct_array_from_batch(batch: RecordBatch) -> ArrayRef {
+pub(crate) fn struct_array_from_batch(batch: RecordBatch) -> ArrayRef {
     if batch.num_columns() == 0 {
         return Arc::new(StructArray::new_empty_fields(batch.num_rows(), None));
     }
@@ -212,18 +197,100 @@ enum StructPolicy {
     MapEntries,
 }
 
+/// The declaring protocols that will materialize a column after a cast.
+///
+/// A column a protocol fills is allowed to arrive absent or holding its
+/// canonical default, because closing that hole is the protocol's job and it
+/// has not run yet. Strictness therefore stops at such a field and resumes for
+/// every other one; the applied batch is checked again once the protocols are
+/// done.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Deferred {
+    /// `partition:sources` derives the column from another.
+    pub(crate) partition: bool,
+    /// `digest:role=holder` says the column holds the row's hash.
+    pub(crate) digest: bool,
+}
+
+impl Deferred {
+    /// Returns whether an enabled protocol fills this field after the cast.
+    fn defers(self, field: &Field) -> Result<bool> {
+        if self.digest && field.as_digest().is_holder() {
+            return Ok(true);
+        }
+        Ok(self.partition && field.as_partition().sources()?.is_some())
+    }
+}
+
+/// What a child node inherits from the parent that planned it.
+#[derive(Clone, Copy)]
+struct PlanRules {
+    options: ArrowCastOptions,
+    deferred: Deferred,
+    null_policy: NullPolicy,
+    struct_policy: StructPolicy,
+    may_be_fully_hidden: bool,
+}
+
+impl PlanRules {
+    /// The rules a nested child inherits unchanged from its parent.
+    const fn nested(options: ArrowCastOptions, deferred: Deferred) -> Self {
+        Self {
+            options,
+            deferred,
+            null_policy: NullPolicy::Field,
+            struct_policy: StructPolicy::Normal,
+            may_be_fully_hidden: true,
+        }
+    }
+
+    const fn with_null_policy(mut self, null_policy: NullPolicy) -> Self {
+        self.null_policy = null_policy;
+        self
+    }
+
+    const fn with_struct_policy(mut self, struct_policy: StructPolicy) -> Self {
+        self.struct_policy = struct_policy;
+        self
+    }
+
+    /// The rules for one struct child, with strictness dropped where an
+    /// enabled protocol is about to fill the column itself.
+    fn child(self, field: &Field) -> Result<Self> {
+        let options = if self.deferred.defers(field)? {
+            self.options.deferred()
+        } else {
+            self.options
+        };
+        Ok(Self::nested(options, self.deferred))
+    }
+}
+
 pub(crate) struct ArrayCastPlan {
     pub(crate) field: Field,
     pub(crate) source_type: ArrowDataType,
     pub(crate) expected: ArrowDataType,
-    pub(crate) safe: bool,
+    pub(crate) options: ArrowCastOptions,
+    /// The dot/bracket path from the cast root, rendered once at compile time.
+    path: SmolStr,
     null_policy: NullPolicy,
     kind: ArrayCastKind,
+}
+
+impl ArrayCastPlan {
+    /// Whether a failed conversion becomes null rather than an error.
+    pub(crate) const fn safe(&self) -> bool {
+        self.options.is_safe()
+    }
 }
 
 enum ArrayCastKind {
     Exact,
     Kernel,
+    /// Two fixed-width layouts of the same byte width read as one another:
+    /// the value buffer and the null buffer are handed over unchanged and only
+    /// the datatype that reads them differs.
+    BitCast,
     /// Bytes entering a geometry or geography: same bytes out, but every
     /// exposed value is validated as WKB on the way in. A non-Binary binary
     /// layout is first cast to the Binary storage through Arrow's kernel.
@@ -307,31 +374,46 @@ pub(crate) enum ListPlanKind {
 }
 
 impl ArrayCastPlan {
-    fn new_dtype(dtype: &DataType, source_type: &ArrowDataType, safe: bool) -> Result<Self> {
+    fn new_dtype(
+        dtype: &DataType,
+        source_type: &ArrowDataType,
+        options: ArrowCastOptions,
+    ) -> Result<Self> {
         dtype.validate_bounded()?;
-        Self::new_nested_validated(
+        Self::new_validated_with(
             &Field::new("value", dtype.clone(), false),
             source_type,
-            safe,
-            NullPolicy::DataType,
+            None,
+            PlanRules::nested(options, Deferred::default()).with_null_policy(NullPolicy::DataType),
+            Path::root(),
+        )
+    }
+
+    /// Plans the root of a record-batch cast, where the batch's own schema is
+    /// the source struct and `$` is the path every child hangs from.
+    pub(crate) fn new_root(
+        field: &Field,
+        source_type: &ArrowDataType,
+        options: ArrowCastOptions,
+        deferred: Deferred,
+    ) -> Result<Self> {
+        field.validate_bounded()?;
+        Self::new_validated_with(
+            field,
+            source_type,
+            None,
+            PlanRules::nested(options, deferred),
+            Path::root(),
         )
     }
 
     fn new_nested_validated(
         field: &Field,
         source_type: &ArrowDataType,
-        safe: bool,
-        null_policy: NullPolicy,
+        rules: PlanRules,
+        path: Path<'_>,
     ) -> Result<Self> {
-        Self::new_validated_with(
-            field,
-            source_type,
-            None,
-            safe,
-            null_policy,
-            StructPolicy::Normal,
-            true,
-        )
+        Self::new_validated_with(field, source_type, None, rules, path)
     }
 
     /// Plans a nested cast whose source is a complete Arrow field, so the
@@ -341,17 +423,15 @@ impl ArrayCastPlan {
     fn new_nested_from_arrow_field(
         field: &Field,
         source_field: &ArrowFieldRef,
-        safe: bool,
-        null_policy: NullPolicy,
+        rules: PlanRules,
+        path: Path<'_>,
     ) -> Result<Self> {
         Self::new_validated_with(
             field,
             source_field.data_type(),
             Some(source_field.metadata()),
-            safe,
-            null_policy,
-            StructPolicy::Normal,
-            true,
+            rules,
+            path,
         )
     }
 
@@ -359,11 +439,14 @@ impl ArrayCastPlan {
         field: &Field,
         source_type: &ArrowDataType,
         source_metadata: Option<&HashMap<String, String>>,
-        safe: bool,
-        null_policy: NullPolicy,
-        struct_policy: StructPolicy,
-        may_be_fully_hidden: bool,
+        rules: PlanRules,
+        path: Path<'_>,
     ) -> Result<Self> {
+        let PlanRules {
+            options,
+            null_policy,
+            ..
+        } = rules;
         let source_extension = match source_metadata {
             Some(metadata) => recognized_arrow_extension(metadata, source_type)?,
             None => None,
@@ -399,22 +482,32 @@ impl ArrayCastPlan {
             && !ingest_validated
         {
             ArrayCastKind::Exact
+        // Asked for the bytes, and the two layouts really are the same bytes:
+        // nothing is converted, so no conversion rule applies. The same guard
+        // that forces a validating target onto its own path excludes it here
+        // too - an ASCII width or a code is a rule about values, and sharing a
+        // buffer past it would store bytes the datatype promises are not there.
+        } else if options.representation().is_bits()
+            && !ingest_validated
+            && same_bit_layout(source_type, &expected)
+        {
+            ArrayCastKind::BitCast
         } else {
             Self::nested_kind(
                 field,
                 source_type,
                 source_extension.as_ref(),
                 &expected,
-                safe,
-                struct_policy,
-                may_be_fully_hidden,
+                rules,
+                path,
             )?
         };
         Ok(Self {
             field: field.clone(),
             source_type: source_type.clone(),
             expected,
-            safe,
+            options,
+            path: SmolStr::from(path.render()),
             null_policy,
             kind,
         })
@@ -426,10 +519,22 @@ impl ArrayCastPlan {
         source_type: &ArrowDataType,
         source_extension: Option<&RecognizedExtension>,
         expected: &ArrowDataType,
-        safe: bool,
-        struct_policy: StructPolicy,
-        may_be_fully_hidden: bool,
+        rules: PlanRules,
+        path: Path<'_>,
     ) -> Result<ArrayCastKind> {
+        let PlanRules {
+            options,
+            struct_policy,
+            may_be_fully_hidden,
+            ..
+        } = rules;
+        // Every wrapper below plans exactly one child under the ordinary
+        // rules, so the inherited rules and the child paths are named once.
+        let nested = PlanRules::nested(options, rules.deferred);
+        let item = path.child(Segment::Item);
+        let entries = path.child(Segment::MapEntries);
+        let dictionary_value = path.child(Segment::DictionaryValue);
+        let run_end_values = path.child(Segment::RunEndValues);
         let dtype = field.dtype();
         let kind = match (dtype, source_type) {
             // The extension-typed variants follow declared rules, never the
@@ -578,14 +683,16 @@ impl ArrayCastPlan {
                 let mut columns = Vec::with_capacity(fields.len());
                 for (target_index, (target, source_index)) in fields.iter().zip(mapping).enumerate()
                 {
+                    let child_rules = rules.child(target)?;
+                    let child_path = path.field(target.name());
                     let column = match source_index {
                         Some(index) => {
-                            let null_policy = if matches!(struct_policy, StructPolicy::MapEntries)
+                            let child_rules = if matches!(struct_policy, StructPolicy::MapEntries)
                                 && target_index == 0
                             {
-                                NullPolicy::Reject
+                                child_rules.with_null_policy(NullPolicy::Reject)
                             } else {
-                                NullPolicy::Field
+                                child_rules
                             };
                             StructColumnPlan::Source {
                                 index,
@@ -593,10 +700,8 @@ impl ArrayCastPlan {
                                     target,
                                     source_fields[index].data_type(),
                                     Some(source_fields[index].metadata()),
-                                    safe,
-                                    null_policy,
-                                    StructPolicy::Normal,
-                                    true,
+                                    child_rules,
+                                    child_path,
                                 )?,
                             }
                         }
@@ -607,6 +712,18 @@ impl ArrayCastPlan {
                                 "map key field is missing from the source entries Struct"
                                     .to_owned(),
                             ));
+                        }
+                        // A required column no source carries is the hole the
+                        // default policy fills and strictness refuses: the
+                        // schemas alone answer it, so it fails at compile time
+                        // rather than on the first batch.
+                        None if child_rules.options.nullability().is_strict()
+                            && !target.is_nullable() =>
+                        {
+                            return Err(Error::RequiredField {
+                                path: SmolStr::from(child_path.render()),
+                                nulls: None,
+                            });
                         }
                         None => StructColumnPlan::Missing(target.clone()),
                     };
@@ -622,8 +739,8 @@ impl ArrayCastPlan {
                 child: Box::new(Self::new_nested_from_arrow_field(
                     child,
                     source_child,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    item,
                 )?),
                 kind: ListPlanKind::List,
             },
@@ -635,8 +752,8 @@ impl ArrayCastPlan {
                 child: Box::new(Self::new_nested_from_arrow_field(
                     child,
                     source_child,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    item,
                 )?),
                 kind: ListPlanKind::LargeList,
             },
@@ -646,8 +763,8 @@ impl ArrayCastPlan {
                     child: Box::new(Self::new_nested_from_arrow_field(
                         child,
                         source_child,
-                        safe,
-                        NullPolicy::Field,
+                        nested,
+                        item,
                     )?),
                     kind: ListPlanKind::List,
                 }
@@ -660,8 +777,8 @@ impl ArrayCastPlan {
                 child: Box::new(Self::new_nested_from_arrow_field(
                     child,
                     source_child,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    item,
                 )?),
                 kind: ListPlanKind::ListView,
             },
@@ -673,8 +790,8 @@ impl ArrayCastPlan {
                 child: Box::new(Self::new_nested_from_arrow_field(
                     child,
                     source_child,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    item,
                 )?),
                 kind: ListPlanKind::LargeListView,
             },
@@ -686,8 +803,8 @@ impl ArrayCastPlan {
                 child: Box::new(Self::new_nested_from_arrow_field(
                     child,
                     source_child,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    item,
                 )?),
                 kind: ListPlanKind::FixedSize { size: *size },
             },
@@ -708,10 +825,10 @@ impl ArrayCastPlan {
                         map.entries(),
                         source_entries.data_type(),
                         Some(source_entries.metadata()),
-                        safe,
-                        NullPolicy::Reject,
-                        StructPolicy::MapEntries,
-                        true,
+                        nested
+                            .with_null_policy(NullPolicy::Reject)
+                            .with_struct_policy(StructPolicy::MapEntries),
+                        entries,
                     )?),
                 }
             }
@@ -723,8 +840,8 @@ impl ArrayCastPlan {
                 values: Box::new(Self::new_nested_validated(
                     &Field::new("values", dictionary.value().clone(), true),
                     source_value,
-                    safe,
-                    NullPolicy::Field,
+                    nested,
+                    dictionary_value,
                 )?),
             },
             (DataType::Union(fields, mode), ArrowDataType::Union(source_fields, source_mode))
@@ -752,9 +869,10 @@ impl ArrayCastPlan {
                                 "source union is missing target type ID {type_id}"
                             ))
                         })?;
+                    let branch = path.child(Segment::UnionType(type_id));
                     children.push((
                         type_id,
-                        Self::new_nested_from_arrow_field(target, source, safe, NullPolicy::Field)?,
+                        Self::new_nested_from_arrow_field(target, source, nested, branch)?,
                     ));
                 }
                 ArrayCastKind::Union {
@@ -773,8 +891,8 @@ impl ArrayCastPlan {
                     values: Box::new(Self::new_nested_from_arrow_field(
                         encoded.values(),
                         source_values,
-                        safe,
-                        NullPolicy::Field,
+                        nested,
+                        run_end_values,
                     )?),
                 }
             }
@@ -834,10 +952,11 @@ impl ArrayCastPlan {
         }
         let mut cast = match &self.kind {
             ArrayCastKind::Exact => array,
+            ArrayCastKind::BitCast => reinterpret(&array, &self.expected)?,
             ArrayCastKind::Kernel => arrow_cast_exposed(
                 &array,
                 &self.expected,
-                self.safe,
+                self.safe(),
                 exposure,
                 &self.field,
                 budget,
@@ -849,7 +968,7 @@ impl ArrayCastPlan {
                     arrow_cast_exposed(
                         &array,
                         &ArrowDataType::Binary,
-                        self.safe,
+                        self.safe(),
                         exposure,
                         &self.field,
                         budget,
@@ -864,7 +983,7 @@ impl ArrayCastPlan {
             ArrayCastKind::AsciiIngest => ingest_ascii_array(
                 &array,
                 &self.expected,
-                self.safe,
+                self.safe(),
                 &self.field,
                 exposure,
                 budget,
@@ -872,7 +991,7 @@ impl ArrayCastPlan {
             ArrayCastKind::UuidIngest => ingest_uuid_array(
                 &array,
                 &self.expected,
-                self.safe,
+                self.safe(),
                 &self.field,
                 exposure,
                 budget,
@@ -891,28 +1010,28 @@ impl ArrayCastPlan {
             ArrayCastKind::CodeIngest => match self.field.dtype() {
                 DataType::Country => ingest_code_array::<COUNTRY_WIDTH>(
                     &array,
-                    self.safe,
+                    self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
                 DataType::Currency => ingest_code_array::<CURRENCY_WIDTH>(
                     &array,
-                    self.safe,
+                    self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
                 DataType::Mic => ingest_code_array::<MIC_WIDTH>(
                     &array,
-                    self.safe,
+                    self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
                 DataType::Cfi => ingest_code_array::<CFI_WIDTH>(
                     &array,
-                    self.safe,
+                    self.safe(),
                     &self.field,
                     exposure,
                     budget,
@@ -926,12 +1045,12 @@ impl ArrayCastPlan {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             ArrayCastKind::TemporalText => {
-                render_temporal_text(&array, self.safe, &self.field, exposure, budget)?
+                render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }
             ArrayCastKind::TemporalIngest => ingest_temporal_text(
                 &array,
                 &self.expected,
-                self.safe,
+                self.safe(),
                 &self.field,
                 exposure,
                 budget,
@@ -984,7 +1103,7 @@ impl ArrayCastPlan {
             cast = arrow_cast_exposed(
                 &cast,
                 &self.expected,
-                self.safe,
+                self.safe(),
                 exposure,
                 &self.field,
                 budget,
@@ -994,14 +1113,22 @@ impl ArrayCastPlan {
         match self.null_policy {
             NullPolicy::Reject if null_count != 0 => {
                 return Err(Error::IncompatibleSchema(format!(
-                    "field {:?} contains {null_count} logical null values",
-                    self.field.name()
+                    "field {} contains {null_count} logical null values",
+                    self.path
                 )));
             }
+            // A datatype target is a value of that type, so a null is absence
+            // there too - unless null is the datatype's own only value.
             NullPolicy::DataType if null_count != 0 => {
+                if self.refuses_absence() && !self.field.dtype().is_default_value(&Scalar::Null)? {
+                    return Err(self.required_field(null_count));
+                }
                 cast = fill_nulls(&self.field, cast, true, exposure, budget)?;
             }
             NullPolicy::Field if !self.field.is_nullable() && null_count != 0 => {
+                if self.refuses_absence() {
+                    return Err(self.required_field(null_count));
+                }
                 cast = fill_nulls(&self.field, cast, false, exposure, budget)?;
             }
             NullPolicy::Field | NullPolicy::DataType | NullPolicy::Reject => {}
@@ -1029,12 +1156,25 @@ impl ArrayCastPlan {
             };
             if !is_logically_null(default.as_ref(), 0) {
                 return Err(Error::IncompatibleSchema(format!(
-                    "required field {:?} still contains {remaining_nulls} logical null values after default filling",
-                    self.field.name(),
+                    "required field {} still contains {remaining_nulls} logical null values after default filling",
+                    self.path,
                 )));
             }
         }
         Ok(cast)
+    }
+
+    /// Whether this node refuses absence rather than repairing it.
+    const fn refuses_absence(&self) -> bool {
+        self.options.nullability().is_strict()
+    }
+
+    /// Names this node's declared path and the nulls it was asked to accept.
+    fn required_field(&self, nulls: usize) -> Error {
+        Error::RequiredField {
+            path: self.path.clone(),
+            nulls: Some(nulls),
+        }
     }
 }
 
@@ -1048,17 +1188,18 @@ pub(crate) fn cast_field_array(
     field: &Field,
     source_metadata: Option<&HashMap<String, String>>,
     array: ArrayRef,
-    safe: bool,
+    options: ArrowCastOptions,
 ) -> Result<ArrayRef> {
     field.validate_bounded()?;
+    // A bare array *is* the field, so the field names the root rather than
+    // hanging off one: a refusal reads `$.id`, not a bare `$`.
+    let root = Path::root();
     let plan = ArrayCastPlan::new_validated_with(
         field,
         array.data_type(),
         source_metadata,
-        safe,
-        NullPolicy::Field,
-        StructPolicy::Normal,
-        true,
+        PlanRules::nested(options, Deferred::default()),
+        root.field(field.name()),
     )?;
     let mut budget = MaterializationBudget::default();
     plan.cast(array, &mut budget)
@@ -1160,6 +1301,49 @@ pub(crate) fn named_cell<T>(field: &Field, index: usize, read: crate::Result<T>)
         };
         Error::IncompatibleSchema(format!("field {:?} row {index}: {reason}", field.name()))
     })
+}
+
+/// The byte width of a datatype laid out as one fixed-width value buffer.
+///
+/// `None` is everything else - a bitmap, a variable-length payload, an
+/// encoding, or anything with children - because those have no single buffer
+/// two datatypes could share.
+fn bit_layout_width(dtype: &ArrowDataType) -> Option<usize> {
+    match dtype {
+        // Arrow answers the width for every fixed-width primitive, decimal and
+        // temporal; a fixed binary is the same layout under a length it states
+        // itself, which is what puts raw bytes on both sides of this cast.
+        ArrowDataType::FixedSizeBinary(width) => usize::try_from(*width).ok(),
+        other => other.primitive_width(),
+    }
+}
+
+/// Whether two datatypes are the same bytes under two readings.
+fn same_bit_layout(source: &ArrowDataType, target: &ArrowDataType) -> bool {
+    match (bit_layout_width(source), bit_layout_width(target)) {
+        (Some(source), Some(target)) => source == target,
+        _ => false,
+    }
+}
+
+/// Read one array's buffers as the target datatype, copying nothing.
+///
+/// The two layouts agree by construction - [`same_bit_layout`] is what selected
+/// this path - so the value buffer, the null buffer, the length and the offset
+/// all carry over, and Arrow validates the result against the datatype that now
+/// reads them.
+fn reinterpret(array: &ArrayRef, expected: &ArrowDataType) -> Result<ArrayRef> {
+    let data = array.to_data();
+    // The null buffer is carried whole rather than as a raw bitmap plus the
+    // array's offset: a sliced array's validity keeps an offset of its own,
+    // and rebuilding it from the two separately would shift it.
+    let rebuilt = arrow_data::ArrayDataBuilder::new(expected.clone())
+        .len(data.len())
+        .offset(data.offset())
+        .buffers(data.buffers().to_vec())
+        .nulls(data.nulls().cloned())
+        .build()?;
+    Ok(arrow_array::make_array(rebuilt))
 }
 
 pub(crate) fn downcast<T: Array + 'static>(array: &dyn Array) -> Result<&T> {

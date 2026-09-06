@@ -15,10 +15,10 @@ use arrow_array::{
     TimestampSecondArray,
 };
 use yggdryl::types::cast::ArrowCast as _;
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+use yggdryl::{ArrowCastOptions, DataType, Field, TimeUnit, Timezone};
 
 fn cast(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<ArrayRef> {
-    field.cast_arrow_array(array, false)
+    field.cast_arrow_array(array, ArrowCastOptions::new().with_safe(false))
 }
 
 #[test]
@@ -198,10 +198,19 @@ fn unsafe_and_safe_disagree_exactly_where_a_value_cannot_convert() {
     let target = DataType::Int64.nullable_field("n");
 
     // Unsafe: the unconvertible value is an error naming the cast.
-    assert!(target.cast_arrow_array(Arc::clone(&source), false).is_err());
+    assert!(
+        target
+            .cast_arrow_array(
+                Arc::clone(&source),
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .is_err()
+    );
 
     // Safe: it becomes null instead.
-    let softened = target.cast_arrow_array(source, true).unwrap();
+    let softened = target
+        .cast_arrow_array(source, ArrowCastOptions::new())
+        .unwrap();
     let softened = softened.as_any().downcast_ref::<Int64Array>().unwrap();
     assert_eq!(softened.value(0), 12);
     assert!(softened.is_null(1));
@@ -317,7 +326,9 @@ fn temporal_text_neither_reading_takes_names_its_row() {
     assert!(message.contains("later"), "{message}");
 
     // The safe cast nulls the same row instead.
-    let read = field.cast_arrow_array(refused, true).unwrap();
+    let read = field
+        .cast_arrow_array(refused, ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(
         read.as_any()
             .downcast_ref::<Time32SecondArray>()
@@ -337,7 +348,9 @@ fn a_reading_this_crate_refuses_is_never_arrows_rounded_one() {
         .unwrap()
         .nullable_field("clock");
     let inexact: ArrayRef = Arc::new(StringArray::from(vec!["00:00:00.500", "10:23"]));
-    let read = field.cast_arrow_array(inexact, true).unwrap();
+    let read = field
+        .cast_arrow_array(inexact, ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(
         read.as_any()
             .downcast_ref::<Time32SecondArray>()
@@ -402,7 +415,7 @@ fn a_zone_arrow_cannot_name_never_sinks_this_crates_reading() {
     ]));
     let read = paris
         .nullable_field("at")
-        .cast_arrow_array(mixed, true)
+        .cast_arrow_array(mixed, ArrowCastOptions::new())
         .unwrap();
     assert_eq!(
         read.as_any()

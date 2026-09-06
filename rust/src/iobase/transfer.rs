@@ -946,7 +946,11 @@ pub(crate) fn select_reader(
     }
     let root = crate::arrow::field_from_arrow_schema(options.name(), reader.schema().as_ref())?;
     match crate::arrow::selected_root(&root, names, options.name())? {
-        Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
+        Some(target) => Ok(crate::arrow::cast_reader(
+            reader,
+            &target,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?),
         None => Ok(reader),
     }
 }
@@ -981,7 +985,13 @@ pub(crate) fn leaf_reader(
         // arriving as the default the cast materialized and nothing filled. A
         // root that derives nothing applies as the cast alone, keeping the
         // exact-schema short-circuit a plain read has always had.
-        Some(field) => Ok(field.apply_arrow_reader(reader, true, true, true, options.safe())?),
+        Some(field) => Ok(field.apply_arrow_reader(
+            reader,
+            true,
+            true,
+            true,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?),
         None => Ok(reader),
     }
 }

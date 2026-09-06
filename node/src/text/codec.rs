@@ -19,6 +19,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
+use yggdryl::ArrowCastOptions;
 use yggdryl::text::{self, json, toml, yaml};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::types::decimal::{Decimal, Decimal32, Decimal64};
@@ -680,7 +681,9 @@ impl JsScalar {
         let array = if field == inferred {
             array
         } else {
-            field.cast_arrow_array(array, true).map_err(napi_error)?
+            field
+                .cast_arrow_array(array, ArrowCastOptions::new())
+                .map_err(napi_error)?
         };
         yggdryl::arrow::scalar_value(&field, array.as_ref())
             .map(Self::from_core)
@@ -710,7 +713,9 @@ impl JsScalar {
             let array = if field == inferred {
                 array
             } else {
-                field.cast_arrow_array(array, true).map_err(napi_error)?
+                field
+                    .cast_arrow_array(array, ArrowCastOptions::new())
+                    .map_err(napi_error)?
             };
             let decoded =
                 yggdryl::arrow::array_to_value(&field, array.as_ref()).map_err(napi_error)?;
@@ -805,7 +810,9 @@ impl JsScalar {
             let batch = if field == inferred {
                 batch
             } else {
-                field.cast_arrow_batch(batch, true).map_err(napi_error)?
+                field
+                    .cast_arrow_batch(batch, ArrowCastOptions::new())
+                    .map_err(napi_error)?
             };
             let decoded = yggdryl::arrow::batch_to_value(&batch).map_err(napi_error)?;
             rows.extend_from_slice(
