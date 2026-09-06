@@ -3,8 +3,8 @@
 mod handle;
 mod leading;
 mod options;
-mod reader;
-mod sep;
+pub(crate) mod reader;
+pub(crate) mod sep;
 
 #[cfg(feature = "arrow")]
 pub(crate) mod arrow;

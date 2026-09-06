@@ -63,6 +63,8 @@ mod options;
 pub mod parquet;
 #[cfg(feature = "arrow")]
 pub mod partition;
+#[cfg(feature = "arrow")]
+pub(crate) mod stream;
 pub mod text;
 
 pub use magic::MAGIC_PROBE_LEN;

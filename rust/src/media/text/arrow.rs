@@ -1,6 +1,6 @@
 //! `text/plain` rows through the shared Scalar/Arrow record boundary.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -13,13 +13,11 @@ use regex_automata::dfa::{
 use regex_automata::{Input, nfa::thompson, util::syntax};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::IOBase;
 use crate::arrow::BatchReader;
-use crate::holder::Buffer;
-use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::types::ascii::iso;
 use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
-use crate::{Cursor, IOBase};
 
 use super::leading::LeadingFragment;
 use super::options::TextOptions;
@@ -33,7 +31,7 @@ pub(crate) fn read_arrow_reader(
     options.require_framing_rowheader()?;
     options.source_field()?;
     let url = handle.url().cloned();
-    read_owned_arrow_reader_at(owned_handle(handle)?, url, options)
+    read_owned_arrow_reader_at(crate::media::stream::owned_handle(handle)?, url, options)
 }
 
 /// Decode an owned leaf without retaining decoded pages in its caller.
@@ -61,14 +59,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
         .skip(base_count)
         .map(|capture| capture.dtype().clone())
         .collect();
-    let codings = handle.media_type().encodings().to_vec();
-    let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings)),
-        None => Box::new(NonemptySendDecodedReader::new(
-            Box::new(Cursor::new(handle)),
-            codings,
-        )),
-    };
+    let source = crate::media::stream::owned_decoded_reader(handle);
 
     let rows = Records {
         raw: RawRows::new(source, url, Arc::new(options.clone())),
@@ -101,10 +92,7 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     counting.set_lstrip(None)?;
     counting.set_rstrip(None)?;
     counting.set_max_record_byte_size(Some(0));
-    let codings = handle.media_type().encodings().to_vec();
-    let raw: Box<dyn Read + '_> =
-        Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
-    let source = NonemptyDecodedReader::new(raw, codings);
+    let source = crate::media::stream::decoded_reader(handle)?;
     let records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
     let mut rows = 0_u64;
     for row in records {
@@ -115,247 +103,6 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
         })?;
     }
     Ok(rows)
-}
-
-/// Return an owned view for a reader that must outlive this borrow.
-fn owned_handle(handle: &(impl IOBase + ?Sized)) -> Result<Holder> {
-    if let Some(bound) = handle.bound_location() {
-        let mut file = crate::holder::fs::File::new(bound.clone());
-        file.set_media_type(handle.media_type().clone());
-        return Ok(Holder::FsFile(file));
-    }
-    if let Some(parent) = handle.parent() {
-        if let Some(name) = handle.url().and_then(crate::Url::file_name) {
-            let mut child = parent.child_by_path(name)?;
-            child.set_media_type(handle.media_type().clone());
-            return Ok(child);
-        }
-    }
-    let mut buffer = Buffer::new();
-    handle.copy_into(&mut buffer)?;
-    Ok(Holder::buffer(buffer))
-}
-
-/// Buffer one transport at the fetch window every decoded read pulls through.
-///
-/// A decoder asks its source for its own internal window - 32 KiB for gzip -
-/// and on a remote store each of those asks is a round trip. This is the only
-/// place the text reader touches the transport, so it is the one place that
-/// has to hold a window big enough to make a scan cost requests proportional
-/// to the object's size rather than to the decoder's appetite.
-fn fetched<R: Read>(source: R) -> BufReader<R> {
-    BufReader::with_capacity(crate::DEFAULT_FETCH_BYTE_SIZE, source)
-}
-
-/// One lazily opened filesystem stream retained for the complete decode.
-struct BoundReader {
-    bound: Option<crate::holder::fs::BoundLocation>,
-    codings: Vec<crate::MimeType>,
-    reader: Option<Box<dyn Read + Send>>,
-    done: bool,
-}
-
-impl BoundReader {
-    fn new(bound: crate::holder::fs::BoundLocation, codings: Vec<crate::MimeType>) -> Self {
-        Self {
-            bound: Some(bound),
-            codings,
-            reader: None,
-            done: false,
-        }
-    }
-
-    fn initialize(&mut self) -> std::io::Result<bool> {
-        let Some(bound) = self.bound.take() else {
-            self.done = true;
-            return Err(std::io::Error::other(
-                "text filesystem stream lost its binding",
-            ));
-        };
-        let stream = match crate::holder::fs::File::new(bound).open_input_stream() {
-            Ok(stream) => stream,
-            Err(error) if error.is_absent() => {
-                self.done = true;
-                return Ok(false);
-            }
-            Err(error) => {
-                self.done = true;
-                return Err(std::io::Error::other(error));
-            }
-        };
-        let mut stream = fetched(BoundStream::new(stream));
-        // One fetch answers the emptiness question and is the first window the
-        // decoder reads from, so an empty object costs no extra request and a
-        // present one is not probed a byte at a time.
-        if stream.fill_buf()?.is_empty() {
-            self.done = true;
-            return Ok(false);
-        }
-        let mut reader: Box<dyn Read + Send> = Box::new(stream);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader_send(reader);
-        }
-        self.reader = Some(reader);
-        Ok(true)
-    }
-}
-
-impl Read for BoundReader {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        if bytes.is_empty() || self.done {
-            return Ok(0);
-        }
-        if self.reader.is_none() && !self.initialize()? {
-            return Ok(0);
-        }
-        let read = self
-            .reader
-            .as_mut()
-            .map_or(Ok(0), |reader| reader.read(bytes))?;
-        if read == 0 {
-            self.done = true;
-            self.reader = None;
-        }
-        Ok(read)
-    }
-}
-
-/// An opened raw stream that closes when its decoder is dropped.
-struct BoundStream {
-    stream: Box<dyn crate::holder::fs::ByteReader>,
-}
-
-impl BoundStream {
-    fn new(stream: Box<dyn crate::holder::fs::ByteReader>) -> Self {
-        Self { stream }
-    }
-}
-
-impl Read for BoundStream {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        self.stream.read(bytes).map_err(std::io::Error::other)
-    }
-}
-
-impl Drop for BoundStream {
-    fn drop(&mut self) {
-        let _ = self.stream.close();
-    }
-}
-
-/// The owned, thread-safe form of [`NonemptyDecodedReader`].
-struct NonemptySendDecodedReader {
-    source: Option<Box<dyn Read + Send>>,
-    codings: Vec<crate::MimeType>,
-    reader: Option<Box<dyn Read + Send>>,
-    done: bool,
-}
-
-impl NonemptySendDecodedReader {
-    fn new(source: Box<dyn Read + Send>, codings: Vec<crate::MimeType>) -> Self {
-        Self {
-            source: Some(source),
-            codings,
-            reader: None,
-            done: false,
-        }
-    }
-
-    fn initialize(&mut self) -> std::io::Result<bool> {
-        let Some(source) = self.source.take() else {
-            self.done = true;
-            return Ok(false);
-        };
-        let mut source = fetched(source);
-        if source.fill_buf()?.is_empty() {
-            self.done = true;
-            return Ok(false);
-        }
-        let mut reader: Box<dyn Read + Send> = Box::new(source);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader_send(reader);
-        }
-        self.reader = Some(reader);
-        Ok(true)
-    }
-}
-
-impl Read for NonemptySendDecodedReader {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        if bytes.is_empty() || self.done {
-            return Ok(0);
-        }
-        if self.reader.is_none() && !self.initialize()? {
-            return Ok(0);
-        }
-        let read = self
-            .reader
-            .as_mut()
-            .map_or(Ok(0), |reader| reader.read(bytes))?;
-        if read == 0 {
-            self.done = true;
-            self.reader = None;
-        }
-        Ok(read)
-    }
-}
-
-/// A decoder that treats a raw empty stream as empty without constructing a
-/// compression reader. This preserves missing-read semantics for row counts.
-struct NonemptyDecodedReader<'source> {
-    source: Option<Box<dyn Read + 'source>>,
-    codings: Vec<crate::MimeType>,
-    reader: Option<Box<dyn Read + 'source>>,
-    done: bool,
-}
-
-impl<'source> NonemptyDecodedReader<'source> {
-    fn new(source: Box<dyn Read + 'source>, codings: Vec<crate::MimeType>) -> Self {
-        Self {
-            source: Some(source),
-            codings,
-            reader: None,
-            done: false,
-        }
-    }
-
-    fn initialize(&mut self) -> std::io::Result<bool> {
-        let Some(source) = self.source.take() else {
-            self.done = true;
-            return Ok(false);
-        };
-        let mut source = fetched(source);
-        if source.fill_buf()?.is_empty() {
-            self.done = true;
-            return Ok(false);
-        }
-        let mut reader: Box<dyn Read + 'source> = Box::new(source);
-        for coding in self.codings.iter().rev() {
-            reader = Codec::from_mime_type(coding).reader(reader);
-        }
-        self.reader = Some(reader);
-        Ok(true)
-    }
-}
-
-impl Read for NonemptyDecodedReader<'_> {
-    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
-        if bytes.is_empty() || self.done {
-            return Ok(0);
-        }
-        if self.reader.is_none() && !self.initialize()? {
-            return Ok(0);
-        }
-        let read = self
-            .reader
-            .as_mut()
-            .map_or(Ok(0), |reader| reader.read(bytes))?;
-        if read == 0 {
-            self.done = true;
-            self.reader = None;
-        }
-        Ok(read)
-    }
 }
 
 /// One parsed physical line with still-textual named captures.
@@ -1079,7 +826,7 @@ pub(crate) fn append_arrow_reader(
         let mut suffix = Vec::new();
         if !handle.is_empty() {
             let source = handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?;
-            let mut decoder = codec.reader(fetched(source));
+            let mut decoder = codec.reader(crate::media::stream::fetched(source));
             let mut chunk = vec![0; crate::DEFAULT_STREAM_BATCH_SIZE];
             loop {
                 let read = decoder.read(&mut chunk)?;

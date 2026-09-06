@@ -12,6 +12,14 @@ const WINDOW_SIZE: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 pub(crate) struct LinePart<'bytes> {
     /// Exact source bytes excluding the physical terminator.
     pub(crate) bytes: &'bytes [u8],
+    /// The exact terminator bytes that ended this line, empty when the input
+    /// ended without one or when the piece does not end its line.
+    ///
+    /// The splitter is lossless because of this: a caller joining physical
+    /// lines back into one logical record - a quoted CSV field holding a
+    /// newline - restores the bytes the resource actually held rather than the
+    /// terminator it would have written.
+    pub(crate) terminator: &'bytes [u8],
     /// Whether this piece ends the physical line.
     pub(crate) end: bool,
 }
@@ -70,11 +78,14 @@ impl<R: Read> Lines<R> {
                 next_break(&self.bytes[self.cursor..self.filled], linesep, self.drained)
             {
                 let start = self.cursor;
-                let end = start + found.at;
                 self.cursor = start + found.end();
                 self.line_open = false;
-                let bytes = &self.bytes[start..end];
-                return Some(Ok(LinePart { bytes, end: true }));
+                let (bytes, terminator) = self.bytes[start..self.cursor].split_at(found.at);
+                return Some(Ok(LinePart {
+                    bytes,
+                    terminator,
+                    end: true,
+                }));
             }
             if self.drained {
                 if self.cursor < self.filled {
@@ -82,11 +93,16 @@ impl<R: Read> Lines<R> {
                     self.cursor = self.filled;
                     self.line_open = false;
                     let bytes = &self.bytes[start..self.filled];
-                    return Some(Ok(LinePart { bytes, end: true }));
+                    return Some(Ok(LinePart {
+                        bytes,
+                        terminator: &[],
+                        end: true,
+                    }));
                 }
                 if std::mem::take(&mut self.line_open) {
                     return Some(Ok(LinePart {
                         bytes: &[],
+                        terminator: &[],
                         end: true,
                     }));
                 }
@@ -124,7 +140,11 @@ impl<R: Read> Lines<R> {
             self.cursor = end;
             self.line_open = true;
             let bytes = &self.bytes[start..end];
-            return Some(Ok(LinePart { bytes, end: false }));
+            return Some(Ok(LinePart {
+                bytes,
+                terminator: &[],
+                end: false,
+            }));
         }
     }
 
