@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
       "display": "NoRoutingIDs",
-      "fix:description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noroutingids\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noroutingids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "215"
     }
@@ -79,8 +79,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of stipulation entries",
       "display": "NoStipulations",
-      "fix:description": "Number of stipulation entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostipulations\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "232"
     }
@@ -112,8 +112,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of MDEntryType (269) fields requested.",
       "display": "NoMDEntryTypes",
-      "fix:description": "Number of MDEntryType (269) fields requested.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentrytypes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentrytypes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "267"
     }
@@ -1214,8 +1214,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in Market Data message.",
       "display": "NoMDEntries",
-      "fix:description": "Number of entries in Market Data message.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentries\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "268"
     }
@@ -1561,8 +1561,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of quote entries for a QuoteSet.",
       "display": "NoQuoteEntries",
-      "fix:description": "The number of quote entries for a QuoteSet.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquoteentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquoteentries\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "295"
     }
@@ -1656,8 +1656,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of sets of quotes in the message.",
       "display": "NoQuoteSets",
-      "fix:description": "The number of sets of quotes in the message.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquotesets\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquotesets\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "296"
     }

@@ -96,8 +96,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of attached files.",
       "display": "NoAttachments",
-      "fix:description": "The number of attached files.",
       "fix:tag": "2104"
     }
   },
@@ -128,8 +128,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of attachment keywords.",
       "display": "NoAttachmentKeywords",
-      "fix:description": "The number of attachment keywords.",
       "fix:tag": "2113"
     }
   }

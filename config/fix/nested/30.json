@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade types in repeating group.",
       "display": "NoTradeTypes",
-      "fix:description": "Number of trade types in repeating group.",
       "fix:tag": "3005"
     }
   },
@@ -90,8 +90,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of allocation timestamps.",
       "display": "NoAllocTrdRegTimestamps",
-      "fix:description": "Number of allocation timestamps.",
       "fix:tag": "3008"
     }
   },
@@ -144,8 +144,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of components making up a system for algorithmic trading.",
       "display": "NoAlgoSystemModules",
-      "fix:description": "Number of components making up a system for algorithmic trading.",
       "fix:tag": "3025"
     }
   },
@@ -252,8 +252,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test scenarios for an algorithmic trading system.",
       "display": "NoTestScenarios",
-      "fix:description": "Number of test scenarios for an algorithmic trading system.",
       "fix:tag": "3028"
     }
   },
@@ -358,8 +358,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test steps.",
       "display": "NoTestSteps",
-      "fix:description": "Number of test steps.",
       "fix:tag": "3036"
     }
   },
@@ -410,8 +410,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test step parameters.",
       "display": "NoTestStepParameters",
-      "fix:description": "Number of test step parameters.",
       "fix:tag": "3045"
     }
   },
@@ -464,8 +464,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of components making up a testing system.",
       "display": "NoTestSystemModules",
-      "fix:description": "Number of components making up a testing system.",
       "fix:tag": "3049"
     }
   },
@@ -576,8 +576,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of results for a test scenario.",
       "display": "NoTestMeasures",
-      "fix:description": "Number of results for a test scenario.",
       "fix:tag": "3052"
     }
   },
@@ -688,8 +688,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of orders for testing.",
       "display": "NoTestOrders",
-      "fix:description": "Number of orders for testing.",
       "fix:tag": "3082"
     }
   },
@@ -750,8 +750,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test gateway details.",
       "display": "NoTestGatewayDetails",
-      "fix:description": "Number of test gateway details.",
       "fix:tag": "3092"
     }
   },
@@ -792,8 +792,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "display": "NoIndividualAllocSubQtyAttributes",
-      "fix:description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "fix:tag": "3099"
     }
   }

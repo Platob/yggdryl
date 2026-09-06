@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
       "display": "NoLegSettlRateFallbacks",
-      "fix:description": "Number of settlement rate fallbacks in the repeating group",
       "fix:tag": "40902"
     }
   },
@@ -78,8 +78,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40923"
     }
   },
@@ -110,8 +110,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentScheduleFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40927"
     }
   },
@@ -142,8 +142,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40928"
     }
   },
@@ -174,8 +174,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamNonDeliverableFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40929"
     }
   },
@@ -206,8 +206,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40930"
     }
   },
@@ -238,8 +238,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamResetDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40931"
     }
   },
@@ -270,8 +270,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40932"
     }
   },
@@ -302,8 +302,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40933"
     }
   },
@@ -334,8 +334,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionCashSettlPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40934"
     }
   },
@@ -366,8 +366,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionCashSettlValueDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40935"
     }
   },
@@ -398,8 +398,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40936"
     }
   },
@@ -430,8 +430,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionOptionExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40937"
     }
   },
@@ -462,8 +462,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40938"
     }
   },
@@ -494,8 +494,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegProvisionDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40939"
     }
   },
@@ -526,8 +526,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegStreamCalculationPeriodBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40940"
     }
   },
@@ -558,8 +558,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegStreamFirstPeriodStartDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40941"
     }
   },
@@ -590,8 +590,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegStreamEffectiveDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40942"
     }
   },
@@ -622,8 +622,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegStreamTerminationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40943"
     }
   },
@@ -654,8 +654,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40944"
     }
   },
@@ -686,8 +686,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40945"
     }
   },
@@ -718,8 +718,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamNonDeliverableFixingDatesBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40946"
     }
   },
@@ -750,8 +750,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40947"
     }
   },
@@ -782,8 +782,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamResetDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40948"
     }
   },
@@ -814,8 +814,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40949"
     }
   },
@@ -846,8 +846,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40950"
     }
   },
@@ -878,8 +878,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of event news sources in the repeating group.",
       "display": "NoProtectionTermEventNewsSources",
-      "fix:description": "Number of event news sources in the repeating group.",
       "fix:tag": "40951"
     }
   },
@@ -910,8 +910,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionCashSettlPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40952"
     }
   },
@@ -942,8 +942,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionCashSettlValueDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40953"
     }
   },
@@ -974,8 +974,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40954"
     }
   },
@@ -1006,8 +1006,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionOptionExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40955"
     }
   },
@@ -1038,8 +1038,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionOptionRelevantUnderlyingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40956"
     }
   },
@@ -1070,8 +1070,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoProvisionDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40957"
     }
   },
@@ -1102,8 +1102,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoStreamCalculationPeriodBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40958"
     }
   },
@@ -1134,8 +1134,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoStreamFirstPeriodStartDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40959"
     }
   },
@@ -1166,8 +1166,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoStreamEffectiveDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40960"
     }
   },
@@ -1198,8 +1198,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoStreamTerminationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40961"
     }
   },
@@ -1230,8 +1230,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40962"
     }
   },
@@ -1262,8 +1262,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentScheduleFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40966"
     }
   },
@@ -1294,8 +1294,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40967"
     }
   },
@@ -1326,8 +1326,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40968"
     }
   },
@@ -1358,8 +1358,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStreamPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40969"
     }
   },
@@ -1390,8 +1390,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStreamResetDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40970"
     }
   },
@@ -1422,8 +1422,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40971"
     }
   },
@@ -1454,8 +1454,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStreamFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40972"
     }
   },
@@ -1486,8 +1486,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingStreamCalculationPeriodBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40973"
     }
   },
@@ -1518,8 +1518,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingStreamFirstPeriodStartDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40974"
     }
   },
@@ -1550,8 +1550,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingStreamEffectiveDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40975"
     }
   },
@@ -1582,8 +1582,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingStreamTerminationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40976"
     }
   },
@@ -1614,8 +1614,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentScheduleFixingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40977"
     }
   },
@@ -1656,8 +1656,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of averaging observations in the repeating group.",
       "display": "NoComplexEventAveragingObservations",
-      "fix:description": "The number of averaging observations in the repeating group.",
       "fix:tag": "40994"
     }
   },
@@ -1748,8 +1748,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of credit events specified in the repeating group.",
       "display": "NoComplexEventCreditEvents",
-      "fix:description": "The number of credit events specified in the repeating group.",
       "fix:tag": "40997"
     }
   }

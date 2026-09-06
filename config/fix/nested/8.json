@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
       "display": "NoSettlPartySubIDs",
-      "fix:description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "801"
     }
@@ -79,8 +79,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of PartySubID (523)and PartySubIDType (803) entries",
       "display": "NoPartySubIDs",
-      "fix:description": "Number of PartySubID (523)and PartySubIDType (803) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "802"
     }
@@ -122,8 +122,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
       "display": "NoNestedPartySubIDs",
-      "fix:description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonestedpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "804"
     }
@@ -165,8 +165,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
       "display": "NoNested2PartySubIDs",
-      "fix:description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "806"
     }
@@ -198,8 +198,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Usernames to which this this response is directed",
       "display": "NoUsernames",
-      "fix:description": "Number of Usernames to which this this response is directed",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nousernames\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "809"
     }
@@ -231,8 +231,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of alternative market data sources",
       "display": "NoAltMDSource",
-      "fix:description": "Number of alternative market data sources",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noaltmdsource\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "816"
     }
@@ -284,8 +284,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating OrderCapacity entries.",
       "display": "NoCapacities",
-      "fix:description": "Number of repeating OrderCapacity entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocapacities\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "862"
     }
@@ -410,8 +410,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating EventType entries.",
       "display": "NoEvents",
-      "fix:description": "Number of repeating EventType entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noevents\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "864"
     }
@@ -453,8 +453,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating InstrAttribType entries.",
       "display": "NoInstrAttrib",
-      "fix:description": "Number of repeating InstrAttribType entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrattrib\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "870"
     }
@@ -496,8 +496,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of underlying stipulation entries",
       "display": "NoUnderlyingStips",
-      "fix:description": "Number of underlying stipulation entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingstips\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "887"
     }
@@ -539,8 +539,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trades in repeating group.",
       "display": "NoTrades",
-      "fix:description": "Number of trades in repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrades\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "897"
     }

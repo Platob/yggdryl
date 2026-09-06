@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of averaging observations in the repeating group.",
       "display": "NoUnderlyingComplexEventAveragingObservations",
-      "fix:description": "The number of averaging observations in the repeating group.",
       "fix:tag": "41713"
     }
   },
@@ -128,8 +128,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of credit events specified in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEvents",
-      "fix:description": "The number of credit events specified in the repeating group.",
       "fix:tag": "41716"
     }
   },
@@ -160,8 +160,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of qualifiers in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEventQualifiers",
-      "fix:description": "Number of qualifiers in the repeating group.",
       "fix:tag": "41724"
     }
   },
@@ -203,8 +203,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the date-time repeating group.",
       "display": "NoUnderlyingComplexEventPeriodDateTimes",
-      "fix:description": "Number of entries in the date-time repeating group.",
       "fix:tag": "41726"
     }
   },
@@ -245,8 +245,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of periods in the repeating group.",
       "display": "NoUnderlyingComplexEventPeriods",
-      "fix:description": "Number of periods in the repeating group.",
       "fix:tag": "41729"
     }
   },
@@ -307,8 +307,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rate sources in the repeating group.",
       "display": "NoUnderlyingComplexEventRateSources",
-      "fix:description": "Number of rate sources in the repeating group.",
       "fix:tag": "41732"
     }
   },
@@ -339,8 +339,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingComplexEventDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41737"
     }
   },
@@ -371,8 +371,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of event sources in the repeating group.",
       "display": "NoUnderlyingComplexEventCreditEventSources",
-      "fix:description": "Number of event sources in the repeating group.",
       "fix:tag": "41748"
     }
   },
@@ -443,8 +443,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of schedules in the repeating group.",
       "display": "NoUnderlyingComplexEventSchedules",
-      "fix:description": "Number of schedules in the repeating group.",
       "fix:tag": "41750"
     }
   },
@@ -595,8 +595,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoUnderlyingDeliverySchedules",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41756"
     }
   },
@@ -637,8 +637,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoUnderlyingDeliveryScheduleSettlDays",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41770"
     }
   },
@@ -689,8 +689,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
       "display": "NoUnderlyingDeliveryScheduleSettlTimes",
-      "fix:description": "Number of hour ranges in the repeating group.",
       "fix:tag": "41773"
     }
   }

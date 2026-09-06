@@ -58,8 +58,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of relative value metrics entries in the repeating group.",
       "display": "NoRelativeValues",
-      "fix:description": "Number of relative value metrics entries in the repeating group.",
       "fix:tag": "2529"
     }
   },
@@ -100,8 +100,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related market segments.",
       "display": "NoRelatedMarketSegments",
-      "fix:description": "Number of related market segments.",
       "fix:tag": "2545"
     }
   },
@@ -142,8 +142,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of auction order types.",
       "display": "NoAuctionTypeRules",
-      "fix:description": "Number of auction order types.",
       "fix:tag": "2548"
     }
   },
@@ -224,8 +224,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rules related to price ranges.",
       "display": "NoPriceRangeRules",
-      "fix:description": "Number of rules related to price ranges.",
       "fix:tag": "2550"
     }
   },
@@ -276,8 +276,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rules related to quote sizes.",
       "display": "NoQuoteSizeRules",
-      "fix:description": "Number of rules related to quote sizes.",
       "fix:tag": "2558"
     }
   },
@@ -318,8 +318,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of eligibility indicators for the creation of flexible securities.",
       "display": "NoFlexProductEligibilities",
-      "fix:description": "Number of eligibility indicators for the creation of flexible securities.",
       "fix:tag": "2560"
     }
   },
@@ -500,8 +500,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parameter sets for clearing prices.",
       "display": "NoClearingPriceParameters",
-      "fix:description": "Number of parameter sets for clearing prices.",
       "fix:tag": "2580"
     }
   },
@@ -542,8 +542,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of order attribute entries.",
       "display": "NoOrderAttributes",
-      "fix:description": "Number of order attribute entries.",
       "fix:tag": "2593"
     }
   }

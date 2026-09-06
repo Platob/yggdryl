@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingPaymentStubStartDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "43000"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoUnderlyingRateSpreadSteps",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "43005"
     }
   },
@@ -300,8 +300,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate date repeating group.",
       "display": "NoUnderlyingReturnRateDates",
-      "fix:description": "Number of iterations in the return rate date repeating group.",
       "fix:tag": "43008"
     }
   },
@@ -352,8 +352,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate FX conversion repeating group.",
       "display": "NoUnderlyingReturnRateFXConversions",
-      "fix:description": "Number of iterations in the return rate FX conversion repeating group.",
       "fix:tag": "43030"
     }
   },
@@ -626,8 +626,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate repeating group.",
       "display": "NoUnderlyingReturnRates",
-      "fix:description": "Number of iterations in the return rate repeating group.",
       "fix:tag": "43034"
     }
   },
@@ -678,8 +678,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate information source repeating group.",
       "display": "NoUnderlyingReturnRateInformationSources",
-      "fix:description": "Number of iterations in the return rate information source repeating group.",
       "fix:tag": "43060"
     }
   },
@@ -740,8 +740,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate price repeating group.",
       "display": "NoUnderlyingReturnRatePrices",
-      "fix:description": "Number of iterations in the return rate price repeating group.",
       "fix:tag": "43064"
     }
   },
@@ -772,8 +772,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate valuation date business center repeating group.",
       "display": "NoUnderlyingReturnRateValuationDateBusinessCenters",
-      "fix:description": "Number of iterations in the return rate valuation date business center repeating group.",
       "fix:tag": "43069"
     }
   },
@@ -814,8 +814,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of iterations in the return rate valuation date repeating group.",
       "display": "NoUnderlyingReturnRateValuationDates",
-      "fix:description": "Number of iterations in the return rate valuation date repeating group.",
       "fix:tag": "43071"
     }
   },
@@ -846,8 +846,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingSettlMethodElectionDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "43074"
     }
   }

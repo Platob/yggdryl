@@ -66,8 +66,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
       "display": "NoStrikeRules",
-      "fix:description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostrikerules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1201"
     }
@@ -159,8 +159,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
       "display": "NoTickRules",
-      "fix:description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notickrules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1205"
     }
@@ -202,8 +202,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of alternate derivative security IDs.",
       "display": "NoDerivativeSecurityAltID",
-      "fix:description": "Number of alternate derivative security IDs.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativesecurityaltid\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1218"
     }
@@ -235,8 +235,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of execution instructions",
       "display": "NoExecInstRules",
-      "fix:description": "Number of execution instructions",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noexecinstrules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1232"
     }
@@ -278,8 +278,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Lot Type Rules",
       "display": "NoLotTypeRules",
-      "fix:description": "Number of Lot Type Rules",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nolottyperules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1234"
     }
@@ -341,8 +341,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Match Rules",
       "display": "NoMatchRules",
-      "fix:description": "Number of Match Rules",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomatchrules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1235"
     }
@@ -426,8 +426,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of maturity rules in MarurityRules component block",
       "display": "NoMaturityRules",
-      "fix:description": "Number of maturity rules in MarurityRules component block",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomaturityrules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1236"
     }
@@ -459,8 +459,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of order types",
       "display": "NoOrdTypeRules",
-      "fix:description": "Number of order types",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noordtyperules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1237"
     }
@@ -492,8 +492,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of time in force techniques",
       "display": "NoTimeInForceRules",
-      "fix:description": "Number of time in force techniques",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notimeinforcerules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1239"
     }
@@ -567,8 +567,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating DerivativeEventType entries.",
       "display": "NoDerivativeEvents",
-      "fix:description": "Number of repeating DerivativeEventType entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeevents\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1286"
     }
@@ -630,8 +630,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating derivative instrument party entries.",
       "display": "NoDerivativeInstrumentParties",
-      "fix:description": "Number of repeating derivative instrument party entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentparties\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1292"
     }
@@ -673,8 +673,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of derivative instrument party sub IDs.",
       "display": "NoDerivativeInstrumentPartySubIDs",
-      "fix:description": "Number of derivative instrument party sub IDs.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1296"
     }

@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of qualifiers in the repeating group.",
       "display": "NoComplexEventCreditEventQualifiers",
-      "fix:description": "The number of qualifiers in the repeating group.",
       "fix:tag": "41005"
     }
   },
@@ -69,8 +69,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of entries in the date-time repeating group.",
       "display": "NoComplexEventPeriodDateTimes",
-      "fix:description": "The number of entries in the date-time repeating group.",
       "fix:tag": "41007"
     }
   },
@@ -111,8 +111,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of periods in the repeating group.",
       "display": "NoComplexEventPeriods",
-      "fix:description": "The number of periods in the repeating group.",
       "fix:tag": "41010"
     }
   },
@@ -173,8 +173,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of rate sources in the repeating group.",
       "display": "NoComplexEventRateSources",
-      "fix:description": "The number of rate sources in the repeating group.",
       "fix:tag": "41013"
     }
   },
@@ -205,8 +205,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of business centers in the repeating group.",
       "display": "NoComplexEventDateBusinessCenters",
-      "fix:description": "The number of business centers in the repeating group.",
       "fix:tag": "41018"
     }
   },
@@ -237,8 +237,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of event sources in the repeating group.",
       "display": "NoComplexEventCreditEventSources",
-      "fix:description": "Number of event sources in the repeating group.",
       "fix:tag": "41029"
     }
   },
@@ -309,8 +309,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of schedules in the repeating group.",
       "display": "NoComplexEventSchedules",
-      "fix:description": "Number of schedules in the repeating group.",
       "fix:tag": "41031"
     }
   },
@@ -461,8 +461,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoDeliverySchedules",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41037"
     }
   },
@@ -503,8 +503,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoDeliveryScheduleSettlDays",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41051"
     }
   },
@@ -555,8 +555,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
       "display": "NoDeliveryScheduleSettlTimes",
-      "fix:description": "Number of hour ranges in the repeating group.",
       "fix:tag": "41054"
     }
   },
@@ -607,8 +607,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery cycles in the repeating group.",
       "display": "NoDeliveryStreamCycles",
-      "fix:description": "Number of delivery cycles in the repeating group.",
       "fix:tag": "41081"
     }
   },
@@ -639,8 +639,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity sources in the repeating group.",
       "display": "NoDeliveryStreamCommoditySources",
-      "fix:description": "Number of commodity sources in the repeating group.",
       "fix:tag": "41085"
     }
   },
@@ -681,8 +681,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of disruption events in the repeating group.",
       "display": "NoMarketDisruptionEvents",
-      "fix:description": "Number of disruption events in the repeating group.",
       "fix:tag": "41092"
     }
   },
@@ -723,8 +723,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallbacks in the repeating group.",
       "display": "NoMarketDisruptionFallbacks",
-      "fix:description": "Number of fallbacks in the repeating group.",
       "fix:tag": "41094"
     }
   },
@@ -835,8 +835,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallback reference securities in the repeating group.",
       "display": "NoMarketDisruptionFallbackReferencePrices",
-      "fix:description": "Number of fallback reference securities in the repeating group.",
       "fix:tag": "41096"
     }
   }

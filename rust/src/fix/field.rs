@@ -31,7 +31,13 @@ const TAGS: &str = "tags";
 /// The alternate names, comma-separated, highest priority first.
 const ALIASES: &str = "aliases";
 /// The specification's own wording.
-const DESCRIPTION: &str = "description";
+/// What a field is for is not FIX's to own.
+///
+/// A description is a property of the *field*, not of the protocol quoting
+/// it: the same sentence is what an Iceberg doc, a SQL column comment and a
+/// FIX definition each publish. It is therefore read and written on the
+/// generic key every catalog already reads, rather than under `fix:` where
+/// only a FIX reader would find it.
 /// What this field was called and typed at each version it lived through.
 const LINEAGE: &str = "lineage";
 /// The FIX code set this field's values are drawn from.
@@ -148,8 +154,12 @@ impl<'field> FixField<'field> {
     }
 
     /// Returns the specification's own wording for this field.
+    ///
+    /// Read from the generic `description` key rather than from `fix:`,
+    /// because what a field is for belongs to the field. See
+    /// [`Field::description`](crate::Field::description).
     pub fn description(&self) -> Option<&'field str> {
-        self.get(DESCRIPTION)
+        self.as_field().description()
     }
 
     /// Walks what this field was called and typed at each version, oldest
@@ -547,7 +557,7 @@ impl FixFieldMut<'_> {
     /// Returns an error when the property write fails the validation every
     /// metadata write goes through, leaving the field unchanged.
     pub fn set_description(&mut self, value: impl Into<String>) -> Result<()> {
-        self.store(DESCRIPTION, value)
+        self.as_field_mut().set_description(value)
     }
 
     /// Records what this field was called and typed at each version.
@@ -665,7 +675,7 @@ impl FixFieldMut<'_> {
     /// | `fix:branch`, `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
     /// | `fix:tags` | union, incoming first, order kept, deduplicated |
     /// | `fix:aliases` | union, folded, incoming first, then rewritten from the merged lineage |
-    /// | `fix:description` | never compared: incoming wins when it has one, stored is kept when it does not |
+    /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
     /// | `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
     /// | any other `fix:` key | incoming wins; stored keeps what only it has |
@@ -675,9 +685,11 @@ impl FixFieldMut<'_> {
     /// wins by being the last one folded in. One concept, in the one place
     /// that knows about sources.
     ///
-    /// Descriptions are never compared because a description is the longest
-    /// value a field carries and comparing two costs more than the write it
-    /// would save.
+    /// The description is deliberately absent from that table. It is a
+    /// property of the field rather than of FIX, so it folds through the
+    /// generic metadata merge with every other field-owned key - which is
+    /// also why a dictionary and an Iceberg catalog now disagree about a
+    /// field's meaning in exactly zero places.
     ///
     /// # Errors
     ///
@@ -741,8 +753,8 @@ impl FixFieldMut<'_> {
                 ALIASES => render_aliases(&aliases),
                 LINEAGE => lineage.clone(),
                 CODES => codes.clone(),
-                // Every other key, `fix:description` included, is "incoming
-                // wins, stored keeps what only it has".
+                // Every other key is "incoming wins, stored keeps what only
+                // it has".
                 _ => held.get(key).or_else(|| other.get(key)).map(str::to_owned),
             };
             if let Some(value) = value {
@@ -878,7 +890,7 @@ impl FusedIterator for FixAliases<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 7] = [BRANCH, TAG, TAGS, ALIASES, DESCRIPTION, LINEAGE, CODES];
+const MERGED_KEYS: [&str; 6] = [BRANCH, TAG, TAGS, ALIASES, LINEAGE, CODES];
 
 /// Render aliases the way the setter renders them.
 fn render_aliases(aliases: &[&str]) -> Option<String> {

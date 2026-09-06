@@ -48,8 +48,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of timestamp entries.",
       "display": "NoSideTrdRegTS",
-      "fix:description": "Number of timestamp entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosidetrdregts\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1016"
     }
@@ -111,8 +111,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the number of parties identified with an instrument",
       "display": "NoInstrumentParties",
-      "fix:description": "Identifies the number of parties identified with an instrument",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentparties\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1018"
     }
@@ -154,8 +154,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoInstrumentPartySubIDs",
-      "fix:description": "Number of InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1052"
     }
@@ -217,8 +217,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the number of parties identified with an underlying instrument",
       "display": "NoUndlyInstrumentParties",
-      "fix:description": "Identifies the number of parties identified with an underlying instrument",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentparties\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1058"
     }
@@ -260,8 +260,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Underlying InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoUndlyInstrumentPartySubIDs",
-      "fix:description": "Number of Underlying InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1062"
     }

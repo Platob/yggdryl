@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement amount entries.",
       "display": "NoSettlementAmounts",
-      "fix:description": "Number of settlement amount entries.",
       "fix:tag": "1700"
     }
   },
@@ -218,8 +218,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of collateral amount entries.",
       "display": "NoCollateralAmounts",
-      "fix:description": "Number of collateral amount entries.",
       "fix:tag": "1703"
     }
   },
@@ -330,8 +330,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of pay collect entries.",
       "display": "NoPayCollects",
-      "fix:description": "Number of pay collect entries.",
       "fix:tag": "1707"
     }
   },
@@ -422,8 +422,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party entitlement values.",
       "display": "NoPartyEntitlements",
-      "fix:description": "Number of party entitlement values.",
       "fix:tag": "1772"
     }
   },
@@ -514,8 +514,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entitlement values.",
       "display": "NoEntitlements",
-      "fix:description": "Number of entitlement values.",
       "fix:tag": "1773"
     }
   },
@@ -586,8 +586,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entitlement attributes.",
       "display": "NoEntitlementAttrib",
-      "fix:description": "Number of entitlement attributes.",
       "fix:tag": "1777"
     }
   },
@@ -618,8 +618,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of market segments upon which a mass action is to be taken.",
       "display": "NoTargetMarketSegments",
-      "fix:description": "Number of market segments upon which a mass action is to be taken.",
       "fix:tag": "1789"
     }
   },
@@ -650,8 +650,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of market segments affected by a mass action.",
       "display": "NoAffectedMarketSegments",
-      "fix:description": "Number of market segments affected by a mass action.",
       "fix:tag": "1791"
     }
   },
@@ -682,8 +682,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of market segments left unaffected by a mass action.",
       "display": "NoNotAffectedMarketSegments",
-      "fix:description": "Number of market segments left unaffected by a mass action.",
       "fix:tag": "1793"
     }
   },
@@ -774,8 +774,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of order events.",
       "display": "NoOrderEvents",
-      "fix:description": "Number of order events.",
       "fix:tag": "1795"
     }
   }

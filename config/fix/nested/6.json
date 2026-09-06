@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Multileg instrument's individual security's NoSecurityAltID.",
       "display": "NoLegSecurityAltID",
-      "fix:description": "Multileg instrument's individual security's NoSecurityAltID.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegsecurityaltid\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "604"
     }
@@ -101,8 +101,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of HopCompID entries in repeating group.",
       "display": "NoHops",
-      "fix:description": "Number of HopCompID entries in repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nohops\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "627"
     }
@@ -224,8 +224,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Allocations for the leg",
       "display": "NoLegAllocs",
-      "fix:description": "Number of Allocations for the leg",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegallocs\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "670"
     }
@@ -267,8 +267,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of leg stipulation entries",
       "display": "NoLegStipulations",
-      "fix:description": "Number of leg stipulation entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegstipulations\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "683"
     }

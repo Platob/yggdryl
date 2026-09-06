@@ -396,8 +396,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex events in the repeating group.",
       "display": "NoLegComplexEvents",
-      "fix:description": "Number of complex events in the repeating group.",
       "fix:tag": "2218"
     }
   },
@@ -438,8 +438,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event dates in the repeating group.",
       "display": "NoLegComplexEventDates",
-      "fix:description": "Number of complex event dates in the repeating group.",
       "fix:tag": "2250"
     }
   },
@@ -482,8 +482,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event times in the repeating group.",
       "display": "NoLegComplexEventTimes",
-      "fix:description": "Number of complex event times in the repeating group.",
       "fix:tag": "2253"
     }
   },
@@ -544,8 +544,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties in the repeating group.",
       "display": "NoLegInstrumentParties",
-      "fix:description": "Number of parties in the repeating group.",
       "fix:tag": "2254"
     }
   },
@@ -586,8 +586,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties sub-IDs in the repeating group.",
       "display": "NoLegInstrumentPartySubIDs",
-      "fix:description": "Number of parties sub-IDs in the repeating group.",
       "fix:tag": "2258"
     }
   }

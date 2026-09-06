@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of asset attribute entries in the group.",
       "display": "NoAssetAttributes",
-      "fix:description": "The number of asset attribute entries in the group.",
       "fix:tag": "2304"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of asset attribute entries in the group.",
       "display": "NoLegAssetAttributes",
-      "fix:description": "Number of asset attribute entries in the group.",
       "fix:tag": "2308"
     }
   },
@@ -150,8 +150,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of asset attribute entries in the group.",
       "display": "NoUnderlyingAssetAttributes",
-      "fix:description": "Number of asset attribute entries in the group.",
       "fix:tag": "2312"
     }
   },
@@ -192,8 +192,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entitlement types in the repeating group.",
       "display": "NoEntitlementTypes",
-      "fix:description": "Number of entitlement types in the repeating group.",
       "fix:tag": "2345"
     }
   }

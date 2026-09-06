@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rate sources in the repeating group",
       "display": "NoUnderlyingPaymentScheduleRateSources",
-      "fix:description": "Number of rate sources in the repeating group",
       "fix:tag": "40704"
     }
   },
@@ -358,8 +358,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of stubs in the repeating group",
       "display": "NoUnderlyingPaymentStubs",
-      "fix:description": "Number of stubs in the repeating group",
       "fix:tag": "40708"
     }
   }

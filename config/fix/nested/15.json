@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of requested party roles.",
       "display": "NoRequestedPartyRoles",
-      "fix:description": "Number of requested party roles.",
       "fix:tag": "1508"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party relationships.",
       "display": "NoPartyRelationships",
-      "fix:description": "Number of party relationships.",
       "fix:tag": "1514"
     }
   },
@@ -110,8 +110,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party alternative identifiers.",
       "display": "NoPartyDetailAltID",
-      "fix:description": "Number of party alternative identifiers.",
       "fix:tag": "1516"
     }
   },
@@ -152,8 +152,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party detail alternate sub-identifiers.",
       "display": "NoPartyDetailAltSubIDs",
-      "fix:description": "Number of party detail alternate sub-identifiers.",
       "fix:tag": "1519"
     }
   },
@@ -274,8 +274,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of risk limits with associated warning levels.",
       "display": "NoRiskLimitTypes",
-      "fix:description": "Number of risk limits with associated warning levels.",
       "fix:tag": "1529"
     }
   },
@@ -316,8 +316,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of risk instrument scopes.",
       "display": "NoRiskInstrumentScopes",
-      "fix:description": "Number of risk instrument scopes.",
       "fix:tag": "1534"
     }
   },
@@ -358,8 +358,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of alternate security identifier for the specified InstrumentScopeSecurityID(1538).",
       "display": "NoInstrumentScopeSecurityAltID",
-      "fix:description": "Number of alternate security identifier for the specified InstrumentScopeSecurityID(1538).",
       "fix:tag": "1540"
     }
   },
@@ -420,8 +420,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of risk warning levels.",
       "display": "NoRiskWarningLevels",
-      "fix:description": "Number of risk warning levels.",
       "fix:tag": "1559"
     }
   },
@@ -482,8 +482,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related party detail identifiers.",
       "display": "NoRelatedPartyDetailID",
-      "fix:description": "Number of related party detail identifiers.",
       "fix:tag": "1562"
     }
   },
@@ -524,8 +524,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related party detail sub-identifiers.",
       "display": "NoRelatedPartyDetailSubIDs",
-      "fix:description": "Number of related party detail sub-identifiers.",
       "fix:tag": "1566"
     }
   },
@@ -566,8 +566,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related party detail alternate identifiers.",
       "display": "NoRelatedPartyDetailAltID",
-      "fix:description": "Number of related party detail alternate identifiers.",
       "fix:tag": "1569"
     }
   },
@@ -608,8 +608,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related party detail alternate sub-identifiers.",
       "display": "NoRelatedPartyDetailAltSubIDs",
-      "fix:description": "Number of related party detail alternate sub-identifiers.",
       "fix:tag": "1572"
     }
   },
@@ -650,8 +650,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Security Classifications.",
       "display": "NoSecurityClassifications",
-      "fix:description": "Number of Security Classifications.",
       "fix:tag": "1582"
     }
   },
@@ -722,8 +722,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of TrdInstrmtLegPosAmt values.",
       "display": "NoLegPosAmt",
-      "fix:description": "Number of TrdInstrmtLegPosAmt values.",
       "fix:tag": "1586"
     }
   }

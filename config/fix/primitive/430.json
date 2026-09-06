@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for date adjustment of the payment stub start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStubStartDateBusinessCenter",
-      "fix:description": "The business center calendar used for date adjustment of the payment stub start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "43001"
     }
   },
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of fee elected for the break provision.",
       "display": "UnderlyingProvisionBreakFeeElection",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"FlatFee\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Flat fee\"},{\"value\":\"1\",\"name\":\"AmortizedFee\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Amortized fee\"},{\"value\":\"2\",\"name\":\"FundingFee\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Funding fee\"},{\"value\":\"3\",\"name\":\"FlatAndFundingFee\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Flat fee and funding fee\"},{\"value\":\"4\",\"name\":\"AmortizedAndFundingFee\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Amortized fee and funding fee\"}]}",
-      "fix:description": "Type of fee elected for the break provision.",
       "fix:tag": "43002"
     }
   },
@@ -31,8 +31,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Break fee election rate when the break fee is proportional to the notional. A fee rate of 5% would be represented as \"0.05\".",
       "display": "UnderlyingProvisionBreakFeeRate",
-      "fix:description": "Break fee election rate when the break fee is proportional to the notional. A fee rate of 5% would be represented as \"0.05\".",
       "fix:tag": "43003"
     }
   },
@@ -43,8 +43,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the initial rate spread for a basket underlier.",
       "display": "UnderlyingRateSpreadInitialValue",
-      "fix:description": "Specifies the initial rate spread for a basket underlier.",
       "fix:tag": "43004"
     }
   },
@@ -55,8 +55,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The date that the rate spread step takes affect.",
       "display": "UnderlyingRateSpreadStepDate",
-      "fix:description": "The date that the rate spread step takes affect.",
       "fix:tag": "43006"
     }
   },
@@ -67,8 +67,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The the value of the new rate spread as of the UnderlyingRateSpreadStepDate(43006).",
       "display": "UnderlyingRateSpreadStepValue",
-      "fix:description": "The the value of the new rate spread as of the UnderlyingRateSpreadStepDate(43006).",
       "fix:tag": "43007"
     }
   },
@@ -79,9 +79,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the valuation type applicable to the return rate date.",
       "display": "UnderlyingReturnRateDateMode",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PriceValuation\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Price valuation\"},{\"value\":\"1\",\"name\":\"DividendValuation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Dividend valuation\"}]}",
-      "fix:description": "Specifies the valuation type applicable to the return rate date.",
       "fix:tag": "43009"
     }
   },
@@ -92,8 +92,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the return rate valuation dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingReturnRateValuationDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the return rate valuation dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "43010"
     }
   },
@@ -104,8 +104,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative return rate valuation date offset.",
       "display": "UnderlyingReturnRateValuationDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative return rate valuation date offset.",
       "fix:tag": "43011"
     }
   },
@@ -116,9 +116,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative return rate valuation date offset.",
       "display": "UnderlyingReturnRateValuationDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative return rate valuation date offset.",
       "fix:tag": "43012"
     }
   },
@@ -129,9 +129,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative return rate valuation date offset.",
       "display": "UnderlyingReturnRateValuationDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative return rate valuation date offset.",
       "fix:tag": "43013"
     }
   },
@@ -142,8 +142,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "UnderlyingReturnRateValuationStartDateUnadjusted",
-      "fix:description": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "43014"
     }
   },
@@ -154,8 +154,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the return rate valuation start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingReturnRateValuationStartDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the return rate valuation start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "43015"
     }
   },
@@ -166,8 +166,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative return rate valuation start date offset.",
       "display": "UnderlyingReturnRateValuationStartDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative return rate valuation start date offset.",
       "fix:tag": "43016"
     }
   },
@@ -178,9 +178,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative return rate valuation start date offset.",
       "display": "UnderlyingReturnRateValuationStartDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative return rate valuation start date offset.",
       "fix:tag": "43017"
     }
   },
@@ -191,9 +191,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative return rate valuation start date offset.",
       "display": "UnderlyingReturnRateValuationStartDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative return rate valuation start date offset.",
       "fix:tag": "43018"
     }
   },
@@ -204,8 +204,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "UnderlyingReturnRateValuationStartDateAdjusted",
-      "fix:description": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "43019"
     }
   },
@@ -216,8 +216,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "UnderlyingReturnRateValuationEndDateUnadjusted",
-      "fix:description": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "43020"
     }
   },
@@ -228,8 +228,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the return rate valuation end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingReturnRateValuationEndDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the return rate valuation end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "43021"
     }
   },
@@ -240,8 +240,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative return rate valuation end date offset.",
       "display": "UnderlyingReturnRateValuationEndDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative return rate valuation end date offset.",
       "fix:tag": "43022"
     }
   },
@@ -252,9 +252,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative return rate valuation end date offset.",
       "display": "UnderlyingReturnRateValuationEndDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative return rate valuation end date offset.",
       "fix:tag": "43023"
     }
   },
@@ -265,9 +265,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative return rate valuation end date offset.",
       "display": "UnderlyingReturnRateValuationEndDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative return rate valuation end date offset.",
       "fix:tag": "43024"
     }
   },
@@ -278,8 +278,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "display": "UnderlyingReturnRateValuationEndDateAdjusted",
-      "fix:description": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "43025"
     }
   },
@@ -290,8 +290,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency at which return rate valuation dates occur.",
       "display": "UnderlyingReturnRateValuationFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency at which return rate valuation dates occur.",
       "fix:tag": "43026"
     }
   },
@@ -302,9 +302,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
       "display": "UnderlyingReturnRateValuationFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency at which return rate valuation dates occur.",
       "fix:tag": "43027"
     }
   },
@@ -315,9 +315,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
       "display": "UnderlyingReturnRateValuationFrequencyRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
       "fix:tag": "43028"
     }
   },
@@ -328,9 +328,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The return rate valuation dates business day convention.",
       "display": "UnderlyingReturnRateValuationDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The return rate valuation dates business day convention.",
       "fix:tag": "43029"
     }
   },
@@ -341,8 +341,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency pair for the FX conversion expressed using the CCY1/CCY2 convention. Uses ISO 4217 currency codes.",
       "display": "UnderlyingReturnRateFXCurrencySymbol",
-      "fix:description": "Specifies the currency pair for the FX conversion expressed using the CCY1/CCY2 convention. Uses ISO 4217 currency codes.",
       "fix:tag": "43031"
     }
   },
@@ -353,8 +353,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The rate of exchange between the two currencies specified in UnderlyingReturnRateFXCurrencySymbol(43031).",
       "display": "UnderlyingReturnRateFXRate",
-      "fix:description": "The rate of exchange between the two currencies specified in UnderlyingReturnRateFXCurrencySymbol(43031).",
       "fix:tag": "43032"
     }
   },
@@ -365,9 +365,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies whether UnderlyingReturnRateFXRate(43032) should be multiplied or divided.",
       "display": "UnderlyingReturnRateFXRateCalc",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":38,\"sort\":2,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":38,\"sort\":1,\"doc\":\"Multiply\"}]}",
-      "fix:description": "Specifies whether UnderlyingReturnRateFXRate(43032) should be multiplied or divided.",
       "fix:tag": "43033"
     }
   },
@@ -378,9 +378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of price sequence of the return rate.",
       "display": "UnderlyingReturnRatePriceSequence",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Interim\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Interim\"},{\"value\":\"2\",\"name\":\"Final\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Final\"}]}",
-      "fix:description": "Specifies the type of price sequence of the return rate.",
       "fix:tag": "43035"
     }
   },
@@ -391,9 +391,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "UnderlyingReturnRateCommissionBasis",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PerUnit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Amount per unit\"},{\"value\":\"2\",\"name\":\"Percent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Percent\"},{\"value\":\"3\",\"name\":\"Absolute\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Absolute\"},{\"value\":\"4\",\"name\":\"PercentageWaivedCashDiscount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Percentage waived, cash discount basis\"},{\"value\":\"5\",\"name\":\"PercentageWaivedEnhancedUnits\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Percentage waived, enhanced units basis\"},{\"value\":\"6\",\"name\":\"PointsPerBondOrContract\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Points per bond or contract\"},{\"value\":\"7\",\"name\":\"BasisPoints\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":7,\"doc\":\"Basis points\"},{\"value\":\"8\",\"name\":\"AmountPerContract\",\"since\":\"5.0SP2\",\"ep\":204,\"sort\":8,\"doc\":\"Amount per contract\"}]}",
-      "fix:description": "Specifies the basis or unit used to calculate the commission.",
       "fix:tag": "43036"
     }
   },
@@ -404,8 +404,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The commission amount.",
       "display": "UnderlyingReturnRateCommissionAmount",
-      "fix:description": "The commission amount.",
       "fix:tag": "43037"
     }
   },
@@ -416,8 +416,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the commission amount is denominated in. Uses ISO 4217 currency codes.",
       "display": "UnderlyingReturnRateCommissionCurrency",
-      "fix:description": "Specifies the currency the commission amount is denominated in. Uses ISO 4217 currency codes.",
       "fix:tag": "43038"
     }
   },
@@ -428,8 +428,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The total commission per trade.",
       "display": "UnderlyingReturnRateTotalCommissionPerTrade",
-      "fix:description": "The total commission per trade.",
       "fix:tag": "43039"
     }
   },
@@ -440,8 +440,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the method by which the underlier prices are determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "UnderlyingReturnRateDeterminationMethod",
-      "fix:description": "Specifies the method by which the underlier prices are determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "fix:tag": "43040"
     }
   },
@@ -452,8 +452,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the reference amount when the return rate amount is relative to another amount in the trade. See https://fixtrading.org/packages/payment-amount-relative-to for code list of relative amounts.",
       "display": "UnderlyingReturnRateAmountRelativeTo",
-      "fix:description": "Specifies the reference amount when the return rate amount is relative to another amount in the trade. See https://fixtrading.org/packages/payment-amount-relative-to for code list of relative amounts.",
       "fix:tag": "43041"
     }
   },
@@ -464,8 +464,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of the measure applied to the return rate's asset, e.g. valuation, sensitivity risk. This could be an NPV, a cash flow, a clean price, etc. See https://fpml.org/coding-scheme/asset-measure for values.",
       "display": "UnderlyingReturnRateQuoteMeasureType",
-      "fix:description": "Specifies the type of the measure applied to the return rate's asset, e.g. valuation, sensitivity risk. This could be an NPV, a cash flow, a clean price, etc. See https://fpml.org/coding-scheme/asset-measure for values.",
       "fix:tag": "43042"
     }
   },
@@ -476,8 +476,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the units that the measure is expressed in. If not specified, the default is a price/value in currency units. See https://fpml.org/coding-scheme/price-quote-units for values.",
       "display": "UnderlyingReturnRateQuoteUnits",
-      "fix:description": "Specifies the units that the measure is expressed in. If not specified, the default is a price/value in currency units. See https://fpml.org/coding-scheme/price-quote-units for values.",
       "fix:tag": "43043"
     }
   },
@@ -488,9 +488,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of quote used to determine the return rate of the swap.",
       "display": "UnderlyingReturnRateQuoteMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Offer\"}]}",
-      "fix:description": "Specifies the type of quote used to determine the return rate of the swap.",
       "fix:tag": "43044"
     }
   },
@@ -501,8 +501,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the return rate quote is denominated in. Uses ISO 4217 Currency Code.",
       "display": "UnderlyingReturnRateQuoteCurrency",
-      "fix:description": "Specifies the currency the return rate quote is denominated in. Uses ISO 4217 Currency Code.",
       "fix:tag": "43045"
     }
   },
@@ -513,8 +513,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of currency, e.g. settlement currency, base currency, etc., that the quote is reported in. See https://fpml.org/coding-scheme/reporting-currency-type for values.",
       "display": "UnderlyingReturnRateQuoteCurrencyType",
-      "fix:description": "Specifies the type of currency, e.g. settlement currency, base currency, etc., that the quote is reported in. See https://fpml.org/coding-scheme/reporting-currency-type for values.",
       "fix:tag": "43046"
     }
   },
@@ -525,9 +525,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies how or the timing when the quote is to be obtained.",
       "display": "UnderlyingReturnRateQuoteTimeType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Open\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Open\"},{\"value\":\"1\",\"name\":\"OfficialSettlPx\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Official settlement price time\"},{\"value\":\"2\",\"name\":\"Xetra\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"XETRA\"},{\"value\":\"3\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Close\"},{\"value\":\"4\",\"name\":\"DerivativesClose\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Derivatives close\"},{\"value\":\"5\",\"name\":\"High\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":5,\"doc\":\"High\"},{\"value\":\"6\",\"name\":\"Low\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":6,\"doc\":\"Low\"},{\"value\":\"7\",\"name\":\"AsSpecifiedInMasterConfirmation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":7,\"doc\":\"As specified in the master confirmation\"}]}",
-      "fix:description": "Specifies how or the timing when the quote is to be obtained.",
       "fix:tag": "43047"
     }
   },
@@ -538,8 +538,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The time when the quote is to be generated.",
       "display": "UnderlyingReturnRateQuoteTime",
-      "fix:description": "The time when the quote is to be generated.",
       "fix:tag": "43048"
     }
   },
@@ -550,8 +550,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The date when the quote is to be generated.",
       "display": "UnderlyingReturnRateQuoteDate",
-      "fix:description": "The date when the quote is to be generated.",
       "fix:tag": "43049"
     }
   },
@@ -563,8 +563,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The time when the quote ceases to be valid.",
       "display": "UnderlyingReturnRateQuoteExpirationTime",
-      "fix:description": "The time when the quote ceases to be valid.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratequoteexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingreturnratequoteexpirationtime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "43050"
     }
@@ -576,8 +576,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for adjustments associated with UnderlyingReturnRateQuoteTimeType(43047) or UnderlyingReturnRateQuoteTime(43048) and UnderlyingReturnRateQuoteDate(43049), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingReturnRateQuoteBusinessCenter",
-      "fix:description": "The business center calendar used for adjustments associated with UnderlyingReturnRateQuoteTimeType(43047) or UnderlyingReturnRateQuoteTime(43048) and UnderlyingReturnRateQuoteDate(43049), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "43051"
     }
   },
@@ -588,8 +588,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the exchange (e.g. stock or listed futures/options exchange) from which the quote is obtained.",
       "display": "UnderlyingReturnRateQuoteExchange",
-      "fix:description": "Specifies the exchange (e.g. stock or listed futures/options exchange) from which the quote is obtained.",
       "fix:tag": "43052"
     }
   },
@@ -600,8 +600,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the pricing model used to evaluate the underlying asset price. See https://fpml.org/coding-scheme/pricing-model for values.",
       "display": "UnderlyingReturnRateQuotePricingModel",
-      "fix:description": "Specifies the pricing model used to evaluate the underlying asset price. See https://fpml.org/coding-scheme/pricing-model for values.",
       "fix:tag": "43053"
     }
   },
@@ -612,8 +612,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of cash flows, e.g. coupon payment, premium fee, settlement fee, etc. See https://fpml.org/coding-scheme/cashflow-type for values.",
       "display": "UnderlyingReturnRateCashFlowType",
-      "fix:description": "Specifies the type of cash flows, e.g. coupon payment, premium fee, settlement fee, etc. See https://fpml.org/coding-scheme/cashflow-type for values.",
       "fix:tag": "43054"
     }
   },
@@ -624,9 +624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the timing at which the calculation agent values the underlying.",
       "display": "UnderlyingReturnRateValuationTimeType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Open\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Open\"},{\"value\":\"1\",\"name\":\"OfficialSettlPx\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Official settlement price time\"},{\"value\":\"2\",\"name\":\"Xetra\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"XETRA\"},{\"value\":\"3\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Close\"},{\"value\":\"4\",\"name\":\"DerivativesClose\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Derivatives close\"},{\"value\":\"5\",\"name\":\"High\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":5,\"doc\":\"High\"},{\"value\":\"6\",\"name\":\"Low\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":6,\"doc\":\"Low\"},{\"value\":\"7\",\"name\":\"AsSpecifiedInMasterConfirmation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":7,\"doc\":\"As specified in the master confirmation\"}]}",
-      "fix:description": "Specifies the timing at which the calculation agent values the underlying.",
       "fix:tag": "43055"
     }
   },
@@ -638,8 +638,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The time at which the calculation agent values the underlying asset.",
       "display": "UnderlyingReturnRateValuationTime",
-      "fix:description": "The time at which the calculation agent values the underlying asset.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratevaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingreturnratevaluationtime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "43056"
     }
@@ -651,8 +651,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for adjustments associated with UnderlyingReturnRateValuationTimeType(43055) or UnderlyingReturnRateValuationTime(43056) , e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingReturnRateValuationTimeBusinessCenter",
-      "fix:description": "The business center calendar used for adjustments associated with UnderlyingReturnRateValuationTimeType(43055) or UnderlyingReturnRateValuationTime(43056) , e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "43057"
     }
   },
@@ -663,9 +663,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
       "display": "UnderlyingReturnRateValuationPriceOption",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"None (the default)\"},{\"value\":\"1\",\"name\":\"FuturesPrice\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Futures price\"},{\"value\":\"2\",\"name\":\"OptionsPrice\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Options price\"}]}",
-      "fix:description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
       "fix:tag": "43058"
     }
   },
@@ -676,9 +676,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
       "display": "UnderlyingReturnRateFinalPriceFallback",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"HedgeElection\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge election\"}]}",
-      "fix:description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
       "fix:tag": "43059"
     }
   },
@@ -689,9 +689,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
       "display": "UnderlyingReturnRateInformationSource",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
       "fix:tag": "43061"
     }
   },
@@ -702,8 +702,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When UnderlyingReturnRateInformationSource(43061) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "UnderlyingReturnRateReferencePage",
-      "fix:description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When UnderlyingReturnRateInformationSource(43061) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "fix:tag": "43062"
     }
   },
@@ -714,8 +714,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the page heading from the rate source.",
       "display": "UnderlyingReturnRateReferencePageHeading",
-      "fix:description": "Identifies the page heading from the rate source.",
       "fix:tag": "43063"
     }
   },
@@ -726,9 +726,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The basis of the return price.",
       "display": "UnderlyingReturnRatePriceBasis",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Gross\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Gross\"},{\"value\":\"1\",\"name\":\"Net\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Net\"},{\"value\":\"2\",\"name\":\"Accrued\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Accrued\"},{\"value\":\"3\",\"name\":\"CleanNet\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Clean net\"}]}",
-      "fix:description": "The basis of the return price.",
       "fix:tag": "43065"
     }
   },
@@ -739,8 +739,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the price of the underlying swap asset.",
       "display": "UnderlyingReturnRatePrice",
-      "fix:description": "Specifies the price of the underlying swap asset.",
       "fix:tag": "43066"
     }
   },
@@ -751,8 +751,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency of the price of the underlying swap asset. Uses ISO 4217 currency codes.",
       "display": "UnderlyingReturnRatePriceCurrency",
-      "fix:description": "Specifies the currency of the price of the underlying swap asset. Uses ISO 4217 currency codes.",
       "fix:tag": "43067"
     }
   },
@@ -763,9 +763,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies whether the UnderlyingReturnRatePrice(43066) is expressed in absolute or relative terms.",
       "display": "UnderlyingReturnRatePriceType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AbsoluteTerms\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Absolute terms\"},{\"value\":\"1\",\"name\":\"PercentageOfNotional\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Percentage of notional\"}]}",
-      "fix:description": "Specifies whether the UnderlyingReturnRatePrice(43066) is expressed in absolute or relative terms.",
       "fix:tag": "43068"
     }
   },
@@ -776,8 +776,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for date adjustment of the return rate valuation unadjusted or relative dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingReturnRateValuationDateBusinessCenter",
-      "fix:description": "The business center calendar used for date adjustment of the return rate valuation unadjusted or relative dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "43070"
     }
   },
@@ -788,8 +788,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The return rate valuation date. Type of date is specified in UnderlyingReturnRateValuationDateType(43073).",
       "display": "UnderlyingReturnRateValuationDate",
-      "fix:description": "The return rate valuation date. Type of date is specified in UnderlyingReturnRateValuationDateType(43073).",
       "fix:tag": "43072"
     }
   },
@@ -800,9 +800,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
       "display": "UnderlyingReturnRateValuationDateType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
-      "fix:description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
       "fix:tag": "43073"
     }
   },
@@ -813,8 +813,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for date adjustment of the settlement method election unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingSettlMethodElectionDateBusinessCenter",
-      "fix:description": "The business center calendar used for date adjustment of the settlement method election unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "43075"
     }
   },
@@ -825,8 +825,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted settlement method election date.",
       "display": "UnderlyingSettlMethodElectionDateUnadjusted",
-      "fix:description": "The unadjusted settlement method election date.",
       "fix:tag": "43076"
     }
   },
@@ -837,9 +837,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The settlement method election date adjustment business day convention.",
       "display": "UnderlyingSettlMethodElectionDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The settlement method election date adjustment business day convention.",
       "fix:tag": "43077"
     }
   },
@@ -850,8 +850,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the settlement method election date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingSettlMethodElectionDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the settlement method election date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "43078"
     }
   },
@@ -862,8 +862,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative settlement method election date offset.",
       "display": "UnderlyingSettlMethodElectionDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative settlement method election date offset.",
       "fix:tag": "43079"
     }
   },
@@ -874,9 +874,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative settlement method election date offset.",
       "display": "UnderlyingSettlMethodElectionDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative settlement method election date offset.",
       "fix:tag": "43080"
     }
   },
@@ -887,9 +887,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative settlement method election date offset.",
       "display": "UnderlyingSettlMethodElectionDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative settlement method election date offset.",
       "fix:tag": "43081"
     }
   },
@@ -900,8 +900,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted settlement method election date.",
       "display": "UnderlyingSettlMethodElectionDateAdjusted",
-      "fix:description": "The adjusted settlement method election date.",
       "fix:tag": "43082"
     }
   },
@@ -912,8 +912,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The stream version identifier when there have been modifications to the contract over time. Helps signal when there are embedded changes.",
       "display": "UnderlyingStreamVersion",
-      "fix:description": "The stream version identifier when there have been modifications to the contract over time. Helps signal when there are embedded changes.",
       "fix:tag": "43083"
     }
   },
@@ -924,8 +924,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The effective date of the UnderlyingStreamVersion(43083).",
       "display": "UnderlyingStreamVersionEffectiveDate",
-      "fix:description": "The effective date of the UnderlyingStreamVersion(43083).",
       "fix:tag": "43084"
     }
   },
@@ -936,8 +936,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the method for determining the floating notional value for equity swaps. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "UnderlyingStreamNotionalDeterminationMethod",
-      "fix:description": "Specifies the method for determining the floating notional value for equity swaps. See https://fpml.org/coding-scheme/determination-method for values.",
       "fix:tag": "43085"
     }
   },
@@ -948,9 +948,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
       "display": "UnderlyingStreamNotionalAdjustments",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Execution\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Execution\"},{\"value\":\"1\",\"name\":\"PortfolioRebalancing\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Portfolio rebalancing\"},{\"value\":\"2\",\"name\":\"Standard\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Standard\"}]}",
-      "fix:description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
       "fix:tag": "43086"
     }
   },
@@ -961,8 +961,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A short descriptive name given to the payment, e.g. Premium, Upfront, etc. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
       "display": "PaymentDesc",
-      "fix:description": "A short descriptive name given to the payment, e.g. Premium, Upfront, etc. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
       "fix:tag": "43087"
     }
   },
@@ -973,8 +973,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Security identifier of the floating rate index.",
       "display": "LegPaymentStreamRateIndexID",
-      "fix:description": "Security identifier of the floating rate index.",
       "fix:tag": "43088"
     }
   },
@@ -985,9 +985,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Source for the floating rate index identified in LegPaymentStreamRateIndexID(43088).",
       "display": "LegPaymentStreamRateIndexIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:description": "Source for the floating rate index identified in LegPaymentStreamRateIndexID(43088).",
       "fix:tag": "43089"
     }
   },
@@ -998,8 +998,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Security identifier of the floating rate index.",
       "display": "PaymentStreamRateIndexID",
-      "fix:description": "Security identifier of the floating rate index.",
       "fix:tag": "43090"
     }
   },
@@ -1010,9 +1010,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Source for the floating rate index identified in PaymentStreamRateIndexID(43090).",
       "display": "PaymentStreamRateIndexIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:description": "Source for the floating rate index identified in PaymentStreamRateIndexID(43090).",
       "fix:tag": "43091"
     }
   },
@@ -1023,8 +1023,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Security identifier of the floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexID",
-      "fix:description": "Security identifier of the floating rate index.",
       "fix:tag": "43092"
     }
   },
@@ -1035,9 +1035,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Source for the floating rate index identified in UnderlyingPaymentStreamRateIndexID(43092).",
       "display": "UnderlyingPaymentStreamRateIndexIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:description": "Source for the floating rate index identified in UnderlyingPaymentStreamRateIndexID(43092).",
       "fix:tag": "43093"
     }
   },
@@ -1048,8 +1048,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "display": "DeliveryStreamRouteOrCharter",
-      "fix:description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "fix:tag": "43094"
     }
   },
@@ -1060,8 +1060,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "display": "LegDeliveryStreamRouteOrCharter",
-      "fix:description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "fix:tag": "43095"
     }
   },
@@ -1072,8 +1072,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "display": "UnderlyingDeliveryStreamRouteOrCharter",
-      "fix:description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
       "fix:tag": "43096"
     }
   },
@@ -1084,8 +1084,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The rate applicable to the fixed rate payment.",
       "display": "PaymentFixedRate",
-      "fix:description": "The rate applicable to the fixed rate payment.",
       "fix:tag": "43097"
     }
   },
@@ -1096,8 +1096,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The payment floating rate index. See SpreadOrBenchmarkCurveData(221) for suggested values.",
       "display": "PaymentFloatingRateIndex",
-      "fix:description": "The payment floating rate index. See SpreadOrBenchmarkCurveData(221) for suggested values.",
       "fix:tag": "43098"
     }
   },
@@ -1108,8 +1108,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the floating rate index.",
       "display": "PaymentFloatingRateIndexCurvePeriod",
-      "fix:description": "Time unit multiplier for the floating rate index.",
       "fix:tag": "43099"
     }
   }

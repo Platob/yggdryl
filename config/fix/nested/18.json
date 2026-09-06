@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of disclosure instructions.",
       "display": "NoDisclosureInstructions",
-      "fix:description": "Number of disclosure instructions.",
       "fix:tag": "1812"
     }
   },
@@ -218,8 +218,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of legs in the side of a cross order.",
       "display": "NoCrossLegs",
-      "fix:description": "Number of legs in the side of a cross order.",
       "fix:tag": "1829"
     }
   },
@@ -250,8 +250,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade price conditions.",
       "display": "NoTradePriceConditions",
-      "fix:description": "Number of trade price conditions.",
       "fix:tag": "1838"
     }
   },
@@ -292,8 +292,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade quantities.",
       "display": "NoTradeQtys",
-      "fix:description": "Number of trade quantities.",
       "fix:tag": "1841"
     }
   },
@@ -364,8 +364,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade allocation amount entries.",
       "display": "NoTradeAllocAmts",
-      "fix:description": "Number of trade allocation amount entries.",
       "fix:tag": "1844"
     }
   },
@@ -446,8 +446,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related trades.",
       "display": "NoRelatedTrades",
-      "fix:description": "Number of related trades.",
       "fix:tag": "1855"
     }
   },
@@ -498,8 +498,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related positions.",
       "display": "NoRelatedPositions",
-      "fix:description": "Number of related positions.",
       "fix:tag": "1861"
     }
   },
@@ -540,8 +540,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of value check entries.",
       "display": "NoValueChecks",
-      "fix:description": "Number of value check entries.",
       "fix:tag": "1868"
     }
   },
@@ -672,8 +672,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instrument match sides.",
       "display": "NoInstrmtMatchSides",
-      "fix:description": "Number of instrument match sides.",
       "fix:tag": "1889"
     }
   },
@@ -1174,8 +1174,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade match sides.",
       "display": "NoTrdMatchSides",
-      "fix:description": "Number of trade match sides.",
       "fix:tag": "1890"
     }
   },
@@ -1346,8 +1346,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instrument leg executions.",
       "display": "NoLegExecs",
-      "fix:description": "Number of instrument leg executions.",
       "fix:tag": "1892"
     }
   }

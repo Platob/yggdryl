@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Allows trading rules to be expressed by trading session",
       "display": "NoTradingSessionRules",
-      "fix:description": "Allows trading rules to be expressed by trading session",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notradingsessionrules\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1309"
     }
@@ -79,8 +79,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Market Segments on which a security may trade.",
       "display": "NoMarketSegments",
-      "fix:description": "Number of Market Segments on which a security may trade.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomarketsegments\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1310"
     }
@@ -122,8 +122,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instrument attributes.",
       "display": "NoDerivativeInstrAttrib",
-      "fix:description": "Number of instrument attributes.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrattrib\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1311"
     }
@@ -207,8 +207,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Refer to definition for NoSecurityAltID(454)",
       "display": "NoUnderlyingLegSecurityAltID",
-      "fix:description": "Refer to definition for NoSecurityAltID(454)",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nounderlyinglegsecurityaltid\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1334"
     }
@@ -300,8 +300,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies number of application id occurrences",
       "display": "NoApplIDs",
-      "fix:description": "Specifies number of application id occurrences",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noapplids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1351"
     }
@@ -465,8 +465,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of not affected orders in the repeating group of order ids.",
       "display": "NoNotAffectedOrders",
-      "fix:description": "Number of not affected orders in the repeating group of order ids.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonotaffectedorders\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1370"
     }
@@ -508,8 +508,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trade reporting indicators",
       "display": "NoTrdRepIndicators",
-      "fix:description": "Number of trade reporting indicators",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notrdrepindicators\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1387"
     }

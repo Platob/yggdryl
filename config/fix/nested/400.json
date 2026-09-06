@@ -196,8 +196,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of bonds in the repeating group.",
       "display": "NoAdditionalTermBondRefs",
-      "fix:description": "Number of bonds in the repeating group.",
       "fix:tag": "40000"
     }
   },
@@ -238,8 +238,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of additional terms in the repeating group.",
       "display": "NoAdditionalTerms",
-      "fix:description": "Number of additional terms in the repeating group.",
       "fix:tag": "40019"
     }
   },
@@ -461,8 +461,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of elements in the repeating group.",
       "display": "NoCashSettlTerms",
-      "fix:description": "Number of elements in the repeating group.",
       "fix:tag": "40022"
     }
   },
@@ -493,8 +493,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of financing definitions in the repeating group.",
       "display": "NoContractualDefinitions",
-      "fix:description": "Number of financing definitions in the repeating group.",
       "fix:tag": "40040"
     }
   },
@@ -545,8 +545,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of contractual matrices in the repeating group.",
       "display": "NoContractualMatrices",
-      "fix:description": "Number of contractual matrices in the repeating group.",
       "fix:tag": "40042"
     }
   },
@@ -587,8 +587,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of financing terms supplements in the repeating group.",
       "display": "NoFinancingTermSupplements",
-      "fix:description": "Number of financing terms supplements in the repeating group.",
       "fix:tag": "40046"
     }
   },
@@ -819,8 +819,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap streams in the repeating group.",
       "display": "NoStreams",
-      "fix:description": "Number of swap streams in the repeating group.",
       "fix:tag": "40049"
     }
   },
@@ -871,8 +871,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
       "display": "NoSettlRateFallbacks",
-      "fix:description": "Number of settlement rate fallbacks in the repeating group",
       "fix:tag": "40085"
     }
   },
@@ -1143,8 +1143,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provisions in the repeating group.",
       "display": "NoProvisions",
-      "fix:description": "Number of provisions in the repeating group.",
       "fix:tag": "40090"
     }
   }

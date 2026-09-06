@@ -2732,12 +2732,36 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
     incoming.as_fix_mut().set_tag(55).unwrap();
     incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
 
+    // The FIX half folds the `fix:` keys and nothing else, so on its own it
+    // leaves a description alone in both directions: it is not FIX's key.
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(incoming.as_fix().description(), None);
+    assert_eq!(incoming.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+
+    // The whole merge is two halves, and the generic one carries it: a
+    // description the incoming definition does not state is kept from what
+    // was stored, because a field's meaning does not disappear when a
+    // dictionary that never wrote it down is folded in.
+    let mut registry = FixRegistry::from_fields([stored.clone()]).unwrap();
+    registry.update(incoming.clone()).unwrap();
+    let held = registry.field_by_tag(55).unwrap();
     assert_eq!(
-        incoming.as_fix().description(),
+        held.description(),
         Some("a very long stored wording nobody wants compared")
     );
-    assert_eq!(incoming.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+
+    // And one the incoming definition does state wins, because the caller's
+    // ordering is the precedence.
+    let mut restated = incoming;
+    restated
+        .set_description("the wording this source publishes")
+        .unwrap();
+    registry.update(restated).unwrap();
+    assert_eq!(
+        registry.field_by_tag(55).unwrap().description(),
+        Some("the wording this source publishes")
+    );
 }
 
 #[test]

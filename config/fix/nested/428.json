@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the UnderlyingDividendFXTriggerDateBusinessCenterGrp.",
       "display": "NoUnderlyingDividendFXTriggerDateBusinessCenters",
-      "fix:description": "Number of entries in the UnderlyingDividendFXTriggerDateBusinessCenterGrp.",
       "fix:tag": "42853"
     }
   },
@@ -88,8 +88,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoUnderlyingDividendPayments",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "42855"
     }
   },
@@ -300,8 +300,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the UnderlyingDividendPeriodGrp component.",
       "display": "NoUnderlyingDividendPeriods",
-      "fix:description": "Number of entries in the UnderlyingDividendPeriodGrp component.",
       "fix:tag": "42862"
     }
   },
@@ -332,8 +332,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in UnderlyingDividendPeriodBusinessCenterGrp.",
       "display": "NoUnderlyingDividendPeriodBusinessCenters",
-      "fix:description": "Number of entries in UnderlyingDividendPeriodBusinessCenterGrp.",
       "fix:tag": "42882"
     }
   },
@@ -374,8 +374,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of extraordinary events in the repeating group.",
       "display": "NoUnderlyingExtraordinaryEvents",
-      "fix:description": "Number of extraordinary events in the repeating group.",
       "fix:tag": "42884"
     }
   }

@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixing dates in the repeating group.",
       "display": "NoLegNonDeliverableFixingDates",
-      "fix:description": "Number of fixing dates in the repeating group.",
       "fix:tag": "40367"
     }
   },
@@ -589,8 +589,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap schedules in the repeating group",
       "display": "NoLegPaymentSchedules",
-      "fix:description": "Number of swap schedules in the repeating group",
       "fix:tag": "40374"
     }
   }

@@ -107,8 +107,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of LegRateSource entries in the repeating group.",
       "display": "NoLegRateSources",
-      "fix:description": "Number of LegRateSource entries in the repeating group.",
       "fix:tag": "3116"
     }
   },
@@ -159,8 +159,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test suite parameters.",
       "display": "NoTestSuiteParameters",
-      "fix:description": "Number of test suite parameters.",
       "fix:tag": "3126"
     }
   },
@@ -211,8 +211,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of test scenario parameters.",
       "display": "NoTestScenarioParameters",
-      "fix:description": "Number of test scenario parameters.",
       "fix:tag": "3130"
     }
   },
@@ -253,8 +253,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of trading service entries.",
       "display": "NoTradingServices",
-      "fix:description": "Number of trading service entries.",
       "fix:tag": "3134"
     }
   }

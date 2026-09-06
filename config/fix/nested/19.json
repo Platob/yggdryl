@@ -76,8 +76,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoRegulatoryTradeIDs",
-      "fix:description": "Number of regulatory IDs in the repeating group.",
       "fix:tag": "1907"
     }
   },
@@ -158,8 +158,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoAllocRegulatoryTradeIDs",
-      "fix:description": "Number of regulatory IDs in the repeating group.",
       "fix:tag": "1908"
     }
   },
@@ -190,8 +190,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of clearing account type entries.",
       "display": "NoClearingAccountTypes",
-      "fix:description": "Number of clearing account type entries.",
       "fix:tag": "1918"
     }
   },
@@ -242,8 +242,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of price movement value entries.",
       "display": "NoPriceMovementValues",
-      "fix:description": "Number of price movement value entries.",
       "fix:tag": "1920"
     }
   },
@@ -324,8 +324,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of regulatory IDs in the repeating group.",
       "display": "NoSideRegulatoryTradeIDs",
-      "fix:description": "Number of regulatory IDs in the repeating group.",
       "fix:tag": "1971"
     }
   },
@@ -386,8 +386,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of secondary asset classes in the repeating group.",
       "display": "NoSecondaryAssetClasses",
-      "fix:description": "Number of secondary asset classes in the repeating group.",
       "fix:tag": "1976"
     }
   },
@@ -511,8 +511,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of events in the repeating group.",
       "display": "NoUnderlyingEvents",
-      "fix:description": "Number of events in the repeating group.",
       "fix:tag": "1981"
     }
   }

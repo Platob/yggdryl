@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoLegPhysicalSettlDeliverableObligations",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "41604"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPricingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41607"
     }
   },
@@ -100,8 +100,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of event sources in the repeating group.",
       "display": "NoLegProtectionTermEventNewsSources",
-      "fix:description": "Number of event sources in the repeating group.",
       "fix:tag": "41614"
     }
   },
@@ -202,8 +202,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of protection terms in the repeating group.",
       "display": "NoLegProtectionTerms",
-      "fix:description": "Number of protection terms in the repeating group.",
       "fix:tag": "41616"
     }
   },
@@ -294,8 +294,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of protection term events in the repeating group.",
       "display": "NoLegProtectionTermEvents",
-      "fix:description": "Number of protection term events in the repeating group.",
       "fix:tag": "41625"
     }
   },
@@ -326,8 +326,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of qualifiers in the repeating group.",
       "display": "NoLegProtectionTermEventQualifiers",
-      "fix:description": "Number of qualifiers in the repeating group.",
       "fix:tag": "41633"
     }
   },
@@ -368,8 +368,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of obligations in the repeating group.",
       "display": "NoLegProtectionTermObligations",
-      "fix:description": "Number of obligations in the repeating group.",
       "fix:tag": "41635"
     }
   },
@@ -410,8 +410,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of calculation period dates in the repeating group.",
       "display": "NoLegStreamCalculationPeriodDates",
-      "fix:description": "Number of calculation period dates in the repeating group.",
       "fix:tag": "41638"
     }
   },
@@ -442,8 +442,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegStreamCommoditySettlBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41646"
     }
   },
@@ -484,8 +484,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of alternate security identifers.",
       "display": "NoLegStreamCommodityAltIDs",
-      "fix:description": "Number of alternate security identifers.",
       "fix:tag": "41674"
     }
   },
@@ -526,8 +526,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
       "display": "NoLegStreamCommodityDataSources",
-      "fix:description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
       "fix:tag": "41677"
     }
   },
@@ -568,8 +568,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of days in the repeating group.",
       "display": "NoLegStreamCommoditySettlDays",
-      "fix:description": "Number of days in the repeating group.",
       "fix:tag": "41680"
     }
   },
@@ -620,8 +620,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
       "display": "NoLegStreamCommoditySettlTimes",
-      "fix:description": "Number of hour ranges in the repeating group.",
       "fix:tag": "41683"
     }
   },
@@ -772,8 +772,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity settlement periods in the repeating group.",
       "display": "NoLegStreamCommoditySettlPeriods",
-      "fix:description": "Number of commodity settlement periods in the repeating group.",
       "fix:tag": "41686"
     }
   }

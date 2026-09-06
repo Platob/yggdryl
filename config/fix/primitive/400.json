@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Security identifier of the bond.",
       "display": "AdditionalTermBondSecurityID",
-      "fix:description": "Security identifier of the bond.",
       "fix:tag": "40001"
     }
   },
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the source scheme of the AdditionalTermBondSecurityID(40001) value.",
       "display": "AdditionalTermBondSecurityIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:description": "Identifies the source scheme of the AdditionalTermBondSecurityID(40001) value.",
       "fix:tag": "40002"
     }
   },
@@ -31,8 +31,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of the bond.",
       "display": "AdditionalTermBondDesc",
-      "fix:description": "Description of the bond.",
       "fix:tag": "40003"
     }
   },
@@ -43,8 +43,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondDesc(40005) field.",
       "display": "EncodedAdditionalTermBondDescLen",
-      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondDesc(40005) field.",
       "fix:tag": "40004"
     }
   },
@@ -55,8 +55,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondDesc(40003) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondDesc(40003) field.",
       "display": "EncodedAdditionalTermBondDesc",
-      "fix:description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondDesc(40003) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondDesc(40003) field.",
       "fix:tag": "40005"
     }
   },
@@ -67,8 +67,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
       "display": "AdditionalTermBondCurrency",
-      "fix:description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
       "fix:tag": "40006"
     }
   },
@@ -79,8 +79,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Issuer of the bond.",
       "display": "AdditionalTermBondIssuer",
-      "fix:description": "Issuer of the bond.",
       "fix:tag": "40007"
     }
   },
@@ -91,8 +91,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondIssuer(40009) field.",
       "display": "EncodedAdditionalTermBondIssuerLen",
-      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondIssuer(40009) field.",
       "fix:tag": "40008"
     }
   },
@@ -103,8 +103,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondIssuer(40007) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondIssuer(40007) field.",
       "display": "EncodedAdditionalTermBondIssuer",
-      "fix:description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondIssuer(40007) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondIssuer(40007) field.",
       "fix:tag": "40009"
     }
   },
@@ -115,9 +115,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the bond's payment priority in the event of a default.",
       "display": "AdditionalTermBondSeniority",
       "fix:codes": "{\"codes\":[{\"value\":\"JR\",\"name\":\"Junior\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":3,\"doc\":\"Junior\"},{\"value\":\"MZ\",\"name\":\"Mezzanine\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":4,\"doc\":\"Mezzanine\"},{\"value\":\"SB\",\"name\":\"Subordinated\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":2,\"doc\":\"Subordinated\"},{\"value\":\"SD\",\"name\":\"SeniorSecured\",\"since\":\"5.0SP1\",\"ep\":83,\"doc\":\"Senior Secured\"},{\"value\":\"SN\",\"name\":\"SeniorNonPreferred\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":5,\"doc\":\"Senior Non-Preferred\"},{\"value\":\"SR\",\"name\":\"Senior\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":1,\"doc\":\"Senior\"}]}",
-      "fix:description": "Specifies the bond's payment priority in the event of a default.",
       "fix:tag": "40010"
     }
   },
@@ -128,9 +128,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Coupon type of the bond.",
       "display": "AdditionalTermBondCouponType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Zero\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero\"},{\"value\":\"1\",\"name\":\"FixedRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Fixed rate\"},{\"value\":\"2\",\"name\":\"FloatingRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Floating rate\"},{\"value\":\"3\",\"name\":\"Structured\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Structured\"}]}",
-      "fix:description": "Coupon type of the bond.",
       "fix:tag": "40011"
     }
   },
@@ -141,8 +141,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Coupon rate of the bond. See also CouponRate(223).",
       "display": "AdditionalTermBondCouponRate",
-      "fix:description": "Coupon rate of the bond. See also CouponRate(223).",
       "fix:tag": "40012"
     }
   },
@@ -153,8 +153,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The maturity date of the bond.",
       "display": "AdditionalTermBondMaturityDate",
-      "fix:description": "The maturity date of the bond.",
       "fix:tag": "40013"
     }
   },
@@ -165,8 +165,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The par value of the bond.",
       "display": "AdditionalTermBondParValue",
-      "fix:description": "The par value of the bond.",
       "fix:tag": "40014"
     }
   },
@@ -177,8 +177,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Total issued amount of the bond.",
       "display": "AdditionalTermBondCurrentTotalIssuedAmount",
-      "fix:description": "Total issued amount of the bond.",
       "fix:tag": "40015"
     }
   },
@@ -189,8 +189,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
       "display": "AdditionalTermBondCouponFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency of the bond's coupon payment.",
       "fix:tag": "40016"
     }
   },
@@ -201,9 +201,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
       "display": "AdditionalTermBondCouponFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency of the bond's coupon payment.",
       "fix:tag": "40017"
     }
   },
@@ -214,9 +214,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
       "display": "AdditionalTermBondDayCount",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
       "fix:tag": "40018"
     }
   },
@@ -227,8 +227,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
       "display": "AdditionalTermConditionPrecedentBondIndicator",
-      "fix:description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
       "fix:tag": "40020"
     }
   },
@@ -239,8 +239,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the discrepancy clause is applicable.",
       "display": "AdditionalTermDiscrepancyClauseIndicator",
-      "fix:description": "Indicates whether the discrepancy clause is applicable.",
       "fix:tag": "40021"
     }
   },
@@ -251,8 +251,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the CashSettlAmount(40034) is denominated in. Uses ISO 4217 currency codes.",
       "display": "CashSettlCurrency",
-      "fix:description": "Specifies the currency the CashSettlAmount(40034) is denominated in. Uses ISO 4217 currency codes.",
       "fix:tag": "40023"
     }
   },
@@ -263,8 +263,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for the purpose of cash settlement.",
       "display": "CashSettlValuationFirstBusinessDayOffset",
-      "fix:description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for the purpose of cash settlement.",
       "fix:tag": "40024"
     }
   },
@@ -276,8 +276,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The time of valuation.",
       "display": "CashSettlValuationTime",
-      "fix:description": "The time of valuation.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettlvaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"cashsettlvaluationtime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "40025"
     }
@@ -289,8 +289,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "CashSettlBusinessCenter",
-      "fix:description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40026"
     }
   },
@@ -301,9 +301,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The type of quote used to determine the cash settlement price.",
       "display": "CashSettlQuoteMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Offer\"}]}",
-      "fix:description": "The type of quote used to determine the cash settlement price.",
       "fix:tag": "40027"
     }
   },
@@ -314,8 +314,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
       "display": "CashSettlQuoteAmount",
-      "fix:description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
       "fix:tag": "40028"
     }
   },
@@ -326,8 +326,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the CashSettlQuoteAmount(40028) is denominated in. Uses ISO 4217 Currency Code.",
       "display": "CashSettlQuoteCurrency",
-      "fix:description": "Specifies the currency the CashSettlQuoteAmount(40028) is denominated in. Uses ISO 4217 Currency Code.",
       "fix:tag": "40029"
     }
   },
@@ -338,8 +338,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
       "display": "CashSettlMinimumQuoteAmount",
-      "fix:description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
       "fix:tag": "40030"
     }
   },
@@ -350,8 +350,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the CashSettlMinimumQuoteAmount(40030) is denominated in. Uses ISO 4217 Currency Code.",
       "display": "CashSettlMinimumQuoteCurrency",
-      "fix:description": "Specifies the currency the CashSettlMinimumQuoteAmount(40030) is denominated in. Uses ISO 4217 Currency Code.",
       "fix:tag": "40031"
     }
   },
@@ -362,8 +362,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
       "display": "CashSettlDealer",
-      "fix:description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
       "fix:tag": "40032"
     }
   },
@@ -374,8 +374,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of business days used in the determination of the cash settlement payment date.",
       "display": "CashSettlBusinessDays",
-      "fix:description": "The number of business days used in the determination of the cash settlement payment date.",
       "fix:tag": "40033"
     }
   },
@@ -386,8 +386,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
       "display": "CashSettlAmount",
-      "fix:description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
       "fix:tag": "40034"
     }
   },
@@ -398,8 +398,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount calculated is (1 - CashSettlRecoveryFactor(40035)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
       "display": "CashSettlRecoveryFactor",
-      "fix:description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount calculated is (1 - CashSettlRecoveryFactor(40035)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
       "fix:tag": "40035"
     }
   },
@@ -410,8 +410,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
       "display": "CashSettlFixedTermIndicator",
-      "fix:description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
       "fix:tag": "40036"
     }
   },
@@ -422,8 +422,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether accrued interest is included or not in the value provided in CashSettlAmount(40034). For cash settlement this specifies whether quotations should be obtained inclusive or not of accrued interest.",
       "display": "CashSettlAccruedInterestIndicator",
-      "fix:description": "Indicates whether accrued interest is included or not in the value provided in CashSettlAmount(40034). For cash settlement this specifies whether quotations should be obtained inclusive or not of accrued interest.",
       "fix:tag": "40037"
     }
   },
@@ -434,9 +434,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
       "display": "CashSettlValuationMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Market\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Market\"},{\"value\":\"1\",\"name\":\"Highest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Highest\"},{\"value\":\"2\",\"name\":\"AverageMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Average market\"},{\"value\":\"3\",\"name\":\"AverageHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Average highest\"},{\"value\":\"4\",\"name\":\"BlendedMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Blended market\"},{\"value\":\"5\",\"name\":\"BlendedHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Blended highest\"},{\"value\":\"6\",\"name\":\"AverageBlendedMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Average blended market\"},{\"value\":\"7\",\"name\":\"AverageBlendedHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Average blended highest\"}]}",
-      "fix:description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
       "fix:tag": "40038"
     }
   },
@@ -447,8 +447,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "CashSettlTermXID",
-      "fix:description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"cashsettltermxid\",\"type\":\"XID\"}]}",
       "fix:tag": "40039"
     }
@@ -460,8 +460,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies which contract definition, such as those published by ISDA, will apply for the terms of the trade. See https://fpml.org/coding-scheme/contractual-definitions for values.",
       "display": "ContractualDefinition",
-      "fix:description": "Specifies which contract definition, such as those published by ISDA, will apply for the terms of the trade. See https://fpml.org/coding-scheme/contractual-definitions for values.",
       "fix:tag": "40041"
     }
   },
@@ -472,8 +472,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the applicable contract matrix. See https://fpml.org/coding-scheme/matrix-type-1-0.xml for values.",
       "display": "ContractualMatrixSource",
-      "fix:description": "Identifies the applicable contract matrix. See https://fpml.org/coding-scheme/matrix-type-1-0.xml for values.",
       "fix:tag": "40043"
     }
   },
@@ -484,8 +484,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable.",
       "display": "ContractualMatrixDate",
-      "fix:description": "The publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable.",
       "fix:tag": "40044"
     }
   },
@@ -496,8 +496,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the applicable key into the relevant contract matrix. In the case of 2000 ISDA Definitions Settlement Matrix for Early Termination and Swaptions, the ContractualMatrixTerm(40045) is not applicable and is to be omitted. See https://fpml.org/coding-scheme/credit-matrix-transaction-type for values.",
       "display": "ContractualMatrixTerm",
-      "fix:description": "Specifies the applicable key into the relevant contract matrix. In the case of 2000 ISDA Definitions Settlement Matrix for Early Termination and Swaptions, the ContractualMatrixTerm(40045) is not applicable and is to be omitted. See https://fpml.org/coding-scheme/credit-matrix-transaction-type for values.",
       "fix:tag": "40045"
     }
   },
@@ -508,8 +508,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the applicable contractual supplement. See https://fpml.org/coding-scheme/contractual-supplement for values.",
       "display": "FinancingTermSupplementDesc",
-      "fix:description": "Identifies the applicable contractual supplement. See https://fpml.org/coding-scheme/contractual-supplement for values.",
       "fix:tag": "40047"
     }
   },
@@ -520,8 +520,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The publication date of the applicable version of the contractual supplement.",
       "display": "FinancingTermSupplementDate",
-      "fix:description": "The publication date of the applicable version of the contractual supplement.",
       "fix:tag": "40048"
     }
   },
@@ -532,9 +532,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of swap stream.",
       "display": "StreamType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PaymentCashSettlement\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Payment / cash settlement\"},{\"value\":\"1\",\"name\":\"PhysicalDelivery\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Physical delivery\"}]}",
-      "fix:description": "Type of swap stream.",
       "fix:tag": "40050"
     }
   },
@@ -545,8 +545,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A short descriptive name given to the payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
       "display": "StreamDesc",
-      "fix:description": "A short descriptive name given to the payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
       "fix:tag": "40051"
     }
   },
@@ -557,9 +557,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party paying the stream.",
       "display": "StreamPaySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party paying the stream.",
       "fix:tag": "40052"
     }
   },
@@ -570,9 +570,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party receiving the stream.",
       "display": "StreamReceiveSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party receiving the stream.",
       "fix:tag": "40053"
     }
   },
@@ -583,8 +583,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Notional, or initial notional value for the payment stream. Use the PaymentScheduleGrp component to specify the rate steps.",
       "display": "StreamNotional",
-      "fix:description": "Notional, or initial notional value for the payment stream. Use the PaymentScheduleGrp component to specify the rate steps.",
       "fix:tag": "40054"
     }
   },
@@ -595,8 +595,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the StreamNotional(40054) is denominated in. Uses ISO 4217 currency codes.",
       "display": "StreamCurrency",
-      "fix:description": "Specifies the currency the StreamNotional(40054) is denominated in. Uses ISO 4217 currency codes.",
       "fix:tag": "40055"
     }
   },
@@ -607,8 +607,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "display": "StreamText",
-      "fix:description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "fix:tag": "40056"
     }
   },
@@ -619,8 +619,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted effective date.",
       "display": "UnderlyingStreamEffectiveDateUnadjusted",
-      "fix:description": "The unadjusted effective date.",
       "fix:tag": "40057"
     }
   },
@@ -631,9 +631,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the underlying instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamEffectiveDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the underlying instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40058"
     }
   },
@@ -644,8 +644,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the underlying instrument's stream's effective, or relative effective, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamEffectiveDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the underlying instrument's stream's effective, or relative effective, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40059"
     }
   },
@@ -656,8 +656,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingStreamEffectiveDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40060"
     }
   },
@@ -668,8 +668,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative effective date offset.",
       "display": "UnderlyingStreamEffectiveDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative effective date offset.",
       "fix:tag": "40061"
     }
   },
@@ -680,9 +680,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative effective date offset.",
       "display": "UnderlyingStreamEffectiveDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative effective date offset.",
       "fix:tag": "40062"
     }
   },
@@ -693,9 +693,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative effective date offset.",
       "display": "UnderlyingStreamEffectiveDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative effective date offset.",
       "fix:tag": "40063"
     }
   },
@@ -706,8 +706,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted effective date.",
       "display": "UnderlyingStreamEffectiveDateAdjusted",
-      "fix:description": "The adjusted effective date.",
       "fix:tag": "40064"
     }
   },
@@ -718,8 +718,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted termination date.",
       "display": "StreamTerminationDateUnadjusted",
-      "fix:description": "The unadjusted termination date.",
       "fix:tag": "40065"
     }
   },
@@ -730,9 +730,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamTerminationDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40066"
     }
   },
@@ -743,8 +743,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "StreamTerminationDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40067"
     }
   },
@@ -755,8 +755,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "StreamTerminationDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40068"
     }
   },
@@ -767,8 +767,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative termination date offset.",
       "display": "StreamTerminationDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative termination date offset.",
       "fix:tag": "40069"
     }
   },
@@ -779,9 +779,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative termination date offset.",
       "display": "StreamTerminationDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative termination date offset.",
       "fix:tag": "40070"
     }
   },
@@ -792,9 +792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative termination date offset.",
       "display": "StreamTerminationDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative termination date offset.",
       "fix:tag": "40071"
     }
   },
@@ -805,8 +805,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted termination date.",
       "display": "StreamTerminationDateAdjusted",
-      "fix:description": "The adjusted termination date.",
       "fix:tag": "40072"
     }
   },
@@ -817,9 +817,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamCalculationPeriodBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40073"
     }
   },
@@ -830,8 +830,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "StreamCalculationPeriodBusinessCenter",
-      "fix:description": "The business center calendar used to adjust calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40074"
     }
   },
@@ -842,8 +842,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first calculation period start date if before the effective date.",
       "display": "StreamFirstPeriodStartDateUnadjusted",
-      "fix:description": "The unadjusted first calculation period start date if before the effective date.",
       "fix:tag": "40075"
     }
   },
@@ -854,9 +854,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the instrument's stream's first calculation period start date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamFirstPeriodStartDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the instrument's stream's first calculation period start date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40076"
     }
   },
@@ -867,8 +867,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "StreamFirstPeriodStartDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40077"
     }
   },
@@ -879,8 +879,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted first calculation period start date, if it is before the effective date.",
       "display": "StreamFirstPeriodStartDateAdjusted",
-      "fix:description": "The adjusted first calculation period start date, if it is before the effective date.",
       "fix:tag": "40078"
     }
   },
@@ -891,8 +891,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
       "display": "StreamFirstRegularPeriodStartDateUnadjusted",
-      "fix:description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
       "fix:tag": "40079"
     }
   },
@@ -903,8 +903,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted end date of the initial compounding period.",
       "display": "StreamFirstCompoundingPeriodEndDateUnadjusted",
-      "fix:description": "The unadjusted end date of the initial compounding period.",
       "fix:tag": "40080"
     }
   },
@@ -915,8 +915,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted last regular period end date if there is a final stub period.",
       "display": "StreamLastRegularPeriodEndDateUnadjusted",
-      "fix:description": "The unadjusted last regular period end date if there is a final stub period.",
       "fix:tag": "40081"
     }
   },
@@ -927,8 +927,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
       "display": "StreamCalculationFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
       "fix:tag": "40082"
     }
   },
@@ -939,9 +939,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "display": "StreamCalculationFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "fix:tag": "40083"
     }
   },
@@ -952,9 +952,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamCalculationRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40084"
     }
   },
@@ -965,8 +965,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
       "display": "SettlRatePostponementMaximumDays",
-      "fix:description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
       "fix:tag": "40086"
     }
   },
@@ -977,9 +977,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the source of the rate information.",
       "display": "LegPaymentStreamNonDeliverableSettlRateSource",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "Identifies the source of the rate information.",
       "fix:tag": "40087"
     }
   },
@@ -990,8 +990,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether to request a settlement rate quote from the market.",
       "display": "SettlRatePostponementSurvey",
-      "fix:description": "Indicates whether to request a settlement rate quote from the market.",
       "fix:tag": "40088"
     }
   },
@@ -1002,9 +1002,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used to identify the settlement rate postponement calculation agent.",
       "display": "SettlRatePostponementCalculationAgent",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExercisingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Exercising party\"},{\"value\":\"1\",\"name\":\"NonExercisingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Non-exercising party\"},{\"value\":\"2\",\"name\":\"MasterAgreeent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"As specified in the master agreement\"},{\"value\":\"3\",\"name\":\"Supplement\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"As specified in the standard terms supplement\"}]}",
-      "fix:description": "Used to identify the settlement rate postponement calculation agent.",
       "fix:tag": "40089"
     }
   },
@@ -1015,9 +1015,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of provisions.",
       "display": "ProvisionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MandatoryEarlyTermination\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Mandatory early termination\"},{\"value\":\"1\",\"name\":\"OptionalEarlyTermination\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Optional early termination\"},{\"value\":\"2\",\"name\":\"Cancelable\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Cancelable\"},{\"value\":\"3\",\"name\":\"Extendable\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Extendable\"},{\"value\":\"4\",\"name\":\"MutualEarlyTermination\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Mutual early termination\"},{\"value\":\"5\",\"name\":\"Evergreen\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":5,\"doc\":\"Evergreen\"},{\"value\":\"6\",\"name\":\"Callable\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":6,\"doc\":\"Callable\"},{\"value\":\"7\",\"name\":\"Puttable\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":7,\"doc\":\"Puttable\"}]}",
-      "fix:description": "Type of provisions.",
       "fix:tag": "40091"
     }
   },
@@ -1028,8 +1028,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted date of the provision.",
       "display": "ProvisionDateUnadjusted",
-      "fix:description": "The unadjusted date of the provision.",
       "fix:tag": "40092"
     }
   },
@@ -1040,9 +1040,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the instrument's provision's dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the instrument's provision's dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40093"
     }
   },
@@ -1053,8 +1053,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the instrument's provision's dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "ProvisionDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the instrument's provision's dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40094"
     }
   },
@@ -1065,8 +1065,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted date of the provision.",
       "display": "ProvisionDateAdjusted",
-      "fix:description": "The adjusted date of the provision.",
       "fix:tag": "40095"
     }
   },
@@ -1077,8 +1077,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the provision's tenor period.",
       "display": "ProvisionDateTenorPeriod",
-      "fix:description": "Time unit multiplier for the provision's tenor period.",
       "fix:tag": "40096"
     }
   },
@@ -1089,9 +1089,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the provision's tenor period.",
       "display": "ProvisionDateTenorUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the provision's tenor period.",
       "fix:tag": "40097"
     }
   },
@@ -1102,9 +1102,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used to identify the calculation agent. The calculation agent may be identified in ProvisionCalculationAgent(40098) or in the ProvisionParties component.",
       "display": "ProvisionCalculationAgent",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExercisingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Exercising party\"},{\"value\":\"1\",\"name\":\"NonExercisingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Non-exercising party\"},{\"value\":\"2\",\"name\":\"MasterAgreeent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"As specified in the master agreement\"},{\"value\":\"3\",\"name\":\"Supplement\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"As specified in the standard terms supplement\"}]}",
-      "fix:description": "Used to identify the calculation agent. The calculation agent may be identified in ProvisionCalculationAgent(40098) or in the ProvisionParties component.",
       "fix:tag": "40098"
     }
   },
@@ -1115,9 +1115,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
       "display": "ProvisionOptionSinglePartyBuyerSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
       "fix:tag": "40099"
     }
   }

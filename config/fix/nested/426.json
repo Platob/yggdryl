@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dates in the repeating group.",
       "display": "NoPaymentStreamCompoundingDates",
-      "fix:description": "Number of dates in the repeating group.",
       "fix:tag": "42606"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamCompoundingDatesBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42620"
     }
   },
@@ -110,8 +110,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixing dates in the repeating group.",
       "display": "NoPaymentStreamFixingDates",
-      "fix:description": "Number of fixing dates in the repeating group.",
       "fix:tag": "42660"
     }
   },
@@ -162,8 +162,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of formulas in the repeating group.",
       "display": "NoPaymentStreamFormulas",
-      "fix:description": "Number of formulas in the repeating group.",
       "fix:tag": "42683"
     }
   },
@@ -194,8 +194,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStubEndDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42696"
     }
   }

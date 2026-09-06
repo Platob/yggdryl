@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rate sources in the repeating group",
       "display": "NoLegPaymentScheduleRateSources",
-      "fix:description": "Number of rate sources in the repeating group",
       "fix:tag": "40414"
     }
   },
@@ -358,8 +358,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of stubs in the repeating group",
       "display": "NoLegPaymentStubs",
-      "fix:description": "Number of stubs in the repeating group",
       "fix:tag": "40418"
     }
   },
@@ -630,8 +630,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provisions in the repeating group.",
       "display": "NoLegProvisions",
-      "fix:description": "Number of provisions in the repeating group.",
       "fix:tag": "40448"
     }
   },
@@ -672,8 +672,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provision cash settlement payment dates in the repeating group.",
       "display": "NoLegProvisionCashSettlPaymentDates",
-      "fix:description": "Number of provision cash settlement payment dates in the repeating group.",
       "fix:tag": "40473"
     }
   },
@@ -714,8 +714,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provision option exercise fixed dates in the repeating group.",
       "display": "NoLegProvisionOptionExerciseFixedDates",
-      "fix:description": "Number of provision option exercise fixed dates in the repeating group.",
       "fix:tag": "40495"
     }
   }

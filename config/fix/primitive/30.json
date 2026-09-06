@@ -8,8 +8,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time at which volatility was computed.",
       "display": "VolatilityTime",
-      "fix:description": "Time at which volatility was computed.",
       "fix:tag": "3000"
     }
   },
@@ -20,8 +20,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Volatility based on bid prices.",
       "display": "BidVolatility",
-      "fix:description": "Volatility based on bid prices.",
       "fix:tag": "3001"
     }
   },
@@ -32,8 +32,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Volatility based on offer prices.",
       "display": "OfferVolatility",
-      "fix:description": "Volatility based on offer prices.",
       "fix:tag": "3002"
     }
   },
@@ -44,8 +44,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Volatility based on mid prices.",
       "display": "MidVolatility",
-      "fix:description": "Volatility based on mid prices.",
       "fix:tag": "3003"
     }
   },
@@ -58,8 +58,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Timestamp at which the relative valuation metric or analytic is calculated or captured.",
       "display": "RelativeValueTimestamp",
-      "fix:description": "Timestamp at which the relative valuation metric or analytic is calculated or captured.",
       "fix:tag": "3004"
     }
   },
@@ -70,9 +70,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of trade assigned to a trade.",
       "display": "TradeType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RegularTrade\",\"since\":\"4.4\",\"doc\":\"Regular trade\"},{\"value\":\"1\",\"name\":\"BlockTrade\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Block trade\"},{\"value\":\"10\",\"name\":\"AfterHoursTrade\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"After hours trade\"},{\"value\":\"11\",\"name\":\"ExchangeForRisk\",\"since\":\"4.4\",\"ep\":5,\"sort\":11,\"doc\":\"Exchange for risk (EFR)\"},{\"value\":\"12\",\"name\":\"ExchangeForSwap\",\"since\":\"4.4\",\"ep\":5,\"sort\":12,\"doc\":\"Exchange for swap (EFS)\"},{\"value\":\"13\",\"name\":\"ExchangeOfFuturesFor\",\"since\":\"4.4\",\"ep\":5,\"sort\":13,\"doc\":\"Exchange of futures for in market futures (EFM)\"},{\"value\":\"14\",\"name\":\"ExchangeOfOptionsForOptions\",\"since\":\"4.4\",\"ep\":5,\"sort\":14,\"doc\":\"Exchange of options for options (EOO)\"},{\"value\":\"15\",\"name\":\"TradingAtSettlement\",\"since\":\"4.4\",\"ep\":5,\"sort\":15,\"doc\":\"Trading at settlement\"},{\"value\":\"16\",\"name\":\"AllOrNone\",\"since\":\"4.4\",\"ep\":5,\"sort\":16,\"doc\":\"All or none\"},{\"value\":\"17\",\"name\":\"FuturesLargeOrderExecution\",\"since\":\"4.4\",\"ep\":5,\"sort\":17,\"doc\":\"Futures large order execution\"},{\"value\":\"18\",\"name\":\"ExchangeOfFuturesForFutures\",\"since\":\"4.4\",\"ep\":5,\"sort\":18,\"doc\":\"Exchange of futures for external market futures (EFF)\"},{\"value\":\"19\",\"name\":\"OptionInterimTrade\",\"since\":\"4.4\",\"ep\":5,\"sort\":19,\"doc\":\"Option interim trade\"},{\"value\":\"2\",\"name\":\"EFP\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Exchange for physical (EFP)\"},{\"value\":\"20\",\"name\":\"OptionCabinetTrade\",\"since\":\"4.4\",\"ep\":5,\"sort\":20,\"doc\":\"Option cabinet trade\"},{\"value\":\"22\",\"name\":\"PrivatelyNegotiatedTrades\",\"since\":\"4.4\",\"ep\":19,\"sort\":21,\"doc\":\"Privately negotiated trade\"},{\"value\":\"23\",\"name\":\"SubstitutionOfFuturesForForwards\",\"since\":\"4.4\",\"ep\":19,\"sort\":22,\"doc\":\"Substitution of futures for forwards\"},{\"value\":\"24\",\"name\":\"ErrorTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":24,\"group\":\"MiFID Values\",\"doc\":\"Error trade\"},{\"value\":\"25\",\"name\":\"SpecialCumDividend\",\"since\":\"4.4\",\"ep\":26,\"sort\":25,\"group\":\"MiFID Values\",\"doc\":\"Special cum dividend (CD)\"},{\"value\":\"26\",\"name\":\"SpecialExDividend\",\"since\":\"4.4\",\"ep\":26,\"sort\":26,\"group\":\"MiFID Values\",\"doc\":\"Special ex dividend (XD)\"},{\"value\":\"27\",\"name\":\"SpecialCumCoupon\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"group\":\"MiFID Values\",\"doc\":\"Special cum coupon (CC)\"},{\"value\":\"28\",\"name\":\"SpecialExCoupon\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"group\":\"MiFID Values\",\"doc\":\"Special ex coupon (XC)\"},{\"value\":\"29\",\"name\":\"CashSettlement\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"group\":\"MiFID Values\",\"doc\":\"Cash settlement (CS)\"},{\"value\":\"3\",\"name\":\"Transfer\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Transfer\"},{\"value\":\"30\",\"name\":\"SpecialPrice\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"group\":\"MiFID Values\",\"doc\":\"Special price (SP)\"},{\"value\":\"31\",\"name\":\"GuaranteedDelivery\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"group\":\"MiFID Values\",\"doc\":\"Guaranteed delivery (GD)\"},{\"value\":\"32\",\"name\":\"SpecialCumRights\",\"since\":\"4.4\",\"ep\":26,\"sort\":32,\"group\":\"MiFID Values\",\"doc\":\"Special cum rights (CR)\"},{\"value\":\"33\",\"name\":\"SpecialExRights\",\"since\":\"4.4\",\"ep\":26,\"sort\":33,\"group\":\"MiFID Values\",\"doc\":\"Special ex rights (XR)\"},{\"value\":\"34\",\"name\":\"SpecialCumCapitalRepayments\",\"since\":\"4.4\",\"ep\":26,\"sort\":34,\"group\":\"MiFID Values\",\"doc\":\"Special cum capital repayments (CP)\"},{\"value\":\"35\",\"name\":\"SpecialExCapitalRepayments\",\"since\":\"4.4\",\"ep\":26,\"sort\":35,\"group\":\"MiFID Values\",\"doc\":\"Special ex capital repayments (XP)\"},{\"value\":\"36\",\"name\":\"SpecialCumBonus\",\"since\":\"4.4\",\"ep\":26,\"sort\":36,\"group\":\"MiFID Values\",\"doc\":\"Special cum bonus (CB)\"},{\"value\":\"37\",\"name\":\"SpecialExBonus\",\"since\":\"4.4\",\"ep\":26,\"sort\":37,\"group\":\"MiFID Values\",\"doc\":\"Special ex bonus (XB)\"},{\"value\":\"38\",\"name\":\"LargeTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":38,\"group\":\"MiFID Values\",\"doc\":\"Block trade\"},{\"value\":\"39\",\"name\":\"WorkedPrincipalTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":39,\"group\":\"MiFID Values\",\"doc\":\"Worked principal trade\"},{\"value\":\"4\",\"name\":\"LateTrade\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Late trade\"},{\"value\":\"40\",\"name\":\"BlockTrades\",\"since\":\"4.4\",\"ep\":26,\"sort\":40,\"group\":\"MiFID Values\",\"doc\":\"Block trades\"},{\"value\":\"41\",\"name\":\"NameChange\",\"since\":\"4.4\",\"ep\":26,\"sort\":41,\"group\":\"MiFID Values\",\"doc\":\"Name change\"},{\"value\":\"42\",\"name\":\"PortfolioTransfer\",\"since\":\"4.4\",\"ep\":26,\"sort\":42,\"group\":\"MiFID Values\",\"doc\":\"Portfolio transfer\"},{\"value\":\"43\",\"name\":\"ProrogationBuy\",\"since\":\"4.4\",\"ep\":26,\"sort\":43,\"group\":\"MiFID Values\",\"doc\":\"Prorogation buy\"},{\"value\":\"44\",\"name\":\"ProrogationSell\",\"since\":\"4.4\",\"ep\":26,\"sort\":44,\"group\":\"MiFID Values\",\"doc\":\"Prorogation sell\"},{\"value\":\"45\",\"name\":\"OptionExercise\",\"since\":\"4.4\",\"ep\":26,\"sort\":45,\"group\":\"MiFID Values\",\"doc\":\"Option exercise\"},{\"value\":\"46\",\"name\":\"DeltaNeutralTransaction\",\"since\":\"4.4\",\"ep\":26,\"sort\":46,\"group\":\"MiFID Values\",\"doc\":\"Delta neutral transaction\"},{\"value\":\"47\",\"name\":\"FinancingTransaction\",\"since\":\"4.4\",\"ep\":26,\"sort\":47,\"group\":\"MiFID Values\",\"doc\":\"Financing transaction\"},{\"value\":\"48\",\"name\":\"NonStandardSettlement\",\"since\":\"5.0\",\"ep\":47,\"sort\":48,\"doc\":\"Non-standard settlement\"},{\"value\":\"49\",\"name\":\"DerivativeRelatedTransaction\",\"since\":\"5.0\",\"ep\":47,\"sort\":49,\"doc\":\"Derivative related transaction\"},{\"value\":\"5\",\"name\":\"TTrade\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"T trade\"},{\"value\":\"50\",\"name\":\"PortfolioTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":50,\"doc\":\"Portfolio trade\"},{\"value\":\"51\",\"name\":\"VolumeWeightedAverageTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":51,\"doc\":\"Volume weighted average trade\"},{\"value\":\"52\",\"name\":\"ExchangeGrantedTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":52,\"doc\":\"Exchange granted trade\"},{\"value\":\"53\",\"name\":\"RepurchaseAgreement\",\"since\":\"5.0\",\"ep\":47,\"sort\":53,\"doc\":\"Repurchase agreement\"},{\"value\":\"54\",\"name\":\"OTC\",\"since\":\"5.0\",\"ep\":47,\"sort\":54,\"doc\":\"OTC\"},{\"value\":\"55\",\"name\":\"ExchangeBasisFacility\",\"since\":\"5.0\",\"ep\":55,\"sort\":55,\"doc\":\"Exchange basis facility (EBF)\"},{\"value\":\"56\",\"name\":\"OpeningTrade\",\"since\":\"5.0SP2\",\"ep\":104,\"sort\":56,\"doc\":\"Opening trade\"},{\"value\":\"57\",\"name\":\"NettedTrade\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":57,\"doc\":\"Netted trade\"},{\"value\":\"58\",\"name\":\"BlockSwapTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":58,\"doc\":\"Block swap trade\"},{\"value\":\"59\",\"name\":\"CreditEventTrade\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":59,\"doc\":\"Credit event trade\"},{\"value\":\"6\",\"name\":\"WeightedAveragePriceTrade\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Weighted average price trade\"},{\"value\":\"60\",\"name\":\"SuccessionEventTrade\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":60,\"doc\":\"Succession event trade\"},{\"value\":\"61\",\"name\":\"GiveUpGiveInTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":61,\"doc\":\"Give-up Give-in trade\"},{\"value\":\"62\",\"name\":\"DarkTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":62,\"doc\":\"Dark trade\"},{\"value\":\"63\",\"name\":\"TechnicalTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":63,\"doc\":\"Technical trade\"},{\"value\":\"64\",\"name\":\"Benchmark\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":64,\"doc\":\"Benchmark\"},{\"value\":\"65\",\"name\":\"PackageTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":65,\"doc\":\"Package trade\"},{\"value\":\"66\",\"name\":\"RollTrade\",\"since\":\"5.0SP2\",\"ep\":258,\"sort\":66,\"doc\":\"Roll trade\"},{\"value\":\"67\",\"name\":\"ClosingPriceTrade\",\"ep\":283,\"sort\":67,\"doc\":\"Closing price trade\"},{\"value\":\"68\",\"name\":\"InterFundTransferTrade\",\"ep\":289,\"sort\":68,\"doc\":\"Inter-fund transfer trade\"},{\"value\":\"69\",\"name\":\"NetAssetValueCalculatedTrade\",\"ep\":289,\"sort\":69,\"doc\":\"Net asset value calculated trade\"},{\"value\":\"7\",\"name\":\"BunchedTrade\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Bunched trade\"},{\"value\":\"8\",\"name\":\"LateBunchedTrade\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Late bunched trade\"},{\"value\":\"9\",\"name\":\"PriorReferencePriceTrade\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Prior reference price trade\"}]}",
-      "fix:description": "Type of trade assigned to a trade.",
       "fix:tag": "3006"
     }
   },
@@ -83,9 +83,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Further qualification to the trade type defined in TradeType(3006).",
       "display": "TradeSubType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CMTA\",\"since\":\"4.4\",\"ep\":4,\"sort\":1,\"doc\":\"CMTA\"},{\"value\":\"1\",\"name\":\"InternalTransferOrAdjustment\",\"since\":\"4.4\",\"ep\":4,\"sort\":2,\"doc\":\"Internal transfer or adjustment\"},{\"value\":\"10\",\"name\":\"TransactionFromAssignment\",\"since\":\"4.4\",\"ep\":5,\"sort\":11,\"doc\":\"Transaction from assignment\"},{\"value\":\"11\",\"name\":\"ACATS\",\"since\":\"4.4\",\"ep\":8,\"sort\":12,\"doc\":\"ACATS\"},{\"value\":\"14\",\"name\":\"AI\",\"since\":\"4.4\",\"ep\":26,\"sort\":13,\"group\":\"MiFID Values\",\"doc\":\"AI (Automated input facility disabled in response to an exchange request.)\"},{\"value\":\"15\",\"name\":\"B\",\"since\":\"4.4\",\"ep\":26,\"sort\":14,\"group\":\"MiFID Values\",\"doc\":\"B (Transaction between two member firms where neither member firm is registered as a market maker in the security in question and neither is a designated fund manager. Also used by broker dealers when dealing with another broker which is not a member firm. Non-order book securities only.)\"},{\"value\":\"16\",\"name\":\"K\",\"since\":\"4.4\",\"ep\":26,\"sort\":15,\"group\":\"MiFID Values\",\"doc\":\"K (Transaction using block trade facility.)\"},{\"value\":\"17\",\"name\":\"LC\",\"since\":\"4.4\",\"ep\":26,\"sort\":16,\"group\":\"MiFID Values\",\"doc\":\"LC (Correction submitted more than three days after publication of the original trade report.)\"},{\"value\":\"18\",\"name\":\"M\",\"since\":\"4.4\",\"ep\":26,\"sort\":17,\"group\":\"MiFID Values\",\"doc\":\"M (Transaction, other than a transaction resulting from a stock swap or stock switch, between two market makers registered in that security including IDB or a public display system trades. Non-order book securities only.)\"},{\"value\":\"19\",\"name\":\"N\",\"since\":\"4.4\",\"ep\":26,\"sort\":18,\"group\":\"MiFID Values\",\"doc\":\"N (Non-protected portfolio transaction or a fully disclosed portfolio transaction)\"},{\"value\":\"2\",\"name\":\"ExternalTransferOrTransferOfAccount\",\"since\":\"4.4\",\"ep\":4,\"sort\":3,\"doc\":\"External transfer or transfer of account\"},{\"value\":\"20\",\"name\":\"NM\",\"since\":\"4.4\",\"ep\":26,\"sort\":19,\"group\":\"MiFID Values\",\"doc\":\"NM ( i) transaction where Exchange has granted permission for non-publication\"},{\"value\":\"21\",\"name\":\"NR\",\"since\":\"4.4\",\"ep\":26,\"sort\":20,\"group\":\"MiFID Values\",\"doc\":\"NR (Non-risk transaction in a SEATS security other than an AIM security)\"},{\"value\":\"22\",\"name\":\"P\",\"since\":\"4.4\",\"ep\":26,\"sort\":21,\"group\":\"MiFID Values\",\"doc\":\"P (Protected portfolio transaction or a worked principal agreement to effect a portfolio transaction which includes order book securities)\"},{\"value\":\"23\",\"name\":\"PA\",\"since\":\"4.4\",\"ep\":26,\"sort\":22,\"group\":\"MiFID Values\",\"doc\":\"PA (Protected transaction notification)\"},{\"value\":\"24\",\"name\":\"PC\",\"since\":\"4.4\",\"ep\":26,\"sort\":23,\"group\":\"MiFID Values\",\"doc\":\"PC (Contra trade for transaction which took place on a previous day and which was automatically executed on the Exchange trading system)\"},{\"value\":\"25\",\"name\":\"PN\",\"since\":\"4.4\",\"ep\":26,\"sort\":24,\"group\":\"MiFID Values\",\"doc\":\"PN (Worked principal notification for a portfolio transaction which includes order book securities)\"},{\"value\":\"26\",\"name\":\"R\",\"since\":\"4.4\",\"ep\":26,\"sort\":25,\"group\":\"MiFID Values\",\"doc\":\"R ( (i) riskless principal transaction between non-members where the buying and selling transactions are executed at different prices or on different terms (requires a trade report with trade type indicator R for each transaction)\"},{\"value\":\"27\",\"name\":\"RO\",\"since\":\"4.4\",\"ep\":26,\"sort\":26,\"group\":\"MiFID Values\",\"doc\":\"RO (Transaction which resulted from the exercise of a traditional option or a stock-settled covered warrant)\"},{\"value\":\"28\",\"name\":\"RT\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"group\":\"MiFID Values\",\"doc\":\"RT (Risk transaction in a SEATS security, (excluding AIM security) reported by a market maker registered in that security)\"},{\"value\":\"29\",\"name\":\"SW\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"group\":\"MiFID Values\",\"doc\":\"SW (Transactions resulting from stock swap or a stock switch (one report is required for each line of stock))\"},{\"value\":\"3\",\"name\":\"RejectForSubmittingSide\",\"since\":\"4.4\",\"ep\":4,\"sort\":4,\"doc\":\"Reject for submitting side\"},{\"value\":\"30\",\"name\":\"T\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"group\":\"MiFID Values\",\"doc\":\"T (If reporting a single protected transaction)\"},{\"value\":\"31\",\"name\":\"WN\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"group\":\"MiFID Values\",\"doc\":\"WN (Worked principal notification for a single order book security)\"},{\"value\":\"32\",\"name\":\"WT\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"group\":\"MiFID Values\",\"doc\":\"WT (Worked principal transaction (other than a portfolio transaction))\"},{\"value\":\"33\",\"name\":\"OffHoursTrade\",\"since\":\"5.0\",\"ep\":61,\"sort\":32,\"doc\":\"Off Hours Trade\"},{\"value\":\"34\",\"name\":\"OnHoursTrade\",\"since\":\"5.0\",\"ep\":61,\"sort\":33,\"doc\":\"On Hours Trade\"},{\"value\":\"35\",\"name\":\"OTCQuote\",\"since\":\"5.0\",\"ep\":61,\"sort\":34,\"doc\":\"OTC Quote\"},{\"value\":\"36\",\"name\":\"ConvertedSWAP\",\"since\":\"5.0\",\"sort\":36,\"doc\":\"Converted SWAP\"},{\"value\":\"37\",\"name\":\"CrossedTrade\",\"since\":\"5.0\",\"sort\":37,\"group\":\"MiFID Values\",\"doc\":\"Crossed Trade (X)\"},{\"value\":\"38\",\"name\":\"InterimProtectedTrade\",\"since\":\"5.0\",\"sort\":38,\"group\":\"MiFID Values\",\"doc\":\"Interim Protected Trade (I)\"},{\"value\":\"39\",\"name\":\"LargeInScale\",\"since\":\"5.0\",\"sort\":39,\"group\":\"MiFID Values\",\"doc\":\"Large in Scale (L)\"},{\"value\":\"4\",\"name\":\"AdvisoryForContraSide\",\"since\":\"4.4\",\"ep\":4,\"sort\":5,\"doc\":\"Advisory for contra side\"},{\"value\":\"40\",\"name\":\"WashTrade\",\"since\":\"5.0SP2\",\"ep\":101,\"sort\":40,\"doc\":\"Wash Trade\"},{\"value\":\"41\",\"name\":\"TradeAtSettlement\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":41,\"doc\":\"Trade at Settlement (TAS)\"},{\"value\":\"42\",\"name\":\"AuctionTrade\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":42,\"doc\":\"Auction Trade\"},{\"value\":\"43\",\"name\":\"TradeAtMarker\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":43,\"doc\":\"Trade at Marker (TAM)\"},{\"value\":\"44\",\"name\":\"CreditDefault\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":44,\"doc\":\"Default (Credit Event)\"},{\"value\":\"45\",\"name\":\"CreditRestructuring\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":45,\"doc\":\"Restructuring (credit event)\"},{\"value\":\"46\",\"name\":\"Merger\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":46,\"doc\":\"Merger (succession event)\"},{\"value\":\"47\",\"name\":\"SpinOff\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":47,\"doc\":\"Spin-off (succession event)\"},{\"value\":\"48\",\"name\":\"MultilateralCompression\",\"since\":\"5.0SP2\",\"ep\":201,\"sort\":48,\"doc\":\"Multilateral compression\"},{\"value\":\"5\",\"name\":\"OffsetDueToAnAllocation\",\"since\":\"4.4\",\"ep\":5,\"sort\":6,\"doc\":\"Offset due to an allocation\"},{\"value\":\"50\",\"name\":\"Balancing\",\"since\":\"5.0SP2\",\"ep\":227,\"sort\":50,\"doc\":\"Balancing\"},{\"value\":\"51\",\"name\":\"BasisTradeIndexClose\",\"since\":\"5.0SP2\",\"ep\":227,\"sort\":51,\"doc\":\"Basis Trade index Close (BTIC)\"},{\"value\":\"52\",\"name\":\"TradeAtCashOpen\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":52,\"doc\":\"Trade At Cash Open (TACO)\"},{\"value\":\"53\",\"name\":\"TrdSubmitVenueClrSettl\",\"ep\":268,\"sort\":53,\"doc\":\"Trade submitted to venue for clearing and settlement\"},{\"value\":\"54\",\"name\":\"BilateralCompression\",\"ep\":269,\"sort\":54,\"doc\":\"Bilateral compression\"},{\"value\":\"6\",\"name\":\"OnsetDueToAnAllocation\",\"since\":\"4.4\",\"ep\":5,\"sort\":7,\"doc\":\"Onset due to an allocation\"},{\"value\":\"7\",\"name\":\"DifferentialSpread\",\"since\":\"4.4\",\"ep\":5,\"sort\":8,\"doc\":\"Differential spread\"},{\"value\":\"8\",\"name\":\"ImpliedSpreadLegExecutedAgainstAnOutright\",\"since\":\"4.4\",\"ep\":5,\"sort\":9,\"doc\":\"Implied spread leg executed against an outright\"},{\"value\":\"9\",\"name\":\"TransactionFromExercise\",\"since\":\"4.4\",\"ep\":5,\"sort\":10,\"doc\":\"Transaction from exercise\"}]}",
-      "fix:description": "Further qualification to the trade type defined in TradeType(3006).",
       "fix:tag": "3007"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Same as TrdRegTimestamp(769). Used to provide relevant timestamp for the allocation account.",
       "display": "AllocTrdRegTimestamp",
-      "fix:description": "Same as TrdRegTimestamp(769). Used to provide relevant timestamp for the allocation account.",
       "fix:tag": "3009"
     }
   },
@@ -110,9 +110,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
       "display": "AllocTrdRegTimestampType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutionTime\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Execution time\"},{\"value\":\"10\",\"name\":\"OrderSubmissionTime\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Order submission time\"},{\"value\":\"11\",\"name\":\"PubliclyReported\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Publicly reported\"},{\"value\":\"12\",\"name\":\"PublicReportUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"Public report updated\"},{\"value\":\"13\",\"name\":\"NonPubliclyReported\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"Non-publicly reported\"},{\"value\":\"14\",\"name\":\"NonPublicReportUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Non-public report updated\"},{\"value\":\"15\",\"name\":\"SubmittedForConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"Submitted for confirmation\"},{\"value\":\"16\",\"name\":\"UpdatedForConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"Updated for confirmation\"},{\"value\":\"17\",\"name\":\"Confirmed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"Confirmed\"},{\"value\":\"18\",\"name\":\"UpdatedForClearing\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"Updated for clearing\"},{\"value\":\"19\",\"name\":\"Cleared\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"Cleared\"},{\"value\":\"2\",\"name\":\"TimeIn\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Time in\"},{\"value\":\"20\",\"name\":\"AllocationsSubmitted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"Allocations submitted\"},{\"value\":\"21\",\"name\":\"AllocationsUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"Allocations updated\"},{\"value\":\"22\",\"name\":\"AllocationsCompleted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"Allocations completed\"},{\"value\":\"23\",\"name\":\"SubmittedToRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"Submitted to repository\"},{\"value\":\"24\",\"name\":\"PostTrdContntnEvnt\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":24,\"doc\":\"Post-trade continuation event\"},{\"value\":\"25\",\"name\":\"PostTradeValuation\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"doc\":\"Post-trade valuation\"},{\"value\":\"26\",\"name\":\"PreviousTimePriority\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"doc\":\"Previous time priority\"},{\"value\":\"27\",\"name\":\"IdentifierAssigned\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":27,\"doc\":\"Identifier assigned\"},{\"value\":\"28\",\"name\":\"PreviousIdentifierAssigned\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":28,\"doc\":\"Previous identifier assigned\"},{\"value\":\"29\",\"name\":\"OrderCancellationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":29,\"doc\":\"Order cancellation time\"},{\"value\":\"3\",\"name\":\"TimeOut\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Time out\"},{\"value\":\"30\",\"name\":\"OrderModificationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":30,\"doc\":\"Order modification time\"},{\"value\":\"31\",\"name\":\"OrderRoutingTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":31,\"doc\":\"Order routing time\"},{\"value\":\"32\",\"name\":\"TradeCancellationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":32,\"doc\":\"Trade cancellation time\"},{\"value\":\"33\",\"name\":\"TradeModificationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":33,\"doc\":\"Trade modification time\"},{\"value\":\"34\",\"name\":\"ReferenceTimeForBBO\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":34,\"doc\":\"Reference time for BBO\"},{\"value\":\"35\",\"name\":\"Affirmed\",\"ep\":291,\"sort\":35,\"doc\":\"Affirmed\"},{\"value\":\"36\",\"name\":\"UpdateTime\",\"ep\":300,\"sort\":36,\"doc\":\"Update time\"},{\"value\":\"4\",\"name\":\"BrokerReceipt\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Broker receipt\"},{\"value\":\"5\",\"name\":\"BrokerExecution\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Broker execution\"},{\"value\":\"6\",\"name\":\"DeskReceipt\",\"since\":\"4.4\",\"ep\":9,\"sort\":6,\"doc\":\"Desk receipt\"},{\"value\":\"7\",\"name\":\"SubmissionToClearing\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":7,\"doc\":\"Submission to clearing\"},{\"value\":\"8\",\"name\":\"TimePriority\",\"since\":\"5.0SP2\",\"ep\":101,\"sort\":8,\"doc\":\"Time priority\"},{\"value\":\"9\",\"name\":\"OrderbookEntryTime\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":9,\"doc\":\"Orderbook entry time\"}]}",
-      "fix:description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
       "fix:tag": "3010"
     }
   },
@@ -123,8 +123,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Same as TrdRegTimestampOrigin(771). Used to indicate the \"origin\" or source of the timestamp relevant for the allocation account.",
       "display": "AllocTrdRegTimestampSrc",
-      "fix:description": "Same as TrdRegTimestampOrigin(771). Used to indicate the \"origin\" or source of the timestamp relevant for the allocation account.",
       "fix:tag": "3011"
     }
   },
@@ -135,8 +135,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for a certificate issued by an algorithmic trading firm.",
       "display": "AlgoCertificateID",
-      "fix:description": "Unique identifier for a certificate issued by an algorithmic trading firm.",
       "fix:tag": "3012"
     }
   },
@@ -147,8 +147,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of a certificate issued by an algorithmic trading firm.",
       "display": "AlgoCertificateDesc",
-      "fix:description": "Description of a certificate issued by an algorithmic trading firm.",
       "fix:tag": "3013"
     }
   },
@@ -159,8 +159,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of the AlgoCertificateRequest(35=EH).",
       "display": "AlgoCertificateRequestID",
-      "fix:description": "Unique identifier of the AlgoCertificateRequest(35=EH).",
       "fix:tag": "3014"
     }
   },
@@ -171,8 +171,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference identifier of the AlgoCertificateRequest(35=EH).",
       "display": "AlgoCertificateRequestRefID",
-      "fix:description": "Reference identifier of the AlgoCertificateRequest(35=EH).",
       "fix:tag": "3015"
     }
   },
@@ -183,9 +183,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateRequestTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"ep\":292,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"ep\":292,\"sort\":1,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"ep\":295,\"sort\":2,\"doc\":\"Replace\"}]}",
-      "fix:description": "Identifies the message transaction type.",
       "fix:tag": "3016"
     }
   },
@@ -196,9 +196,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
       "display": "AlgoCertificateRequestStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":292,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":292,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":292,\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
       "fix:tag": "3017"
     }
   },
@@ -209,8 +209,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of the AlgoCertificateReport(35=EJ).",
       "display": "AlgoCertificateReportID",
-      "fix:description": "Unique identifier of the AlgoCertificateReport(35=EJ).",
       "fix:tag": "3018"
     }
   },
@@ -221,8 +221,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference identifier of the AlgoCertificateReport(35=EJ).",
       "display": "AlgoCertificateReportRefID",
-      "fix:description": "Reference identifier of the AlgoCertificateReport(35=EJ).",
       "fix:tag": "3019"
     }
   },
@@ -233,9 +233,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the message transaction type.",
       "display": "AlgoCertificateReportTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"ep\":292,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"ep\":292,\"sort\":1,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"ep\":292,\"sort\":2,\"doc\":\"Replace\"}]}",
-      "fix:description": "Identifies the message transaction type.",
       "fix:tag": "3020"
     }
   },
@@ -246,9 +246,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of the report being responded to.",
       "display": "AlgoCertificateReportStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":292,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":292,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":292,\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:description": "Status of the report being responded to.",
       "fix:tag": "3021"
     }
   },
@@ -259,9 +259,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the current status of the certificate as established by the certificate issuer.",
       "display": "AlgoCertificateStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Draft\",\"ep\":292,\"doc\":\"Draft\"},{\"value\":\"1\",\"name\":\"Approved\",\"ep\":292,\"sort\":1,\"doc\":\"Approved\"},{\"value\":\"2\",\"name\":\"Submitted\",\"ep\":292,\"sort\":2,\"doc\":\"Submitted\"},{\"value\":\"3\",\"name\":\"Registered\",\"ep\":295,\"sort\":3,\"doc\":\"Registered\"},{\"value\":\"4\",\"name\":\"Cancelled\",\"ep\":303,\"sort\":4,\"doc\":\"Cancelled\"}]}",
-      "fix:description": "Identifies the current status of the certificate as established by the certificate issuer.",
       "fix:tag": "3022"
     }
   },
@@ -274,8 +274,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Date and time the details within the message have been approved.",
       "display": "ApprovalTime",
-      "fix:description": "Date and time the details within the message have been approved.",
       "fix:tag": "3023"
     }
   },
@@ -286,8 +286,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of means of testing for an algorithm.",
       "display": "AlgoTestDesc",
-      "fix:description": "Description of means of testing for an algorithm.",
       "fix:tag": "3024"
     }
   },
@@ -298,8 +298,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of the component of a system for algorithmic trading.",
       "display": "AlgoSystemModuleName",
-      "fix:description": "Name of the component of a system for algorithmic trading.",
       "fix:tag": "3026"
     }
   },
@@ -310,8 +310,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Version (e.g. build or commit number) of the component of a system for algorithmic trading.",
       "display": "AlgoSystemModuleVersion",
-      "fix:description": "Version (e.g. build or commit number) of the component of a system for algorithmic trading.",
       "fix:tag": "3027"
     }
   },
@@ -322,8 +322,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of a test scenario for a software system.",
       "display": "TestScenarioID",
-      "fix:description": "Unique identifier of a test scenario for a software system.",
       "fix:tag": "3029"
     }
   },
@@ -334,9 +334,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
       "display": "TestScenarioStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Undefined\",\"ep\":292,\"doc\":\"Undefined\"},{\"value\":\"1\",\"name\":\"Pass\",\"ep\":292,\"sort\":1,\"doc\":\"Pass\"},{\"value\":\"2\",\"name\":\"Fail\",\"ep\":292,\"sort\":2,\"doc\":\"Fail\"},{\"value\":\"3\",\"name\":\"Warning\",\"ep\":292,\"sort\":3,\"doc\":\"Warning\"}]}",
-      "fix:description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
       "fix:tag": "3030"
     }
   },
@@ -349,8 +349,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Starting date and time of test scenario execution for a software system.",
       "display": "TestScenarioStartTime",
-      "fix:description": "Starting date and time of test scenario execution for a software system.",
       "fix:tag": "3031"
     }
   },
@@ -363,8 +363,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Ending date and time of test scenario execution for a software system.",
       "display": "TestScenarioEndTime",
-      "fix:description": "Ending date and time of test scenario execution for a software system.",
       "fix:tag": "3032"
     }
   },
@@ -375,8 +375,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of the origin of the market data.",
       "display": "MDOriginDesc",
-      "fix:description": "Description of the origin of the market data.",
       "fix:tag": "3033"
     }
   },
@@ -389,8 +389,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Date and time of the market data.",
       "display": "MDOriginTime",
-      "fix:description": "Date and time of the market data.",
       "fix:tag": "3034"
     }
   },
@@ -401,8 +401,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for the group of test steps constituting a test scenario.",
       "display": "TestStepGroupID",
-      "fix:description": "Unique identifier for the group of test steps constituting a test scenario.",
       "fix:tag": "3035"
     }
   },
@@ -413,8 +413,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of a test step.",
       "display": "TestStepID",
-      "fix:description": "Unique identifier of a test step.",
       "fix:tag": "3037"
     }
   },
@@ -425,8 +425,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of a test step.",
       "display": "TestStepDesc",
-      "fix:description": "Description of a test step.",
       "fix:tag": "3038"
     }
   },
@@ -439,8 +439,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Starting time of a test step.",
       "display": "TestStepStartTime",
-      "fix:description": "Starting time of a test step.",
       "fix:tag": "3039"
     }
   },
@@ -451,8 +451,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the starting time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepStartOffsetPeriod",
-      "fix:description": "Time unit multiplier for the starting time of a test step relative to the starting time of a test scenario.",
       "fix:tag": "3040"
     }
   },
@@ -463,9 +463,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepStartOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
-      "fix:description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
       "fix:tag": "3041"
     }
   },
@@ -478,8 +478,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Ending time of a test step.",
       "display": "TestStepEndTime",
-      "fix:description": "Ending time of a test step.",
       "fix:tag": "3042"
     }
   },
@@ -490,8 +490,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the ending time of a test step relative to the starting time of a test scenario.",
       "display": "TestStepEndOffsetPeriod",
-      "fix:description": "Time unit multiplier for the ending time of a test step relative to the starting time of a test scenario.",
       "fix:tag": "3043"
     }
   },
@@ -502,9 +502,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
       "display": "TestStepEndOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
-      "fix:description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
       "fix:tag": "3044"
     }
   },
@@ -515,8 +515,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of the test step parameter.",
       "display": "TestStepParameterName",
-      "fix:description": "Name of the test step parameter.",
       "fix:tag": "3046"
     }
   },
@@ -527,9 +527,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Datatype of the test step parameter.",
       "display": "TestStepParameterType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Int\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Int\"},{\"value\":\"10\",\"name\":\"Amt\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Amt\"},{\"value\":\"11\",\"name\":\"Percentage\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Percentage\"},{\"value\":\"12\",\"name\":\"Char\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Char\"},{\"value\":\"13\",\"name\":\"Boolean\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Boolean\"},{\"value\":\"14\",\"name\":\"String\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"String\"},{\"value\":\"15\",\"name\":\"MultipleCharValue\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"MultipleCharValue\"},{\"value\":\"16\",\"name\":\"Currency\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"Currency\"},{\"value\":\"17\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Exchange\"},{\"value\":\"18\",\"name\":\"MonthYear\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"MonthYear\"},{\"value\":\"19\",\"name\":\"UTCTimestamp\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"UTCTimestamp\"},{\"value\":\"2\",\"name\":\"Length\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Length\"},{\"value\":\"20\",\"name\":\"UTCTimeOnly\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"UTCTimeOnly\"},{\"value\":\"21\",\"name\":\"LocalMktDate\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"LocalMktDate\"},{\"value\":\"22\",\"name\":\"UTCDateOnly\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"UTCDateOnly\"},{\"value\":\"23\",\"name\":\"Data\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"data\"},{\"value\":\"24\",\"name\":\"MultipleStringValue\",\"since\":\"4.4\",\"ep\":34,\"sort\":24,\"doc\":\"MultipleStringValue\"},{\"value\":\"25\",\"name\":\"Country\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":25,\"doc\":\"Country\"},{\"value\":\"26\",\"name\":\"Language\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":26,\"doc\":\"Language\"},{\"value\":\"27\",\"name\":\"TZTimeOnly\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":27,\"doc\":\"TZTimeOnly\"},{\"value\":\"28\",\"name\":\"TZTimestamp\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":28,\"doc\":\"TZTimestamp\"},{\"value\":\"29\",\"name\":\"Tenor\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":29,\"doc\":\"Tenor\"},{\"value\":\"3\",\"name\":\"NumInGroup\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"NumInGroup\"},{\"value\":\"4\",\"name\":\"SeqNum\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"SeqNum\"},{\"value\":\"5\",\"name\":\"TagNum\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"TagNum\"},{\"value\":\"6\",\"name\":\"Float\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"float\"},{\"value\":\"7\",\"name\":\"Qty\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Qty\"},{\"value\":\"8\",\"name\":\"Price\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Price\"},{\"value\":\"9\",\"name\":\"PriceOffset\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"PriceOffset\"}]}",
-      "fix:description": "Datatype of the test step parameter.",
       "fix:tag": "3047"
     }
   },
@@ -540,8 +540,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Value of the test step parameter.",
       "display": "TestStepParameterValue",
-      "fix:description": "Value of the test step parameter.",
       "fix:tag": "3048"
     }
   },
@@ -552,8 +552,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of the component of a testing system.",
       "display": "TestSystemModuleName",
-      "fix:description": "Name of the component of a testing system.",
       "fix:tag": "3050"
     }
   },
@@ -564,8 +564,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Version (e.g. build or commit number) of the component of a testing system.",
       "display": "TestSystemModuleVersion",
-      "fix:description": "Version (e.g. build or commit number) of the component of a testing system.",
       "fix:tag": "3051"
     }
   },
@@ -576,8 +576,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of a test measure.",
       "display": "TestMeasureName",
-      "fix:description": "Name of a test measure.",
       "fix:tag": "3053"
     }
   },
@@ -588,8 +588,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Description of a test measure.",
       "display": "TestMeasureDesc",
-      "fix:description": "Description of a test measure.",
       "fix:tag": "3054"
     }
   },
@@ -600,9 +600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Datatype of the metric being used for a test.",
       "display": "TestMeasureType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Int\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Int\"},{\"value\":\"10\",\"name\":\"Amt\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Amt\"},{\"value\":\"11\",\"name\":\"Percentage\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Percentage\"},{\"value\":\"12\",\"name\":\"Char\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Char\"},{\"value\":\"13\",\"name\":\"Boolean\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Boolean\"},{\"value\":\"14\",\"name\":\"String\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"String\"},{\"value\":\"15\",\"name\":\"MultipleCharValue\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"MultipleCharValue\"},{\"value\":\"16\",\"name\":\"Currency\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"Currency\"},{\"value\":\"17\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Exchange\"},{\"value\":\"18\",\"name\":\"MonthYear\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"MonthYear\"},{\"value\":\"19\",\"name\":\"UTCTimestamp\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"UTCTimestamp\"},{\"value\":\"2\",\"name\":\"Length\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Length\"},{\"value\":\"20\",\"name\":\"UTCTimeOnly\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"UTCTimeOnly\"},{\"value\":\"21\",\"name\":\"LocalMktDate\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"LocalMktDate\"},{\"value\":\"22\",\"name\":\"UTCDateOnly\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"UTCDateOnly\"},{\"value\":\"23\",\"name\":\"Data\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"data\"},{\"value\":\"24\",\"name\":\"MultipleStringValue\",\"since\":\"4.4\",\"ep\":34,\"sort\":24,\"doc\":\"MultipleStringValue\"},{\"value\":\"25\",\"name\":\"Country\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":25,\"doc\":\"Country\"},{\"value\":\"26\",\"name\":\"Language\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":26,\"doc\":\"Language\"},{\"value\":\"27\",\"name\":\"TZTimeOnly\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":27,\"doc\":\"TZTimeOnly\"},{\"value\":\"28\",\"name\":\"TZTimestamp\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":28,\"doc\":\"TZTimestamp\"},{\"value\":\"29\",\"name\":\"Tenor\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":29,\"doc\":\"Tenor\"},{\"value\":\"3\",\"name\":\"NumInGroup\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"NumInGroup\"},{\"value\":\"4\",\"name\":\"SeqNum\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"SeqNum\"},{\"value\":\"5\",\"name\":\"TagNum\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"TagNum\"},{\"value\":\"6\",\"name\":\"Float\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"float\"},{\"value\":\"7\",\"name\":\"Qty\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Qty\"},{\"value\":\"8\",\"name\":\"Price\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Price\"},{\"value\":\"9\",\"name\":\"PriceOffset\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"PriceOffset\"}]}",
-      "fix:description": "Datatype of the metric being used for a test.",
       "fix:tag": "3055"
     }
   },
@@ -613,8 +613,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of decimal places for TestMeasureType(3055).",
       "display": "TestMeasurePrecision",
-      "fix:description": "Number of decimal places for TestMeasureType(3055).",
       "fix:tag": "3056"
     }
   },
@@ -625,9 +625,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the result of an individual test based on a measure.",
       "display": "TestMeasureResult",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Undefined\",\"ep\":292,\"doc\":\"Undefined\"},{\"value\":\"1\",\"name\":\"Pass\",\"ep\":292,\"sort\":1,\"doc\":\"Pass\"},{\"value\":\"2\",\"name\":\"Fail\",\"ep\":292,\"sort\":2,\"doc\":\"Fail\"},{\"value\":\"3\",\"name\":\"Warning\",\"ep\":292,\"sort\":3,\"doc\":\"Warning\"}]}",
-      "fix:description": "Identifies the result of an individual test based on a measure.",
       "fix:tag": "3057"
     }
   },
@@ -638,9 +638,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
       "display": "TestThresholdType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Under\",\"ep\":292,\"doc\":\"Under\"},{\"value\":\"1\",\"name\":\"Over\",\"ep\":292,\"sort\":1,\"doc\":\"Over\"}]}",
-      "fix:description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
       "fix:tag": "3058"
     }
   },
@@ -651,8 +651,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Value of the measure upon which a warning is issued for the test.",
       "display": "TestWarningLevelValue",
-      "fix:description": "Value of the measure upon which a warning is issued for the test.",
       "fix:tag": "3059"
     }
   },
@@ -663,8 +663,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Value of the measure upon which the test is considered to have failed.",
       "display": "TestFailLevelValue",
-      "fix:description": "Value of the measure upon which the test is considered to have failed.",
       "fix:tag": "3060"
     }
   },
@@ -675,8 +675,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Peak value of the measure achieved in testing.",
       "display": "TestPeakLevelValue",
-      "fix:description": "Peak value of the measure achieved in testing.",
       "fix:tag": "3061"
     }
   },
@@ -687,8 +687,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of the TestSuiteDefinitionRequest(35=EL).",
       "display": "TestSuiteRequestID",
-      "fix:description": "Unique identifier of the TestSuiteDefinitionRequest(35=EL).",
       "fix:tag": "3062"
     }
   },
@@ -699,8 +699,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference identifier of the TestSuiteDefinitionRequest(35=EL).",
       "display": "TestSuiteRequestRefID",
-      "fix:description": "Reference identifier of the TestSuiteDefinitionRequest(35=EL).",
       "fix:tag": "3063"
     }
   },
@@ -711,9 +711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the message transaction type.",
       "display": "TestSuiteRequestTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"ep\":292,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"ep\":292,\"sort\":1,\"doc\":\"Cancel\"}]}",
-      "fix:description": "Identifies the message transaction type.",
       "fix:tag": "3064"
     }
   },
@@ -724,9 +724,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
       "display": "TestSuiteRequestStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":292,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":292,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":292,\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
       "fix:tag": "3065"
     }
   },
@@ -737,8 +737,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier of the TestActionRequest(35=EN).",
       "display": "TestActionRequestID",
-      "fix:description": "Unique identifier of the TestActionRequest(35=EN).",
       "fix:tag": "3066"
     }
   },
@@ -749,9 +749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of action to take or that was taken for a given test suite.",
       "display": "TestActionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Start\",\"ep\":292,\"doc\":\"Start\"},{\"value\":\"1\",\"name\":\"Stop\",\"ep\":292,\"sort\":1,\"doc\":\"Stop\"},{\"value\":\"2\",\"name\":\"State\",\"ep\":292,\"sort\":2,\"doc\":\"State\"}]}",
-      "fix:description": "Specifies the type of action to take or that was taken for a given test suite.",
       "fix:tag": "3067"
     }
   },
@@ -762,9 +762,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of the TestActionRequest(35=EN) message being responded to.",
       "display": "TestActionRequestStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":292,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":292,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":292,\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:description": "Status of the TestActionRequest(35=EN) message being responded to.",
       "fix:tag": "3068"
     }
   },
@@ -775,9 +775,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the activity state the test suite is in.",
       "display": "TestSuiteActivityState",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Scheduled\",\"ep\":292,\"doc\":\"Scheduled\"},{\"value\":\"1\",\"name\":\"Running\",\"ep\":292,\"sort\":1,\"doc\":\"Running\"},{\"value\":\"2\",\"name\":\"Completed\",\"ep\":292,\"sort\":2,\"doc\":\"Completed\"},{\"value\":\"3\",\"name\":\"Cancelled\",\"ep\":292,\"sort\":3,\"doc\":\"Cancelled\"}]}",
-      "fix:description": "Specifies the activity state the test suite is in.",
       "fix:tag": "3069"
     }
   },
@@ -788,9 +788,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the overall test result of a group of individual test scenarios.",
       "display": "TestSuiteStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Undefined\",\"ep\":292,\"doc\":\"Undefined\"},{\"value\":\"1\",\"name\":\"Pass\",\"ep\":292,\"sort\":1,\"doc\":\"Pass\"},{\"value\":\"2\",\"name\":\"Fail\",\"ep\":292,\"sort\":2,\"doc\":\"Fail\"},{\"value\":\"3\",\"name\":\"Warning\",\"ep\":292,\"sort\":3,\"doc\":\"Warning\"}]}",
-      "fix:description": "Identifies the overall test result of a group of individual test scenarios.",
       "fix:tag": "3070"
     }
   },
@@ -801,8 +801,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifier of the test action report.",
       "display": "TestActionReportID",
-      "fix:description": "Identifier of the test action report.",
       "fix:tag": "3071"
     }
   },
@@ -813,8 +813,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
       "display": "RateSourceSymbol",
-      "fix:description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
       "fix:tag": "3072"
     }
   },
@@ -825,9 +825,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
       "display": "FXBenchmark",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Bloomberg\",\"ep\":293,\"sort\":1,\"doc\":\"Bloomberg\"},{\"value\":\"2\",\"name\":\"CentralBank\",\"ep\":293,\"sort\":2,\"doc\":\"Central Bank\"},{\"value\":\"3\",\"name\":\"WMR\",\"ep\":293,\"sort\":3,\"doc\":\"WMR\"},{\"value\":\"4\",\"name\":\"MitsubishiUFJ\",\"ep\":293,\"sort\":4,\"doc\":\"Mitsubishi-UFJ\"},{\"value\":\"5\",\"name\":\"LondonBullionMarketAssociation\",\"ep\":293,\"sort\":5,\"doc\":\"London Bullion Market Association\"},{\"value\":\"6\",\"name\":\"LondonMetalExchange\",\"ep\":293,\"sort\":6,\"doc\":\"London Metal Exchange\"},{\"value\":\"99\",\"name\":\"Other\",\"ep\":293,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
       "fix:tag": "3073"
     }
   },
@@ -838,8 +838,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in FXBenchmarkTime(3075).",
       "display": "FXBenchmarkDate",
-      "fix:description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in FXBenchmarkTime(3075).",
       "fix:tag": "3074"
     }
   },
@@ -851,8 +851,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in FXBenchmarkDate(3074).",
       "display": "FXBenchmarkTime",
-      "fix:description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in FXBenchmarkDate(3074).",
       "fix:tag": "3075"
     }
   },
@@ -863,8 +863,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
       "display": "FXBenchmarkBusinessCenter",
-      "fix:description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
       "fix:tag": "3076"
     }
   },
@@ -875,9 +875,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of business event related to an algo certification request.",
       "display": "AlgoCertificateRequestType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CertificateInformation\",\"ep\":295,\"doc\":\"Certificate information\"},{\"value\":\"1\",\"name\":\"GenerateCertificate\",\"ep\":295,\"sort\":1,\"doc\":\"Generate certificate\"},{\"value\":\"2\",\"name\":\"ChangeCertificateStatus\",\"ep\":295,\"sort\":2,\"doc\":\"Change certificate status\"},{\"value\":\"3\",\"name\":\"ForwardCertificate\",\"ep\":295,\"sort\":3,\"doc\":\"Forward certificate\"}]}",
-      "fix:description": "Specifies the type of business event related to an algo certification request.",
       "fix:tag": "3077"
     }
   },
@@ -888,9 +888,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of business event related to an algo certification report.",
       "display": "AlgoCertificateReportType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CertificateInformation\",\"ep\":295,\"doc\":\"Certificate information\"},{\"value\":\"1\",\"name\":\"CertificateStateChanged\",\"ep\":295,\"sort\":1,\"doc\":\"Certificate state changed\"},{\"value\":\"2\",\"name\":\"CertificateRevoked\",\"ep\":303,\"sort\":2,\"doc\":\"Certificate revoked\"}]}",
-      "fix:description": "Specifies the type of business event related to an algo certification report.",
       "fix:tag": "3078"
     }
   },
@@ -901,8 +901,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for the group of test scenarios constituting a test suite.",
       "display": "TestScenarioGroupID",
-      "fix:description": "Unique identifier for the group of test scenarios constituting a test suite.",
       "fix:tag": "3079"
     }
   },
@@ -915,8 +915,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Support Timestamp of last update to Algo System Module.",
       "display": "AlgoSystemModuleLastUpdateTime",
-      "fix:description": "Support Timestamp of last update to Algo System Module.",
       "fix:tag": "3080"
     }
   },
@@ -929,8 +929,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Support Timestamp of last update to Algo Test System Module.",
       "display": "TestSystemModuleLastUpdateTime",
-      "fix:description": "Support Timestamp of last update to Algo Test System Module.",
       "fix:tag": "3081"
     }
   },
@@ -941,8 +941,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifier of a test order.",
       "display": "TestOrderID",
-      "fix:description": "Identifier of a test order.",
       "fix:tag": "3083"
     }
   },
@@ -953,8 +953,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for the security symbol of a test order. See Symbol(55) field for description.",
       "display": "TestOrderSymbol",
-      "fix:description": "Used for the security symbol of a test order. See Symbol(55) field for description.",
       "fix:tag": "3084"
     }
   },
@@ -965,8 +965,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for the security identifier of a test order. See Security(48) field for description.",
       "display": "TestOrderSecurityID",
-      "fix:description": "Used for the security identifier of a test order. See Security(48) field for description.",
       "fix:tag": "3085"
     }
   },
@@ -977,8 +977,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for the source of the security identifier of a test order. See SecurityIDSource(22) field for description.",
       "display": "TestOrderSecurityIDSource",
-      "fix:description": "Used for the source of the security identifier of a test order. See SecurityIDSource(22) field for description.",
       "fix:tag": "3086"
     }
   },
@@ -989,8 +989,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for the price of a test order. See Price(44) field for description.",
       "display": "TestOrderPrice",
-      "fix:description": "Used for the price of a test order. See Price(44) field for description.",
       "fix:tag": "3087"
     }
   },
@@ -1001,9 +1001,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of price of TestOrderPrice(3087).",
       "display": "TestOrderPriceType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"4.2\",\"doc\":\"Percentage (i.e. percent of par) (often called \\\"dollar price\\\" for fixed income)\"},{\"value\":\"10\",\"name\":\"FixedCabinetTradePrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Fixed cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"11\",\"name\":\"VariableCabinetTradePrice\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Variable cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"12\",\"name\":\"PriceSpread\",\"since\":\"5.0SP2\",\"ep\":207,\"sort\":11,\"doc\":\"Price spread\"},{\"value\":\"13\",\"name\":\"ProductTicksInHalves\",\"since\":\"4.4\",\"ep\":19,\"sort\":12,\"doc\":\"Product ticks in halves\"},{\"value\":\"14\",\"name\":\"ProductTicksInFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"doc\":\"Product ticks in fourths\"},{\"value\":\"15\",\"name\":\"ProductTicksInEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"doc\":\"Product ticks in eighths\"},{\"value\":\"16\",\"name\":\"ProductTicksInSixteenths\",\"since\":\"4.4\",\"ep\":19,\"sort\":15,\"doc\":\"Product ticks in sixteenths\"},{\"value\":\"17\",\"name\":\"ProductTicksInThirtySeconds\",\"since\":\"4.4\",\"ep\":19,\"sort\":16,\"doc\":\"Product ticks in thirty-seconds\"},{\"value\":\"18\",\"name\":\"ProductTicksInSixtyFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":17,\"doc\":\"Product ticks in sixty-fourths\"},{\"value\":\"19\",\"name\":\"ProductTicksInOneTwentyEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":18,\"doc\":\"Product ticks in one-twenty-eighths\"},{\"value\":\"2\",\"name\":\"PerUnit\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Per unit (i.e. per share or contract)\"},{\"value\":\"20\",\"name\":\"NormalRateRepresentation\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":19,\"doc\":\"Normal rate representation (e.g. FX rate)\"},{\"value\":\"21\",\"name\":\"InverseRateRepresentation\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":20,\"doc\":\"Inverse rate representation (e.g. FX rate)\"},{\"value\":\"22\",\"name\":\"BasisPoints\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"Basis points\"},{\"value\":\"23\",\"name\":\"UpfrontPoints\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"Up front points\"},{\"value\":\"24\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":174,\"sort\":24,\"doc\":\"Interest rate\"},{\"value\":\"25\",\"name\":\"PercentageNotional\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":25,\"doc\":\"Percentage of notional\"},{\"value\":\"3\",\"name\":\"FixedAmount\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Fixed amount (absolute value)\"},{\"value\":\"4\",\"name\":\"Discount\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Discount - percentage points below par\"},{\"value\":\"5\",\"name\":\"Premium\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Premium - percentage points over par\"},{\"value\":\"6\",\"name\":\"Spread\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Spread (basis points spread)\"},{\"value\":\"7\",\"name\":\"TEDPrice\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"TED Price\"},{\"value\":\"8\",\"name\":\"TEDYield\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"TED Yield\"},{\"value\":\"9\",\"name\":\"Yield\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Yield\"}]}",
-      "fix:description": "Type of price of TestOrderPrice(3087).",
       "fix:tag": "3088"
     }
   },
@@ -1014,8 +1014,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used for the quantity of a test order. See OrderQty(80) field for description.",
       "display": "TestOrderQty",
-      "fix:description": "Used for the quantity of a test order. See OrderQty(80) field for description.",
       "fix:tag": "3089"
     }
   },
@@ -1026,8 +1026,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the effective time of an order relative to the starting time of a test scenario.",
       "display": "TestOrderOffsetPeriod",
-      "fix:description": "Time unit multiplier for the effective time of an order relative to the starting time of a test scenario.",
       "fix:tag": "3090"
     }
   },
@@ -1038,9 +1038,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
       "display": "TestOrderOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
-      "fix:description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
       "fix:tag": "3091"
     }
   },
@@ -1051,8 +1051,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of test gateway information.",
       "display": "TestGatewayDetailName",
-      "fix:description": "Name of test gateway information.",
       "fix:tag": "3093"
     }
   },
@@ -1063,9 +1063,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of test gateway information.",
       "display": "TestGatewayDetailType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MarketDataGatewayIPAddress\",\"ep\":295,\"doc\":\"Market data gateway IP address\"},{\"value\":\"1\",\"name\":\"MarketDataGatewayPortNumber\",\"ep\":295,\"sort\":1,\"doc\":\"Market data gateway port number\"},{\"value\":\"2\",\"name\":\"MarketDataGatewayDataFormat\",\"ep\":295,\"sort\":2,\"doc\":\"Market data gateway data format\"},{\"value\":\"3\",\"name\":\"MarketDataGatewayFormatVersion\",\"ep\":295,\"sort\":3,\"doc\":\"Market data gateway format version\"},{\"value\":\"4\",\"name\":\"MarketDataGatewayRoutingIPAddress\",\"ep\":295,\"sort\":4,\"doc\":\"Market data gateway routing IP address\"},{\"value\":\"5\",\"name\":\"OrderEntryGatewayIPAddress\",\"ep\":295,\"sort\":5,\"doc\":\"Order entry gateway IP address\"},{\"value\":\"6\",\"name\":\"OrderEntryGatewayPortNumber\",\"ep\":295,\"sort\":6,\"doc\":\"Order entry gateway port number\"},{\"value\":\"7\",\"name\":\"OrderEntryGatewayDataFormat\",\"ep\":295,\"sort\":7,\"doc\":\"Order entry gateway data format\"},{\"value\":\"8\",\"name\":\"OrderEntryGatewayFormatVersion\",\"ep\":295,\"sort\":8,\"doc\":\"Order entry gateway format version\"},{\"value\":\"9\",\"name\":\"OrderEntryGatewayRoutingIPAddress\",\"ep\":295,\"sort\":9,\"doc\":\"Order entry gateway routing IP address\"}]}",
-      "fix:description": "Type of test gateway information.",
       "fix:tag": "3094"
     }
   },
@@ -1076,8 +1076,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Value of test gateway information.",
       "display": "TestGatewayDetailValue",
-      "fix:description": "Value of test gateway information.",
       "fix:tag": "3095"
     }
   },
@@ -1088,8 +1088,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Execution venue of test system.",
       "display": "TestGatewayMarketID",
-      "fix:description": "Execution venue of test system.",
       "fix:tag": "3096"
     }
   },
@@ -1100,8 +1100,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the behaviour or configuration that has been selected by the executing party for this order.",
       "display": "AlgoTrialID",
-      "fix:description": "Identifies the behaviour or configuration that has been selected by the executing party for this order.",
       "fix:tag": "3097"
     }
   },
@@ -1112,8 +1112,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the algorithm a broker has opted to use when executing an order.",
       "display": "LastAlgoID",
-      "fix:description": "Identifies the algorithm a broker has opted to use when executing an order.",
       "fix:tag": "3098"
     }
   }

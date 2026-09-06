@@ -46,8 +46,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of asset attribute entries in the group.",
       "display": "NoUnderlyingStreamAssetAttributes",
-      "fix:description": "Number of asset attribute entries in the group.",
       "fix:tag": "41800"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery cycles in the repeating group.",
       "display": "NoUnderlyingDeliveryStreamCycles",
-      "fix:description": "Number of delivery cycles in the repeating group.",
       "fix:tag": "41804"
     }
   },
@@ -130,8 +130,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity sources in the repeating group.",
       "display": "NoUnderlyingDeliveryStreamCommoditySources",
-      "fix:description": "Number of commodity sources in the repeating group.",
       "fix:tag": "41808"
     }
   },
@@ -162,8 +162,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41820"
     }
   },
@@ -204,8 +204,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dates in the repeating group.",
       "display": "NoUnderlyingOptionExerciseDates",
-      "fix:description": "Number of dates in the repeating group.",
       "fix:tag": "41841"
     }
   },
@@ -236,8 +236,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingOptionExerciseExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41844"
     }
   },
@@ -278,8 +278,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixed exercise expiration dates in the repeating group.",
       "display": "NoUnderlyingOptionExerciseExpirationDates",
-      "fix:description": "Number of fixed exercise expiration dates in the repeating group.",
       "fix:tag": "41856"
     }
   },
@@ -320,8 +320,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of disruption events in the repeating group.",
       "display": "NoUnderlyingMarketDisruptionEvents",
-      "fix:description": "Number of disruption events in the repeating group.",
       "fix:tag": "41864"
     }
   },
@@ -362,8 +362,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallbacks in the repeating group.",
       "display": "NoUnderlyingMarketDisruptionFallbacks",
-      "fix:description": "Number of fallbacks in the repeating group.",
       "fix:tag": "41866"
     }
   },
@@ -474,8 +474,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallback reference securities in the repeating group.",
       "display": "NoUnderlyingMarketDisruptionFallbackReferencePrices",
-      "fix:description": "Number of fallback reference securities in the repeating group.",
       "fix:tag": "41868"
     }
   },
@@ -516,8 +516,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixing days in the repeating group.",
       "display": "NoUnderlyingPaymentScheduleFixingDays",
-      "fix:description": "Number of fixing days in the repeating group.",
       "fix:tag": "41878"
     }
   }

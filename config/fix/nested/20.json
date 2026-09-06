@@ -396,8 +396,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex events in the repeating group.",
       "display": "NoUnderlyingComplexEvents",
-      "fix:description": "Number of complex events in the repeating group.",
       "fix:tag": "2045"
     }
   },
@@ -438,8 +438,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of underlying complex event dates in the repeating group.",
       "display": "NoUnderlyingComplexEventDates",
-      "fix:description": "Number of underlying complex event dates in the repeating group.",
       "fix:tag": "2053"
     }
   },
@@ -482,8 +482,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event times in the repeating group.",
       "display": "NoUnderlyingComplexEventTimes",
-      "fix:description": "Number of complex event times in the repeating group.",
       "fix:tag": "2056"
     }
   },
@@ -607,8 +607,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of events in the repeating group",
       "display": "NoLegEvents",
-      "fix:description": "Number of events in the repeating group",
       "fix:tag": "2059"
     }
   },
@@ -669,8 +669,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of secondary asset classes in the repeating group.",
       "display": "NoLegSecondaryAssetClasses",
-      "fix:description": "Number of secondary asset classes in the repeating group.",
       "fix:tag": "2076"
     }
   },
@@ -731,8 +731,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of secondary asset classes in the repeating group.",
       "display": "NoUnderlyingSecondaryAssetClasses",
-      "fix:description": "Number of secondary asset classes in the repeating group.",
       "fix:tag": "2080"
     }
   }

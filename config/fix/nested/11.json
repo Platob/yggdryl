@@ -56,8 +56,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of RootPartyID (1117), RootPartyIDSource (1118), and RootPartyRole (1119) entries",
       "display": "NoRootPartyIDs",
-      "fix:description": "Number of RootPartyID (1117), RootPartyIDSource (1118), and RootPartyRole (1119) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1116"
     }
@@ -99,8 +99,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of RootPartySubID (1121) and RootPartySubIDType (1122) entries",
       "display": "NoRootPartySubIDs",
-      "fix:description": "Number of RootPartySubID (1121) and RootPartySubIDType (1122) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1120"
     }
@@ -232,8 +232,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of feed types and corresponding book depths associated with a security",
       "display": "NoMDFeedTypes",
-      "fix:description": "The number of feed types and corresponding book depths associated with a security",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomdfeedtypes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1141"
     }
@@ -295,8 +295,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used to group Each Settlement Party",
       "display": "NoSettlDetails",
-      "fix:description": "Used to group Each Settlement Party",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettldetails\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1158"
     }
@@ -474,8 +474,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement obligations",
       "display": "NoSettlOblig",
-      "fix:description": "Number of settlement obligations",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettloblig\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1165"
     }
@@ -507,8 +507,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of statistics indicator repeating group entries",
       "display": "NoStatsIndicators",
-      "fix:description": "Number of statistics indicator repeating group entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostatsindicators\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1175"
     }
@@ -550,8 +550,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of secondary sizes specifies in this entry",
       "display": "NoOfSecSizes",
-      "fix:description": "The number of secondary sizes specifies in this entry",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noofsecsizes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1177"
     }

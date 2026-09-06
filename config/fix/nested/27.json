@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of quote attributes entries.",
       "display": "NoQuoteAttributes",
-      "fix:description": "Number of quote attributes entries.",
       "fix:tag": "2706"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of price qualifiers in the repeating group.",
       "display": "NoPriceQualifiers",
-      "fix:description": "Number of price qualifiers in the repeating group.",
       "fix:tag": "2709"
     }
   },
@@ -100,8 +100,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of the index roll month.",
       "display": "NoIndexRollMonths",
-      "fix:description": "Number of instances of the index roll month.",
       "fix:tag": "2734"
     }
   },
@@ -144,8 +144,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of reference data dates.",
       "display": "NoReferenceDataDates",
-      "fix:description": "Number of instances of reference data dates.",
       "fix:tag": "2746"
     }
   },
@@ -266,8 +266,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of match exceptions in the repeating group.",
       "display": "NoMatchExceptions",
-      "fix:description": "Number of match exceptions in the repeating group.",
       "fix:tag": "2772"
     }
   },
@@ -328,8 +328,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of matching data points in the repeating group.",
       "display": "NoMatchingDataPoints",
-      "fix:description": "Number of matching data points in the repeating group.",
       "fix:tag": "2781"
     }
   }

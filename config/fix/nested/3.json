@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of ContraBroker (375) entries.",
       "display": "NoContraBrokers",
-      "fix:description": "The number of ContraBroker (375) entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nocontrabrokers\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nocontrabrokers\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "382"
     }
@@ -151,8 +151,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of MsgTypes (35) in repeating group.",
       "display": "NoMsgTypes",
-      "fix:description": "Number of MsgTypes (35) in repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomsgtypes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomsgtypes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "384"
     }
@@ -406,8 +406,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of TradingSessionIDs (336) in repeating group.",
       "display": "NoTradingSessions",
-      "fix:description": "Number of TradingSessionIDs (336) in repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"notradingsessions\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"notradingsessions\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "386"
     }
@@ -539,8 +539,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of BidDescriptor (400) entries.",
       "display": "NoBidDescriptors",
-      "fix:description": "Number of BidDescriptor (400) entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobiddescriptors\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nobiddescriptors\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "398"
     }

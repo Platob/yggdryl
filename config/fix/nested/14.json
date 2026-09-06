@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Refer to definition of NoPartySubIDs(802)",
       "display": "NoNested4PartySubIDs",
-      "fix:description": "Refer to definition of NoPartySubIDs(802)",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonested4partysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1413"
     }
@@ -99,8 +99,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Refer to definition of NoPartyIDs(453)",
       "display": "NoNested4PartyIDs",
-      "fix:description": "Refer to definition of NoPartyIDs(453)",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonested4partyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1414"
     }
@@ -223,8 +223,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rate sources being specified.",
       "display": "NoRateSources",
-      "fix:description": "Number of rate sources being specified.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"noratesources\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1445"
     }
@@ -286,8 +286,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the number of target parties identified in a mass action.",
       "display": "NoTargetPartyIDs",
-      "fix:description": "Identifies the number of target parties identified in a mass action.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"notargetpartyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1461"
     }
@@ -329,8 +329,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of News reference items",
       "display": "NoNewsRefIDs",
-      "fix:description": "Number of News reference items",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"nonewsrefids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1475"
     }
@@ -732,8 +732,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event occurrences.",
       "display": "NoComplexEvents",
-      "fix:description": "Number of complex event occurrences.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"nocomplexevents\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1483"
     }
@@ -775,8 +775,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event date occurrences for a given complex event.",
       "display": "NoComplexEventDates",
-      "fix:description": "Number of complex event date occurrences for a given complex event.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"nocomplexeventdates\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1491"
     }
@@ -820,8 +820,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of complex event time occurrences for a given complex event date",
       "display": "NoComplexEventTimes",
-      "fix:description": "Number of complex event time occurrences for a given complex event date",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"nocomplexeventtimes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "1494"
     }

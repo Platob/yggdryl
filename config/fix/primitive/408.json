@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "display": "PaymentStreamFloorRate",
-      "fix:description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "fix:tag": "40800"
     }
   },
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "PaymentStreamFloorRateBuySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the buyer of the floor rate option through its trade side.",
       "fix:tag": "40801"
     }
   },
@@ -31,9 +31,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "PaymentStreamFloorRateSellSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the seller of the floor rate option through its trade side.",
       "fix:tag": "40802"
     }
   },
@@ -44,8 +44,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. An initial rate of 5% would be represented as 0.05.",
       "display": "PaymentStreamInitialRate",
-      "fix:description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. An initial rate of 5% would be represented as 0.05.",
       "fix:tag": "40803"
     }
   },
@@ -56,9 +56,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the rounding direction.",
       "display": "PaymentStreamFinalRateRoundingDirection",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
-      "fix:description": "Specifies the rounding direction.",
       "fix:tag": "40804"
     }
   },
@@ -69,8 +69,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "display": "PaymentStreamFinalRatePrecision",
-      "fix:description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "fix:tag": "40805"
     }
   },
@@ -81,9 +81,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "When rate averaging is applicable, used to specify whether a weighted or unweighted average calculation method is to be used.",
       "display": "PaymentStreamAveragingMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unweighted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unweighted\"},{\"value\":\"1\",\"name\":\"Weighted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Weighted\"}]}",
-      "fix:description": "When rate averaging is applicable, used to specify whether a weighted or unweighted average calculation method is to be used.",
       "fix:tag": "40806"
     }
   },
@@ -94,9 +94,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "PaymentStreamNegativeRateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ZeroInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero interest rate method\"},{\"value\":\"1\",\"name\":\"NegativeInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Negative interest rate method\"}]}",
-      "fix:description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "fix:tag": "40807"
     }
   },
@@ -107,8 +107,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the inflation lag period. The lag period is the offsetting period from the payment date which determines the reference period for which the inflation index is observed.",
       "display": "PaymentStreamInflationLagPeriod",
-      "fix:description": "Time unit multiplier for the inflation lag period. The lag period is the offsetting period from the payment date which determines the reference period for which the inflation index is observed.",
       "fix:tag": "40808"
     }
   },
@@ -119,9 +119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the inflation lag period.",
       "display": "PaymentStreamInflationLagUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the inflation lag period.",
       "fix:tag": "40809"
     }
   },
@@ -132,9 +132,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The inflation lag period day type.",
       "display": "PaymentStreamInflationLagDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "The inflation lag period day type.",
       "fix:tag": "40810"
     }
   },
@@ -145,9 +145,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The method used when calculating the Inflation Index Level from multiple points - the most common is Linear.",
       "display": "PaymentStreamInflationInterpolationMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"LinearZeroYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Linear zero yield\"}]}",
-      "fix:description": "The method used when calculating the Inflation Index Level from multiple points - the most common is Linear.",
       "fix:tag": "40811"
     }
   },
@@ -158,9 +158,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The inflation index reference source.",
       "display": "PaymentStreamInflationIndexSource",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The inflation index reference source.",
       "fix:tag": "40812"
     }
   },
@@ -171,8 +171,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The current main publication source such as relevant web site or a government body.",
       "display": "PaymentStreamInflationPublicationSource",
-      "fix:description": "The current main publication source such as relevant web site or a government body.",
       "fix:tag": "40813"
     }
   },
@@ -183,8 +183,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Initial known index level for the first calculation period.",
       "display": "PaymentStreamInflationInitialIndexLevel",
-      "fix:description": "Initial known index level for the first calculation period.",
       "fix:tag": "40814"
     }
   },
@@ -195,8 +195,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether a fallback bond as defined in the 2006 ISDA Inflation Derivatives Definitions, sections 1.3 and 1.8, is applicable or not. If not specified, the default value is \"Y\" (True/Yes).",
       "display": "PaymentStreamInflationFallbackBondApplicable",
-      "fix:description": "Indicates whether a fallback bond as defined in the 2006 ISDA Inflation Derivatives Definitions, sections 1.3 and 1.8, is applicable or not. If not specified, the default value is \"Y\" (True/Yes).",
       "fix:tag": "40815"
     }
   },
@@ -207,9 +207,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The method of Forward Rate Agreement (FRA) discounting, if any, that will apply.",
       "display": "PaymentStreamFRADiscounting",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"ISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"International Swaps and Derivatives Association (ISDA)\"},{\"value\":\"2\",\"name\":\"AFMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Australian Financial Markets Association (AFMA)\"}]}",
-      "fix:description": "The method of Forward Rate Agreement (FRA) discounting, if any, that will apply.",
       "fix:tag": "40816"
     }
   },
@@ -220,8 +220,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The non-deliverable settlement reference currency. Uses ISO 4217 currency codes.",
       "display": "PaymentStreamNonDeliverableRefCurrency",
-      "fix:description": "The non-deliverable settlement reference currency. Uses ISO 4217 currency codes.",
       "fix:tag": "40817"
     }
   },
@@ -232,9 +232,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment stream's fixing date for the non-deliverable settlement terms. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component",
       "display": "PaymentStreamNonDeliverableFixingDatesBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment stream's fixing date for the non-deliverable settlement terms. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component",
       "fix:tag": "40818"
     }
   },
@@ -245,8 +245,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the payment stream's fixing date for the non-deliverable terms, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PaymentStreamNonDeliverableFixingDatesBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the payment stream's fixing date for the non-deliverable terms, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40819"
     }
   },
@@ -257,8 +257,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the non-deliverable fixing dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "PaymentStreamNonDeliverableFixingDatesRelativeTo",
-      "fix:description": "Specifies the anchor date when the non-deliverable fixing dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40820"
     }
   },
@@ -269,8 +269,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative non-deliverable fixing date offset.",
       "display": "PaymentStreamNonDeliverableFixingDatesOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative non-deliverable fixing date offset.",
       "fix:tag": "40821"
     }
   },
@@ -281,9 +281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative non-deliverable fixing date offset.",
       "display": "PaymentStreamNonDeliverableFixingDatesOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative non-deliverable fixing date offset.",
       "fix:tag": "40822"
     }
   },
@@ -294,9 +294,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative non-deliverable fixing date offset.",
       "display": "PaymentStreamNonDeliverableFixingDatesOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative non-deliverable fixing date offset.",
       "fix:tag": "40823"
     }
   },
@@ -307,8 +307,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the reference \"page\" from the rate source. When UnderlyingPaymentStreamNonDeliverableSettlRateSource(40661) = 3(ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "UnderlyingPaymentStreamNonDeliverableSettlReferencePage",
-      "fix:description": "Identifies the reference \"page\" from the rate source. When UnderlyingPaymentStreamNonDeliverableSettlRateSource(40661) = 3(ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "fix:tag": "40824"
     }
   },
@@ -319,8 +319,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Non-deliverable fixing date unadjusted or adjusted depending on NonDeliverableFixingDateType(40827).",
       "display": "NonDeliverableFixingDate",
-      "fix:description": "Non-deliverable fixing date unadjusted or adjusted depending on NonDeliverableFixingDateType(40827).",
       "fix:tag": "40826"
     }
   },
@@ -331,9 +331,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "NonDeliverableFixingDateType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
-      "fix:description": "Specifies the type of date (e.g. adjusted for holidays).",
       "fix:tag": "40827"
     }
   },
@@ -344,9 +344,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of schedule.",
       "display": "PaymentScheduleType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Notional\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Notional\"},{\"value\":\"1\",\"name\":\"CashFlow\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Cash flow\"},{\"value\":\"10\",\"name\":\"NonDeliverableSettlPaymentDates\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Non-deliverable settlement payment dates\"},{\"value\":\"11\",\"name\":\"NonDeliverableSettlCalculationDates\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Non-deliverable settlement calculation dates\"},{\"value\":\"12\",\"name\":\"NonDeliverableFXFixingDates\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"Non-deliverable fixing dates.\"},{\"value\":\"13\",\"name\":\"SettlPeriodNotnl\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"doc\":\"Settlement period notional\"},{\"value\":\"14\",\"name\":\"SettlPeriodPx\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":14,\"doc\":\"Settlement period price\"},{\"value\":\"15\",\"name\":\"CalcPeriod\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":15,\"doc\":\"Calculation period\"},{\"value\":\"16\",\"name\":\"DividendAccrualRateMultiplier\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"doc\":\"Dividend accrual rate multiplier\"},{\"value\":\"17\",\"name\":\"DividendAccrualRateSpread\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":17,\"doc\":\"Dividend accrual rate spread\"},{\"value\":\"18\",\"name\":\"DividendAccrualCapRate\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":18,\"doc\":\"Dividend accrual cap rate\"},{\"value\":\"19\",\"name\":\"DividendAccrualFloorRate\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":19,\"doc\":\"Dividend accrual floor rate\"},{\"value\":\"2\",\"name\":\"FXLinkedNotional\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"FX linked notional\"},{\"value\":\"20\",\"name\":\"CompoundingRateMultiplier\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":20,\"doc\":\"Compounding rate multiplier\"},{\"value\":\"21\",\"name\":\"CompoundingRateSpread\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":21,\"doc\":\"Compounding rate spread\"},{\"value\":\"22\",\"name\":\"CompoundingCapRate\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":22,\"doc\":\"Compounding cap rate\"},{\"value\":\"23\",\"name\":\"CompoundingFloorRate\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":23,\"doc\":\"Compounding floor rate\"},{\"value\":\"3\",\"name\":\"FixedRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Fixed rate\"},{\"value\":\"4\",\"name\":\"FutureValueNotional\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Future value notional\"},{\"value\":\"5\",\"name\":\"KnownAmount\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Known amount\"},{\"value\":\"6\",\"name\":\"FloatingRateMultiplier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Floating rate multiplier\"},{\"value\":\"7\",\"name\":\"Spread\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Spread\"},{\"value\":\"8\",\"name\":\"CapRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Cap rate\"},{\"value\":\"9\",\"name\":\"FloorRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Floor rate\"}]}",
-      "fix:description": "Type of schedule.",
       "fix:tag": "40829"
     }
   },
@@ -357,9 +357,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates to which stub this schedule applies.",
       "display": "PaymentScheduleStubType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Final\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Final\"},{\"value\":\"2\",\"name\":\"CompoundingInitial\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Compounding initial\"},{\"value\":\"3\",\"name\":\"CompoundingFinal\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Compounding final\"}]}",
-      "fix:description": "Indicates to which stub this schedule applies.",
       "fix:tag": "40830"
     }
   },
@@ -370,8 +370,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment.",
       "display": "PaymentScheduleStartDateUnadjusted",
-      "fix:description": "The date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment.",
       "fix:tag": "40831"
     }
   },
@@ -382,8 +382,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted end date of a cash flow payment.",
       "display": "PaymentScheduleEndDateUnadjusted",
-      "fix:description": "The unadjusted end date of a cash flow payment.",
       "fix:tag": "40832"
     }
   },
@@ -394,9 +394,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party paying the step schedule.",
       "display": "PaymentSchedulePaySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party paying the step schedule.",
       "fix:tag": "40833"
     }
   },
@@ -407,9 +407,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party receiving the stepf schedule.",
       "display": "PaymentScheduleReceiveSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party receiving the stepf schedule.",
       "fix:tag": "40834"
     }
   },
@@ -420,8 +420,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The notional value for this step, or amount of a cashflow payment.",
       "display": "PaymentScheduleNotional",
-      "fix:description": "The notional value for this step, or amount of a cashflow payment.",
       "fix:tag": "40835"
     }
   },
@@ -432,8 +432,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The currency for this step. Uses ISO 4217 currency codes.",
       "display": "PaymentScheduleCurrency",
-      "fix:description": "The currency for this step. Uses ISO 4217 currency codes.",
       "fix:tag": "40836"
     }
   },
@@ -444,8 +444,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The rate value for this step schedule.",
       "display": "PaymentScheduleRate",
-      "fix:description": "The rate value for this step schedule.",
       "fix:tag": "40837"
     }
   },
@@ -456,8 +456,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "PaymentScheduleRateMultiplier",
-      "fix:description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "fix:tag": "40838"
     }
   },
@@ -468,8 +468,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The spread value for this step schedule.",
       "display": "PaymentScheduleRateSpread",
-      "fix:description": "The spread value for this step schedule.",
       "fix:tag": "40839"
     }
   },
@@ -480,9 +480,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "PaymentScheduleRateSpreadPositionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
-      "fix:description": "Identifies whether the rate spread is applied to a long or short position.",
       "fix:tag": "40840"
     }
   },
@@ -493,9 +493,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the yield calculation treatment for the step schedule.",
       "display": "PaymentScheduleRateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
-      "fix:description": "Specifies the yield calculation treatment for the step schedule.",
       "fix:tag": "40841"
     }
   },
@@ -506,8 +506,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The explicit payment amount for this step schedule.",
       "display": "PaymentScheduleFixedAmount",
-      "fix:description": "The explicit payment amount for this step schedule.",
       "fix:tag": "40842"
     }
   },
@@ -518,8 +518,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The currency of the fixed amount. Uses ISO 4217 currency codes.",
       "display": "PaymentScheduleFixedCurrency",
-      "fix:description": "The currency of the fixed amount. Uses ISO 4217 currency codes.",
       "fix:tag": "40843"
     }
   },
@@ -530,8 +530,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the step frequency.",
       "display": "PaymentScheduleStepFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the step frequency.",
       "fix:tag": "40844"
     }
   },
@@ -542,9 +542,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the step frequency.",
       "display": "PaymentScheduleStepFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the step frequency.",
       "fix:tag": "40845"
     }
   },
@@ -555,8 +555,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The explicit amount that the notional changes on each step date. This can be a positive or negative amount.",
       "display": "PaymentScheduleStepOffsetValue",
-      "fix:description": "The explicit amount that the notional changes on each step date. This can be a positive or negative amount.",
       "fix:tag": "40846"
     }
   },
@@ -567,8 +567,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The percentage by which the notional changes on each step date. The percentage is either a percentage applied to the initial notional amount or the previous outstanding notional, depending on the value specified in PaymentScheduleStepRelativeTo(40849). The percentage can be either positive or negative.",
       "display": "PaymentScheduleStepRate",
-      "fix:description": "The percentage by which the notional changes on each step date. The percentage is either a percentage applied to the initial notional amount or the previous outstanding notional, depending on the value specified in PaymentScheduleStepRelativeTo(40849). The percentage can be either positive or negative.",
       "fix:tag": "40847"
     }
   },
@@ -579,8 +579,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The explicit amount that the rate changes on each step date. This can be a positive or negative value.",
       "display": "PaymentScheduleStepOffsetRate",
-      "fix:description": "The explicit amount that the rate changes on each step date. This can be a positive or negative value.",
       "fix:tag": "40848"
     }
   },
@@ -591,9 +591,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies whether the PaymentScheduleStepRate(40847) or PaymentScheduleStepOffsetValue(40846) should be applied to the initial notional or the previous notional in order to calculate the notional step change amount.",
       "display": "PaymentScheduleStepRelativeTo",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Previous\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Previous\"}]}",
-      "fix:description": "Specifies whether the PaymentScheduleStepRate(40847) or PaymentScheduleStepOffsetValue(40846) should be applied to the initial notional or the previous notional in order to calculate the notional step change amount.",
       "fix:tag": "40849"
     }
   },
@@ -604,8 +604,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted fixing date.",
       "display": "PaymentScheduleFixingDateUnadjusted",
-      "fix:description": "The unadjusted fixing date.",
       "fix:tag": "40850"
     }
   },
@@ -616,8 +616,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Floating rate observation weight for cashflow payment.",
       "display": "PaymentScheduleWeight",
-      "fix:description": "Floating rate observation weight for cashflow payment.",
       "fix:tag": "40851"
     }
   },
@@ -628,8 +628,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "PaymentScheduleFixingDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40852"
     }
   },
@@ -640,9 +640,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment schedule's fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "PaymentScheduleFixingDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment schedule's fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40853"
     }
   },
@@ -653,8 +653,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the payment schedule's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PaymentScheduleFixingDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the payment schedule's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40854"
     }
   },
@@ -665,8 +665,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative fixing date offset.",
       "display": "PaymentScheduleFixingDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative fixing date offset.",
       "fix:tag": "40855"
     }
   },
@@ -677,9 +677,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative fixing date offset.",
       "display": "PaymentScheduleFixingDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative fixing date offset.",
       "fix:tag": "40856"
     }
   },
@@ -690,9 +690,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative fixing date offset.",
       "display": "PaymentScheduleFixingDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative fixing date offset.",
       "fix:tag": "40857"
     }
   },
@@ -703,8 +703,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted fixing date.",
       "display": "PaymentScheduleFixingDateAdjusted",
-      "fix:description": "The adjusted fixing date.",
       "fix:tag": "40858"
     }
   },
@@ -716,8 +716,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The fixing time associated with the step schedule.",
       "display": "PaymentScheduleFixingTime",
-      "fix:description": "The fixing time associated with the step schedule.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"paymentschedulefixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"paymentschedulefixingtime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "40859"
     }
@@ -729,8 +729,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Business center for determining fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PaymentScheduleFixingTimeBusinessCenter",
-      "fix:description": "Business center for determining fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40860"
     }
   },
@@ -741,8 +741,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the interim exchange payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "PaymentScheduleInterimExchangePaymentDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the interim exchange payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40861"
     }
   },
@@ -753,9 +753,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment schedule's interim exchange date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "PaymentScheduleInterimExchangeDatesBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment schedule's interim exchange date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "fix:tag": "40862"
     }
   },
@@ -766,8 +766,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the payment schedule's interim exchange date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "PaymentScheduleInterimExchangeDatesBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the payment schedule's interim exchange date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40863"
     }
   },
@@ -778,8 +778,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative interim exchange date offset.",
       "display": "PaymentScheduleInterimExchangeDatesOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative interim exchange date offset.",
       "fix:tag": "40864"
     }
   },
@@ -790,9 +790,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative interim exchange date offset.",
       "display": "PaymentScheduleInterimExchangeDatesOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative interim exchange date offset.",
       "fix:tag": "40865"
     }
   },
@@ -803,9 +803,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative interim exchange date offset.",
       "display": "PaymentScheduleInterimExchangeDatesOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative interim exchange date offset.",
       "fix:tag": "40866"
     }
   },
@@ -816,8 +816,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted interim exchange date.",
       "display": "PaymentScheduleInterimExchangeDateAdjusted",
-      "fix:description": "The adjusted interim exchange date.",
       "fix:tag": "40867"
     }
   },
@@ -828,9 +828,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the source of rate information.",
       "display": "PaymentScheduleRateSource",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "Identifies the source of rate information.",
       "fix:tag": "40869"
     }
   },
@@ -841,9 +841,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Rate source type.",
       "display": "PaymentScheduleRateSourceType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Primary\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Primary\"},{\"value\":\"1\",\"name\":\"Secondary\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Secondary\"}]}",
-      "fix:description": "Rate source type.",
       "fix:tag": "40870"
     }
   },
@@ -854,8 +854,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "PaymentScheduleReferencePage",
-      "fix:description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "fix:tag": "40871"
     }
   },
@@ -866,9 +866,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Stub type.",
       "display": "PaymentStubType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Final\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Final\"},{\"value\":\"2\",\"name\":\"CompoundingInitial\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Compounding initial\"},{\"value\":\"3\",\"name\":\"CompoundingFinal\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Compounding final\"}]}",
-      "fix:description": "Stub type.",
       "fix:tag": "40873"
     }
   },
@@ -879,9 +879,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Optional indication whether stub is shorter or longer than the regular swap period.",
       "display": "PaymentStubLength",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
-      "fix:description": "Optional indication whether stub is shorter or longer than the regular swap period.",
       "fix:tag": "40874"
     }
   },
@@ -892,8 +892,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The agreed upon fixed rate for this stub.",
       "display": "PaymentStubRate",
-      "fix:description": "The agreed upon fixed rate for this stub.",
       "fix:tag": "40875"
     }
   },
@@ -904,8 +904,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A fixed payment amount for the stub.",
       "display": "PaymentStubFixedAmount",
-      "fix:description": "A fixed payment amount for the stub.",
       "fix:tag": "40876"
     }
   },
@@ -916,8 +916,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The currency of the fixed payment amount. Uses ISO 4217 currency codes.",
       "display": "PaymentStubFixedCurrency",
-      "fix:description": "The currency of the fixed payment amount. Uses ISO 4217 currency codes.",
       "fix:tag": "40877"
     }
   },
@@ -928,8 +928,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The stub floating rate index.",
       "display": "PaymentStubIndex",
-      "fix:description": "The stub floating rate index.",
       "fix:tag": "40878"
     }
   },
@@ -940,9 +940,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The source of the stub floating rate index.",
       "display": "PaymentStubIndexSource",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The source of the stub floating rate index.",
       "fix:tag": "40879"
     }
   },
@@ -953,8 +953,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the stub floating rate index.",
       "display": "PaymentStubIndexCurvePeriod",
-      "fix:description": "Time unit multiplier for the stub floating rate index.",
       "fix:tag": "40880"
     }
   },
@@ -965,9 +965,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the stub floating rate index.",
       "display": "PaymentStubIndexCurveUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the stub floating rate index.",
       "fix:tag": "40881"
     }
   },
@@ -978,8 +978,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "PaymentStubIndexRateMultiplier",
-      "fix:description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "fix:tag": "40882"
     }
   },
@@ -990,8 +990,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Spread from floating rate index.",
       "display": "PaymentStubIndexRateSpread",
-      "fix:description": "Spread from floating rate index.",
       "fix:tag": "40883"
     }
   },
@@ -1002,9 +1002,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "PaymentStubIndexRateSpreadPositionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
-      "fix:description": "Identifies whether the rate spread is applied to a long or short position.",
       "fix:tag": "40884"
     }
   },
@@ -1015,9 +1015,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the yield calculation treatment for the payment stub index.",
       "display": "PaymentStubIndexRateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
-      "fix:description": "Specifies the yield calculation treatment for the payment stub index.",
       "fix:tag": "40885"
     }
   },
@@ -1028,8 +1028,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
       "display": "PaymentStubIndexCapRate",
-      "fix:description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
       "fix:tag": "40886"
     }
   },
@@ -1040,9 +1040,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "PaymentStubIndexCapRateBuySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the buyer of the cap rate option through its trade side.",
       "fix:tag": "40887"
     }
   },
@@ -1053,9 +1053,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "PaymentStubIndexCapRateSellSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the seller of the cap rate option through its trade side.",
       "fix:tag": "40888"
     }
   },
@@ -1066,8 +1066,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "display": "PaymentStubIndexFloorRate",
-      "fix:description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
       "fix:tag": "40889"
     }
   },
@@ -1078,9 +1078,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "PaymentStubIndexFloorRateBuySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the buyer of the floor rate option through its trade side.",
       "fix:tag": "40890"
     }
   },
@@ -1091,9 +1091,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "PaymentStubIndexFloorRateSellSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the seller of the floor rate option through its trade side.",
       "fix:tag": "40891"
     }
   },
@@ -1104,8 +1104,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The second stub floating rate index.",
       "display": "PaymentStubIndex2",
-      "fix:description": "The second stub floating rate index.",
       "fix:tag": "40892"
     }
   },
@@ -1116,9 +1116,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The source of the second stub floating rate index.",
       "display": "PaymentStubIndex2Source",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The source of the second stub floating rate index.",
       "fix:tag": "40893"
     }
   },
@@ -1129,8 +1129,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Secondary time unit multiplier for the stub floating rate index curve.",
       "display": "PaymentStubIndex2CurvePeriod",
-      "fix:description": "Secondary time unit multiplier for the stub floating rate index curve.",
       "fix:tag": "40894"
     }
   },
@@ -1141,9 +1141,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Secondary time unit associated with the stub floating rate index curve.",
       "display": "PaymentStubIndex2CurveUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Secondary time unit associated with the stub floating rate index curve.",
       "fix:tag": "40895"
     }
   },
@@ -1154,8 +1154,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A rate multiplier to apply to the second floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "PaymentStubIndex2RateMultiplier",
-      "fix:description": "A rate multiplier to apply to the second floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "fix:tag": "40896"
     }
   },
@@ -1166,8 +1166,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Spread from the second floating rate index.",
       "display": "PaymentStubIndex2RateSpread",
-      "fix:description": "Spread from the second floating rate index.",
       "fix:tag": "40897"
     }
   },
@@ -1178,9 +1178,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "PaymentStubIndex2RateSpreadPositionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
-      "fix:description": "Identifies whether the rate spread is applied to a long or short position.",
       "fix:tag": "40898"
     }
   },
@@ -1191,9 +1191,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the yield calculation treatment for the second stub index.",
       "display": "PaymentStubIndex2RateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
-      "fix:description": "Specifies the yield calculation treatment for the second stub index.",
       "fix:tag": "40899"
     }
   }

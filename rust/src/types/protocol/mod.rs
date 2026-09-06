@@ -323,6 +323,16 @@ impl<'field> ProtocolFieldMut<'field> {
         self.field
     }
 
+    /// Borrows the whole field this view writes, mutably.
+    ///
+    /// A protocol's own properties go through [`Self::set`], which spells the
+    /// prefix; this is for the generic state a field owns whatever protocol
+    /// is looking at it - its description, its display name - which a
+    /// protocol view fills but does not own.
+    pub const fn as_field_mut(&mut self) -> &mut Field {
+        self.field
+    }
+
     /// Borrows the read-only view of the same protocol.
     pub fn as_protocol(&self) -> ProtocolField<'_> {
         ProtocolField::new(self.field, self.scheme.clone())

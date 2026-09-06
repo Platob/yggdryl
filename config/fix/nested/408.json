@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Fixing dates in the repeating group",
       "display": "NoNonDeliverableFixingDates",
-      "fix:description": "Number of Fixing dates in the repeating group",
       "fix:tag": "40825"
     }
   },
@@ -589,8 +589,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap schedules in the repeating group",
       "display": "NoPaymentSchedules",
-      "fix:description": "Number of swap schedules in the repeating group",
       "fix:tag": "40828"
     }
   },
@@ -641,8 +641,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap schedule rate sources.",
       "display": "NoPaymentScheduleRateSources",
-      "fix:description": "Number of swap schedule rate sources.",
       "fix:tag": "40868"
     }
   },
@@ -953,8 +953,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of stubs in the repeating group",
       "display": "NoPaymentStubs",
-      "fix:description": "Number of stubs in the repeating group",
       "fix:tag": "40872"
     }
   }

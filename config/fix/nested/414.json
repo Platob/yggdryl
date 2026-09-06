@@ -66,8 +66,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of schedules in the repeating group.",
       "display": "NoLegComplexEventSchedules",
-      "fix:description": "Number of schedules in the repeating group.",
       "fix:tag": "41400"
     }
   },
@@ -218,8 +218,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoLegDeliverySchedules",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41408"
     }
   },
@@ -260,8 +260,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
       "display": "NoLegDeliveryScheduleSettlDays",
-      "fix:description": "Number of delivery schedules in the repeating group.",
       "fix:tag": "41422"
     }
   },
@@ -312,8 +312,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
       "display": "NoLegDeliveryScheduleSettlTimes",
-      "fix:description": "Number of hour ranges in the repeating group.",
       "fix:tag": "41425"
     }
   },
@@ -364,8 +364,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of asset attribute entries in the group.",
       "display": "NoLegStreamAssetAttributes",
-      "fix:description": "Number of asset attribute entries in the group.",
       "fix:tag": "41452"
     }
   },
@@ -416,8 +416,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity sources in the repeating group.",
       "display": "NoLegDeliveryStreamCycles",
-      "fix:description": "Number of commodity sources in the repeating group.",
       "fix:tag": "41456"
     }
   },
@@ -448,8 +448,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity sources in the repeating group.",
       "display": "NoLegDeliveryStreamCommoditySources",
-      "fix:description": "Number of commodity sources in the repeating group.",
       "fix:tag": "41460"
     }
   },
@@ -490,8 +490,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of disruption events in the repeating group.",
       "display": "NoLegMarketDisruptionEvents",
-      "fix:description": "Number of disruption events in the repeating group.",
       "fix:tag": "41467"
     }
   },
@@ -532,8 +532,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallbacks in the repeating group.",
       "display": "NoLegMarketDisruptionFallbacks",
-      "fix:description": "Number of fallbacks in the repeating group.",
       "fix:tag": "41469"
     }
   },
@@ -644,8 +644,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fallback reference securities in the repeating group.",
       "display": "NoLegMarketDisruptionFallbackReferencePrices",
-      "fix:description": "Number of fallback reference securities in the repeating group.",
       "fix:tag": "41471"
     }
   },
@@ -676,8 +676,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41491"
     }
   }

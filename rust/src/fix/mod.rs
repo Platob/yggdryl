@@ -15,7 +15,7 @@
 //! | tag | `fix:tag` | `i32` | canonical FIX tag |
 //! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
-//! | description | `fix:description` | text | the specification's own wording |
+//! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from |
 //!

@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the instrument leg's provision's option expiration date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExpirationDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the instrument leg's provision's option expiration date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40500"
     }
   },
@@ -18,8 +18,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the option expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionOptionExpirationDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the option expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40501"
     }
   },
@@ -30,8 +30,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative option expiration date offset.",
       "fix:tag": "40502"
     }
   },
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative option expiration date offset.",
       "fix:tag": "40503"
     }
   },
@@ -55,9 +55,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the provision's relative option expiration date offset.",
       "display": "LegProvisionOptionExpirationDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the provision's relative option expiration date offset.",
       "fix:tag": "40504"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period.",
       "display": "LegProvisionOptionExpirationDateAdjusted",
-      "fix:description": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period.",
       "fix:tag": "40505"
     }
   },
@@ -81,8 +81,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The latest time for exercise on the expiration date.",
       "display": "LegProvisionOptionExpirationTime",
-      "fix:description": "The latest time for exercise on the expiration date.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisionoptionexpirationtime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "40506"
     }
@@ -94,8 +94,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the business center calendar used with the provision's latest exercise time on expiration date. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionExpirationTimeBusinessCenter",
-      "fix:description": "Identifies the business center calendar used with the provision's latest exercise time on expiration date. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40507"
     }
   },
@@ -106,8 +106,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "LegProvisionOptionRelevantUnderlyingDateUnadjusted",
-      "fix:description": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "fix:tag": "40508"
     }
   },
@@ -118,9 +118,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the instrument leg's provision's option relevant underlying date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionOptionRelevantUnderlyingDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the instrument leg's provision's option relevant underlying date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "fix:tag": "40509"
     }
   },
@@ -131,8 +131,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the instrument leg's provision's option underlying date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the instrument leg's provision's option underlying date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40510"
     }
   },
@@ -143,8 +143,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the date relevant to the underlying trade on exercise is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionOptionRelevantUnderlyingDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the date relevant to the underlying trade on exercise is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40511"
     }
   },
@@ -155,8 +155,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative option relevant underlying date offset.",
       "fix:tag": "40512"
     }
   },
@@ -167,9 +167,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative option relevant underlying date offset.",
       "fix:tag": "40513"
     }
   },
@@ -180,9 +180,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the provision's relative option relevant underlying date offset.",
       "display": "LegProvisionOptionRelevantUnderlyingDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the provision's relative option relevant underlying date offset.",
       "fix:tag": "40514"
     }
   },
@@ -193,8 +193,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "display": "LegProvisionOptionRelevantUnderlyingDateAdjusted",
-      "fix:description": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date).",
       "fix:tag": "40515"
     }
   },
@@ -205,9 +205,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the provisional cash settlement payment's termination, or relative termination, date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionCashSettlPaymentDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the provisional cash settlement payment's termination, or relative termination, date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "fix:tag": "40516"
     }
   },
@@ -218,8 +218,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the provisional cash settlement payment's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlPaymentDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the provisional cash settlement payment's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40517"
     }
   },
@@ -230,8 +230,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the cash settlement payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionCashSettlPaymentDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the cash settlement payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40518"
     }
   },
@@ -242,8 +242,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative cash settlement payment date offset.",
       "fix:tag": "40519"
     }
   },
@@ -254,9 +254,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative cash settlement payment date offset.",
       "fix:tag": "40520"
     }
   },
@@ -267,9 +267,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
       "display": "LegProvisionCashSettlPaymentDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
       "fix:tag": "40521"
     }
   },
@@ -280,8 +280,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The first date in range when a settlement date range is provided.",
       "display": "LegProvisionCashSettlPaymentDateRangeFirst",
-      "fix:description": "The first date in range when a settlement date range is provided.",
       "fix:tag": "40522"
     }
   },
@@ -292,8 +292,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The last date in range when a settlement date range is provided.",
       "display": "LegProvisionCashSettlPaymentDateRangeLast",
-      "fix:description": "The last date in range when a settlement date range is provided.",
       "fix:tag": "40523"
     }
   },
@@ -305,8 +305,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "LegProvisionCashSettlValueTime",
-      "fix:description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisioncashsettlvaluetime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisioncashsettlvaluetime\",\"type\":\"LocalMktTime\"}]}",
       "fix:tag": "40524"
     }
@@ -318,8 +318,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the business center calendar used with the provision's cash settlement valuation time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlValueTimeBusinessCenter",
-      "fix:description": "Identifies the business center calendar used with the provision's cash settlement valuation time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40525"
     }
   },
@@ -330,9 +330,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the provision's cash settlement valuation date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegProvisionCashSettlValueDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the provision's cash settlement valuation date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "fix:tag": "40526"
     }
   },
@@ -343,8 +343,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the provision's cash settlement valuation date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegProvisionCashSettlValueDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the provision's cash settlement valuation date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40527"
     }
   },
@@ -355,8 +355,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the cash settlement value date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegProvisionCashSettlValueDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the cash settlement value date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40528"
     }
   },
@@ -367,8 +367,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative cash settlement value date offset.",
       "fix:tag": "40529"
     }
   },
@@ -379,9 +379,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative cash settlement value date offset.",
       "fix:tag": "40530"
     }
   },
@@ -392,9 +392,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the provision's relative cash settlement value date offset.",
       "display": "LegProvisionCashSettlValueDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the provision's relative cash settlement value date offset.",
       "fix:tag": "40531"
     }
   },
@@ -405,8 +405,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted cash settlement value date.",
       "display": "LegProvisionCashSettlValueDateAdjusted",
-      "fix:description": "The adjusted cash settlement value date.",
       "fix:tag": "40532"
     }
   },
@@ -417,8 +417,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The party identifier/code for the payment settlement party.",
       "display": "LegProvisionPartyID",
-      "fix:description": "The party identifier/code for the payment settlement party.",
       "fix:tag": "40534"
     }
   },
@@ -429,9 +429,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the class or source of LegProvisionPartyID(40534).",
       "display": "LegProvisionPartyIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0SP2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0SP2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
-      "fix:description": "Identifies the class or source of LegProvisionPartyID(40534).",
       "fix:tag": "40535"
     }
   },
@@ -442,9 +442,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the type or role of LegProvisionPartyID(40534) specified.",
       "display": "LegProvisionPartyRole",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutingFirm\",\"since\":\"4.3\",\"doc\":\"Executing Firm (formerly FIX 4.2 ExecBroker)\"},{\"value\":\"10\",\"name\":\"SettlementLocation\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Settlement Location (formerly FIX 4.2 SettlLocation)\"},{\"value\":\"100\",\"name\":\"MarginAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":98,\"doc\":\"Margin account\"},{\"value\":\"101\",\"name\":\"CollateralAssetAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":99,\"doc\":\"Collateral asset account\"},{\"value\":\"102\",\"name\":\"DataRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":100,\"doc\":\"Data repository\"},{\"value\":\"103\",\"name\":\"CalculationAgent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":101,\"doc\":\"Calculation agent\"},{\"value\":\"104\",\"name\":\"ExerciseNoticeSender\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":102,\"doc\":\"Sender of exercise notice\"},{\"value\":\"105\",\"name\":\"ExerciseNoticeReceiver\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":103,\"doc\":\"Receiver of exercise notice\"},{\"value\":\"106\",\"name\":\"RateReferenceBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":104,\"doc\":\"Rate reference bank\"},{\"value\":\"107\",\"name\":\"Correspondent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":105,\"doc\":\"Correspondent\"},{\"value\":\"109\",\"name\":\"BeneficiaryBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":106,\"doc\":\"Beneficiary's bank or depository institution\"},{\"value\":\"11\",\"name\":\"OrderOriginationTrader\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)\"},{\"value\":\"110\",\"name\":\"Borrower\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":107,\"doc\":\"Borrower\"},{\"value\":\"111\",\"name\":\"PrimaryObligator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":108,\"doc\":\"Primary obligator\"},{\"value\":\"112\",\"name\":\"Guarantor\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":109,\"doc\":\"Guarantor\"},{\"value\":\"113\",\"name\":\"ExcludedReferenceEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":110,\"doc\":\"Excluded reference entity\"},{\"value\":\"114\",\"name\":\"DeterminingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":111,\"doc\":\"Determining party\"},{\"value\":\"115\",\"name\":\"HedgingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":112,\"doc\":\"Hedging party\"},{\"value\":\"116\",\"name\":\"ReportingEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":113,\"doc\":\"Reporting entity\"},{\"value\":\"117\",\"name\":\"SalesPerson\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":114,\"doc\":\"Sales person\"},{\"value\":\"118\",\"name\":\"Operator\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":115,\"doc\":\"Operator\"},{\"value\":\"119\",\"name\":\"CSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":116,\"doc\":\"Central Securities Depository (CSD)\"},{\"value\":\"12\",\"name\":\"ExecutingTrader\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Executing Trader (associated with Executing Firm - actually executes)\"},{\"value\":\"120\",\"name\":\"ICSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":117,\"doc\":\"International Central Securities Depository (ICSD)\"},{\"value\":\"121\",\"name\":\"TradingSubAccount\",\"since\":\"5.0SP2\",\"ep\":217,\"sort\":118,\"doc\":\"Trading sub-account\"},{\"value\":\"122\",\"name\":\"InvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":119,\"doc\":\"Investment decision maker\"},{\"value\":\"123\",\"name\":\"PublishingIntermediary\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":120,\"doc\":\"Publishing intermediary\"},{\"value\":\"124\",\"name\":\"CSDParticipant\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":121,\"doc\":\"Central Securities Depository (CSD) Participant\"},{\"value\":\"125\",\"name\":\"Issuer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":122,\"doc\":\"Issuer\"},{\"value\":\"126\",\"name\":\"ContraCustomerAccount\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":123,\"doc\":\"Contra Customer Account\"},{\"value\":\"127\",\"name\":\"ContraInvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":124,\"doc\":\"Contra Investment Decision Maker\"},{\"value\":\"128\",\"name\":\"AuthorizingPerson\",\"ep\":292,\"sort\":125,\"doc\":\"Authorizing person\"},{\"value\":\"129\",\"name\":\"PrimaryPlaceOfListing\",\"ep\":300,\"sort\":126,\"doc\":\"Primary place of listing\"},{\"value\":\"13\",\"name\":\"OrderOriginationFirm\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Order Origination Firm (e.g. buy-side firm)\"},{\"value\":\"130\",\"name\":\"SecondaryPlaceOfListing\",\"ep\":300,\"sort\":127,\"doc\":\"Secondary place of listing\"},{\"value\":\"131\",\"name\":\"Algorithm\",\"ep\":303,\"sort\":128,\"doc\":\"Algorithm\"},{\"value\":\"14\",\"name\":\"GiveupClearingFirmDepr\",\"since\":\"4.3\",\"deprecated\":\"5.0SP2\",\"sort\":13,\"doc\":\"Giveup Clearing Firm (firm to which trade is given up)\"},{\"value\":\"15\",\"name\":\"CorrespondantClearingFirm\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Correspondant Clearing Firm\"},{\"value\":\"16\",\"name\":\"ExecutingSystem\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Executing System\"},{\"value\":\"17\",\"name\":\"ContraFirm\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Contra Firm\"},{\"value\":\"18\",\"name\":\"ContraClearingFirm\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Contra Clearing Firm\"},{\"value\":\"19\",\"name\":\"SponsoringFirm\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Sponsoring Firm\"},{\"value\":\"2\",\"name\":\"BrokerOfCredit\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Broker of Credit (formerly FIX 4.2 BrokerOfCredit)\"},{\"value\":\"20\",\"name\":\"UnderlyingContraFirm\",\"since\":\"4.3\",\"sort\":19,\"doc\":\"Underlying Contra Firm\"},{\"value\":\"21\",\"name\":\"ClearingOrganization\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Clearing Organization\"},{\"value\":\"22\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Exchange\"},{\"value\":\"24\",\"name\":\"CustomerAccount\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Customer Account\"},{\"value\":\"25\",\"name\":\"CorrespondentClearingOrganization\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Correspondent Clearing Organization\"},{\"value\":\"26\",\"name\":\"CorrespondentBroker\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Correspondent Broker\"},{\"value\":\"27\",\"name\":\"Buyer\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Buyer/Seller (Receiver/Deliverer)\"},{\"value\":\"28\",\"name\":\"Custodian\",\"since\":\"4.4\",\"sort\":26,\"doc\":\"Custodian\"},{\"value\":\"29\",\"name\":\"Intermediary\",\"since\":\"4.4\",\"sort\":27,\"doc\":\"Intermediary\"},{\"value\":\"3\",\"name\":\"ClientID\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Client ID (formerly FIX 4.2 ClientID)\"},{\"value\":\"30\",\"name\":\"Agent\",\"since\":\"4.4\",\"sort\":28,\"doc\":\"Agent\"},{\"value\":\"31\",\"name\":\"SubCustodian\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Sub-custodian\"},{\"value\":\"32\",\"name\":\"Beneficiary\",\"since\":\"4.4\",\"sort\":30,\"doc\":\"Beneficiary\"},{\"value\":\"33\",\"name\":\"InterestedParty\",\"since\":\"4.4\",\"sort\":31,\"doc\":\"Interested party\"},{\"value\":\"34\",\"name\":\"RegulatoryBody\",\"since\":\"4.4\",\"sort\":32,\"doc\":\"Regulatory body\"},{\"value\":\"35\",\"name\":\"LiquidityProvider\",\"since\":\"4.4\",\"sort\":33,\"doc\":\"Liquidity provider\"},{\"value\":\"36\",\"name\":\"EnteringTrader\",\"since\":\"4.4\",\"sort\":34,\"doc\":\"Entering trader\"},{\"value\":\"37\",\"name\":\"ContraTrader\",\"since\":\"4.4\",\"sort\":35,\"doc\":\"Contra trader\"},{\"value\":\"38\",\"name\":\"PositionAccount\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Position account\"},{\"value\":\"39\",\"name\":\"ContraInvestorID\",\"since\":\"4.4\",\"sort\":37,\"doc\":\"Contra Investor ID\"},{\"value\":\"4\",\"name\":\"ClearingFirm\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Clearing Firm (formerly FIX 4.2 ClearingFirm)\"},{\"value\":\"40\",\"name\":\"TransferToFirm\",\"since\":\"4.4\",\"sort\":38,\"doc\":\"Transfer to Firm\"},{\"value\":\"41\",\"name\":\"ContraPositionAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":39,\"doc\":\"Contra Position Account\"},{\"value\":\"42\",\"name\":\"ContraExchange\",\"since\":\"4.4\",\"ep\":5,\"sort\":40,\"doc\":\"Contra Exchange\"},{\"value\":\"43\",\"name\":\"InternalCarryAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":41,\"doc\":\"Internal Carry Account\"},{\"value\":\"44\",\"name\":\"OrderEntryOperatorID\",\"since\":\"4.4\",\"ep\":5,\"sort\":42,\"doc\":\"Order Entry Operator ID\"},{\"value\":\"45\",\"name\":\"SecondaryAccountNumber\",\"since\":\"4.4\",\"ep\":5,\"sort\":43,\"doc\":\"Secondary Account Number\"},{\"value\":\"46\",\"name\":\"ForeignFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":44,\"doc\":\"Foreign Firm\"},{\"value\":\"47\",\"name\":\"ThirdPartyAllocationFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":45,\"doc\":\"Third Party Allocation Firm\"},{\"value\":\"48\",\"name\":\"ClaimingAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":46,\"doc\":\"Claiming Account\"},{\"value\":\"49\",\"name\":\"AssetManager\",\"since\":\"4.4\",\"ep\":8,\"sort\":47,\"doc\":\"Asset Manager\"},{\"value\":\"5\",\"name\":\"InvestorID\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Investor ID\"},{\"value\":\"50\",\"name\":\"PledgorAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":48,\"doc\":\"Pledgor Account\"},{\"value\":\"51\",\"name\":\"PledgeeAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":49,\"doc\":\"Pledgee Account\"},{\"value\":\"52\",\"name\":\"LargeTraderReportableAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":50,\"doc\":\"Large Trader Reportable Account\"},{\"value\":\"53\",\"name\":\"TraderMnemonic\",\"since\":\"4.4\",\"ep\":8,\"sort\":51,\"doc\":\"Trader mnemonic\"},{\"value\":\"54\",\"name\":\"SenderLocation\",\"since\":\"4.4\",\"ep\":8,\"sort\":52,\"doc\":\"Sender Location\"},{\"value\":\"55\",\"name\":\"SessionID\",\"since\":\"4.4\",\"ep\":8,\"sort\":53,\"doc\":\"Session ID\"},{\"value\":\"56\",\"name\":\"AcceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":54,\"doc\":\"Acceptable Counterparty\"},{\"value\":\"57\",\"name\":\"UnacceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":55,\"doc\":\"Unacceptable Counterparty\"},{\"value\":\"58\",\"name\":\"EnteringUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":56,\"doc\":\"Entering Unit\"},{\"value\":\"59\",\"name\":\"ExecutingUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":57,\"doc\":\"Executing Unit\"},{\"value\":\"6\",\"name\":\"IntroducingFirm\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Introducing Firm\"},{\"value\":\"60\",\"name\":\"IntroducingBroker\",\"since\":\"4.4\",\"ep\":4,\"sort\":58,\"doc\":\"Introducing Broker\"},{\"value\":\"61\",\"name\":\"QuoteOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":59,\"doc\":\"Quote originator\"},{\"value\":\"62\",\"name\":\"ReportOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":60,\"doc\":\"Report originator\"},{\"value\":\"63\",\"name\":\"SystematicInternaliser\",\"since\":\"4.4\",\"ep\":26,\"sort\":61,\"doc\":\"Systematic internaliser (SI)\"},{\"value\":\"64\",\"name\":\"MultilateralTradingFacility\",\"since\":\"4.4\",\"ep\":26,\"sort\":62,\"doc\":\"Multilateral Trading Facility (MTF)\"},{\"value\":\"65\",\"name\":\"RegulatedMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":63,\"doc\":\"Regulated Market (RM)\"},{\"value\":\"66\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":64,\"doc\":\"Market Maker\"},{\"value\":\"67\",\"name\":\"InvestmentFirm\",\"since\":\"4.4\",\"ep\":26,\"sort\":65,\"doc\":\"Investment Firm\"},{\"value\":\"68\",\"name\":\"HostCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":66,\"doc\":\"Host Competent Authority (Host CA)\"},{\"value\":\"69\",\"name\":\"HomeCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":67,\"doc\":\"Home Competent Authority (Home CA)\"},{\"value\":\"7\",\"name\":\"EnteringFirm\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Entering Firm\"},{\"value\":\"70\",\"name\":\"CompetentAuthorityLiquidity\",\"since\":\"4.4\",\"ep\":26,\"sort\":68,\"doc\":\"Competent Authority of the most relevant market in terms of liquidity (CAL)\"},{\"value\":\"71\",\"name\":\"CompetentAuthorityTransactionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":69,\"doc\":\"Competent Authority of the Transaction (Execution) Venue (CATV)\"},{\"value\":\"72\",\"name\":\"ReportingIntermediary\",\"since\":\"4.4\",\"ep\":26,\"sort\":70,\"doc\":\"Reporting intermediary\"},{\"value\":\"73\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":71,\"doc\":\"Execution Venue\"},{\"value\":\"74\",\"name\":\"MarketDataEntryOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":72,\"doc\":\"Market data entry originator\"},{\"value\":\"75\",\"name\":\"LocationID\",\"since\":\"4.4\",\"ep\":26,\"sort\":73,\"doc\":\"Location ID\"},{\"value\":\"76\",\"name\":\"DeskID\",\"since\":\"4.4\",\"ep\":26,\"sort\":74,\"doc\":\"Desk ID\"},{\"value\":\"77\",\"name\":\"MarketDataMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":75,\"doc\":\"Market data market\"},{\"value\":\"78\",\"name\":\"AllocationEntity\",\"since\":\"4.4\",\"ep\":35,\"sort\":76,\"doc\":\"Allocation Entity\"},{\"value\":\"79\",\"name\":\"PrimeBroker\",\"since\":\"5.0\",\"ep\":68,\"sort\":77,\"doc\":\"Prime Broker providing General Trade Services\"},{\"value\":\"8\",\"name\":\"Locate\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Locate / Lending Firm (for short-sales)\"},{\"value\":\"80\",\"name\":\"StepOutFirm\",\"since\":\"5.0\",\"ep\":68,\"sort\":78,\"doc\":\"Step-Out Firm (Prime Broker)\"},{\"value\":\"81\",\"name\":\"BrokerClearingID\",\"since\":\"5.0\",\"ep\":68,\"sort\":79,\"doc\":\"Broker clearing identifier\"},{\"value\":\"82\",\"name\":\"CentralRegistrationDepository\",\"since\":\"5.0SP1\",\"ep\":79,\"sort\":80,\"doc\":\"Central Registration Depository (CRD)\"},{\"value\":\"83\",\"name\":\"ClearingAccount\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":81,\"doc\":\"Clearing Account\"},{\"value\":\"84\",\"name\":\"AcceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":82,\"doc\":\"Acceptable Settling Counterparty\"},{\"value\":\"85\",\"name\":\"UnacceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":83,\"doc\":\"Unacceptable Settling Counterparty\"},{\"value\":\"86\",\"name\":\"CLSMemberBank\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":84,\"doc\":\"CLS Member Bank\"},{\"value\":\"87\",\"name\":\"InConcertGroup\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":85,\"doc\":\"In Concert Group\"},{\"value\":\"88\",\"name\":\"InConcertControllingEntity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":86,\"doc\":\"In Concert Controlling Entity\"},{\"value\":\"89\",\"name\":\"LargePositionsReportingAccount\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":87,\"doc\":\"Large Positions Reporting Account\"},{\"value\":\"9\",\"name\":\"FundManagerClientID\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Fund Manager Client ID (for CIV)\"},{\"value\":\"90\",\"name\":\"SettlementFirm\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":88,\"doc\":\"Settlement Firm\"},{\"value\":\"91\",\"name\":\"SettlementAccount\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":89,\"doc\":\"Settlement account\"},{\"value\":\"92\",\"name\":\"ReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":90,\"doc\":\"Reporting Market Center\"},{\"value\":\"93\",\"name\":\"RelatedReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":91,\"doc\":\"Related Reporting Market Center\"},{\"value\":\"94\",\"name\":\"AwayMarket\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":92,\"doc\":\"Away Market\"},{\"value\":\"95\",\"name\":\"GiveupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":93,\"doc\":\"Give-up (trading) firm\"},{\"value\":\"96\",\"name\":\"TakeupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":94,\"doc\":\"Take-up (trading) firm\"},{\"value\":\"97\",\"name\":\"GiveupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":95,\"doc\":\"Give-up clearing firm\"},{\"value\":\"98\",\"name\":\"TakeupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":96,\"doc\":\"Take-up clearing firm\"},{\"value\":\"99\",\"name\":\"OriginatingMarket\",\"since\":\"5.0SP2\",\"ep\":139,\"sort\":97,\"doc\":\"Originating Market\"}]}",
-      "fix:description": "Identifies the type or role of LegProvisionPartyID(40534) specified.",
       "fix:tag": "40536"
     }
   },
@@ -455,8 +455,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Party sub-identifier, if applicable, for LegProvisionPartyRole(40536).",
       "display": "LegProvisionPartySubID",
-      "fix:description": "Party sub-identifier, if applicable, for LegProvisionPartyRole(40536).",
       "fix:tag": "40538"
     }
   },
@@ -467,9 +467,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The type of LegProvisionPartySubID(40538) value.",
       "display": "LegProvisionPartySubIDType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Firm\",\"since\":\"4.4\",\"doc\":\"Firm\"},{\"value\":\"10\",\"name\":\"SecuritiesAccountNumber\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Securities account number (for settlement instructions)\"},{\"value\":\"11\",\"name\":\"RegistrationNumber\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Registration number (for settlement instructions and confirmations)\"},{\"value\":\"12\",\"name\":\"RegisteredAddressForConfirmation\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Registered address (for confirmation purposes)\"},{\"value\":\"13\",\"name\":\"RegulatoryStatus\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Regulatory status (for confirmation purposes)\"},{\"value\":\"14\",\"name\":\"RegistrationName\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Registration name (for settlement instructions)\"},{\"value\":\"15\",\"name\":\"CashAccountNumber\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Cash account number (for settlement instructions)\"},{\"value\":\"16\",\"name\":\"BIC\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"BIC\"},{\"value\":\"17\",\"name\":\"CSDParticipantMemberCode\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"CSD participant member code\"},{\"value\":\"18\",\"name\":\"RegisteredAddress\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Registered address\"},{\"value\":\"19\",\"name\":\"FundAccountName\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"Fund account name\"},{\"value\":\"2\",\"name\":\"Person\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Person\"},{\"value\":\"20\",\"name\":\"TelexNumber\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Telex number\"},{\"value\":\"21\",\"name\":\"FaxNumber\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Fax number\"},{\"value\":\"22\",\"name\":\"SecuritiesAccountName\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Securities account name\"},{\"value\":\"23\",\"name\":\"CashAccountName\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Cash account name\"},{\"value\":\"24\",\"name\":\"Department\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Department\"},{\"value\":\"25\",\"name\":\"LocationDesk\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Location desk\"},{\"value\":\"26\",\"name\":\"PositionAccountType\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Position account type\"},{\"value\":\"27\",\"name\":\"SecurityLocateID\",\"since\":\"4.4\",\"ep\":1,\"sort\":26,\"doc\":\"Security locate ID\"},{\"value\":\"28\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"doc\":\"Market maker\"},{\"value\":\"29\",\"name\":\"EligibleCounterparty\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"doc\":\"Eligible counterparty\"},{\"value\":\"3\",\"name\":\"System\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"System\"},{\"value\":\"30\",\"name\":\"ProfessionalClient\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"doc\":\"Professional client\"},{\"value\":\"31\",\"name\":\"Location\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"doc\":\"Location\"},{\"value\":\"32\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"doc\":\"Execution venue\"},{\"value\":\"33\",\"name\":\"CurrencyDeliveryIdentifier\",\"since\":\"5.0\",\"ep\":44,\"sort\":32,\"doc\":\"Currency delivery identifier\"},{\"value\":\"34\",\"name\":\"AddressCity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":33,\"doc\":\"Address City\"},{\"value\":\"35\",\"name\":\"AddressStateOrProvince\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":34,\"doc\":\"Address State/Province\"},{\"value\":\"36\",\"name\":\"AddressPostalCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":35,\"doc\":\"Address Postal Code\"},{\"value\":\"37\",\"name\":\"AddressStreet\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":36,\"doc\":\"Address Street\"},{\"value\":\"38\",\"name\":\"AddressISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":37,\"doc\":\"Address Country (ISO country code)\"},{\"value\":\"39\",\"name\":\"ISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":38,\"doc\":\"ISO country code\"},{\"value\":\"4\",\"name\":\"Application\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Application\"},{\"value\":\"40\",\"name\":\"MarketSegment\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":39,\"doc\":\"Market segment\"},{\"value\":\"41\",\"name\":\"CustomerAccountType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":40,\"doc\":\"Customer account type\"},{\"value\":\"42\",\"name\":\"OmnibusAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":41,\"doc\":\"Omnibus account\"},{\"value\":\"43\",\"name\":\"FundsSegregationType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":42,\"doc\":\"Funds segregation type\"},{\"value\":\"44\",\"name\":\"GuaranteeFund\",\"since\":\"5.0SP2\",\"ep\":157,\"sort\":43,\"doc\":\"Guarantee fund\"},{\"value\":\"45\",\"name\":\"SwapDealer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Swap dealer\"},{\"value\":\"46\",\"name\":\"MajorParticipant\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Major participant\"},{\"value\":\"47\",\"name\":\"FinancialEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Financial entity\"},{\"value\":\"48\",\"name\":\"USPerson\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":47,\"doc\":\"U.S. person\"},{\"value\":\"49\",\"name\":\"ReportingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":48,\"doc\":\"Reporting entity indicator\"},{\"value\":\"5\",\"name\":\"FullLegalNameOfFirm\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Full legal name of firm\"},{\"value\":\"50\",\"name\":\"ElectedClearingRequirementException\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":49,\"doc\":\"Elected clearing requirement exception\"},{\"value\":\"51\",\"name\":\"BusinessCenter\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":50,\"doc\":\"Business center\"},{\"value\":\"52\",\"name\":\"ReferenceText\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":51,\"doc\":\"Reference text\"},{\"value\":\"53\",\"name\":\"ShortMarkingExemptAccount\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":52,\"doc\":\"Short-marking exempt account\"},{\"value\":\"54\",\"name\":\"ParentFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":53,\"doc\":\"Parent firm identifier\"},{\"value\":\"55\",\"name\":\"ParentFirmName\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":54,\"doc\":\"Parent firm name\"},{\"value\":\"56\",\"name\":\"DealIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":55,\"doc\":\"Deal identifier\"},{\"value\":\"57\",\"name\":\"SystemTradeID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":56,\"doc\":\"System trade identifier\"},{\"value\":\"58\",\"name\":\"SystemTradeSubID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":57,\"doc\":\"System trade sub-identifier\"},{\"value\":\"59\",\"name\":\"FCMCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":58,\"doc\":\"Futures Commission Merchant (FCM) code\"},{\"value\":\"6\",\"name\":\"PostalAddress\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Postal address\"},{\"value\":\"60\",\"name\":\"DlvryTrmlCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":59,\"doc\":\"Delivery terminal customer account/code\"},{\"value\":\"61\",\"name\":\"VolntyRptEntity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":60,\"doc\":\"Voluntary reporting entity\"},{\"value\":\"62\",\"name\":\"RptObligJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":61,\"doc\":\"Reporting obligation jurisdiction\"},{\"value\":\"63\",\"name\":\"VolntyRptJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":62,\"doc\":\"Voluntary reporting jurisdiction\"},{\"value\":\"64\",\"name\":\"CompanyActivities\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":63,\"doc\":\"Company activities\"},{\"value\":\"65\",\"name\":\"EEAreaDomiciled\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":64,\"doc\":\"European Economic Area domiciled\"},{\"value\":\"66\",\"name\":\"ContractLinked\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":65,\"doc\":\"Contract linked to commercial or treasury financing for this counterparty\"},{\"value\":\"67\",\"name\":\"ContractAbove\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":66,\"doc\":\"Contract above clearing threshold for this counterparty\"},{\"value\":\"68\",\"name\":\"VolntyRptPty\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":67,\"doc\":\"Voluntary reporting party\"},{\"value\":\"69\",\"name\":\"EndUser\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":68,\"doc\":\"End user\"},{\"value\":\"7\",\"name\":\"PhoneNumber\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Phone number\"},{\"value\":\"70\",\"name\":\"LocationOrJurisdiction\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":69,\"doc\":\"Location or jurisdiction\"},{\"value\":\"71\",\"name\":\"DerivativesDealer\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":70,\"doc\":\"Derivatives dealer\"},{\"value\":\"72\",\"name\":\"Domicile\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":71,\"doc\":\"Domicile\"},{\"value\":\"73\",\"name\":\"ExemptFromRecognition\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":72,\"doc\":\"Exempt from recognition\"},{\"value\":\"74\",\"name\":\"Payer\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":73,\"doc\":\"Payer\"},{\"value\":\"75\",\"name\":\"Receiver\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":74,\"doc\":\"Receiver\"},{\"value\":\"76\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":75,\"doc\":\"Systematic Internaliser (SI)\"},{\"value\":\"77\",\"name\":\"PublishingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":76,\"doc\":\"Publishing entity indicator\"},{\"value\":\"78\",\"name\":\"FirstName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":77,\"doc\":\"First name\"},{\"value\":\"79\",\"name\":\"Surname\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":78,\"doc\":\"Surname\"},{\"value\":\"8\",\"name\":\"EmailAddress\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Email address\"},{\"value\":\"80\",\"name\":\"DateOfBirth\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":79,\"doc\":\"Date of birth\"},{\"value\":\"81\",\"name\":\"OrderTransmittingFirm\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":80,\"doc\":\"Order transmitting firm\"},{\"value\":\"82\",\"name\":\"OrderTransmittingFirmBuyer\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":81,\"doc\":\"Order transmitting firm for buyer\"},{\"value\":\"83\",\"name\":\"OrderTransmitterSeller\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":82,\"doc\":\"Order transmitter for seller\"},{\"value\":\"84\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":83,\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"85\",\"name\":\"SubSectorClassification\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":84,\"doc\":\"Sub-sector classification\"},{\"value\":\"86\",\"name\":\"PartySide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":85,\"doc\":\"Party side\"},{\"value\":\"87\",\"name\":\"LegalRegistrationCountry\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":86,\"doc\":\"Legal registration country\"},{\"value\":\"88\",\"name\":\"AlgorithmVersion\",\"ep\":303,\"sort\":87,\"doc\":\"Algorithm version\"},{\"value\":\"89\",\"name\":\"CertificateRegistrationStatus\",\"ep\":303,\"sort\":88,\"doc\":\"Certificate registration status\"},{\"value\":\"9\",\"name\":\"ContactName\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Contact name\"}]}",
-      "fix:description": "The type of LegProvisionPartySubID(40538) value.",
       "fix:tag": "40539"
     }
   },
@@ -480,9 +480,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of swap stream.",
       "display": "UnderlyingStreamType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PaymentCashSettlement\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Payment / cash settlement\"},{\"value\":\"1\",\"name\":\"PhysicalDelivery\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Physical delivery\"}]}",
-      "fix:description": "Type of swap stream.",
       "fix:tag": "40541"
     }
   },
@@ -493,8 +493,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A short descriptive name given to payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as a reference.",
       "display": "UnderlyingStreamDesc",
-      "fix:description": "A short descriptive name given to payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as a reference.",
       "fix:tag": "40542"
     }
   },
@@ -505,9 +505,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party paying the stream.",
       "display": "UnderlyingStreamPaySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party paying the stream.",
       "fix:tag": "40543"
     }
   },
@@ -518,9 +518,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The side of the party receiving the stream.",
       "display": "UnderlyingStreamReceiveSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
-      "fix:description": "The side of the party receiving the stream.",
       "fix:tag": "40544"
     }
   },
@@ -531,8 +531,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Notional, or initial notional value for the payment stream. Use SwapSchedule for steps.",
       "display": "UnderlyingStreamNotional",
-      "fix:description": "Notional, or initial notional value for the payment stream. Use SwapSchedule for steps.",
       "fix:tag": "40545"
     }
   },
@@ -543,8 +543,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency the UnderlyingStreamNotional(40545) is denominated in. Uses ISO 4217 currency codes.",
       "display": "UnderlyingStreamCurrency",
-      "fix:description": "Specifies the currency the UnderlyingStreamNotional(40545) is denominated in. Uses ISO 4217 currency codes.",
       "fix:tag": "40546"
     }
   },
@@ -555,8 +555,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "display": "UnderlyingStreamText",
-      "fix:description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
       "fix:tag": "40547"
     }
   },
@@ -567,8 +567,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted termination date.",
       "display": "UnderlyingStreamTerminationDateUnadjusted",
-      "fix:description": "The unadjusted termination date.",
       "fix:tag": "40548"
     }
   },
@@ -579,9 +579,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the underlying instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamTerminationDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the underlying instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40549"
     }
   },
@@ -592,8 +592,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the underlying instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamTerminationDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the underlying instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40550"
     }
   },
@@ -604,8 +604,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingStreamTerminationDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40551"
     }
   },
@@ -616,8 +616,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative termination date offset.",
       "fix:tag": "40552"
     }
   },
@@ -628,9 +628,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative termination date offset.",
       "fix:tag": "40553"
     }
   },
@@ -641,9 +641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative termination date offset.",
       "display": "UnderlyingStreamTerminationDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative termination date offset.",
       "fix:tag": "40554"
     }
   },
@@ -654,8 +654,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted termination date.",
       "display": "UnderlyingStreamTerminationDateAdjusted",
-      "fix:description": "The adjusted termination date.",
       "fix:tag": "40555"
     }
   },
@@ -666,9 +666,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the calculation periods. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamCalculationPeriodBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the calculation periods. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40556"
     }
   },
@@ -679,8 +679,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamCalculationPeriodBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40557"
     }
   },
@@ -691,8 +691,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first calculation period start date if before the effective date.",
       "display": "UnderlyingStreamFirstPeriodStartDateUnadjusted",
-      "fix:description": "The unadjusted first calculation period start date if before the effective date.",
       "fix:tag": "40558"
     }
   },
@@ -703,9 +703,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the underlying instrument's stream's first calculation period start date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamFirstPeriodStartDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the underlying instrument's stream's first calculation period start date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40559"
     }
   },
@@ -716,8 +716,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the underlying instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingStreamFirstPeriodStartDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the underlying instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40560"
     }
   },
@@ -728,8 +728,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted first calculation period start date, if it is before the effective date.",
       "display": "UnderlyingStreamFirstPeriodStartDateAdjusted",
-      "fix:description": "The adjusted first calculation period start date, if it is before the effective date.",
       "fix:tag": "40561"
     }
   },
@@ -740,8 +740,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
       "display": "UnderlyingStreamFirstRegularPeriodStartDateUnadjusted",
-      "fix:description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
       "fix:tag": "40562"
     }
   },
@@ -752,8 +752,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted end date of the initial compounding period.",
       "display": "UnderlyingStreamFirstCompoundingPeriodEndDateUnadjusted",
-      "fix:description": "The unadjusted end date of the initial compounding period.",
       "fix:tag": "40563"
     }
   },
@@ -764,8 +764,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted last regular period end date if there is a final stub period.",
       "display": "UnderlyingStreamLastRegularPeriodEndDateUnadjusted",
-      "fix:description": "The unadjusted last regular period end date if there is a final stub period.",
       "fix:tag": "40564"
     }
   },
@@ -776,8 +776,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
       "display": "UnderlyingStreamCalculationFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
       "fix:tag": "40565"
     }
   },
@@ -788,9 +788,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "display": "UnderlyingStreamCalculationFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "fix:tag": "40566"
     }
   },
@@ -801,9 +801,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamCalculationRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40567"
     }
   },
@@ -814,9 +814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the type of payment stream applicable to the swap stream associated with the underlying instrument.",
       "display": "UnderlyingPaymentStreamType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Periodic\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Periodic (default)\"},{\"value\":\"1\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Initial\"},{\"value\":\"2\",\"name\":\"Single\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Single\"},{\"value\":\"3\",\"name\":\"Dividend\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Dividend\"},{\"value\":\"4\",\"name\":\"Interest\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Interest\"},{\"value\":\"5\",\"name\":\"DividendReturn\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":5,\"doc\":\"Dividend return\"},{\"value\":\"6\",\"name\":\"PriceReturn\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":6,\"doc\":\"Price return\"},{\"value\":\"7\",\"name\":\"TotalReturn\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":7,\"doc\":\"Total return\"},{\"value\":\"8\",\"name\":\"Variance\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":8,\"doc\":\"Variance\"},{\"value\":\"9\",\"name\":\"Correlation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":9,\"doc\":\"Correlation\"}]}",
-      "fix:description": "Identifies the type of payment stream applicable to the swap stream associated with the underlying instrument.",
       "fix:tag": "40568"
     }
   },
@@ -827,8 +827,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used only for credit index trade. This contains the credit spread (\"fair value\") at which the trade was executed. The market rate varies over the life of the index depending on market conditions. This is the price of the index as quoted by trading desks.",
       "display": "UnderlyingPaymentStreamMarketRate",
-      "fix:description": "Used only for credit index trade. This contains the credit spread (\"fair value\") at which the trade was executed. The market rate varies over the life of the index depending on market conditions. This is the price of the index as quoted by trading desks.",
       "fix:tag": "40569"
     }
   },
@@ -839,8 +839,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Applicable to credit default swaps on mortgage backed securities to specify whether payment delays are applicable to the fixed amount.",
       "display": "UnderlyingPaymentStreamDelayIndicator",
-      "fix:description": "Applicable to credit default swaps on mortgage backed securities to specify whether payment delays are applicable to the fixed amount.",
       "fix:tag": "40570"
     }
   },
@@ -851,8 +851,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the currency that the stream settles in (to support swaps that settle in a currency different from the notional currency). Uses ISO 4217 currency codes.",
       "display": "UnderlyingPaymentStreamSettlCurrency",
-      "fix:description": "Specifies the currency that the stream settles in (to support swaps that settle in a currency different from the notional currency). Uses ISO 4217 currency codes.",
       "fix:tag": "40571"
     }
   },
@@ -863,9 +863,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The day count convention used in the payment stream calculations.",
       "display": "UnderlyingPaymentStreamDayCount",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The day count convention used in the payment stream calculations.",
       "fix:tag": "40572"
     }
   },
@@ -876,8 +876,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of days from the adjusted calculation period start date to the adjusted value date, calculated in accordance with the applicable day count fraction.",
       "display": "UnderlyingPaymentStreamAccrualDays",
-      "fix:description": "The number of days from the adjusted calculation period start date to the adjusted value date, calculated in accordance with the applicable day count fraction.",
       "fix:tag": "40573"
     }
   },
@@ -888,9 +888,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The method of calculating discounted payment amounts",
       "display": "UnderlyingPaymentStreamDiscountType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Standard\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Standard\"},{\"value\":\"1\",\"name\":\"FRA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Forward Rate Agreement (FRA)\"}]}",
-      "fix:description": "The method of calculating discounted payment amounts",
       "fix:tag": "40574"
     }
   },
@@ -901,8 +901,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Discount rate. The rate is expressed in decimal, e.g. 5% is expressed as 0.05.",
       "display": "UnderlyingPaymentStreamDiscountRate",
-      "fix:description": "Discount rate. The rate is expressed in decimal, e.g. 5% is expressed as 0.05.",
       "fix:tag": "40575"
     }
   },
@@ -913,9 +913,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The day count convention applied to the UnderlyingPaymentStreamDiscountRate(40575).",
       "display": "UnderlyingPaymentStreamDiscountRateDayCount",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "The day count convention applied to the UnderlyingPaymentStreamDiscountRate(40575).",
       "fix:tag": "40576"
     }
   },
@@ -926,9 +926,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Compounding Method.",
       "display": "UnderlyingPaymentStreamCompoundingMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"Flat\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Flat\"},{\"value\":\"2\",\"name\":\"Straight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Straight\"},{\"value\":\"3\",\"name\":\"SpreadExclusive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Spread exclusive\"}]}",
-      "fix:description": "Compounding Method.",
       "fix:tag": "40577"
     }
   },
@@ -939,8 +939,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether there is an initial exchange of principal on the effective date.",
       "display": "UnderlyingPaymentStreamInitialPrincipalExchangeIndicator",
-      "fix:description": "Indicates whether there is an initial exchange of principal on the effective date.",
       "fix:tag": "40578"
     }
   },
@@ -951,8 +951,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether there are intermediate or interim exchanges of principal during the term of the swap.",
       "display": "UnderlyingPaymentStreamInterimPrincipalExchangeIndicator",
-      "fix:description": "Indicates whether there are intermediate or interim exchanges of principal during the term of the swap.",
       "fix:tag": "40579"
     }
   },
@@ -963,8 +963,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether there is a final exchange of principal on the termination date.",
       "display": "UnderlyingPaymentStreamFinalPrincipalExchangeIndicator",
-      "fix:description": "Indicates whether there is a final exchange of principal on the termination date.",
       "fix:tag": "40580"
     }
   },
@@ -975,9 +975,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamPaymentDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40581"
     }
   },
@@ -988,8 +988,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the payment stream's payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamPaymentDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the payment stream's payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40582"
     }
   },
@@ -1000,8 +1000,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency of payments.",
       "display": "UnderlyingPaymentStreamPaymentFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency of payments.",
       "fix:tag": "40583"
     }
   },
@@ -1012,9 +1012,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency of payments.",
       "display": "UnderlyingPaymentStreamPaymentFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency of payments.",
       "fix:tag": "40584"
     }
   },
@@ -1025,9 +1025,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamPaymentRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40585"
     }
   },
@@ -1038,8 +1038,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first payment date.",
       "display": "UnderlyingPaymentStreamFirstPaymentDateUnadjusted",
-      "fix:description": "The unadjusted first payment date.",
       "fix:tag": "40586"
     }
   },
@@ -1050,8 +1050,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted last regular payment date.",
       "display": "UnderlyingPaymentStreamLastRegularPaymentDateUnadjusted",
-      "fix:description": "The unadjusted last regular payment date.",
       "fix:tag": "40587"
     }
   },
@@ -1062,8 +1062,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when payment dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamPaymentDateRelativeTo",
-      "fix:description": "Specifies the anchor date when payment dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40588"
     }
   },
@@ -1074,8 +1074,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative payment date offset.",
       "fix:tag": "40589"
     }
   },
@@ -1086,9 +1086,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative payment date offset.",
       "fix:tag": "40590"
     }
   },
@@ -1099,9 +1099,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative payment date offset.",
       "display": "UnderlyingPaymentStreamPaymentDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative payment date offset.",
       "fix:tag": "40591"
     }
   },
@@ -1112,8 +1112,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the reset dates are relative to an anchor date. If the reset frequency is specified as daily this element must not be included. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamResetDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the reset dates are relative to an anchor date. If the reset frequency is specified as daily this element must not be included. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40592"
     }
   },
@@ -1124,9 +1124,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamResetDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40593"
     }
   },
@@ -1137,8 +1137,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used to adjust the payment stream's reset date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "UnderlyingPaymentStreamResetDateBusinessCenter",
-      "fix:description": "The business center calendar used to adjust the payment stream's reset date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "40594"
     }
   },
@@ -1149,8 +1149,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for frequency of resets.",
       "display": "UnderlyingPaymentStreamResetFrequencyPeriod",
-      "fix:description": "Time unit multiplier for frequency of resets.",
       "fix:tag": "40595"
     }
   },
@@ -1161,9 +1161,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with frequency of resets.",
       "display": "UnderlyingPaymentStreamResetFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with frequency of resets.",
       "fix:tag": "40596"
     }
   },
@@ -1174,9 +1174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
       "display": "UnderlyingPaymentStreamResetWeeklyRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"FRI\",\"name\":\"Friday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Friday\"},{\"value\":\"MON\",\"name\":\"Monday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Monday\"},{\"value\":\"SAT\",\"name\":\"Saturday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Saturday\"},{\"value\":\"SUN\",\"name\":\"Sunday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Sunday\"},{\"value\":\"THU\",\"name\":\"Thursday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"Tuesday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"Wednesday\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
       "fix:tag": "40597"
     }
   },
@@ -1187,8 +1187,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the initial fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "UnderlyingPaymentStreamInitialFixingDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the initial fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "40598"
     }
   },
@@ -1199,9 +1199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamInitialFixingDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "fix:tag": "40599"
     }
   }

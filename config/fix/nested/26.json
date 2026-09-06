@@ -66,8 +66,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the number of miscellaneous fee sub-types.",
       "display": "NoMiscFeeSubTypes",
-      "fix:description": "Specifies the number of miscellaneous fee sub-types.",
       "fix:tag": "2633"
     }
   },
@@ -248,8 +248,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commissions in the repeating group.",
       "display": "NoCommissions",
-      "fix:description": "Number of commissions in the repeating group.",
       "fix:tag": "2639"
     }
   },
@@ -430,8 +430,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commissions in the repeating group.",
       "display": "NoAllocCommissions",
-      "fix:description": "Number of commissions in the repeating group.",
       "fix:tag": "2653"
     }
   },
@@ -472,8 +472,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of regulatory publication rules in repeating group.",
       "display": "NoTrdRegPublications",
-      "fix:description": "Number of regulatory publication rules in repeating group.",
       "fix:tag": "2668"
     }
   },
@@ -644,8 +644,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of side collateral amount entries.",
       "display": "NoSideCollateralAmounts",
-      "fix:description": "Number of side collateral amount entries.",
       "fix:tag": "2691"
     }
   }

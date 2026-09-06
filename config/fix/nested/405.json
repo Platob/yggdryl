@@ -56,8 +56,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties identified in the contract provision.",
       "display": "NoLegProvisionPartyIDs",
-      "fix:description": "Number of parties identified in the contract provision.",
       "fix:tag": "40533"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoLegProvisionPartySubIDs",
-      "fix:description": "Number of sub-party IDs to be reported for the party.",
       "fix:tag": "40537"
     }
   },
@@ -330,8 +330,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap streams in the repeating group.",
       "display": "NoUnderlyingStreams",
-      "fix:description": "Number of swap streams in the repeating group.",
       "fix:tag": "40540"
     }
   }

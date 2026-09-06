@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegCashSettlDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42306"
     }
   },
@@ -58,8 +58,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the LegDividendAccrualPaymentDateBusinessCenterGrp.",
       "display": "NoLegDividendAccrualPaymentDateBusinessCenters",
-      "fix:description": "Number of entries in the LegDividendAccrualPaymentDateBusinessCenterGrp.",
       "fix:tag": "42310"
     }
   },
@@ -90,8 +90,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the LegDividendFXTriggerDateBusinessCenterGrp.",
       "display": "NoLegDividendFXTriggerDateBusinessCenters",
-      "fix:description": "Number of entries in the LegDividendFXTriggerDateBusinessCenterGrp.",
       "fix:tag": "42364"
     }
   },
@@ -302,8 +302,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the LegDividendPeriodGrp component.",
       "display": "NoLegDividendPeriods",
-      "fix:description": "Number of entries in the LegDividendPeriodGrp component.",
       "fix:tag": "42366"
     }
   },
@@ -334,8 +334,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of entries in the LegDividendPeriodBusinessCentersGrp component.",
       "display": "NoLegDividendPeriodBusinessCenters",
-      "fix:description": "The number of entries in the LegDividendPeriodBusinessCentersGrp component.",
       "fix:tag": "42386"
     }
   },
@@ -376,8 +376,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of extraordinary events in the repeating group.",
       "display": "NoLegExtraordinaryEvents",
-      "fix:description": "Number of extraordinary events in the repeating group.",
       "fix:tag": "42388"
     }
   }

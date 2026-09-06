@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41116"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dates in the repeating group.",
       "display": "NoOptionExerciseDates",
-      "fix:description": "Number of dates in the repeating group.",
       "fix:tag": "41137"
     }
   },
@@ -100,8 +100,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoOptionExerciseExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41140"
     }
   },
@@ -142,8 +142,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixed exercise expiration dates in the repeating group.",
       "display": "NoOptionExerciseExpirationDates",
-      "fix:description": "Number of fixed exercise expiration dates in the repeating group.",
       "fix:tag": "41152"
     }
   },
@@ -184,8 +184,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixing days in the repeating group.",
       "display": "NoPaymentScheduleFixingDays",
-      "fix:description": "Number of fixing days in the repeating group.",
       "fix:tag": "41161"
     }
   },
@@ -216,8 +216,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPaymentStreamPricingBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41192"
     }
   }

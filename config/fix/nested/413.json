@@ -26,8 +26,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of mandatory clearing jurisdictions.",
       "display": "NoMandatoryClearingJurisdictions",
-      "fix:description": "Number of mandatory clearing jurisdictions.",
       "fix:tag": "41312"
     }
   },
@@ -228,8 +228,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of bonds in the repeating group.",
       "display": "NoLegAdditionalTermBondRefs",
-      "fix:description": "Number of bonds in the repeating group.",
       "fix:tag": "41316"
     }
   },
@@ -270,8 +270,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of additional terms in the repeating group.",
       "display": "NoLegAdditionalTerms",
-      "fix:description": "Number of additional terms in the repeating group.",
       "fix:tag": "41335"
     }
   },
@@ -472,8 +472,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of bonds in the repeating group.",
       "display": "NoUnderlyingAdditionalTermBondRefs",
-      "fix:description": "Number of bonds in the repeating group.",
       "fix:tag": "41340"
     }
   },
@@ -504,8 +504,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dealers in the repeating group.",
       "display": "NoLegCashSettlDealers",
-      "fix:description": "Number of dealers in the repeating group.",
       "fix:tag": "41342"
     }
   },
@@ -727,8 +727,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of elements in the repeating group.",
       "display": "NoLegCashSettlTerms",
-      "fix:description": "Number of elements in the repeating group.",
       "fix:tag": "41344"
     }
   },
@@ -769,8 +769,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of averaging observations in the repeating group.",
       "display": "NoLegComplexEventAveragingObservations",
-      "fix:description": "The number of averaging observations in the repeating group.",
       "fix:tag": "41363"
     }
   },
@@ -861,8 +861,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of credit events specified in the repeating group.",
       "display": "NoLegComplexEventCreditEvents",
-      "fix:description": "The number of credit events specified in the repeating group.",
       "fix:tag": "41366"
     }
   },
@@ -893,8 +893,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of qualifiers in the repeating group.",
       "display": "NoLegComplexEventCreditEventQualifiers",
-      "fix:description": "Number of qualifiers in the repeating group.",
       "fix:tag": "41374"
     }
   },
@@ -936,8 +936,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the date-time repeating group.",
       "display": "NoLegComplexEventPeriodDateTimes",
-      "fix:description": "Number of entries in the date-time repeating group.",
       "fix:tag": "41376"
     }
   },
@@ -978,8 +978,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of periods in the repeating group.",
       "display": "NoLegComplexEventPeriods",
-      "fix:description": "Number of periods in the repeating group.",
       "fix:tag": "41379"
     }
   },
@@ -1040,8 +1040,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of rate sources in the repeating group.",
       "display": "NoLegComplexEventRateSources",
-      "fix:description": "Number of rate sources in the repeating group.",
       "fix:tag": "41382"
     }
   },
@@ -1072,8 +1072,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegComplexEventDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41387"
     }
   },
@@ -1104,8 +1104,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of event sources in the repeating group.",
       "display": "NoLegComplexEventCreditEventSources",
-      "fix:description": "Number of event sources in the repeating group.",
       "fix:tag": "41398"
     }
   }

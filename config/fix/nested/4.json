@@ -176,8 +176,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the number of list entries.",
       "display": "NoBidComponents",
-      "fix:description": "Indicates the number of list entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobidcomponents\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nobidcomponents\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "420"
     }
@@ -299,8 +299,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of list strike price entries.",
       "display": "NoStrikes",
-      "fix:description": "Number of list strike price entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostrikes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nostrikes\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "428"
     }
@@ -362,8 +362,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
       "display": "NoPartyIDs",
-      "fix:description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nopartyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "453"
     }
@@ -415,8 +415,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of SecurityAltID (455) entries.",
       "display": "NoSecurityAltID",
-      "fix:description": "Number of SecurityAltID (455) entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecurityaltid\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "454"
     }
@@ -468,8 +468,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of UnderlyingSecurityAltID (458) entries.",
       "display": "NoUnderlyingSecurityAltID",
-      "fix:description": "Number of UnderlyingSecurityAltID (458) entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nounderlyingsecurityaltid\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "457"
     }
@@ -561,8 +561,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of registration details on a Registration Instructions message",
       "display": "NoRegistDtls",
-      "fix:description": "The number of registration details on a Registration Instructions message",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noregistdtls\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "473"
     }

@@ -464,7 +464,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:
-            metadata["fix:description"] = field["doc"]
+            metadata["description"] = field["doc"]
         if len(entries) > 1 or entries[0]["since"] != latest["version"]:
             metadata["fix:lineage"] = lineage_document(entries)
             aliases = []

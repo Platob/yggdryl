@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Fixing dates in the repeating group",
       "display": "NoUnderlyingNonDeliverableFixingDates",
-      "fix:description": "Number of Fixing dates in the repeating group",
       "fix:tag": "40656"
     }
   },
@@ -88,8 +88,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
       "display": "NoUnderlyingSettlRateFallbacks",
-      "fix:description": "Number of settlement rate fallbacks in the repeating group",
       "fix:tag": "40659"
     }
   },
@@ -641,8 +641,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap schedules in the repeating group",
       "display": "NoUnderlyingPaymentSchedules",
-      "fix:description": "Number of swap schedules in the repeating group",
       "fix:tag": "40664"
     }
   }

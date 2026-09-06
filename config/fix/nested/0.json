@@ -46,9 +46,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies number of lines of text body",
       "display": "NoLinesOfText",
       "fix:aliases": "linesoftext",
-      "fix:description": "Identifies number of lines of text body",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"linesoftext\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"linesoftext\",\"type\":\"NumInGroup\"},{\"since\":\"4.4\",\"name\":\"nolinesoftext\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "33"
     }
@@ -1068,8 +1068,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of orders to be combined for average pricing and allocation.",
       "display": "NoOrders",
-      "fix:description": "Indicates number of orders to be combined for average pricing and allocation.",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noorders\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noorders\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "73"
     }
@@ -1621,8 +1621,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating AllocAccount (79)/AllocPrice (366) entries.",
       "display": "NoAllocs",
-      "fix:description": "Number of repeating AllocAccount (79)/AllocPrice (366) entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noallocs\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noallocs\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "78"
     }
@@ -1664,8 +1664,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of delivery instruction fields in repeating group.",
       "display": "NoDlvyInst",
-      "fix:description": "Number of delivery instruction fields in repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"nodlvyinst\",\"type\":\"int\"},{\"since\":\"4.4\",\"name\":\"nodlvyinst\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "85"
     }

@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of financing terms supplements in the repeating group.",
       "display": "NoLegFinancingTermSupplements",
-      "fix:description": "Number of financing terms supplements in the repeating group.",
       "fix:tag": "42200"
     }
   },
@@ -88,8 +88,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of contractual matrices in the repeating group.",
       "display": "NoLegContractualMatrices",
-      "fix:description": "Number of contractual matrices in the repeating group.",
       "fix:tag": "42203"
     }
   },
@@ -120,8 +120,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoCashSettlDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42214"
     }
   },
@@ -152,8 +152,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the DividendAccrualPaymentDateBusinessCenterGrp.",
       "display": "NoDividendAccrualPaymentDateBusinessCenters",
-      "fix:description": "Number of entries in the DividendAccrualPaymentDateBusinessCenterGrp.",
       "fix:tag": "42236"
     }
   },
@@ -184,8 +184,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the DividendFXTriggerDateBusinessCenterGrp.",
       "display": "NoDividendFXTriggerDateBusinessCenters",
-      "fix:description": "Number of entries in the DividendFXTriggerDateBusinessCenterGrp.",
       "fix:tag": "42272"
     }
   },
@@ -396,8 +396,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the DividendPeriodGrp component.",
       "display": "NoDividendPeriods",
-      "fix:description": "Number of entries in the DividendPeriodGrp component.",
       "fix:tag": "42274"
     }
   },
@@ -428,8 +428,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the DividendPeriodBusinessCenterGrp.",
       "display": "NoDividendPeriodBusinessCenters",
-      "fix:description": "Number of entries in the DividendPeriodBusinessCenterGrp.",
       "fix:tag": "42294"
     }
   },
@@ -470,8 +470,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of extraordinary events in the repeating group.",
       "display": "NoExtraordinaryEvents",
-      "fix:description": "Number of extraordinary events in the repeating group.",
       "fix:tag": "42296"
     }
   }

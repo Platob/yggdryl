@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of UnderlyingProvision option exercise fixed dates in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExerciseFixedDates",
-      "fix:description": "Number of UnderlyingProvision option exercise fixed dates in the repeating group.",
       "fix:tag": "42112"
     }
   },
@@ -308,8 +308,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provisions in the repeating group.",
       "display": "NoUnderlyingProvisions",
-      "fix:description": "Number of provisions in the repeating group.",
       "fix:tag": "42149"
     }
   },
@@ -370,8 +370,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties identified in the contract provision.",
       "display": "NoUnderlyingProvisionPartyIDs",
-      "fix:description": "Number of parties identified in the contract provision.",
       "fix:tag": "42173"
     }
   },
@@ -412,8 +412,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoUnderlyingProvisionPartySubIDs",
-      "fix:description": "Number of sub-party IDs to be reported for the party.",
       "fix:tag": "42177"
     }
   },
@@ -444,8 +444,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionCashSettlPaymentDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42180"
     }
   },
@@ -476,8 +476,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionCashSettlValueDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42182"
     }
   },
@@ -508,8 +508,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExerciseBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42184"
     }
   },
@@ -540,8 +540,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42186"
     }
   },
@@ -572,8 +572,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionOptionRelevantUnderlyingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42188"
     }
   },
@@ -604,8 +604,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoUnderlyingProvisionDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "42190"
     }
   },
@@ -636,8 +636,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of financing definitions in the repeating group.",
       "display": "NoLegContractualDefinitions",
-      "fix:description": "Number of financing definitions in the repeating group.",
       "fix:tag": "42198"
     }
   }

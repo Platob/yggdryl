@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique Identifier for a batch of messages.",
       "display": "BatchID",
-      "fix:description": "Unique Identifier for a batch of messages.",
       "fix:tag": "50000"
     }
   },
@@ -18,8 +18,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Total # of messages contained within batch.",
       "display": "BatchTotalMessages",
-      "fix:description": "Total # of messages contained within batch.",
       "fix:tag": "50001"
     }
   },
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the processing mode for a batch of messages.",
       "display": "BatchProcessMode",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Update\",\"since\":\"5.0SP2\",\"ep\":178,\"doc\":\"Update/incremental (default if not specified)\"},{\"value\":\"1\",\"name\":\"Snapshot\",\"since\":\"5.0SP2\",\"ep\":178,\"sort\":1,\"doc\":\"Snapshot\"}]}",
-      "fix:description": "Indicates the processing mode for a batch of messages.",
       "fix:tag": "50002"
     }
   }

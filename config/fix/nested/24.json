@@ -176,8 +176,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of order entries.",
       "display": "NoOrderEntries",
-      "fix:description": "Number of order entries.",
       "fix:tag": "2428"
     }
   },
@@ -218,8 +218,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of target party sub IDs in the repeating group.",
       "display": "NoTargetPartySubIDs",
-      "fix:description": "Number of target party sub IDs in the repeating group.",
       "fix:tag": "2433"
     }
   },
@@ -302,8 +302,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of market data statistics.",
       "display": "NoMDStatistics",
-      "fix:description": "Number of market data statistics.",
       "fix:tag": "2474"
     }
   }

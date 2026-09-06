@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dates in the repeating group.",
       "display": "NoLegOptionExerciseDates",
-      "fix:description": "Number of dates in the repeating group.",
       "fix:tag": "41512"
     }
   },
@@ -68,8 +68,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegOptionExerciseExpirationDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41515"
     }
   },
@@ -110,8 +110,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixed exercise expiration dates in the repeating group.",
       "display": "NoLegOptionExerciseExpirationDates",
-      "fix:description": "Number of fixed exercise expiration dates in the repeating group.",
       "fix:tag": "41527"
     }
   },
@@ -152,8 +152,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of fixing days in the repeating group.",
       "display": "NoLegPaymentScheduleFixingDays",
-      "fix:description": "Number of fixing days in the repeating group.",
       "fix:tag": "41530"
     }
   },
@@ -184,8 +184,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoLegPaymentStreamPricingBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41561"
     }
   },
@@ -226,8 +226,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of payment dates in the repeating group.",
       "display": "NoLegPaymentStreamPaymentDates",
-      "fix:description": "Number of payment dates in the repeating group.",
       "fix:tag": "41589"
     }
   },
@@ -268,8 +268,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of pricing dates in the repeating group.",
       "display": "NoLegPaymentStreamPricingDates",
-      "fix:description": "Number of pricing dates in the repeating group.",
       "fix:tag": "41593"
     }
   },
@@ -310,8 +310,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of pricing days in the repeating group.",
       "display": "NoLegPaymentStreamPricingDays",
-      "fix:description": "Number of pricing days in the repeating group.",
       "fix:tag": "41596"
     }
   },
@@ -372,8 +372,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoLegPhysicalSettlTerms",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "41599"
     }
   }

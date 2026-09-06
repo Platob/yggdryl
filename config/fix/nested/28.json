@@ -56,8 +56,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of CollateralReinvestmentType(2844) in the repeating group.",
       "display": "NoCollateralReinvestments",
-      "fix:description": "Number of instances of CollateralReinvestmentType(2844) in the repeating group.",
       "fix:tag": "2845"
     }
   },
@@ -118,8 +118,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of FundingSource(2846) in the repeating group.",
       "display": "NoFundingSources",
-      "fix:description": "Number of instances of FundingSource(2846) in the repeating group.",
       "fix:tag": "2849"
     }
   },
@@ -180,8 +180,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of SideCollateralReinvestmentType(2867) in the repeating group.",
       "display": "NoSideCollateralReinvestments",
-      "fix:description": "Number of instances of SideCollateralReinvestmentType(2867) in the repeating group.",
       "fix:tag": "2864"
     }
   },
@@ -222,8 +222,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instances of TransactionAttributeType(2872) in the repeating group.",
       "display": "NoTransactionAttributes",
-      "fix:description": "Number of instances of TransactionAttributeType(2872) in the repeating group.",
       "fix:tag": "2871"
     }
   }

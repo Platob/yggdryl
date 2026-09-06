@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The amount of settlement.",
       "display": "SettlementAmount",
-      "fix:description": "The amount of settlement.",
       "fix:tag": "1701"
     }
   },
@@ -18,8 +18,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The currency of the reported settlement amount.",
       "display": "SettlementAmountCurrency",
-      "fix:description": "The currency of the reported settlement amount.",
       "fix:tag": "1702"
     }
   },
@@ -30,8 +30,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Currency value currently attributed to the collateral.",
       "display": "CurrentCollateralAmount",
-      "fix:description": "Currency value currently attributed to the collateral.",
       "fix:tag": "1704"
     }
   },
@@ -42,8 +42,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Currency of the collateral; optional, defaults to the Settlement Currency if not specified.",
       "display": "CollateralCurrency",
-      "fix:description": "Currency of the collateral; optional, defaults to the Settlement Currency if not specified.",
       "fix:tag": "1705"
     }
   },
@@ -54,8 +54,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of collateral on deposit being reported.",
       "display": "CollateralType",
-      "fix:description": "Type of collateral on deposit being reported.",
       "fix:tag": "1706"
     }
   },
@@ -66,8 +66,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Category describing the reason for funds paid to, or the funds collected from the clearing firm.",
       "display": "PayCollectType",
-      "fix:description": "Category describing the reason for funds paid to, or the funds collected from the clearing firm.",
       "fix:tag": "1708"
     }
   },
@@ -78,8 +78,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Currency denomination of value in PayAmount(1710) and CollectAmount(1711). If not specified, default to currency specified in SettlementAmountCurrency(1702).",
       "display": "PayCollectCurrency",
-      "fix:description": "Currency denomination of value in PayAmount(1710) and CollectAmount(1711). If not specified, default to currency specified in SettlementAmountCurrency(1702).",
       "fix:tag": "1709"
     }
   },
@@ -90,8 +90,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Amount to be paid by the clearinghouse to the clearing firm.",
       "display": "PayAmount",
-      "fix:description": "Amount to be paid by the clearinghouse to the clearing firm.",
       "fix:tag": "1710"
     }
   },
@@ -102,8 +102,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Amount to be collected by the clearinghouse from the clearing firm.",
       "display": "CollectAmount",
-      "fix:description": "Amount to be collected by the clearinghouse from the clearing firm.",
       "fix:tag": "1711"
     }
   },
@@ -114,8 +114,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market segment associated with the pay collect amount.",
       "display": "PayCollectMarketSegmentID",
-      "fix:description": "Market segment associated with the pay collect amount.",
       "fix:tag": "1712"
     }
   },
@@ -126,8 +126,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market associated with the pay collect amount.",
       "display": "PayCollectMarketID",
-      "fix:description": "Market associated with the pay collect amount.",
       "fix:tag": "1713"
     }
   },
@@ -138,8 +138,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market segment associated with the margin amount.",
       "display": "MarginAmountMarketSegmentID",
-      "fix:description": "Market segment associated with the margin amount.",
       "fix:tag": "1714"
     }
   },
@@ -150,8 +150,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market associated with the margin amount",
       "display": "MarginAmountMarketID",
-      "fix:description": "Market associated with the margin amount",
       "fix:tag": "1715"
     }
   },
@@ -162,8 +162,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the unit of measure. Conditionally required when UnitOfMeasure(996) = Ccy",
       "display": "UnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the unit of measure. Conditionally required when UnitOfMeasure(996) = Ccy",
       "fix:tag": "1716"
     }
   },
@@ -174,8 +174,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the price unit of measure. Conditionally required when PriceUnitOfMeasure(1191) = Ccy",
       "display": "PriceUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the price unit of measure. Conditionally required when PriceUnitOfMeasure(1191) = Ccy",
       "fix:tag": "1717"
     }
   },
@@ -186,8 +186,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the underlying unit of measure. Conditionally required when UnderlyingUnitOfMeasure(998) = Ccy",
       "display": "UnderlyingUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the underlying unit of measure. Conditionally required when UnderlyingUnitOfMeasure(998) = Ccy",
       "fix:tag": "1718"
     }
   },
@@ -198,8 +198,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the underlying price unit of measure. Conditionally required when UnderlyingPriceUnitOfMeasure(1424) = Ccy",
       "display": "UnderlyingPriceUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the underlying price unit of measure. Conditionally required when UnderlyingPriceUnitOfMeasure(1424) = Ccy",
       "fix:tag": "1719"
     }
   },
@@ -210,8 +210,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the unit of measure. Conditionally required when LegUnitOfMeasure(999) = Ccy",
       "display": "LegUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the unit of measure. Conditionally required when LegUnitOfMeasure(999) = Ccy",
       "fix:tag": "1720"
     }
   },
@@ -222,8 +222,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the price unit of measure. Conditionally required when LegPriceUnitOfMeasure(1421) = Ccy",
       "display": "LegPriceUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the price unit of measure. Conditionally required when LegPriceUnitOfMeasure(1421) = Ccy",
       "fix:tag": "1721"
     }
   },
@@ -234,8 +234,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the unit of measure.",
       "display": "DerivativeUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the unit of measure.",
       "fix:tag": "1722"
     }
   },
@@ -246,8 +246,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the currency of the price unit of measure.",
       "display": "DerivativePriceUnitOfMeasureCurrency",
-      "fix:description": "Indicates the currency of the price unit of measure.",
       "fix:tag": "1723"
     }
   },
@@ -258,9 +258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the origin of the order.",
       "display": "OrderOrigination",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderReceivedFromCustomer\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":1,\"doc\":\"Order received from a customer\"},{\"value\":\"2\",\"name\":\"OrderReceivedFromWithinFirm\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":2,\"doc\":\"Order received from within the firm\"},{\"value\":\"3\",\"name\":\"OrderReceivedFromAnotherBrokerDealer\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":3,\"doc\":\"Order received from another broker-dealer\"},{\"value\":\"4\",\"name\":\"OrderReceivedFromCustomerOrWithFirm\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":4,\"doc\":\"Order received from a customer or originated from within the firm\"},{\"value\":\"5\",\"name\":\"OrderReceivedFromDirectAccessCustomer\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Order received from a direct access or sponsored access customer\"},{\"value\":\"6\",\"name\":\"OrderReceivedFromForeignDealerEquivalent\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":6,\"doc\":\"Order received from a foreign dealer equivalent\"},{\"value\":\"7\",\"name\":\"OrderReceivedFromExecutionOnlyService\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":7,\"doc\":\"Order received from an execution-only service\"}]}",
-      "fix:description": "Identifies the origin of the order.",
       "fix:tag": "1724"
     }
   },
@@ -271,8 +271,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "An identifier representing the department or desk within the firm that originated the order.",
       "display": "OriginatingDeptID",
-      "fix:description": "An identifier representing the department or desk within the firm that originated the order.",
       "fix:tag": "1725"
     }
   },
@@ -283,8 +283,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "An identifier representing the department or desk within the firm that received the order.",
       "display": "ReceivingDeptID",
-      "fix:description": "An identifier representing the department or desk within the firm that received the order.",
       "fix:tag": "1726"
     }
   },
@@ -295,8 +295,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The identifier of the information barrier in place for a trading unit that will meet the criteria of the \"no-knowledge\" exception in FINRA Rule 5320.02.",
       "display": "InformationBarrierID",
-      "fix:description": "The identifier of the information barrier in place for a trading unit that will meet the criteria of the \"no-knowledge\" exception in FINRA Rule 5320.02.",
       "fix:tag": "1727"
     }
   },
@@ -307,8 +307,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Firm assigned group allocation entity identifier.",
       "display": "FirmGroupID",
-      "fix:description": "Firm assigned group allocation entity identifier.",
       "fix:tag": "1728"
     }
   },
@@ -319,8 +319,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Allocation identifier assigned by the Firm submitting the allocation for an individual allocation instruction (as opposed to the overall message level identifier).",
       "display": "FirmMnemonic",
-      "fix:description": "Allocation identifier assigned by the Firm submitting the allocation for an individual allocation instruction (as opposed to the overall message level identifier).",
       "fix:tag": "1729"
     }
   },
@@ -331,8 +331,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Intended to be used by a central counterparty to assign an identifier to allocations of trades for the same instrument traded at the same price.",
       "display": "AllocGroupID",
-      "fix:description": "Intended to be used by a central counterparty to assign an identifier to allocations of trades for the same instrument traded at the same price.",
       "fix:tag": "1730"
     }
   },
@@ -343,8 +343,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used by submitting firm to group trades being allocated into an average price group. The trades in average price group will be used to calculate an average price for the group.",
       "display": "AvgPxGroupID",
-      "fix:description": "Used by submitting firm to group trades being allocated into an average price group. The trades in average price group will be used to calculate an average price for the group.",
       "fix:tag": "1731"
     }
   },
@@ -355,8 +355,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Firm reference information, usually internal information, that is part of the initial message. The information would not be carried forward (e.g to Take-up Firm) and preserved with the transaction.",
       "display": "FirmAllocText",
-      "fix:description": "Firm reference information, usually internal information, that is part of the initial message. The information would not be carried forward (e.g to Take-up Firm) and preserved with the transaction.",
       "fix:tag": "1732"
     }
   },
@@ -367,8 +367,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedFirmAllocText(1734) field.",
       "display": "EncodedFirmAllocTextLen",
-      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedFirmAllocText(1734) field.",
       "fix:tag": "1733"
     }
   },
@@ -379,8 +379,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the FirmAllocText(1732) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) represention should also be specified in FirmAllocText(1732) field.",
       "display": "EncodedFirmAllocText",
-      "fix:description": "Encoded (non-ASCII characters) representation of the FirmAllocText(1732) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) represention should also be specified in FirmAllocText(1732) field.",
       "fix:tag": "1734"
     }
   },
@@ -391,9 +391,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "An indicator to override the normal procedure to roll up allocations for the same take-up firm.",
       "display": "AllocationRollupInstruction",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Rollup\",\"since\":\"5.0SP2\",\"ep\":118,\"doc\":\"Roll up\"},{\"value\":\"1\",\"name\":\"DoNotRollUp\",\"since\":\"5.0SP2\",\"ep\":118,\"doc\":\"Do not roll up\"}]}",
-      "fix:description": "An indicator to override the normal procedure to roll up allocations for the same take-up firm.",
       "fix:tag": "1735"
     }
   },
@@ -404,8 +404,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the total quantity of an allocation group. Includes any allocated quantity.",
       "display": "AllocGroupQuantity",
-      "fix:description": "Indicates the total quantity of an allocation group. Includes any allocated quantity.",
       "fix:tag": "1736"
     }
   },
@@ -416,8 +416,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the remaining quantity of an allocation group that has not yet been allocated.",
       "display": "AllocGroupRemainingQuantity",
-      "fix:description": "Indicates the remaining quantity of an allocation group that has not yet been allocated.",
       "fix:tag": "1737"
     }
   },
@@ -428,9 +428,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the status of a reversal transaction.",
       "display": "AllocReversalStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Completed\",\"since\":\"5.0SP2\",\"ep\":118,\"doc\":\"Completed\"},{\"value\":\"1\",\"name\":\"Refused\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":1,\"doc\":\"Refused\"},{\"value\":\"2\",\"name\":\"Cancelled\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":2,\"doc\":\"Cancelled\"}]}",
-      "fix:description": "Identifies the status of a reversal transaction.",
       "fix:tag": "1738"
     }
   },
@@ -441,9 +441,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of reference obligation for credit derivatives contracts.",
       "display": "ObligationType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bond\",\"since\":\"5.0SP2\",\"ep\":119,\"doc\":\"Bond\"},{\"value\":\"1\",\"name\":\"ConvertBond\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":1,\"doc\":\"Convertible bond\"},{\"value\":\"2\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":2,\"doc\":\"Mortgage\"},{\"value\":\"3\",\"name\":\"Loan\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":3,\"doc\":\"Loan\"}]}",
-      "fix:description": "Type of reference obligation for credit derivatives contracts.",
       "fix:tag": "1739"
     }
   },
@@ -454,9 +454,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Method used for negotiation of contract price.",
       "display": "TradePriceNegotiationMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PercentPar\",\"since\":\"5.0SP2\",\"ep\":119,\"doc\":\"Percent of par\"},{\"value\":\"1\",\"name\":\"DealSpread\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":1,\"doc\":\"Deal spread\"},{\"value\":\"2\",\"name\":\"UpfrontPnts\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":2,\"doc\":\"Upfront points\"},{\"value\":\"3\",\"name\":\"UpfrontAmt\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":3,\"doc\":\"Upfront amount\"},{\"value\":\"4\",\"name\":\"ParUpfrontAmt\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":4,\"doc\":\"Percent of par and upfront amount\"},{\"value\":\"5\",\"name\":\"SpreadUpfrontAmt\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":5,\"doc\":\"Deal spread and upfront amount\"},{\"value\":\"6\",\"name\":\"UpfrontPntsAmt\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":6,\"doc\":\"Upfront points and upfront amount\"}]}",
-      "fix:description": "Method used for negotiation of contract price.",
       "fix:tag": "1740"
     }
   },
@@ -467,9 +467,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of price used to determine upfront payment for swaps contracts.",
       "display": "UpfrontPriceType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":1,\"doc\":\"Percentage (i.e. percent of par) (often called \\\"dollar price\\\" for fixed income)\"},{\"value\":\"3\",\"name\":\"FixedAmount\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":3,\"doc\":\"Fixed amount (absolute value)\"}]}",
-      "fix:description": "Type of price used to determine upfront payment for swaps contracts.",
       "fix:tag": "1741"
     }
   },
@@ -480,8 +480,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Price used to determine upfront payment for swaps contracts.",
       "display": "UpfrontPrice",
-      "fix:description": "Price used to determine upfront payment for swaps contracts.",
       "fix:tag": "1742"
     }
   },
@@ -492,8 +492,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Price used to determine upfront payment for swaps contracts reported for a deal (trade).",
       "display": "LastUpfrontPrice",
-      "fix:description": "Price used to determine upfront payment for swaps contracts reported for a deal (trade).",
       "fix:tag": "1743"
     }
   },
@@ -504,9 +504,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether application level recovery is needed.",
       "display": "ApplLevelRecoveryIndicator",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoApplRecoveryNeeded\",\"since\":\"5.0SP2\",\"ep\":124,\"doc\":\"Application level recovery is not needed (default)\"},{\"value\":\"1\",\"name\":\"ApplRecoveryNeeded\",\"since\":\"5.0SP2\",\"ep\":124,\"sort\":1,\"doc\":\"Application level recovery is needed\"}]}",
-      "fix:description": "Indicates whether application level recovery is needed.",
       "fix:tag": "1744"
     }
   },
@@ -517,8 +517,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The market data entry identifier of the bid side of a quote",
       "display": "BidMDEntryID",
-      "fix:description": "The market data entry identifier of the bid side of a quote",
       "fix:tag": "1745"
     }
   },
@@ -529,8 +529,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The market data entry identifier of the offer side of a quote.",
       "display": "OfferMDEntryID",
-      "fix:description": "The market data entry identifier of the offer side of a quote.",
       "fix:tag": "1746"
     }
   },
@@ -541,8 +541,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Marketplace assigned quote identifier for the bid side. Can be used to indicate priority.",
       "display": "BidQuoteID",
-      "fix:description": "Marketplace assigned quote identifier for the bid side. Can be used to indicate priority.",
       "fix:tag": "1747"
     }
   },
@@ -553,8 +553,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Marketplace assigned quote identifier for the offer side. Can be used to indicate priority.",
       "display": "OfferQuoteID",
-      "fix:description": "Marketplace assigned quote identifier for the offer side. Can be used to indicate priority.",
       "fix:tag": "1748"
     }
   },
@@ -565,8 +565,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the total bid size.",
       "display": "TotalBidSize",
-      "fix:description": "Specifies the total bid size.",
       "fix:tag": "1749"
     }
   },
@@ -577,8 +577,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the total offer size.",
       "display": "TotalOfferSize",
-      "fix:description": "Specifies the total offer size.",
       "fix:tag": "1750"
     }
   },
@@ -589,8 +589,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Assigned by the party which accepts the quote. Can be used to provide the quote identifier assigned by an exchange, marketplace or executing system.",
       "display": "SecondaryQuoteID",
-      "fix:description": "Assigned by the party which accepts the quote. Can be used to provide the quote identifier assigned by an exchange, marketplace or executing system.",
       "fix:tag": "1751"
     }
   },
@@ -601,8 +601,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
       "display": "CustodialLotID",
-      "fix:description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
       "fix:tag": "1752"
     }
   },
@@ -613,8 +613,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
       "display": "VersusPurchaseDate",
-      "fix:description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
       "fix:tag": "1753"
     }
   },
@@ -625,8 +625,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available. The value should be calculated based on current cost basis / quantity held.",
       "display": "VersusPurchasePrice",
-      "fix:description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available. The value should be calculated based on current cost basis / quantity held.",
       "fix:tag": "1754"
     }
   },
@@ -637,8 +637,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
       "display": "CurrentCostBasis",
-      "fix:description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
       "fix:tag": "1755"
     }
   },
@@ -649,8 +649,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
       "display": "LegCustodialLotID",
-      "fix:description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
       "fix:tag": "1756"
     }
   },
@@ -661,8 +661,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
       "display": "LegVersusPurchaseDate",
-      "fix:description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
       "fix:tag": "1757"
     }
   },
@@ -673,8 +673,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available.The value should be calculated based on current cost basis / quantity held.",
       "display": "LegVersusPurchasePrice",
-      "fix:description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available.The value should be calculated based on current cost basis / quantity held.",
       "fix:tag": "1758"
     }
   },
@@ -685,8 +685,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
       "display": "LegCurrentCostBasis",
-      "fix:description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
       "fix:tag": "1759"
     }
   },
@@ -697,9 +697,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of risk limit information.",
       "display": "RiskLimitRequestType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Definitions\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":1,\"doc\":\"Definitions(Default)\"},{\"value\":\"2\",\"name\":\"Utilization\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":2,\"doc\":\"Utilization\"},{\"value\":\"3\",\"name\":\"DefinitionsAndUtilizations\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":3,\"doc\":\"Definitions and utilization\"}]}",
-      "fix:description": "Type of risk limit information.",
       "fix:tag": "1760"
     }
   },
@@ -710,9 +710,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Result of risk limit definition request.",
       "display": "RiskLimitRequestResult",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":128,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"10\",\"name\":\"WarningLevelActionsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":10,\"doc\":\"Warning level actions not supported\"},{\"value\":\"11\",\"name\":\"RiskInstrumentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":11,\"doc\":\"Risk instrument scope not supported\"},{\"value\":\"12\",\"name\":\"RiskLimitNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":12,\"doc\":\"Risk limit not approved for party(-ies)\"},{\"value\":\"13\",\"name\":\"RiskLimitAlreadyDefinedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":13,\"doc\":\"Risk limit already defined for party(-ies)\"},{\"value\":\"14\",\"name\":\"InstrumentNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":14,\"doc\":\"Instrument not approved for party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidRiskLimitType\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":3,\"doc\":\"Invalid risk limit type(s)\"},{\"value\":\"4\",\"name\":\"InvalidRiskLimitID\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":4,\"doc\":\"Invalid risk limit ID(s)\"},{\"value\":\"5\",\"name\":\"InvalidRiskLimitAmount\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":5,\"doc\":\"Invalid risk limit amount(s)\"},{\"value\":\"6\",\"name\":\"InvalidRiskWarningLevelAction\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":6,\"doc\":\"Invalid risk/warning level action(s)\"},{\"value\":\"7\",\"name\":\"InvalidRiskInstrumentScope\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":7,\"doc\":\"Invalid risk instrument scope(s)\"},{\"value\":\"8\",\"name\":\"RiskLimitActionsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":8,\"doc\":\"Risk limit actions not supported\"},{\"value\":\"9\",\"name\":\"WarningLevelsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":9,\"doc\":\"Warning levels not supported\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "Result of risk limit definition request.",
       "fix:tag": "1761"
     }
   },
@@ -723,9 +723,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of risk limit definition request.",
       "display": "RiskLimitRequestStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"AcceptancePending\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Acceptance pending\"}]}",
-      "fix:description": "Status of risk limit definition request.",
       "fix:tag": "1762"
     }
   },
@@ -736,9 +736,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Status of risk limit definition for one party.",
       "display": "RiskLimitStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:description": "Status of risk limit definition for one party.",
       "fix:tag": "1763"
     }
   },
@@ -749,9 +749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Result of risk limit definition for one party.",
       "display": "RiskLimitResult",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":128,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"10\",\"name\":\"WarningLevelActionsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":10,\"doc\":\"Warning level actions not supported\"},{\"value\":\"11\",\"name\":\"RiskInstrumentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":11,\"doc\":\"Risk instrument scope not supported\"},{\"value\":\"12\",\"name\":\"RiskLimitNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":12,\"doc\":\"Risk limit not approved for party(-ies)\"},{\"value\":\"13\",\"name\":\"RiskLimitAlreadyDefinedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":13,\"doc\":\"Risk limit already defined for party(-ies)\"},{\"value\":\"14\",\"name\":\"InstrumentNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":14,\"doc\":\"Instrument not approved for party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidRiskLimitType\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":3,\"doc\":\"Invalid risk limit type(s)\"},{\"value\":\"4\",\"name\":\"InvalidRiskLimitID\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":4,\"doc\":\"Invalid risk limit ID(s)\"},{\"value\":\"5\",\"name\":\"InvalidRiskLimitAmount\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":5,\"doc\":\"Invalid risk limit amount(s)\"},{\"value\":\"6\",\"name\":\"InvalidRiskWarningLevelAction\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":6,\"doc\":\"Invalid risk/warning level action(s)\"},{\"value\":\"7\",\"name\":\"InvalidRiskInstrumentScope\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":7,\"doc\":\"Invalid risk instrument scope(s)\"},{\"value\":\"8\",\"name\":\"RiskLimitActionsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":8,\"doc\":\"Risk limit actions not supported\"},{\"value\":\"9\",\"name\":\"WarningLevelsNotSupported\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":9,\"doc\":\"Warning levels not supported\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":128,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:description": "Result of risk limit definition for one party.",
       "fix:tag": "1764"
     }
   },
@@ -762,8 +762,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Percentage of utilization of a party's set risk limit.",
       "display": "RiskLimitUtilizationPercent",
-      "fix:description": "Percentage of utilization of a party's set risk limit.",
       "fix:tag": "1765"
     }
   },
@@ -774,8 +774,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Absolute amount of utilization of a party's set risk limit.",
       "display": "RiskLimitUtilizationAmount",
-      "fix:description": "Absolute amount of utilization of a party's set risk limit.",
       "fix:tag": "1766"
     }
   },
@@ -786,9 +786,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies the action to take or risk model to assume should risk limit be exceeded or breached for the specified party.",
       "display": "RiskLimitAction",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"QueueInbound\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Queue inbound\"},{\"value\":\"1\",\"name\":\"QueueOutbound\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Queue outbound\"},{\"value\":\"10\",\"name\":\"HaltTrading\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":10,\"doc\":\"Halt trading\"},{\"value\":\"2\",\"name\":\"Reject\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Reject\"},{\"value\":\"3\",\"name\":\"Disconnect\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":3,\"doc\":\"Disconnect\"},{\"value\":\"4\",\"name\":\"Warning\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":4,\"doc\":\"Warning\"},{\"value\":\"5\",\"name\":\"PingCreditCheckWithRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":5,\"doc\":\"Ping credit check model with revalidation\"},{\"value\":\"6\",\"name\":\"PingCreditCheckNoRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":6,\"doc\":\"Ping credit check model without revalidation\"},{\"value\":\"7\",\"name\":\"PushCreditCheckWithRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":7,\"doc\":\"Push credit check model with revalidation\"},{\"value\":\"8\",\"name\":\"PushCreditCheckNoRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"doc\":\"Push credit check model without revalidation\"},{\"value\":\"9\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":9,\"doc\":\"Suspend\"}]}",
-      "fix:description": "Identifies the action to take or risk model to assume should risk limit be exceeded or breached for the specified party.",
       "fix:tag": "1767"
     }
   },
@@ -799,8 +799,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Amount at which a warning is issued.",
       "display": "RiskWarningLevelAmount",
-      "fix:description": "Amount at which a warning is issued.",
       "fix:tag": "1768"
     }
   },
@@ -811,9 +811,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Action to take should warning level be exceeded.",
       "display": "RiskWarningLevelAction",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"QueueInbound\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Queue inbound\"},{\"value\":\"1\",\"name\":\"QueueOutbound\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Queue outbound\"},{\"value\":\"10\",\"name\":\"HaltTrading\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":10,\"doc\":\"Halt trading\"},{\"value\":\"2\",\"name\":\"Reject\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Reject\"},{\"value\":\"3\",\"name\":\"Disconnect\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":3,\"doc\":\"Disconnect\"},{\"value\":\"4\",\"name\":\"Warning\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":4,\"doc\":\"Warning\"},{\"value\":\"5\",\"name\":\"PingCreditCheckWithRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":5,\"doc\":\"Ping credit check model with revalidation\"},{\"value\":\"6\",\"name\":\"PingCreditCheckNoRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":6,\"doc\":\"Ping credit check model without revalidation\"},{\"value\":\"7\",\"name\":\"PushCreditCheckWithRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":7,\"doc\":\"Push credit check model with revalidation\"},{\"value\":\"8\",\"name\":\"PushCreditCheckNoRevalidation\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"doc\":\"Push credit check model without revalidation\"},{\"value\":\"9\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":9,\"doc\":\"Suspend\"}]}",
-      "fix:description": "Action to take should warning level be exceeded.",
       "fix:tag": "1769"
     }
   },
@@ -824,8 +824,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for PartyEntitlementsRequest(35=CU).",
       "display": "EntitlementRequestID",
-      "fix:description": "Unique identifier for PartyEntitlementsRequest(35=CU).",
       "fix:tag": "1770"
     }
   },
@@ -836,8 +836,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifier for the PartyEntitlementsReport(35=CV).",
       "display": "EntitlementReportID",
-      "fix:description": "Identifier for the PartyEntitlementsReport(35=CV).",
       "fix:tag": "1771"
     }
   },
@@ -848,8 +848,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Used to indicate if a party is entitled to an entitlement type specified in the EntitlementType(1775) field.",
       "display": "EntitlementIndicator",
-      "fix:description": "Used to indicate if a party is entitled to an entitlement type specified in the EntitlementType(1775) field.",
       "fix:tag": "1774"
     }
   },
@@ -860,9 +860,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Type of entitlement.",
       "display": "EntitlementType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Trade\",\"since\":\"5.0SP2\",\"ep\":129,\"doc\":\"Trade\"},{\"value\":\"1\",\"name\":\"MakeMarkets\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":1,\"doc\":\"Make markets\"},{\"value\":\"2\",\"name\":\"HoldPositions\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":2,\"doc\":\"Hold positions\"},{\"value\":\"3\",\"name\":\"PerformGiveUps\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":3,\"doc\":\"Perform give-ups\"},{\"value\":\"4\",\"name\":\"SubmitIOIs\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":4,\"doc\":\"Submit Indications of Interest (IOIs)\"},{\"value\":\"5\",\"name\":\"SubscribeMarketData\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":5,\"doc\":\"Subscribe to market data\"},{\"value\":\"6\",\"name\":\"ShortWithPreBorrow\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":6,\"doc\":\"Short with pre-borrow\"},{\"value\":\"7\",\"name\":\"SubmitQuoteRequests\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":8,\"doc\":\"Submit quote requests\"},{\"value\":\"8\",\"name\":\"RespondToQuoteRequests\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":8,\"doc\":\"Respond to quote requests\"}]}",
-      "fix:description": "Type of entitlement.",
       "fix:tag": "1775"
     }
   },
@@ -873,8 +873,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for a specific NoEntitlements(1773) repeating group instance.",
       "display": "EntitlementID",
-      "fix:description": "Unique identifier for a specific NoEntitlements(1773) repeating group instance.",
       "fix:tag": "1776"
     }
   },
@@ -885,8 +885,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Name of the entitlement attribute type. A code list of allowed values will be maintained on the FIX Protocol website.",
       "display": "EntitlementAttribType",
-      "fix:description": "Name of the entitlement attribute type. A code list of allowed values will be maintained on the FIX Protocol website.",
       "fix:tag": "1778"
     }
   },
@@ -897,9 +897,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Datatype of the entitlement attribute.",
       "display": "EntitlementAttribDatatype",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Int\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":1,\"group\":\"int\",\"doc\":\"int\"},{\"value\":\"10\",\"name\":\"Amt\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":10,\"group\":\"float\",\"doc\":\"Amt\"},{\"value\":\"11\",\"name\":\"Percentage\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":11,\"group\":\"float\",\"doc\":\"Percentage\"},{\"value\":\"12\",\"name\":\"Char\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":12,\"group\":\"char\",\"doc\":\"char\"},{\"value\":\"13\",\"name\":\"Boolean\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":13,\"group\":\"char\",\"doc\":\"Boolean\"},{\"value\":\"14\",\"name\":\"String\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":14,\"group\":\"String\",\"doc\":\"String\"},{\"value\":\"15\",\"name\":\"MultipleCharValue\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":15,\"group\":\"String\",\"doc\":\"MultipleCharValue\"},{\"value\":\"16\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":16,\"group\":\"String\",\"doc\":\"Currency\"},{\"value\":\"17\",\"name\":\"Exchange\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":17,\"group\":\"String\",\"doc\":\"Exchange\"},{\"value\":\"18\",\"name\":\"MonthYear\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":18,\"group\":\"String\",\"doc\":\"MonthYear\"},{\"value\":\"19\",\"name\":\"UTCTimestamp\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":19,\"group\":\"String\",\"doc\":\"UTCTimestamp\"},{\"value\":\"2\",\"name\":\"Length\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":2,\"group\":\"int\",\"doc\":\"Length\"},{\"value\":\"20\",\"name\":\"UTCTimeOnly\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":20,\"group\":\"String\",\"doc\":\"UTCTimeOnly\"},{\"value\":\"21\",\"name\":\"LocalMktDate\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":21,\"group\":\"String\",\"doc\":\"LocalMktDate\"},{\"value\":\"22\",\"name\":\"UTCDateOnly\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":22,\"group\":\"String\",\"doc\":\"UTCDateOnly\"},{\"value\":\"23\",\"name\":\"Data\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":23,\"group\":\"String\",\"doc\":\"data\"},{\"value\":\"24\",\"name\":\"MultipleStringValue\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":24,\"group\":\"String\",\"doc\":\"MultipleStringValue\"},{\"value\":\"25\",\"name\":\"Country\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":25,\"group\":\"String\",\"doc\":\"Country\"},{\"value\":\"26\",\"name\":\"Language\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":26,\"group\":\"String\",\"doc\":\"Language\"},{\"value\":\"27\",\"name\":\"TZTimeOnly\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":27,\"group\":\"String\",\"doc\":\"TZTimeOnly\"},{\"value\":\"28\",\"name\":\"TZTimestamp\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":28,\"group\":\"String\",\"doc\":\"TZTimestamp\"},{\"value\":\"29\",\"name\":\"Tenor\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":29,\"group\":\"Pattern\",\"doc\":\"Tenor\"},{\"value\":\"3\",\"name\":\"NumInGroup\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":3,\"group\":\"int\",\"doc\":\"NumInGroup\"},{\"value\":\"30\",\"name\":\"DayOfMonth\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":30,\"group\":\"int\",\"doc\":\"DayOfMonth\"},{\"value\":\"31\",\"name\":\"XMLData\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":31,\"group\":\"String\",\"doc\":\"XMLData\"},{\"value\":\"32\",\"name\":\"Pattern\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":32,\"group\":\"Pattern\",\"doc\":\"Pattern\"},{\"value\":\"33\",\"name\":\"Reserved100Plus\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":33,\"group\":\"Pattern\",\"doc\":\"Reserved100Plus\"},{\"value\":\"34\",\"name\":\"Reserved1000Plus\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":34,\"group\":\"Pattern\",\"doc\":\"Reserved1000Plus\"},{\"value\":\"35\",\"name\":\"Reserved4000Plus\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":35,\"group\":\"Pattern\",\"doc\":\"Reserved4000Plus\"},{\"value\":\"4\",\"name\":\"SeqNum\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":4,\"group\":\"int\",\"doc\":\"SeqNum\"},{\"value\":\"5\",\"name\":\"TagNum\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":5,\"group\":\"int\",\"doc\":\"TagNum\"},{\"value\":\"6\",\"name\":\"Float\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":6,\"group\":\"float\",\"doc\":\"float\"},{\"value\":\"7\",\"name\":\"Qty\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":7,\"group\":\"float\",\"doc\":\"Qty\"},{\"value\":\"8\",\"name\":\"Price\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":8,\"group\":\"float\",\"doc\":\"Price\"},{\"value\":\"9\",\"name\":\"PriceOffset\",\"since\":\"5.0SP2\",\"ep\":129,\"sort\":9,\"group\":\"float\",\"doc\":\"PriceOffset\"}]}",
-      "fix:description": "Datatype of the entitlement attribute.",
       "fix:tag": "1779"
     }
   },
@@ -910,8 +910,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Value of the entitlement attribute.",
       "display": "EntitlementAttribValue",
-      "fix:description": "Value of the entitlement attribute.",
       "fix:tag": "1780"
     }
   },
@@ -922,8 +922,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Currency for EntitlementAttribValue(1780). Can be used if these fields represent a price, price offset, or amount.",
       "display": "EntitlementAttribCurrency",
-      "fix:description": "Currency for EntitlementAttribValue(1780). Can be used if these fields represent a price, price offset, or amount.",
       "fix:tag": "1781"
     }
   },
@@ -934,8 +934,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the starting date of the entitlement.",
       "display": "EntitlementStartDate",
-      "fix:description": "Indicates the starting date of the entitlement.",
       "fix:tag": "1782"
     }
   },
@@ -946,8 +946,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the ending date of the entitlement.",
       "display": "EntitlementEndDate",
-      "fix:description": "Indicates the ending date of the entitlement.",
       "fix:tag": "1783"
     }
   },
@@ -958,8 +958,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The area to which the entitlement is applicable. This can be a trading platform or an offering.",
       "display": "EntitlementPlatform",
-      "fix:description": "The area to which the entitlement is applicable. This can be a trading platform or an offering.",
       "fix:tag": "1784"
     }
   },
@@ -970,9 +970,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates how control of trading session and subsession transitions are performed.",
       "display": "TradSesControl",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Automatic\",\"since\":\"5.0SP2\",\"ep\":130,\"doc\":\"Automatic (Default)\"},{\"value\":\"1\",\"name\":\"Manual\",\"since\":\"5.0SP2\",\"ep\":130,\"doc\":\"Manual\"}]}",
-      "fix:description": "Indicates how control of trading session and subsession transitions are performed.",
       "fix:tag": "1785"
     }
   },
@@ -983,9 +983,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Define the type of trade volume applicable for the MinTradeVol(562) and MaxTradeVol(1140)",
       "display": "TradeVolType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NumberOfUnits\",\"since\":\"5.0SP2\",\"ep\":130,\"doc\":\"Number of units (e.g. share, par, currency, contracts) (default)\"},{\"value\":\"1\",\"name\":\"NumberOfRoundLots\",\"since\":\"5.0SP2\",\"ep\":130,\"doc\":\"Number of round lots\"}]}",
-      "fix:description": "Define the type of trade volume applicable for the MinTradeVol(562) and MaxTradeVol(1140)",
       "fix:tag": "1786"
     }
   },
@@ -996,8 +996,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Spread table code referred by the security or symbol.",
       "display": "RefTickTableID",
-      "fix:description": "Spread table code referred by the security or symbol.",
       "fix:tag": "1787"
     }
   },
@@ -1008,8 +1008,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Unique identifier for the leg within the context of a message (the scope of uniqueness to be defined by counterparty agreement). The LegID(1788) can be referenced using LegRefID(654).",
       "display": "LegID",
-      "fix:description": "Unique identifier for the leg within the context of a message (the scope of uniqueness to be defined by counterparty agreement). The LegID(1788) can be referenced using LegRefID(654).",
       "fix:tag": "1788"
     }
   },
@@ -1020,8 +1020,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market segment within a target market segment repeating group.",
       "display": "TargetMarketSegmentID",
-      "fix:description": "Market segment within a target market segment repeating group.",
       "fix:tag": "1790"
     }
   },
@@ -1032,8 +1032,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market segment within an affected market repeating segment group.",
       "display": "AffectedMarketSegmentID",
-      "fix:description": "Market segment within an affected market repeating segment group.",
       "fix:tag": "1792"
     }
   },
@@ -1044,8 +1044,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Market segment within an unaffected market repeating segment group.",
       "display": "NotAffectedMarketSegmentID",
-      "fix:description": "Market segment within an unaffected market repeating segment group.",
       "fix:tag": "1794"
     }
   },
@@ -1056,9 +1056,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The type of event affecting an order. The last event type within the OrderEventGrp component indicates the ExecType(150) value resulting from the series of events (ExecType(150) values are shown in brackets).",
       "display": "OrderEventType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Added\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Added (0=New)\"},{\"value\":\"10\",\"name\":\"Triggered\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":10,\"doc\":\"Triggered (L=Triggered or Activated by System)\"},{\"value\":\"11\",\"name\":\"Activated\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":11,\"doc\":\"Activated (L=Triggered or Activated by System)\"},{\"value\":\"2\",\"name\":\"Modified\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Modified (5=Replaced)\"},{\"value\":\"3\",\"name\":\"Deleted\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Deleted (4=Canceled)\"},{\"value\":\"4\",\"name\":\"PartiallyFilled\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"Partially Filled (F=Trade)\"},{\"value\":\"5\",\"name\":\"Filled\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"Filled (F=Trade)\"},{\"value\":\"6\",\"name\":\"Suspended\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Suspended (9=Suspended)\"},{\"value\":\"7\",\"name\":\"Released\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"Released (N=Released)\"},{\"value\":\"8\",\"name\":\"Restated\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":8,\"doc\":\"Restated (D=Restated)\"},{\"value\":\"9\",\"name\":\"Locked\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":9,\"doc\":\"Locked (M=Locked)\"}]}",
-      "fix:description": "The type of event affecting an order. The last event type within the OrderEventGrp component indicates the ExecType(150) value resulting from the series of events (ExecType(150) values are shown in brackets).",
       "fix:tag": "1796"
     }
   },
@@ -1069,8 +1069,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Refer to ExecID(17). Used when multiple different events are reported in single Execution Report. ExecID(17) and OrderEventExecID(1797) values should not overlap.",
       "display": "OrderEventExecID",
-      "fix:description": "Refer to ExecID(17). Used when multiple different events are reported in single Execution Report. ExecID(17) and OrderEventExecID(1797) values should not overlap.",
       "fix:tag": "1797"
     }
   },
@@ -1081,9 +1081,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Action that caused the event to occur.",
       "display": "OrderEventReason",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"AddOrderRequest\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Add order request\"},{\"value\":\"10\",\"name\":\"AwayMarketBetter\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":10,\"doc\":\"Away market better\"},{\"value\":\"11\",\"name\":\"CorporateAction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":11,\"doc\":\"Corporate action\"},{\"value\":\"12\",\"name\":\"StartOfDay\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":12,\"doc\":\"Start of day\"},{\"value\":\"13\",\"name\":\"EndOfDay\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":13,\"doc\":\"End of day\"},{\"value\":\"2\",\"name\":\"ModifyOrderRequest\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Modify order request\"},{\"value\":\"3\",\"name\":\"DeleteOrderRequest\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Delete order request\"},{\"value\":\"4\",\"name\":\"OrderEnteredOOB\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"Order entered out-of-band\"},{\"value\":\"5\",\"name\":\"OrderModifiedOOB\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"Order modified out-of-band\"},{\"value\":\"6\",\"name\":\"OrderDeletedOOB\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Order deleted out-of-band\"},{\"value\":\"7\",\"name\":\"OrderActivatedOrTriggered\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"Order activated or triggered\"},{\"value\":\"8\",\"name\":\"OrderExpired\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":8,\"doc\":\"Order expired\"},{\"value\":\"9\",\"name\":\"ReserveOrderRefreshed\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":9,\"doc\":\"Reserve order refreshed\"}]}",
-      "fix:description": "Action that caused the event to occur.",
       "fix:tag": "1798"
     }
   },
@@ -1094,8 +1094,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Price associated with the event.",
       "display": "OrderEventPx",
-      "fix:description": "Price associated with the event.",
       "fix:tag": "1799"
     }
   }

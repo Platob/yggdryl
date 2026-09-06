@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of payment dates in the repeating group.",
       "display": "NoPaymentStreamPaymentDates",
-      "fix:description": "Number of payment dates in the repeating group.",
       "fix:tag": "41220"
     }
   },
@@ -78,8 +78,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of pricing dates in the repeating group.",
       "display": "NoPaymentStreamPricingDates",
-      "fix:description": "Number of pricing dates in the repeating group.",
       "fix:tag": "41224"
     }
   },
@@ -120,8 +120,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of pricing days in the repeating group.",
       "display": "NoPaymentStreamPricingDays",
-      "fix:description": "Number of pricing days in the repeating group.",
       "fix:tag": "41227"
     }
   },
@@ -152,8 +152,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoPricingDateBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41230"
     }
   },
@@ -204,8 +204,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of asset attribute entries in the group.",
       "display": "NoStreamAssetAttributes",
-      "fix:description": "Number of asset attribute entries in the group.",
       "fix:tag": "41237"
     }
   },
@@ -246,8 +246,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of calculation period dates in the repeating group.",
       "display": "NoStreamCalculationPeriodDates",
-      "fix:description": "Number of calculation period dates in the repeating group.",
       "fix:tag": "41241"
     }
   },
@@ -278,8 +278,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoStreamCommoditySettlBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "41249"
     }
   },
@@ -320,8 +320,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of alternate security identifers.",
       "display": "NoStreamCommodityAltIDs",
-      "fix:description": "Number of alternate security identifers.",
       "fix:tag": "41277"
     }
   },
@@ -362,8 +362,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
       "display": "NoStreamCommodityDataSources",
-      "fix:description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
       "fix:tag": "41280"
     }
   },
@@ -404,8 +404,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of days in the repeating group.",
       "display": "NoStreamCommoditySettlDays",
-      "fix:description": "Number of days in the repeating group.",
       "fix:tag": "41283"
     }
   },
@@ -456,8 +456,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
       "display": "NoStreamCommoditySettlTimes",
-      "fix:description": "Number of hour ranges in the repeating group.",
       "fix:tag": "41286"
     }
   },
@@ -608,8 +608,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of commodity settlement periods in the repeating group.",
       "display": "NoStreamCommoditySettlPeriods",
-      "fix:description": "Number of commodity settlement periods in the repeating group.",
       "fix:tag": "41289"
     }
   }

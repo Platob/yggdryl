@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provision option exercise fixed dates in the repeating group.",
       "display": "NoProvisionOptionExerciseFixedDates",
-      "fix:description": "Number of provision option exercise fixed dates in the repeating group.",
       "fix:tag": "40142"
     }
   },
@@ -78,8 +78,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of provision cash settlement payment dates in the repeating group.",
       "display": "NoProvisionCashSettlPaymentDates",
-      "fix:description": "Number of provision cash settlement payment dates in the repeating group.",
       "fix:tag": "40171"
     }
   },
@@ -140,8 +140,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties identified in the contract provision.",
       "display": "NoProvisionPartyIDs",
-      "fix:description": "Number of parties identified in the contract provision.",
       "fix:tag": "40174"
     }
   },
@@ -182,8 +182,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoProvisionPartySubIDs",
-      "fix:description": "Number of sub-party IDs to be reported for the party.",
       "fix:tag": "40178"
     }
   },
@@ -284,8 +284,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of protection terms in the repeating group.",
       "display": "NoProtectionTerms",
-      "fix:description": "Number of protection terms in the repeating group.",
       "fix:tag": "40181"
     }
   },
@@ -376,8 +376,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of protection term events in the repeating group.",
       "display": "NoProtectionTermEvents",
-      "fix:description": "Number of protection term events in the repeating group.",
       "fix:tag": "40191"
     }
   },
@@ -408,8 +408,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of qualifiers in the repeating group.",
       "display": "NoProtectionTermEventQualifiers",
-      "fix:description": "Number of qualifiers in the repeating group.",
       "fix:tag": "40199"
     }
   }

@@ -128,8 +128,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of executions or trades.",
       "display": "NoExecs",
-      "fix:description": "Number of executions or trades.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"noexecs\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noexecs\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "124"
     }
@@ -231,8 +231,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating groups of miscellaneous fees",
       "display": "NoMiscFees",
-      "fix:description": "Number of repeating groups of miscellaneous fees",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"nomiscfees\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomiscfees\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "136"
     }
@@ -878,8 +878,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the number of repeating symbols specified.",
       "display": "NoRelatedSym",
-      "fix:description": "Specifies the number of repeating symbols specified.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"norelatedsym\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"norelatedsym\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "146"
     }
@@ -911,8 +911,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating groups of IOIQualifiers (04).",
       "display": "NoIOIQualifiers",
-      "fix:description": "Number of repeating groups of IOIQualifiers (04).",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"noioiqualifiers\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noioiqualifiers\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "199"
     }

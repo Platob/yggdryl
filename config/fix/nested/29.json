@@ -56,8 +56,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of subgroups in an allocation group.",
       "display": "NoAllocGroupSubQtys",
-      "fix:description": "Indicates number of subgroups in an allocation group.",
       "fix:tag": "2975"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "display": "NoAllocGroupSubQtyAttributes",
-      "fix:description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
       "fix:tag": "2979"
     }
   },
@@ -252,8 +252,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instruments with security risk metrics data.",
       "display": "NoSecurityRiskMetrics",
-      "fix:description": "Number of instruments with security risk metrics data.",
       "fix:tag": "2995"
     }
   }

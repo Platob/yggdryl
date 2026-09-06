@@ -76,8 +76,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of CompID entries in a repeating group.",
       "display": "NoCompIDs",
-      "fix:description": "Number of CompID entries in a repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocompids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "936"
     }
@@ -109,8 +109,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of CollInquiryQualifier entries in a repeating group.",
       "display": "NoCollInquiryQualifier",
-      "fix:description": "Number of CollInquiryQualifier entries in a repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocollinquiryqualifier\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "938"
     }
@@ -172,8 +172,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
       "display": "NoNested3PartyIDs",
-      "fix:description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "948"
     }
@@ -215,8 +215,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Nested3PartySubIDs (953) entries",
       "display": "NoNested3PartySubIDs",
-      "fix:description": "Number of Nested3PartySubIDs (953) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partysubids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "952"
     }
@@ -268,8 +268,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of strategy parameters",
       "display": "NoStrategyParameters",
-      "fix:description": "Indicates number of strategy parameters",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nostrategyparameters\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "957"
     }
@@ -311,8 +311,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Expiration Qty entries",
       "display": "NoExpiration",
-      "fix:description": "Number of Expiration Qty entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noexpiration\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "981"
     }
@@ -374,8 +374,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
       "display": "NoUnderlyingAmounts",
-      "fix:description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingamounts\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "984"
     }

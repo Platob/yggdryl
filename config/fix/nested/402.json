@@ -36,8 +36,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of obligations in the repeating group.",
       "display": "NoProtectionTermObligations",
-      "fix:description": "Number of obligations in the repeating group.",
       "fix:tag": "40201"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoPhysicalSettlTerms",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "40204"
     }
   },
@@ -140,8 +140,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of entries in the repeating group.",
       "display": "NoPhysicalSettlDeliverableObligations",
-      "fix:description": "Number of entries in the repeating group.",
       "fix:tag": "40209"
     }
   },
@@ -542,8 +542,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of additional settlement or bullet payments.",
       "display": "NoPayments",
-      "fix:description": "Number of additional settlement or bullet payments.",
       "fix:tag": "40212"
     }
   },
@@ -584,8 +584,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of additional settlements or bullet payments.",
       "display": "NoPaymentSettls",
-      "fix:description": "Number of additional settlements or bullet payments.",
       "fix:tag": "40230"
     }
   },
@@ -646,8 +646,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of parties identified in the additional settlement or bullet payment.",
       "display": "NoPaymentSettlPartyIDs",
-      "fix:description": "Number of parties identified in the additional settlement or bullet payment.",
       "fix:tag": "40233"
     }
   },
@@ -688,8 +688,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of sub-party IDs to be reported for the party.",
       "display": "NoPaymentSettlPartySubIDs",
-      "fix:description": "Number of sub-party IDs to be reported for the party.",
       "fix:tag": "40238"
     }
   },
@@ -920,8 +920,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of swap streams in the repeating group.",
       "display": "NoLegStreams",
-      "fix:description": "Number of swap streams in the repeating group.",
       "fix:tag": "40241"
     }
   },
@@ -952,8 +952,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of dealers in the repeating group.",
       "display": "NoCashSettlDealers",
-      "fix:description": "Number of dealers in the repeating group.",
       "fix:tag": "40277"
     }
   },
@@ -984,8 +984,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of business centers in the repeating group.",
       "display": "NoBusinessCenters",
-      "fix:description": "Number of business centers in the repeating group.",
       "fix:tag": "40278"
     }
   }

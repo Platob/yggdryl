@@ -66,8 +66,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates number of repeating groups to follow.",
       "display": "NoThrottles",
-      "fix:description": "Indicates number of repeating groups to follow.",
       "fix:tag": "1610"
     }
   },
@@ -98,8 +98,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of ThrottleMsgType fields.",
       "display": "NoThrottleMsgType",
-      "fix:description": "Number of ThrottleMsgType fields.",
       "fix:tag": "1618"
     }
   },
@@ -160,8 +160,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Instructions in the <MatchingInstructions> repeating group.",
       "display": "NoMatchInst",
-      "fix:description": "Number of Instructions in the <MatchingInstructions> repeating group.",
       "fix:tag": "1624"
     }
   },
@@ -262,8 +262,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of limit amount entries.",
       "display": "NoLimitAmts",
-      "fix:description": "The number of limit amount entries.",
       "fix:tag": "1630"
     }
   },
@@ -294,8 +294,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of margin requirement inquiry qualifiers.",
       "display": "NoMarginReqmtInqQualifier",
-      "fix:description": "Number of margin requirement inquiry qualifiers.",
       "fix:tag": "1636"
     }
   },
@@ -396,8 +396,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of margin requirement amounts.",
       "display": "NoMarginAmt",
-      "fix:description": "Number of margin requirement amounts.",
       "fix:tag": "1643"
     }
   },
@@ -519,8 +519,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of related instruments",
       "display": "NoRelatedInstruments",
-      "fix:description": "Number of related instruments",
       "fix:tag": "1647"
     }
   },
@@ -551,8 +551,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of instrument scopes.",
       "display": "NoInstrumentScopes",
-      "fix:description": "Number of instrument scopes.",
       "fix:tag": "1656"
     }
   },
@@ -613,8 +613,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of requesting party identifiers.",
       "display": "NoRequestingPartyIDs",
-      "fix:description": "Number of requesting party identifiers.",
       "fix:tag": "1657"
     }
   },
@@ -655,8 +655,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of requesting party sub-identifiers.",
       "display": "NoRequestingPartySubIDs",
-      "fix:description": "Number of requesting party sub-identifiers.",
       "fix:tag": "1661"
     }
   },
@@ -687,8 +687,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of risk limit types requested.",
       "display": "NoRequestedRiskLimitType",
-      "fix:description": "Number of risk limit types requested.",
       "fix:tag": "1668"
     }
   },
@@ -759,8 +759,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party details.",
       "display": "NoPartyDetails",
-      "fix:description": "Number of party details.",
       "fix:tag": "1671"
     }
   },
@@ -841,8 +841,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party updates.",
       "display": "NoPartyUpdates",
-      "fix:description": "Number of party updates.",
       "fix:tag": "1676"
     }
   },
@@ -953,8 +953,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party risk limits.",
       "display": "NoPartyRiskLimits",
-      "fix:description": "Number of party risk limits.",
       "fix:tag": "1677"
     }
   },
@@ -995,8 +995,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of party detail sub-identifiers.",
       "display": "NoPartyDetailSubIDs",
-      "fix:description": "Number of party detail sub-identifiers.",
       "fix:tag": "1694"
     }
   }

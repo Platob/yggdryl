@@ -106,8 +106,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of position entries.",
       "display": "NoPositions",
-      "fix:description": "Number of position entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopositions\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "702"
     }
@@ -169,8 +169,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of underlying legs that make up the security.",
       "display": "NoUnderlyings",
-      "fix:description": "Number of underlying legs that make up the security.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyings\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "711"
     }
@@ -202,8 +202,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of repeating groups of QuoteQualifiers (695).",
       "display": "NoQuoteQualifiers",
-      "fix:description": "Number of repeating groups of QuoteQualifiers (695).",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noquotequalifiers\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "735"
     }
@@ -345,8 +345,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of position amount entries.",
       "display": "NoPosAmt",
-      "fix:description": "Number of position amount entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noposamt\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "753"
     }
@@ -408,8 +408,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of Nested2PartyID (757), Nested2PartyIDSource (758), and Nested2PartyRole (759) entries",
       "display": "NoNested2PartyIDs",
-      "fix:description": "Number of Nested2PartyID (757), Nested2PartyIDSource (758), and Nested2PartyRole (759) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "756"
     }
@@ -553,8 +553,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of timestamp entries.",
       "display": "NoTrdRegTimestamps",
-      "fix:description": "Number of timestamp entries.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrdregtimestamps\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "768"
     }
@@ -802,8 +802,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of settlement instructions within repeating group.",
       "display": "NoSettlInst",
-      "fix:description": "Number of settlement instructions within repeating group.",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlinst\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "778"
     }
@@ -865,8 +865,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of SettlPartyID (782), SettlPartyIDSource (783), and SettlPartyRole (784) entries",
       "display": "NoSettlPartyIDs",
-      "fix:description": "Number of SettlPartyID (782), SettlPartyIDSource (783), and SettlPartyRole (784) entries",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "781"
     }

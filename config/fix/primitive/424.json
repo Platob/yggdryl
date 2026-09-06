@@ -6,8 +6,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "LegPaymentStreamCompoundingXIDRef",
-      "fix:description": "Reference to the stream which details the compounding fixed or floating rate.",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":\"XIDREF\"}]}",
       "fix:tag": "42400"
     }
@@ -19,8 +19,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The spread to be used for compounding. Used in scenarios where the interest payment is based on a compounding formula that uses a compounding spread in addition to the regular spread.",
       "display": "LegPaymentStreamCompoundingSpread",
-      "fix:description": "The spread to be used for compounding. Used in scenarios where the interest payment is based on a compounding formula that uses a compounding spread in addition to the regular spread.",
       "fix:tag": "42401"
     }
   },
@@ -31,9 +31,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
       "display": "LegPaymentStreamInterpolationMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"LinearZeroYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Linear zero yield\"}]}",
-      "fix:description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
       "fix:tag": "42402"
     }
   },
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Defines applicable periods for interpolation.",
       "display": "LegPaymentStreamInterpolationPeriod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"InitialAndFinal\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Initial and final\"},{\"value\":\"2\",\"name\":\"Final\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Final\"},{\"value\":\"3\",\"name\":\"AnyPeriod\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"Any period\"}]}",
-      "fix:description": "Defines applicable periods for interpolation.",
       "fix:tag": "42403"
     }
   },
@@ -57,8 +57,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The compounding fixed rate applicable to the payment stream.",
       "display": "LegPaymentStreamCompoundingFixedRate",
-      "fix:description": "The compounding fixed rate applicable to the payment stream.",
       "fix:tag": "42404"
     }
   },
@@ -69,8 +69,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The compounding date. Type of date is specified in LegPaymentStreamCompoundingDateType(42407).",
       "display": "LegPaymentStreamCompoundingDate",
-      "fix:description": "The compounding date. Type of date is specified in LegPaymentStreamCompoundingDateType(42407).",
       "fix:tag": "42406"
     }
   },
@@ -81,9 +81,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of payment compounding date (e.g. adjusted for holidays).",
       "display": "LegPaymentStreamCompoundingDateType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
-      "fix:description": "Specifies the type of payment compounding date (e.g. adjusted for holidays).",
       "fix:tag": "42407"
     }
   },
@@ -94,9 +94,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The compounding dates business day convention.",
       "display": "LegPaymentStreamCompoundingDatesBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The compounding dates business day convention.",
       "fix:tag": "42408"
     }
   },
@@ -107,8 +107,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the compounding dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStreamCompoundingDatesRelativeTo",
-      "fix:description": "Specifies the anchor date when the compounding dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42409"
     }
   },
@@ -119,8 +119,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative compounding date offset.",
       "display": "LegPaymentStreamCompoundingDatesOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative compounding date offset.",
       "fix:tag": "42410"
     }
   },
@@ -131,9 +131,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative compounding date offset.",
       "display": "LegPaymentStreamCompoundingDatesOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative compounding date offset.",
       "fix:tag": "42411"
     }
   },
@@ -144,9 +144,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative compounding date offset.",
       "display": "LegPaymentStreamCompoundingDatesOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative compounding date offset.",
       "fix:tag": "42412"
     }
   },
@@ -157,8 +157,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The number of periods in the \"RelativeTo\" schedule that are between each date in the compounding schedule. A skip of 2 would mean that compounding dates are relative to every second date in the \"RelativeTo\" schedule. If present this should have a value greater than 1.",
       "display": "LegPaymentStreamCompoundingPeriodSkip",
-      "fix:description": "The number of periods in the \"RelativeTo\" schedule that are between each date in the compounding schedule. A skip of 2 would mean that compounding dates are relative to every second date in the \"RelativeTo\" schedule. If present this should have a value greater than 1.",
       "fix:tag": "42413"
     }
   },
@@ -169,8 +169,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the frequency at which compounding dates occur.",
       "display": "LegPaymentStreamCompoundingFrequencyPeriod",
-      "fix:description": "Time unit multiplier for the frequency at which compounding dates occur.",
       "fix:tag": "42414"
     }
   },
@@ -181,9 +181,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the frequency at which compounding dates occur.",
       "display": "LegPaymentStreamCompoundingFrequencyUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the frequency at which compounding dates occur.",
       "fix:tag": "42415"
     }
   },
@@ -194,9 +194,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The convention for determining the sequence of compounding dates. It is used in conjunction with a specified frequency.",
       "display": "LegPaymentStreamCompoundingRollConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
-      "fix:description": "The convention for determining the sequence of compounding dates. It is used in conjunction with a specified frequency.",
       "fix:tag": "42416"
     }
   },
@@ -207,8 +207,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted first date of the compounding schedule. This can be used to restrict the range of dates when they are relative.",
       "display": "LegPaymentStreamBoundsFirstDateUnadjusted",
-      "fix:description": "The unadjusted first date of the compounding schedule. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "42417"
     }
   },
@@ -219,8 +219,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted last date of the compounding schedule. This can be used to restrict the range of dates when they are relative.",
       "display": "LegPaymentStreamBoundsLastDateUnadjusted",
-      "fix:description": "The unadjusted last date of the compounding schedule. This can be used to restrict the range of dates when they are relative.",
       "fix:tag": "42418"
     }
   },
@@ -231,8 +231,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for date adjustment of the payment stream compounding dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentStreamCompoundingDatesBusinessCenter",
-      "fix:description": "The business center calendar used for date adjustment of the payment stream compounding dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "42420"
     }
   },
@@ -243,8 +243,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted compounding end date.",
       "display": "LegPaymentStreamCompoundingEndDateUnadjusted",
-      "fix:description": "The unadjusted compounding end date.",
       "fix:tag": "42421"
     }
   },
@@ -255,8 +255,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the compounding end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStreamCompoundingEndDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the compounding end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42422"
     }
   },
@@ -267,8 +267,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative compounding end date offset.",
       "display": "LegPaymentStreamCompoundingEndDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative compounding end date offset.",
       "fix:tag": "42423"
     }
   },
@@ -279,9 +279,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative compounding end date offset.",
       "display": "LegPaymentStreamCompoundingEndDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative compounding end date offset.",
       "fix:tag": "42424"
     }
   },
@@ -292,9 +292,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative compounding end date offset.",
       "display": "LegPaymentStreamCompoundingEndDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative compounding end date offset.",
       "fix:tag": "42425"
     }
   },
@@ -305,8 +305,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted compounding end date.",
       "display": "LegPaymentStreamCompoundingEndDateAdjusted",
-      "fix:description": "The adjusted compounding end date.",
       "fix:tag": "42426"
     }
   },
@@ -317,8 +317,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The payment stream's compounding floating rate index.",
       "display": "LegPaymentStreamCompoundingRateIndex",
-      "fix:description": "The payment stream's compounding floating rate index.",
       "fix:tag": "42427"
     }
   },
@@ -329,8 +329,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the payment stream's compounding floating rate index curve period.",
       "display": "LegPaymentStreamCompoundingRateIndexCurvePeriod",
-      "fix:description": "Time unit multiplier for the payment stream's compounding floating rate index curve period.",
       "fix:tag": "42428"
     }
   },
@@ -341,9 +341,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the payment stream's compounding floating rate index curve period.",
       "display": "LegPaymentStreamCompoundingRateIndexCurveUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the payment stream's compounding floating rate index curve period.",
       "fix:tag": "42429"
     }
   },
@@ -354,8 +354,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A rate multiplier to apply to the compounding floating rate. The multiplier can be less than or greater than 1 (one). This should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "display": "LegPaymentStreamCompoundingRateMultiplier",
-      "fix:description": "A rate multiplier to apply to the compounding floating rate. The multiplier can be less than or greater than 1 (one). This should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
       "fix:tag": "42430"
     }
   },
@@ -366,8 +366,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The basis points spread from the index specified in LegPaymentStreamCompoundingRateIndex(42427).",
       "display": "LegPaymentStreamCompoundingRateSpread",
-      "fix:description": "The basis points spread from the index specified in LegPaymentStreamCompoundingRateIndex(42427).",
       "fix:tag": "42431"
     }
   },
@@ -378,9 +378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "LegPaymentStreamCompoundingRateSpreadPositionType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
-      "fix:description": "Identifies whether the rate spread is applied to a long or short position.",
       "fix:tag": "42432"
     }
   },
@@ -391,9 +391,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the yield calculation treatment for the index.",
       "display": "LegPaymentStreamCompoundingRateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
-      "fix:description": "Specifies the yield calculation treatment for the index.",
       "fix:tag": "42433"
     }
   },
@@ -404,8 +404,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The cap rate, if any, which applies to the compounding floating rate. It is only required where the compounding floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as \"0.05\".",
       "display": "LegPaymentStreamCompoundingCapRate",
-      "fix:description": "The cap rate, if any, which applies to the compounding floating rate. It is only required where the compounding floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as \"0.05\".",
       "fix:tag": "42434"
     }
   },
@@ -416,9 +416,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the buyer of the compounding cap rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingCapRateBuySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the buyer of the compounding cap rate option through its trade side.",
       "fix:tag": "42435"
     }
   },
@@ -429,9 +429,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the seller of the compounding cap rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingCapRateSellSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the seller of the compounding cap rate option through its trade side.",
       "fix:tag": "42436"
     }
   },
@@ -442,8 +442,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The floor rate, if any, which applies to the compounding floating rate. The floor rate (strike) is only required where the compounding floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate. The rate is expressed as a decimal, e.g. 5% is represented as \"0.05\".",
       "display": "LegPaymentStreamCompoundingFloorRate",
-      "fix:description": "The floor rate, if any, which applies to the compounding floating rate. The floor rate (strike) is only required where the compounding floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate. The rate is expressed as a decimal, e.g. 5% is represented as \"0.05\".",
       "fix:tag": "42437"
     }
   },
@@ -454,9 +454,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the buyer of the compounding floor rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingFloorRateBuySide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the buyer of the compounding floor rate option through its trade side.",
       "fix:tag": "42438"
     }
   },
@@ -467,9 +467,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "LegPaymentStreamCompoundingFloorRateSellSide",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
-      "fix:description": "Reference to the seller of the floor rate option through its trade side.",
       "fix:tag": "42439"
     }
   },
@@ -480,8 +480,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The initial compounding floating rate reset agreed between the principal parties involved in the trade. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. The initial rate is expressed in decimal form, e.g. 5% is represented as \"0.05\".",
       "display": "LegPaymentStreamCompoundingInitialRate",
-      "fix:description": "The initial compounding floating rate reset agreed between the principal parties involved in the trade. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. The initial rate is expressed in decimal form, e.g. 5% is represented as \"0.05\".",
       "fix:tag": "42440"
     }
   },
@@ -492,9 +492,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the rounding direction for the compounding floating rate.",
       "display": "LegPaymentStreamCompoundingFinalRateRoundingDirection",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
-      "fix:description": "Specifies the rounding direction for the compounding floating rate.",
       "fix:tag": "42441"
     }
   },
@@ -505,8 +505,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the compounding floating rate rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "display": "LegPaymentStreamCompoundingFinalRatePrecision",
-      "fix:description": "Specifies the compounding floating rate rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
       "fix:tag": "42442"
     }
   },
@@ -517,9 +517,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the averaging method when compounding floating rate averaging is applicable (e.g. weighted or unweighted).",
       "display": "LegPaymentStreamCompoundingAveragingMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unweighted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unweighted\"},{\"value\":\"1\",\"name\":\"Weighted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Weighted\"}]}",
-      "fix:description": "Specifies the averaging method when compounding floating rate averaging is applicable (e.g. weighted or unweighted).",
       "fix:tag": "42443"
     }
   },
@@ -530,9 +530,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the method for calculating payment obligations when a compounding floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "LegPaymentStreamCompoundingNegativeRateTreatment",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ZeroInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero interest rate method\"},{\"value\":\"1\",\"name\":\"NegativeInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Negative interest rate method\"}]}",
-      "fix:description": "Specifies the method for calculating payment obligations when a compounding floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "fix:tag": "42444"
     }
   },
@@ -543,8 +543,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted compounding start date.",
       "display": "LegPaymentStreamCompoundingStartDateUnadjusted",
-      "fix:description": "The unadjusted compounding start date.",
       "fix:tag": "42445"
     }
   },
@@ -555,8 +555,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the compounding start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStreamCompoundingStartDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the compounding start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42446"
     }
   },
@@ -567,8 +567,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative compounding start date offset.",
       "display": "LegPaymentStreamCompoundingStartDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative compounding start date offset.",
       "fix:tag": "42447"
     }
   },
@@ -579,9 +579,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative compounding start date offset.",
       "display": "LegPaymentStreamCompoundingStartDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative compounding start date offset.",
       "fix:tag": "42448"
     }
   },
@@ -592,9 +592,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative compounding start date offset.",
       "display": "LegPaymentStreamCompoundingStartDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative compounding start date offset.",
       "fix:tag": "42449"
     }
   },
@@ -605,8 +605,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted compounding start date.",
       "display": "LegPaymentStreamCompoundingStartDateAdjusted",
-      "fix:description": "The adjusted compounding start date.",
       "fix:tag": "42450"
     }
   },
@@ -617,8 +617,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Length in bytes of the LegPaymentStreamFormulaImage(42452) field.",
       "display": "LegPaymentStreamFormulaImageLength",
-      "fix:description": "Length in bytes of the LegPaymentStreamFormulaImage(42452) field.",
       "fix:tag": "42451"
     }
   },
@@ -629,8 +629,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Image of the formula image when represented through an encoded clip in base64Binary.",
       "display": "LegPaymentStreamFormulaImage",
-      "fix:description": "Image of the formula image when represented through an encoded clip in base64Binary.",
       "fix:tag": "42452"
     }
   },
@@ -641,8 +641,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted final price payment date.",
       "display": "LegPaymentStreamFinalPricePaymentDateUnadjusted",
-      "fix:description": "The unadjusted final price payment date.",
       "fix:tag": "42453"
     }
   },
@@ -653,8 +653,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the final price payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStreamFinalPricePaymentDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the final price payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42454"
     }
   },
@@ -665,8 +665,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative final price payment date offset.",
       "display": "LegPaymentStreamFinalPricePaymentDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative final price payment date offset.",
       "fix:tag": "42455"
     }
   },
@@ -677,9 +677,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative final price payment date offset.",
       "display": "LegPaymentStreamFinalPricePaymentDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative final price payment date offset.",
       "fix:tag": "42456"
     }
   },
@@ -690,9 +690,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative final price payment date offset.",
       "display": "LegPaymentStreamFinalPricePaymentDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative final price payment date offset.",
       "fix:tag": "42457"
     }
   },
@@ -703,8 +703,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted final price payment date.",
       "display": "LegPaymentStreamFinalPricePaymentDateAdjusted",
-      "fix:description": "The adjusted final price payment date.",
       "fix:tag": "42458"
     }
   },
@@ -715,8 +715,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The fixing date. Type of date is specified in LegPaymentStreamFixingDateType(42461).",
       "display": "LegPaymentStreamFixingDate",
-      "fix:description": "The fixing date. Type of date is specified in LegPaymentStreamFixingDateType(42461).",
       "fix:tag": "42460"
     }
   },
@@ -727,9 +727,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the type of fixing date (e.g. adjusted for holidays).",
       "display": "LegPaymentStreamFixingDateType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
-      "fix:description": "Specifies the type of fixing date (e.g. adjusted for holidays).",
       "fix:tag": "42461"
     }
   },
@@ -740,8 +740,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted initial price observation date.",
       "display": "LegPaymentStreamFirstObservationDateUnadjusted",
-      "fix:description": "The unadjusted initial price observation date.",
       "fix:tag": "42462"
     }
   },
@@ -752,8 +752,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the initial price observation date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStreamFirstObservationDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the initial price observation date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42463"
     }
   },
@@ -764,9 +764,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the initial price observation date offset.",
       "display": "LegPaymentStreamFirstObservationDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the initial price observation date offset.",
       "fix:tag": "42464"
     }
   },
@@ -777,8 +777,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted initial price observation date.",
       "display": "LegPaymentStreamFirstObservationDateAdjusted",
-      "fix:description": "The adjusted initial price observation date.",
       "fix:tag": "42465"
     }
   },
@@ -789,8 +789,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
       "display": "LegPaymentStreamUnderlierRefID",
-      "fix:description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
       "fix:tag": "42466"
     }
   },
@@ -801,8 +801,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the term \"Equity Notional Reset\" as defined in the ISDA 2002 Equity Derivatives Definitions is applicable (\"Y\") or not.",
       "display": "LegReturnRateNotionalReset",
-      "fix:description": "Indicates whether the term \"Equity Notional Reset\" as defined in the ISDA 2002 Equity Derivatives Definitions is applicable (\"Y\") or not.",
       "fix:tag": "42467"
     }
   },
@@ -813,8 +813,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Price level at which the correlation or variance swap contract will strike.",
       "display": "LegPaymentStreamLinkInitialLevel",
-      "fix:description": "Price level at which the correlation or variance swap contract will strike.",
       "fix:tag": "42468"
     }
   },
@@ -825,8 +825,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the correlation or variance swap contract will (\"Y\") strike off the closing level of the default exchange traded contract or not.",
       "display": "LegPaymentStreamLinkClosingLevelIndicator",
-      "fix:description": "Indicates whether the correlation or variance swap contract will (\"Y\") strike off the closing level of the default exchange traded contract or not.",
       "fix:tag": "42469"
     }
   },
@@ -837,8 +837,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the correlation or variance swap contract will (\"Y\") strike off the expiring level of the default exchange traded contract or not.",
       "display": "LegPaymentStreamLinkExpiringLevelIndicator",
-      "fix:description": "Indicates whether the correlation or variance swap contract will (\"Y\") strike off the expiring level of the default exchange traded contract or not.",
       "fix:tag": "42470"
     }
   },
@@ -849,8 +849,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The expected number of trading days in the variance or correlation swap stream.",
       "display": "LegPaymentStreamLinkEstimatedTradingDays",
-      "fix:description": "The expected number of trading days in the variance or correlation swap stream.",
       "fix:tag": "42471"
     }
   },
@@ -861,8 +861,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The strike price of a correlation or variance swap stream.",
       "display": "LegPaymentStreamLinkStrikePrice",
-      "fix:description": "The strike price of a correlation or variance swap stream.",
       "fix:tag": "42472"
     }
   },
@@ -873,9 +873,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "For a variance swap specifies how LegPaymentStreamLinkStrikePrice(42472) is expressed.",
       "display": "LegPaymentStreamLinkStrikePriceType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Volatility\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Volatility\"},{\"value\":\"1\",\"name\":\"Variance\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Variance\"}]}",
-      "fix:description": "For a variance swap specifies how LegPaymentStreamLinkStrikePrice(42472) is expressed.",
       "fix:tag": "42473"
     }
   },
@@ -886,8 +886,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the maximum or upper boundary for variance or strike determination.",
       "display": "LegPaymentStreamLinkMaximumBoundary",
-      "fix:description": "Specifies the maximum or upper boundary for variance or strike determination.",
       "fix:tag": "42474"
     }
   },
@@ -898,8 +898,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the minimum or lower boundary for variance or strike determination.",
       "display": "LegPaymentStreamLinkMinimumBoundary",
-      "fix:description": "Specifies the minimum or lower boundary for variance or strike determination.",
       "fix:tag": "42475"
     }
   },
@@ -910,8 +910,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Number of data series for a correlation swap. Normal market practice is that correlation data sets are drawn from geographic market areas, such as America, Europe and Asia Pacific. Each of these geographic areas will have its own data series to avoid contagion.",
       "display": "LegPaymentStreamLinkNumberOfDataSeries",
-      "fix:description": "Number of data series for a correlation swap. Normal market practice is that correlation data sets are drawn from geographic market areas, such as America, Europe and Asia Pacific. Each of these geographic areas will have its own data series to avoid contagion.",
       "fix:tag": "42476"
     }
   },
@@ -922,8 +922,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates the scaling factor to be multiplied by the variance strike price thereby making variance cap applicable.",
       "display": "LegPaymentStreamVarianceUnadjustedCap",
-      "fix:description": "Indicates the scaling factor to be multiplied by the variance strike price thereby making variance cap applicable.",
       "fix:tag": "42477"
     }
   },
@@ -934,9 +934,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates which price to use to satisfy the boundary condition.",
       "display": "LegPaymentStreamRealizedVarianceMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Previous\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Previous\"},{\"value\":\"1\",\"name\":\"Last\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Last\"},{\"value\":\"2\",\"name\":\"Both\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Both\"}]}",
-      "fix:description": "Indicates which price to use to satisfy the boundary condition.",
       "fix:tag": "42478"
     }
   },
@@ -947,8 +947,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Indicates whether the contract specifies that the notional should be scaled by the number of days in range divided by the estimate trading days or not. The number of \"days in range\" refers to the number of returns that contribute to the realized volatility.",
       "display": "LegPaymentStreamDaysAdjustmentIndicator",
-      "fix:description": "Indicates whether the contract specifies that the notional should be scaled by the number of days in range divided by the estimate trading days or not. The number of \"days in range\" refers to the number of returns that contribute to the realized volatility.",
       "fix:tag": "42479"
     }
   },
@@ -959,8 +959,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "References a contract listed on an exchange through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
       "display": "LegPaymentStreamNearestExchangeContractRefID",
-      "fix:description": "References a contract listed on an exchange through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
       "fix:tag": "42480"
     }
   },
@@ -971,8 +971,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Vega Notional represents the approximate gain/loss at maturity for a 1% difference between RVol (realized volatility) and KVol (strike volatility). It does not necessarily represent the Vega risk of the trade.",
       "display": "LegPaymentStreamVegaNotionalAmount",
-      "fix:description": "Vega Notional represents the approximate gain/loss at maturity for a 1% difference between RVol (realized volatility) and KVol (strike volatility). It does not necessarily represent the Vega risk of the trade.",
       "fix:tag": "42481"
     }
   },
@@ -983,8 +983,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The currency in which the formula amount is denominated. Uses ISO 4217 currency codes.",
       "display": "LegPaymentStreamFormulaCurrency",
-      "fix:description": "The currency in which the formula amount is denominated. Uses ISO 4217 currency codes.",
       "fix:tag": "42482"
     }
   },
@@ -995,8 +995,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the method according to which the formula amount currency is determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "display": "LegPaymentStreamFormulaCurrencyDeterminationMethod",
-      "fix:description": "Specifies the method according to which the formula amount currency is determined. See https://fpml.org/coding-scheme/determination-method for values.",
       "fix:tag": "42483"
     }
   },
@@ -1007,8 +1007,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the reference amount when this term either corresponds to the standard ISDA Definition (either the 2002 Equity Definition for the Equity Amount, or the 2000 Definition for the Interest Amount), or refers to a term defined elsewhere in the swap document. See https://fixtrading.org/packages/payment-amount-relative-to for code list of reference amounts.",
       "display": "LegPaymentStreamFormulaReferenceAmount",
-      "fix:description": "Specifies the reference amount when this term either corresponds to the standard ISDA Definition (either the 2002 Equity Definition for the Equity Amount, or the 2000 Definition for the Interest Amount), or refers to a term defined elsewhere in the swap document. See https://fixtrading.org/packages/payment-amount-relative-to for code list of reference amounts.",
       "fix:tag": "42484"
     }
   },
@@ -1019,8 +1019,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Contains an XML representation of the formula. Defined for flexibility in choice of language (MathML, OpenMath or text).",
       "display": "LegPaymentStreamFormula",
-      "fix:description": "Contains an XML representation of the formula. Defined for flexibility in choice of language (MathML, OpenMath or text).",
       "fix:tag": "42486"
     }
   },
@@ -1031,8 +1031,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "A description of the math formula in LegPaymentStreamFormula(42486).",
       "display": "LegPaymentStreamFormulaDesc",
-      "fix:description": "A description of the math formula in LegPaymentStreamFormula(42486).",
       "fix:tag": "42487"
     }
   },
@@ -1043,8 +1043,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted stub end date.",
       "display": "LegPaymentStubEndDateUnadjusted",
-      "fix:description": "The unadjusted stub end date.",
       "fix:tag": "42488"
     }
   },
@@ -1055,9 +1055,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The stub end date business day convention.",
       "display": "LegPaymentStubEndDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The stub end date business day convention.",
       "fix:tag": "42489"
     }
   },
@@ -1068,8 +1068,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the stub end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStubEndDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the stub end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42490"
     }
   },
@@ -1080,8 +1080,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit multiplier for the relative stub end date offset.",
       "display": "LegPaymentStubEndDateOffsetPeriod",
-      "fix:description": "Time unit multiplier for the relative stub end date offset.",
       "fix:tag": "42491"
     }
   },
@@ -1092,9 +1092,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Time unit associated with the relative stub end date offset.",
       "display": "LegPaymentStubEndDateOffsetUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
-      "fix:description": "Time unit associated with the relative stub end date offset.",
       "fix:tag": "42492"
     }
   },
@@ -1105,9 +1105,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the day type of the relative stub end date offset.",
       "display": "LegPaymentStubEndDateOffsetDayType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
-      "fix:description": "Specifies the day type of the relative stub end date offset.",
       "fix:tag": "42493"
     }
   },
@@ -1118,8 +1118,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The adjusted stub end date.",
       "display": "LegPaymentStubEndDateAdjusted",
-      "fix:description": "The adjusted stub end date.",
       "fix:tag": "42494"
     }
   },
@@ -1130,8 +1130,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The business center calendar used for date adjustment of the payment stub end date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "display": "LegPaymentStubEndDateBusinessCenter",
-      "fix:description": "The business center calendar used for date adjustment of the payment stub end date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
       "fix:tag": "42496"
     }
   },
@@ -1142,8 +1142,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The unadjusted stub start date.",
       "display": "LegPaymentStubStartDateUnadjusted",
-      "fix:description": "The unadjusted stub start date.",
       "fix:tag": "42497"
     }
   },
@@ -1154,9 +1154,9 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "The stub start date business day convention.",
       "display": "LegPaymentStubStartDateBusinessDayConvention",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
-      "fix:description": "The stub start date business day convention.",
       "fix:tag": "42498"
     }
   },
@@ -1167,8 +1167,8 @@
     },
     "nullable": true,
     "metadata": {
+      "description": "Specifies the anchor date when the stub start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "display": "LegPaymentStubStartDateRelativeTo",
-      "fix:description": "Specifies the anchor date when the stub start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
       "fix:tag": "42499"
     }
   }
