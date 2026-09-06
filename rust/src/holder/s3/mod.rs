@@ -153,6 +153,83 @@ pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
     Folder::new(client, url)
 }
 
+/// Hold the object `key` names in `bucket`, whether or not it exists yet.
+///
+/// This is the raw-name entry point, and it is where encoding belongs: a key
+/// is arbitrary UTF-8, so `a b/c.txt` and `100%/done.txt` are ordinary names
+/// here while a URL cannot spell either without escaping them. A caller
+/// holding a location rather than a name reaches for [`file`].
+///
+/// ```
+/// use yggdryl::holder::s3;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let handle = s3::file_at("trades", "lake/a b/part.parquet")?;
+/// assert_eq!(handle.key(), "lake/a b/part.parquet");
+/// // The location it reports escapes what a URL cannot carry.
+/// assert_eq!(
+///     handle.url().to_string(),
+///     "s3://trades/lake/a%20b/part.parquet"
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn file_at(bucket: &str, key: &str) -> Result<File> {
+    file_at_with(bucket, key, S3Options::default())
+}
+
+/// Hold the object `key` names in `bucket`, configured by `options`.
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn file_at_with(bucket: &str, key: &str, options: S3Options) -> Result<File> {
+    let url = key_url(bucket, key)?;
+    let client = Arc::new(Client::new(&url, options)?);
+    File::new(client, url)
+}
+
+/// Hold the prefix `key` names in `bucket`, whether or not it has entries.
+///
+/// The raw-name counterpart of [`folder`], per [`file_at`].
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn folder_at(bucket: &str, key: &str) -> Result<Folder> {
+    folder_at_with(bucket, key, S3Options::default())
+}
+
+/// Hold the prefix `key` names in `bucket`, configured by `options`.
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn folder_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Folder> {
+    let url = key_url(bucket, key)?;
+    let client = Arc::new(Client::new(&url, options)?);
+    Folder::new(client, url)
+}
+
+/// The canonical location of a raw `key` in `bucket`.
+fn key_url(bucket: &str, key: &str) -> Result<Url> {
+    if bucket.is_empty() {
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "expected an s3 bucket name, got \"\"",
+        )));
+    }
+    Url::from_str(&format!(
+        "s3://{}/{}",
+        crate::uri::percent_encode_segment(bucket),
+        encode_key_path(key)
+    ))
+}
+
 /// Parse an `s3` location, refusing anything else.
 fn parse(url: &str) -> Result<Url> {
     let url = Url::from_str(url)?;
