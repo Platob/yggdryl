@@ -89,8 +89,18 @@ struct Slot {
     field: Field,
     tag: i32,
     values: Vec<Scalar>,
+    /// Whether this slot is a repeating group, whatever it has been given.
+    ///
+    /// A group whose counter arrived and whose members did not is still a
+    /// group, and the empty list is what says the count was not met.
+    group: bool,
     /// The group members, when this slot is a repeating group.
-    occurrences: Vec<Vec<(SmolStr, Scalar)>>,
+    ///
+    /// Each member keeps the field it resolved to rather than only its name.
+    /// The field is what carries the member's tag and its datatype, and
+    /// without them nothing inside a group can be addressed - which is the
+    /// whole of how a party is found by its role.
+    occurrences: Vec<Vec<(Field, Scalar)>>,
 }
 
 /// Builds a message's field and value from pairs, with the entries beside it.
@@ -217,20 +227,49 @@ impl<'registry> Builder<'registry> {
         // learn from the field alone, which is the crate's own coercion; the
         // third is a FIX *spelling* and stays here, because the generic
         // contract must not learn one.
-        let value = match wire_spelling(field.dtype(), spelling) {
-            Some(value) => value,
-            None => crate::text::prepare_text(Scalar::from(spelling), field)
-                .unwrap_or_else(|_| Scalar::from(spelling)),
-        };
+        // A FIX spelling is rewritten into the one the crate's coercion reads,
+        // and then coerced like any other text: `20240102-10:15:30` is a
+        // timestamp only after both steps, and the value contract reads
+        // neither a separator-free instant nor a bare `Y`.
+        let candidate =
+            wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
+        let value =
+            crate::text::prepare_text(candidate, field).unwrap_or_else(|_| Scalar::from(spelling));
         field.scalar(value).unwrap_or(Scalar::Null)
     }
 
     /// One flat child, appended in arrival order.
     fn push_flat(&mut self, key: &str, text: &str, raw: &[u8]) {
+        // A flat key naming a repeating group is that group's counter. The
+        // row holds the group as a List and its length *is* the count, so the
+        // number that arrived stays in the entries and the two are compared
+        // on demand through `anomalies()`. Writing it into the row as well
+        // would put two facts about one thing at one tag.
+        if let Some((field, tag)) = self.counter(key) {
+            self.record(key, text, tag);
+            let slot = self.slot_for(field, tag);
+            slot.group = true;
+            return;
+        }
         let (field, tag) = self.field_for(key);
         let value = self.typed(&field, raw, text);
         self.record(key, text, tag);
         self.slot_for(field, tag).values.push(value);
+    }
+
+    /// The repeating group a flat key names, when it names one.
+    ///
+    /// Only the nested half is probed, which is what makes this a counter
+    /// rather than a second reading of an ordinary key: a scalar reaches its
+    /// field through `get_primitive_field` and neither half can answer for
+    /// the other.
+    fn counter(&self, key: &str) -> Option<(Field, i32)> {
+        let field = match super::field::parse_tag(key) {
+            Some(tag) => self.registry.get_nested_field(tag),
+            None => self.registry.get_nested_field(key),
+        }?;
+        let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
+        Some((self.project(field), tag))
     }
 
     /// One occurrence of a repeated flat field, placed by index.
@@ -276,10 +315,11 @@ impl<'registry> Builder<'registry> {
             ),
         };
         let slot = self.slot_for(group_field, group_tag);
+        slot.group = true;
         while slot.occurrences.len() <= occurrence {
             slot.occurrences.push(Vec::new());
         }
-        slot.occurrences[occurrence].push((SmolStr::new(member_field.name()), value));
+        slot.occurrences[occurrence].push((member_field, value));
     }
 
     /// The slot one field builds into, created on first use.
@@ -295,6 +335,7 @@ impl<'registry> Builder<'registry> {
                     field,
                     tag,
                     values: Vec::new(),
+                    group: false,
                     occurrences: Vec::new(),
                 });
                 self.slots.last_mut().expect("just pushed")
@@ -363,6 +404,13 @@ impl<'registry> Builder<'registry> {
 impl Slot {
     /// This slot as one child field and its value.
     fn into_child(self) -> Result<(Field, Scalar)> {
+        // A group whose counter arrived and whose members did not is a group
+        // holding nothing, not a scalar: the empty list is what lets the
+        // count it stated be compared with what the row actually holds.
+        if self.group && self.occurrences.is_empty() {
+            let value = Scalar::from_sequence(Vec::new());
+            return Ok((self.field, value));
+        }
         if self.occurrences.is_empty() {
             // A value that would not type is null, and a field a null lands
             // in is nullable: the message's schema says the value is there
@@ -389,14 +437,18 @@ impl Slot {
 
         // A group is a List of a non-null `item` Struct, and the occurrences
         // are built by index, so a gap is an empty one rather than a shift.
+        // In first-seen order across every occurrence, so a member only the
+        // second occurrence carries is still a column and still in its
+        // arrival place. Nullable, because an occurrence need not state one.
         let mut member_fields: Vec<Field> = Vec::new();
         for occurrence in &self.occurrences {
-            for (name, value) in occurrence {
-                if member_fields.iter().any(|field| field.name() == name) {
+            for (field, _) in occurrence {
+                if member_fields.iter().any(|held| held.name() == field.name()) {
                     continue;
                 }
-                let dtype = value.dtype().unwrap_or(DataType::Utf8);
-                member_fields.push(dtype.nullable_field(name.as_str()));
+                let mut member = field.clone();
+                member.set_nullable(true);
+                member_fields.push(member);
             }
         }
         let mut item = DataType::from_fields(member_fields.clone())?.required_field("item");
@@ -414,7 +466,7 @@ impl Slot {
             for field in &member_fields {
                 let held = occurrence
                     .iter()
-                    .find(|(name, _)| name == field.name())
+                    .find(|(held, _)| held.name() == field.name())
                     .map(|(_, value)| value.clone());
                 row.push(held.unwrap_or(Scalar::Null));
             }

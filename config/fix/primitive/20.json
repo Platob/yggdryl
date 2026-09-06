@@ -141,7 +141,7 @@
     "nullable": true,
     "metadata": {
       "display": "UnderlyingSecurityStatus",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Active\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Active\"},{\"value\":\"10\",\"name\":\"Published\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":10,\"doc\":\"Published\"},{\"value\":\"11\",\"name\":\"PendingDeletion\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":11,\"doc\":\"Pending Deletion\"},{\"value\":\"2\",\"name\":\"Inactive\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Inactive\"},{\"value\":\"3\",\"name\":\"ActiveClosingOrdersOnly\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Active, closing orders only\"},{\"value\":\"4\",\"name\":\"Expired\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":4,\"doc\":\"Expired\"},{\"value\":\"5\",\"name\":\"Delisted\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":5,\"doc\":\"Delisted\"},{\"value\":\"6\",\"name\":\"KnockedOut\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":6,\"doc\":\"Knocked-out\"},{\"value\":\"7\",\"name\":\"KnockOutRevoked\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":7,\"doc\":\"Knock-out revoked\"},{\"value\":\"8\",\"name\":\"PendingExpiry\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":8,\"doc\":\"Pending Expiry\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":9,\"doc\":\"Suspended\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Active\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Active\"},{\"value\":\"10\",\"name\":\"Published\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":10,\"doc\":\"Published\"},{\"value\":\"11\",\"name\":\"PendingDeletion\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":11,\"doc\":\"Pending Deletion\"},{\"value\":\"2\",\"name\":\"Inactive\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Inactive\"},{\"value\":\"3\",\"name\":\"ActiveClosingOrdersOnly\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Active, closing orders only\"},{\"value\":\"4\",\"name\":\"Expired\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":4,\"doc\":\"Expired\"},{\"value\":\"5\",\"name\":\"Delisted\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":5,\"doc\":\"Delisted\"},{\"value\":\"6\",\"name\":\"KnockedOut\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":6,\"doc\":\"Knocked-out\"},{\"value\":\"7\",\"name\":\"KnockOutRevoked\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":7,\"doc\":\"Knock-out revoked\"},{\"value\":\"8\",\"name\":\"PendingExpiry\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":8,\"doc\":\"Pending Expiry\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":9,\"doc\":\"Suspended\"}]}",
       "fix:description": "Indicates the current state of the underlying instrument.",
       "fix:tag": "2011"
     }
@@ -1037,7 +1037,7 @@
     "nullable": true,
     "metadata": {
       "display": "MarginAmtFXRateCalc",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Multiply\"}]}",
       "fix:description": "Specifies whether or not MarginAmtFXRate(2088) should be multipled or divided.",
       "fix:tag": "2089"
     }
@@ -1062,7 +1062,7 @@
     "nullable": true,
     "metadata": {
       "display": "CollateralFXRateCalc",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Multiply\"}]}",
       "fix:description": "Specifies whether or not CollateralFXRate(2090) should be multipled or divided.",
       "fix:tag": "2091"
     }
@@ -1111,7 +1111,7 @@
     "nullable": true,
     "metadata": {
       "display": "PayCollectFXRateCalc",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Multiply\"}]}",
       "fix:description": "Specifies whether or not PayCollectFXRate(2094) should be multipled or divided.",
       "fix:tag": "2095"
     }
@@ -1148,7 +1148,7 @@
     "nullable": true,
     "metadata": {
       "display": "PositionFXRateCalc",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Multiply\"}]}",
       "fix:description": "Specifies whether or not PositionFXRate(2097) should be multipled or divided.",
       "fix:tag": "2098"
     }

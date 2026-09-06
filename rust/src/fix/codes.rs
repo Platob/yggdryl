@@ -330,6 +330,19 @@ impl<'field> FixCode<'field> {
         decode_text(TARGET, DOC, self.doc())
     }
 
+    /// Decodes the group the specification files this code under.
+    ///
+    /// [`Self::group`] answers the stored slice, which is borrowed and may
+    /// still carry escapes; this is the text it stands for.
+    ///
+    /// # Errors
+    ///
+    /// Returns the JSON codec's refusal when the stored text is not a legal
+    /// string body, which the writer never produces.
+    pub fn parse_group(self) -> Result<Option<String>> {
+        decode_text(TARGET, GROUP, self.group())
+    }
+
     /// Whether this code exists at `at`.
     ///
     /// A code added later, and one deprecated at or before, are both outside
@@ -477,7 +490,10 @@ impl<'field> FixCodes<'field> {
                 EP => ep = Some(self.cursor.read_number(EP)?),
                 DEPRECATED => deprecated = Some(self.cursor.read_version(DEPRECATED)?),
                 SORT => sort = Some(self.cursor.read_number(SORT)?),
-                GROUP => group = Some(self.cursor.read_word(GROUP)?),
+                // Read as prose, not as a word: the specification files
+                // codes under labels like `For PartyRole = "InvestorID"`, so
+                // a group carries escapes exactly as a description does.
+                GROUP => group = Some(self.cursor.read_string()?),
                 ALIASES => aliases = self.cursor.read_words(ALIASES)?,
                 _ => doc = self.cursor.read_string()?,
             }

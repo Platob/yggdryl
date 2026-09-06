@@ -210,6 +210,25 @@ impl<'field> FixField<'field> {
         !dated || defined
     }
 
+    /// Returns whether the specification had deprecated this field by `at`.
+    ///
+    /// Deprecation is a state a field enters and does not leave, so the newest
+    /// entry at or before `at` is the one that answers - the same walk
+    /// [`Self::defined_at`] makes, asked a different question. A field with no
+    /// lineage is deprecated at no version, because the dictionary states no
+    /// history to say it was.
+    pub fn deprecated_at(&self, at: Version) -> bool {
+        let mut deprecated = false;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.since() > at {
+                break;
+            }
+            deprecated = entry.is_deprecated();
+        }
+        deprecated
+    }
+
     /// Returns the spelling this field carries at `at`.
     ///
     /// The newest entry at or before `at` that states a name wins, because an

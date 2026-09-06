@@ -794,7 +794,7 @@
     "nullable": true,
     "metadata": {
       "display": "SymbolSfx",
-      "fix:codes": "{\"codes\":[{\"value\":\"CD\",\"name\":\"EUCPWithLumpSumInterest\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"For Fixed Income\",\"doc\":\"EUCP with lump-sum interest rather than discount price\"},{\"value\":\"WI\",\"name\":\"WhenIssued\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"For Fixed Income\",\"doc\":\"\\\"When Issued\\\" for a security to be reissued under an old CUSIP or ISIN\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"CD\",\"name\":\"EUCPWithLumpSumInterest\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For Fixed Income\",\"doc\":\"EUCP with lump-sum interest rather than discount price\"},{\"value\":\"WI\",\"name\":\"WhenIssued\",\"since\":\"4.4\",\"sort\":2,\"group\":\"For Fixed Income\",\"doc\":\"\\\"When Issued\\\" for a security to be reissued under an old CUSIP or ISIN\"}]}",
       "fix:description": "Additional information about the security (e.g. preferred, warrants, etc.). Note also see SecurityType (167).",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbolsfx\",\"type\":\"char\"},{\"since\":\"4.2\",\"name\":\"symbolsfx\",\"type\":\"String\"}]}",
       "fix:tag": "65"

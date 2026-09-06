@@ -9,6 +9,7 @@ mod fix_benches;
 criterion_group!(
     fix,
     fix_benches::resolve::benchmarks,
+    fix_benches::lift::benchmarks,
     fix_benches::lineage::benchmarks,
     fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,

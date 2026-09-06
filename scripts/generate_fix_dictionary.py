@@ -182,6 +182,22 @@ def orchestra_documentation(element: ElementTree.Element) -> str | None:
     return None
 
 
+def extension_pack(declared: str | None) -> int | None:
+    """One `addedEP` attribute as a pack number, or nothing.
+
+    Orchestra writes `-1` where a field or code predates the extension-pack
+    scheme, and that is an absence rather than a pack. Passing it through
+    wrote `"ep":-1` into the canonical document, which the borrowed scanner
+    refuses - and because the walk stops at a refusal, every later code in
+    that set silently disappeared from resolution.
+    """
+    try:
+        pack = int(declared) if declared else 0
+    except ValueError:
+        return None
+    return pack if pack > 0 else None
+
+
 def parse_orchestra(data: bytes) -> dict[str, Any]:
     """Every kind one Orchestra file publishes."""
     root = ElementTree.fromstring(data)
@@ -199,7 +215,7 @@ def parse_orchestra(data: bytes) -> dict[str, Any]:
                     "value": code.get("value", ""),
                     "name": code.get("name", ""),
                     "since": version_of(code.get("added")),
-                    "ep": int(code.get("addedEP")) if code.get("addedEP") else None,
+                    "ep": extension_pack(code.get("addedEP")),
                     "deprecated": version_of(code.get("deprecated")),
                     "sort": int(code.get("sort")) if code.get("sort") else None,
                     "group": code.get("group"),
@@ -221,7 +237,7 @@ def parse_orchestra(data: bytes) -> dict[str, Any]:
             "type": element.get("type", "String"),
             "code_set": element.get("codeSet"),
             "since": version_of(element.get("added")),
-            "ep": int(element.get("addedEP")) if element.get("addedEP") else None,
+            "ep": extension_pack(element.get("addedEP")),
             "doc": orchestra_documentation(element),
         }
 

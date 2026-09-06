@@ -188,3 +188,45 @@ fn the_dictionary_writes_back_byte_identically() {
     assert_eq!(written, registry);
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+#[test]
+fn every_stored_document_walks_to_its_end() {
+    let registry = seed();
+    let mut with_codes = 0_usize;
+    let mut codes = 0_usize;
+    let mut entries = 0_usize;
+    for field in registry.iter() {
+        let view = field.as_fix();
+        // A refusal ends a borrowed walk, and the walk is what resolution
+        // reads - so one malformed record does not fail loudly, it silently
+        // removes every record after it. Orchestra's `addedEP="-1"` did
+        // exactly that to 169 code sets: `ClearingFirm` stopped resolving
+        // because a code 60 records earlier would not parse. Nothing here can
+        // catch that but walking every document to its end.
+        let mut seen = 0_usize;
+        for code in view.codes() {
+            code.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            seen += 1;
+        }
+        if seen > 0 {
+            with_codes += 1;
+        }
+        codes += seen;
+        for entry in view.lineage() {
+            entry.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            entries += 1;
+        }
+    }
+    // A dictionary this size is the point: a truncation that hides one code
+    // in twenty thousand is exactly what nobody notices by reading.
+    assert!(with_codes > 900, "{with_codes} fields carry a code set");
+    assert!(codes > 20_000, "{codes} codes in all");
+    // Fewer than there are fields, and deliberately: a field whose only
+    // history is "as it is now" states none (P3).
+    assert!(entries > 1_500, "{entries} lineage entries in all");
+
+    // The spelling the truncation hid, end to end.
+    let role = registry.field_by_tag(452).expect("PartyRole");
+    assert_eq!(role.as_fix().code_value("ClearingFirm"), Some("4"));
+    assert_eq!(role.as_fix().code_name("4"), Some("ClearingFirm"));
+}

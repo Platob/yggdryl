@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
+use super::anomaly::FixAnomalies;
 use super::entry::FixEntry;
 use super::{FixBranch, FixId, FixKey, FixRegistry};
 use crate::{DataType, Error, Field, Result, Scalar, Version};
@@ -91,8 +92,33 @@ pub struct FixMsg {
     /// dictionary declares a version or session defaults. Resolving it once
     /// keeps every message lookup allocation-free.
     branch: FixBranch,
+    /// Each root child's tag beside its position, in tag order.
+    ///
+    /// Resolved once for the same reason [`Self::branch`] is: reading a tag
+    /// out of a child's metadata is a formatted key and a map lookup, and
+    /// scanning the children per lookup pays it once per child. Every facet
+    /// a lift answers is a tag lookup, so a row of twenty facets over a
+    /// message of twenty children was four hundred of them.
+    ///
+    /// An index, not a second fact: it is derived from `field` alone and both
+    /// are replaced together.
+    tags: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
+}
+
+/// Each child's declared tag beside its position, sorted for a binary search.
+fn tag_positions(field: &Field) -> Vec<(i32, usize)> {
+    let Some(children) = field.dtype().as_fields() else {
+        return Vec::new();
+    };
+    let mut held: Vec<(i32, usize)> = children
+        .iter()
+        .enumerate()
+        .filter_map(|(index, child)| Some((child.as_fix().tag().ok().flatten()?, index)))
+        .collect();
+    held.sort_unstable();
+    held
 }
 
 impl FixMsg {
@@ -128,6 +154,7 @@ impl FixMsg {
             registry,
             entries: Vec::new(),
             branch,
+            tags: tag_positions(&field),
             field,
             value,
         })
@@ -153,6 +180,17 @@ impl FixMsg {
     #[must_use]
     pub fn entries(&self) -> &[FixEntry] {
         &self.entries
+    }
+
+    /// Returns what this message says about itself that does not add up.
+    ///
+    /// Derived by comparing the row against the entries, never stored, so
+    /// there is nothing to keep in step and a caller who never asks pays
+    /// nothing. A message built from a schema and a value has no entries and
+    /// so reports nothing: there is no arrival record to disagree with.
+    #[must_use]
+    pub fn anomalies(&self) -> FixAnomalies<'_> {
+        FixAnomalies::new(self)
     }
 
     /// Re-emits this message on the wire, separated by `separator`.
@@ -279,12 +317,9 @@ impl FixMsg {
     }
 
     /// The root child carrying one tag, by that child's own declaration.
-    fn index_of_tag(&self, tag: i32) -> Option<usize> {
-        self.field
-            .dtype()
-            .as_fields()?
-            .iter()
-            .position(|child| child.as_fix().tag().ok().flatten() == Some(tag))
+    pub(super) fn index_of_tag(&self, tag: i32) -> Option<usize> {
+        let found = self.tags.binary_search_by_key(&tag, |(held, _)| *held);
+        found.ok().map(|at| self.tags[at].1)
     }
 
     /// Returns the value of the root child a tag names, raising absence.
