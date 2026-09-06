@@ -39,7 +39,9 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, RecordBatchReader, StructArray};
+use arrow_array::{
+    Array, ArrayRef, RecordBatch, RecordBatchOptions, RecordBatchReader, StructArray,
+};
 use arrow_schema::SchemaRef;
 use smol_str::SmolStr;
 

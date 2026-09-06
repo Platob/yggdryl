@@ -102,7 +102,9 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
         .write_all_bytes(br#"[{"symbol": "AAPL", "size": 100}]"#)
         .expect("the bytes write");
 
-    let value = source.read_arrow_value(None).expect("the document proves a root");
+    let value = source
+        .read_arrow_value(None)
+        .expect("the document proves a root");
     assert_eq!(value.column_size(), 2);
     assert_eq!(value.row_size(), Some(1));
 }
@@ -127,8 +129,8 @@ fn a_toml_table_travels_under_the_roots_own_name() {
         .write_arrow_value(quotes(), IOMode::Overwrite)
         .expect("the rows write");
 
-    let text = String::from_utf8(target.read_all_bytes().expect("the bytes read"))
-        .expect("TOML is UTF-8");
+    let text =
+        String::from_utf8(target.read_all_bytes().expect("the bytes read")).expect("TOML is UTF-8");
     // TOML has no top-level sequence, so the rows travel under the root's own
     // name - which is also how the read finds them again.
     assert!(text.starts_with(r#""row" = ["#), "{text}");

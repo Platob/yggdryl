@@ -42,8 +42,8 @@ mod shapes {
     #[test]
     fn every_shape_reports_itself_and_its_width() {
         let field = Field::new("price", DataType::Int64, false);
-        let scalar = ArrowValue::from_value(&field, &Scalar::from(125_i64))
-            .expect("one value materializes");
+        let scalar =
+            ArrowValue::from_value(&field, &Scalar::from(125_i64)).expect("one value materializes");
         let array = ArrowValue::from_array(field, prices()).expect("the column pairs");
         let batch = ArrowValue::from_batch(quote_batch()).expect("the batch names its root");
 
@@ -172,8 +172,7 @@ mod pairing {
 
 mod narrowing {
     use super::{
-        Array, ArrowValue, Datum, Field, StructArray, batch_reader, prices, quote_batch,
-        quote_root,
+        Array, ArrowValue, Datum, Field, StructArray, batch_reader, prices, quote_batch, quote_root,
     };
     use crate::{DataType, Scalar};
 
@@ -237,8 +236,8 @@ mod narrowing {
         let many = ArrowValue::from_array(field.clone(), prices()).expect("the column pairs");
         assert!(many.into_arrow_scalar().is_err());
 
-        let one = ArrowValue::from_value(&field, &Scalar::from(125_i64))
-            .expect("one value materializes");
+        let one =
+            ArrowValue::from_value(&field, &Scalar::from(125_i64)).expect("one value materializes");
         assert_eq!(
             one.into_arrow_scalar()
                 .expect("one row is a datum")

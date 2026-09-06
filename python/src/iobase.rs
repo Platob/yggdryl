@@ -1421,11 +1421,8 @@ impl PyIOBase {
         mode: &str,
         field: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
-        let value = crate::arrow::arrow_value_from_py(
-            value,
-            field,
-            yggdryl::ArrowCastOptions::new(),
-        )?;
+        let value =
+            crate::arrow::arrow_value_from_py(value, field, yggdryl::ArrowCastOptions::new())?;
         let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
         self.inner_mut()?
             .write_arrow_value(value, mode)

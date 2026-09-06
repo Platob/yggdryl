@@ -37,7 +37,9 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
         | DataType::LargeList(child)
-        | DataType::LargeListView(child) => sequence(value, |value| into_natural(value, child), field),
+        | DataType::LargeListView(child) => {
+            sequence(value, |value| into_natural(value, child), field)
+        }
         DataType::Union(fields, _) => {
             let Some([type_id, payload]) = value.as_sequence() else {
                 return Err(invalid(field, "expected [type_id, value] for a union"));
@@ -57,7 +59,11 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
         }
         DataType::Dictionary(dictionary) => into_natural(
             value,
-            &Field::new(field.name(), dictionary.value().clone(), field.is_nullable()),
+            &Field::new(
+                field.name(),
+                dictionary.value().clone(),
+                field.is_nullable(),
+            ),
         ),
         DataType::RunEndEncoded(encoded) => into_natural(value, encoded.values()),
         DataType::Map(map) => {
@@ -104,7 +110,10 @@ fn named(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar>
             .iter()
             .zip(fields.iter())
             .map(|(value, child)| {
-                Ok((SmolStr::new(child.name()), into_natural(value.clone(), child)?))
+                Ok((
+                    SmolStr::new(child.name()),
+                    into_natural(value.clone(), child)?,
+                ))
             })
             .collect::<Result<Vec<_>>>()?,
     )

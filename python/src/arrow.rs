@@ -215,11 +215,7 @@ fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
     let names = names.try_iter()?.collect::<PyResult<Vec<_>>>()?;
     let mut columns = Vec::with_capacity(names.len());
     for name in &names {
-        columns.push(
-            pyarrow
-                .getattr("array")?
-                .call1((value.get_item(name)?,))?,
-        );
+        columns.push(pyarrow.getattr("array")?.call1((value.get_item(name)?,))?);
     }
     let batch = pyarrow.getattr("RecordBatch")?.call_method(
         "from_arrays",
