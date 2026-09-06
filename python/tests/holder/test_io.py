@@ -758,17 +758,22 @@ def test_a_handle_retains_the_record_encoding_it_turns_out_to_hold() -> None:
         spent.into_media()
 
 
-def test_an_s3_location_reaches_the_native_backend_without_touching_it() -> None:
-    """An ``s3://`` URL is a handle like any other, and building one is free.
+@pytest.mark.parametrize("scheme", ["s3", "s3a", "s3n"])
+def test_an_s3_location_reaches_the_native_backend_without_touching_it(
+    scheme: str,
+) -> None:
+    """An S3 URL is a handle like any other, and building one is free.
 
-    Nothing here contacts a store: the point is that the scheme selects the
-    backend and that construction stays lazy across the boundary, exactly as
-    it does for a local path.
+    ``s3``, ``s3a``, and ``s3n`` name one protocol - the Hadoop spellings
+    differ only in the connector that once read them - so all three select the
+    same backend. Nothing here contacts a store: the point is that the scheme
+    selects the backend and that construction stays lazy across the boundary,
+    exactly as it does for a local path.
     """
-    handle = IOBase("s3://trades/lake/year=2026/part.parquet")
+    handle = IOBase(f"{scheme}://trades/lake/year=2026/part.parquet")
 
     assert handle.url is not None
-    assert handle.url.scheme == "s3"
+    assert handle.url.scheme == scheme
     assert handle.url.bucket == "trades"
     assert handle.url.key == "lake/year=2026/part.parquet"
     assert handle.name == "part.parquet"
@@ -777,7 +782,8 @@ def test_an_s3_location_reaches_the_native_backend_without_touching_it() -> None
     assert handle.partitions == (("year", "2026"),)
 
     # A child resolves without asking the store anything, and a trailing
-    # slash names a container by its spelling.
-    child = IOBase("s3://trades/lake/").joinpath("year=2026", "part.parquet")
+    # slash names a container by its spelling. The spelling the caller used is
+    # what the child reports, so a location survives the round trip.
+    child = IOBase(f"{scheme}://trades/lake/").joinpath("year=2026", "part.parquet")
     assert child.url is not None
-    assert str(child.url) == "s3://trades/lake/year=2026/part.parquet"
+    assert str(child.url) == f"{scheme}://trades/lake/year=2026/part.parquet"

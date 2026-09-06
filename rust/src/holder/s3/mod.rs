@@ -9,6 +9,11 @@
 //! - [`Folder`] is the container: a key prefix, or a whole bucket.
 //! - [`File`] is the leaf: one object, read by range and written whole.
 //!
+//! `s3`, `s3a`, and `s3n` all name this protocol: the two Hadoop spellings
+//! differ only in the connector that once read them, so a location written by
+//! another tool selects this backend and addresses the same object. A handle
+//! reports the spelling it was handed, in its location and in its refusals.
+//!
 //! Everything else follows from [`IOBase`](crate::IOBase) rather than being
 //! written again here - globs, Hive partitions, page caching through
 //! [`Buffered`](crate::holder::buffered::Buffered), content codings, IPC,
@@ -102,7 +107,7 @@ use client::Client;
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn located(url: &str) -> Result<Holder> {
     located_with(url, S3Options::default())
 }
@@ -111,7 +116,7 @@ pub fn located(url: &str) -> Result<Holder> {
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
@@ -122,7 +127,7 @@ pub fn located_with(url: &str, options: S3Options) -> Result<Holder> {
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn file(url: &str) -> Result<File> {
     file_with(url, S3Options::default())
 }
@@ -131,7 +136,7 @@ pub fn file(url: &str) -> Result<File> {
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn file_with(url: &str, options: S3Options) -> Result<File> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);
@@ -142,7 +147,7 @@ pub fn file_with(url: &str, options: S3Options) -> Result<File> {
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn folder(url: &str) -> Result<Folder> {
     folder_with(url, S3Options::default())
 }
@@ -151,7 +156,7 @@ pub fn folder(url: &str) -> Result<Folder> {
 ///
 /// # Errors
 ///
-/// Returns a refusal when `url` is not an `s3` location naming a bucket.
+/// Returns a refusal when `url` is not an S3 location naming a bucket.
 pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
     let url = parse(url)?;
     let client = Arc::new(Client::new(&url, options)?);

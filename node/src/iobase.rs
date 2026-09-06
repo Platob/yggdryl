@@ -84,9 +84,10 @@ type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<St
 /// Build a local handle for the location a `Url` names.
 fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     // The scheme is what says which backend a location belongs to, so this is
-    // the one place that decides. An `s3` URL reaches the native S3 backend;
-    // everything else stays local. Construction touches nothing on either.
-    if url.scheme() == &yggdryl::Scheme::S3 {
+    // the one place that decides. Any S3 URL - `s3`, `s3a`, or `s3n`, which
+    // name one protocol - reaches the native S3 backend; everything else stays
+    // local. Construction touches nothing on either.
+    if url.scheme().is_s3() {
         return yggdryl::holder::s3::located(&url.to_string()).map_err(napi_error);
     }
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
@@ -94,7 +95,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 
 /// Hold `url` as a container, on the store its scheme selects.
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
-    if url.scheme() == &yggdryl::Scheme::S3 {
+    if url.scheme().is_s3() {
         return yggdryl::holder::s3::folder(&url.to_string())
             .map(Holder::S3Folder)
             .map_err(napi_error);
