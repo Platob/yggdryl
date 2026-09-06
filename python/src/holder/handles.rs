@@ -65,6 +65,27 @@ role!(
      needs to know what is there."
 );
 role!(
+    PyS3File,
+    "S3File",
+    "One Amazon S3 object, read by range and written whole. A ranged read \
+     transfers the range rather than the object, and learns the object's \
+     length from the answer."
+);
+role!(
+    PyS3Folder,
+    "S3Folder",
+    "One S3 key prefix, or a whole bucket. A prefix is not stored: it exists \
+     exactly while a key starts with it, so creating and deleting one cost \
+     nothing and listing is the only question the store answers."
+);
+role!(
+    PyS3Path,
+    "S3Path",
+    "One S3 location that resolves to `S3File` or `S3Folder` when an \
+     operation needs to know which it is - one listing of a single key, or \
+     none at all when a trailing slash already said it is a container."
+);
+role!(
     PyBuffered,
     "Buffered",
     "Any handle read through the core's bounded page cache. A cache stays the \
@@ -229,6 +250,93 @@ impl PyFsFolder {
     }
 }
 
+/// Build one S3 role from a bucket and a raw key, or from a location.
+///
+/// A caller who has a location passes one string; a caller who has the name a
+/// store uses passes the bucket and the key, and encoding belongs here rather
+/// than to them - `a b/c.txt` is an ordinary key and not a URL.
+fn s3_holder(
+    location: &Bound<'_, PyAny>,
+    key: Option<&Bound<'_, PyAny>>,
+    from_url: impl FnOnce(&str) -> yggdryl::Result<Holder>,
+    from_key: impl FnOnce(&str, &str) -> yggdryl::Result<Holder>,
+) -> PyResult<PyClassInitializer<PyIOBase>> {
+    let first = crate::uri::path_string_from_value(location)?;
+    let holder = match key {
+        Some(key) => from_key(&first, &crate::uri::path_string_from_value(key)?),
+        None => from_url(&first),
+    };
+    // Construction touches no store, so every failure here is about the name
+    // the caller gave rather than about the store: a `ValueError`, as it is
+    // for a local location that will not form a URL.
+    Ok(PyClassInitializer::from(PyIOBase::from_core(
+        holder.map_err(value_error)?,
+    )))
+}
+
+#[pymethods]
+impl PyS3Path {
+    /// Describe an S3 location without deciding what it is.
+    ///
+    /// `S3Path("s3://trades/lake/part.parquet")` names a location;
+    /// `S3Path("trades", "lake/a b/part.parquet")` names a bucket and the raw
+    /// key a store uses. Neither contacts the store.
+    #[new]
+    #[pyo3(signature = (location, key = None))]
+    fn new(
+        location: &Bound<'_, PyAny>,
+        key: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        Ok(s3_holder(
+            location,
+            key,
+            yggdryl::holder::s3::located,
+            |bucket, key| {
+                yggdryl::holder::s3::path_at(bucket, key).map(Holder::S3Path)
+            },
+        )?
+        .add_subclass(Self))
+    }
+}
+
+#[pymethods]
+impl PyS3File {
+    /// Describe an S3 object, whether or not it exists yet.
+    #[new]
+    #[pyo3(signature = (location, key = None))]
+    fn new(
+        location: &Bound<'_, PyAny>,
+        key: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        Ok(s3_holder(
+            location,
+            key,
+            |url| yggdryl::holder::s3::file(url).map(Holder::S3File),
+            |bucket, key| yggdryl::holder::s3::file_at(bucket, key).map(Holder::S3File),
+        )?
+        .add_subclass(Self))
+    }
+}
+
+#[pymethods]
+impl PyS3Folder {
+    /// Describe an S3 prefix or bucket, creating nothing.
+    #[new]
+    #[pyo3(signature = (location, key = None))]
+    fn new(
+        location: &Bound<'_, PyAny>,
+        key: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        Ok(s3_holder(
+            location,
+            key,
+            |url| yggdryl::holder::s3::folder(url).map(Holder::S3Folder),
+            |bucket, key| yggdryl::holder::s3::folder_at(bucket, key).map(Holder::S3Folder),
+        )?
+        .add_subclass(Self))
+    }
+}
+
 /// Borrow the page cache behind a `Buffered` handle.
 fn cache<'borrow>(slf: &'borrow PyRef<'_, PyBuffered>) -> PyResult<&'borrow Buffered<Holder>> {
     match slf.as_super().inner()? {
@@ -292,6 +400,9 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFsFile>()?;
     module.add_class::<PyFsFolder>()?;
     module.add_class::<PyFsPath>()?;
+    module.add_class::<PyS3File>()?;
+    module.add_class::<PyS3Folder>()?;
+    module.add_class::<PyS3Path>()?;
     module.add_class::<PyBuffered>()?;
     Ok(())
 }

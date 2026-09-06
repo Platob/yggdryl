@@ -2296,6 +2296,33 @@ class FsPath(IOBase):
         uri: str | PathLike[str] | None = None,
     ) -> None: ...
 
+class S3File(IOBase):
+    """One Amazon S3 object, read by range and written whole."""
+
+    def __init__(
+        self,
+        location: str | PathLike[str],
+        key: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class S3Folder(IOBase):
+    """One S3 key prefix, or a whole bucket."""
+
+    def __init__(
+        self,
+        location: str | PathLike[str],
+        key: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class S3Path(IOBase):
+    """One S3 location that resolves to `S3File` or `S3Folder` when asked."""
+
+    def __init__(
+        self,
+        location: str | PathLike[str],
+        key: str | PathLike[str] | None = None,
+    ) -> None: ...
+
 class Buffered(IOBase):
     """Any handle read through the core's bounded page cache."""
 
