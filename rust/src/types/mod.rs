@@ -41,7 +41,6 @@ pub(crate) use arithmetic::Arithmetic;
 #[cfg(feature = "arrow")]
 pub(crate) use arrow::{RecognizedExtension, recognized_arrow_extension};
 pub(crate) use arrow::{arrow_dtype_to_ffi, arrow_extension_parts, is_variant_storage};
-#[cfg(feature = "arrow")]
 pub(crate) use ascii::ascii_padded;
 pub use ascii::*;
 pub(crate) use ascii::{
