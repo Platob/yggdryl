@@ -215,6 +215,28 @@ pub fn folder_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Fol
     Folder::new(client, url)
 }
 
+/// Hold the S3 resource `key` names in `bucket`, resolving its role when asked.
+///
+/// The raw-name counterpart of [`located`], per [`file_at`].
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn path_at(bucket: &str, key: &str) -> Result<Path> {
+    path_at_with(bucket, key, S3Options::default())
+}
+
+/// Hold the S3 resource `key` names in `bucket`, configured by `options`.
+///
+/// # Errors
+///
+/// Returns a refusal when `bucket` is empty or cannot form a location.
+pub fn path_at_with(bucket: &str, key: &str, options: S3Options) -> Result<Path> {
+    let url = key_url(bucket, key)?;
+    let client = Arc::new(Client::new(&url, options)?);
+    Path::new(client, url)
+}
+
 /// The canonical location of a raw `key` in `bucket`.
 fn key_url(bucket: &str, key: &str) -> Result<Url> {
     if bucket.is_empty() {
@@ -234,12 +256,24 @@ fn key_url(bucket: &str, key: &str) -> Result<Url> {
 fn parse(url: &str) -> Result<Url> {
     let url = Url::from_str(url)?;
     if url.bucket().is_none() {
-        return Err(Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("expected an s3 location naming a bucket, got {url}"),
-        )));
+        return Err(no_bucket(&url));
     }
     Ok(url)
+}
+
+/// Refuse a location that names no bucket, without rendering its credentials.
+///
+/// A caller may have written keys into the location, and a refusal is exactly
+/// the text that reaches a log or a traceback, so it names the location the
+/// handle would have reported rather than the one it was handed.
+fn no_bucket(url: &Url) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "expected an s3 location naming a bucket, got {}",
+            without_credentials(url.clone())
+        ),
+    ))
 }
 
 /// The bucket and the decoded object key `url` addresses.
@@ -247,12 +281,7 @@ fn parse(url: &str) -> Result<Url> {
 /// The key is decoded because that is what the store names the object by; the
 /// URL keeps the escaped spelling, because that is what a URL path admits.
 fn split_location(url: &Url) -> Result<(String, String)> {
-    let bucket = url.bucket().ok_or_else(|| {
-        Error::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("expected an s3 location naming a bucket, got {url}"),
-        ))
-    })?;
+    let bucket = url.bucket().ok_or_else(|| no_bucket(url))?;
     let key = url.key().unwrap_or_default();
     Ok((decode_key(bucket), decode_key(key)))
 }

@@ -403,7 +403,9 @@ pub(crate) fn value_from_array(
             )?))
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
-        DataType::Binary => Scalar::from(downcast::<BinaryArray>(array)?.value(index).to_vec()),
+        // The cell is read straight into shared storage: a `Vec` on the way
+        // would allocate and copy the payload a second time for nothing.
+        DataType::Binary => Scalar::from(downcast::<BinaryArray>(array)?.value(index)),
         DataType::FixedSizeBinary(_) => {
             Scalar::Bytes(Bytes::FixedSizeBinary(crate::types::FixedSizeBinary::new(
                 Arc::<[u8]>::from(downcast::<FixedSizeBinaryArray>(array)?.value(index)),

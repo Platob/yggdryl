@@ -6,13 +6,14 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 
 | Item | Rule |
 | --- | --- |
-| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, `filter_partitions`, partition columns in folder records |
+| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, `filter_partitions`, partition columns in folder records, the `partition:` derivation vocabulary |
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
 | Pattern location | `kind` is `IOKind::Directory` before any backend call; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
 | `children_where` | Leaves only, carrying every pair; what a folder-addressed record method resolves through; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
 | `filter_partitions` | `(column, value)` pairs as paths spell them; a pruned leaf is never listed or decoded, a carried column is filtered row by row, same answer either way |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
+| Derived values | `partition:transform` over `partition:sources`; `apply_arrow_batch` adds a declared column the rows do not carry |
 | Retries | Listings and whole-leaf rewrites retry a bounded number of times with a growing pause; an append never retries |
 | Routing | Batch by batch; the first batch to reach a leaf performs the operation, later ones append |
 | Bindings | Python listings are `pathlib`-style iterators (`iterdir`, `glob`, `rglob`); JavaScript listings are iterables |
@@ -387,6 +388,81 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
     let _ = std::fs::remove_dir_all(&root);
     ```
 
+## Derived partition columns
+
+A path is not the only place a partition value can come from. A column can also be *computed* from
+another column of the same rows, and the [`partition:`](../../types/protocol.md) view is where that
+is declared: `partition:sources` names the field path it reads, `partition:transform` names the
+[expression](../../expression/grammar.md) function that produces it. An absent transform is the
+identity.
+
+`apply_arrow_batch` is taken on the Struct root and adds the columns its children declare. A column
+already carrying values is left alone, the rule a directory name follows for the same reason; a
+column that is absent, or present holding nothing but nulls, is filled.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
+    use yggdryl::expression::Function;
+    use yggdryl::DataType;
+
+    let mut year = DataType::Int32.nullable_field("year");
+    year.as_partition_mut().set_sources(["event"])?;
+    year.as_partition_mut().set_transform(Function::Year)?;
+    let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+        .required_field("row");
+
+    let batch = RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(Date32Array::from(vec![19_723, 20_089])) as ArrayRef,
+    )])?;
+
+    let filled = root.as_partition().apply_arrow_batch(&batch)?;
+
+    assert_eq!(filled.num_columns(), 2);
+    assert_eq!(
+        filled.column(1).as_ref(),
+        &Int32Array::from(vec![2024, 2025]) as &dyn arrow_array::Array,
+    );
+
+    // The declaration is one expression, which is also what a predicate over
+    // the same value binds against.
+    assert_eq!(
+        root.field_at(1)?.as_partition().expression()?.map(|read| read.to_string()),
+        Some("year(event)".to_owned()),
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field
+
+    year = Field("year", "int32", nullable=True)
+    year.partition.sources = ["event"]
+    year.partition.transform = "dayofmonth"
+
+    # A dialect alias resolves on the way in, so one name is stored.
+    assert year.partition.transform == "day"
+
+    root = Field(
+        "row",
+        DataType.from_fields([Field("event", "date32", nullable=False), year]),
+        nullable=False,
+    )
+    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+
+    filled = root.partition.apply_arrow_batch(batch)
+
+    assert filled.column_names == ["event", "year"]
+    assert filled.column("year").to_pylist() == [1, 1]
+    ```
+
 ## Edges
 
 - A range, null test, or `in` list -> `children_matching`, which takes the whole [expression](../../expression/holder.md) language.
@@ -395,6 +471,10 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
 - `("price", "null")` in `filter_partitions` -> `price is null`, not text.
 - A declared schema contradicting the stored layout -> refused, naming both.
 - A column the data already carries -> left alone; the mismatch stays visible.
+- A derived column holding nothing but nulls -> filled; a null-filled placeholder was never written.
+- A filled derived column -> not marked `field:partition`: that marker says a directory spells it out.
+- `partition:transform` naming a function of two arguments, `truncate` among them -> refused, naming the arity.
+- A `partition:sources` the batch does not carry -> the bind refuses, naming the column.
 - Directory value `null` on a nullable declared column -> read back as null.
 - Creating a tree -> address one partition directly, or declare the partition columns on the schema.
 - An append racing another writer -> fails; a replayed append would duplicate rows.
@@ -407,6 +487,8 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib iobase::tests::records
     cargo test --features "parquet iceberg" -p yggdryl --lib media::partition
+    cargo test -p yggdryl --doc media::partition
+    cargo bench --bench types -- '^value/partition_'
     cargo bench --bench holder --features parquet -- io_listing
     cargo bench --bench media --features parquet -- io_pushdown
     ```
@@ -415,6 +497,8 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k "Partitions"
+    python/.venv/bin/python -m pytest python/tests/types/test_field.py -k partition
+    python/.venv/bin/python python/benchmarks/types.py --iterations 2000
     ```
 
 === "JavaScript"

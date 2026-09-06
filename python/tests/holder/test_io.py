@@ -10,6 +10,7 @@ import pyarrow.fs as pafs
 import pytest
 
 from yggdryl import IOBase, Url
+from yggdryl.holder import Buffer, Buffered
 
 
 @pytest.fixture
@@ -70,24 +71,35 @@ class TestConstructionFromWhatIsAlreadyHeld:
 
 
 class TestNativeHandleLayers:
-    def test_buffered_reconfigures_one_core_page_cache_in_place(self) -> None:
+    def test_buffered_answers_one_core_page_cache_and_spends_the_handle(self) -> None:
         payload = bytes(range(256)) * 8
         handle = IOBase.from_bytes(payload)
 
-        returned = handle.buffered(page_size=65, max_bytes=1, ttl=0.0)
-        assert returned is handle
-        assert handle.read_range_bytes(60, 140) == payload[60:200]
+        # A cache owns the handle it caches, so the value moves into the
+        # `Buffered` this answers with and the source is spent.
+        cached = handle.buffered(page_size=65, max_bytes=1, ttl=0.0)
+        assert isinstance(cached, Buffered)
+        with pytest.raises(ValueError, match="consumed"):
+            handle.read_bytes()
+        assert cached.read_range_bytes(60, 140) == payload[60:200]
+        assert cached.cached_pages > 0
 
         # Reconfiguration unwraps the first cache before installing the next,
         # and keeps the in-memory handle and its writes intact.
-        assert handle.buffered(page_size=128, max_bytes=256, ttl=1.0) is handle
-        handle.pwrite(127, b"updated")
+        recached = cached.buffered(page_size=128, max_bytes=256, ttl=1.0)
+        assert isinstance(recached, Buffered)
+        recached.pwrite(127, b"updated")
         expected = payload[:127] + b"updated" + payload[134:]
-        assert handle.read_bytes() == expected
+        assert recached.read_bytes() == expected
 
+        # Options are validated before the value is taken, so a refusal leaves
+        # the handle usable.
         with pytest.raises(ValueError, match="ttl"):
-            handle.buffered(ttl=float("nan"))
-        assert handle.read_bytes() == expected
+            recached.buffered(ttl=float("nan"))
+        assert recached.read_bytes() == expected
+
+        # One layer, not two: descending once reaches the in-memory value.
+        assert isinstance(recached.into_handle(), Buffer)
 
     def test_open_retains_media_metadata_until_close_then_refreshes(
         self, tmp_path: pathlib.Path
@@ -154,9 +166,11 @@ class TestPathlibParity:
         notes = IOBase(tmp_path / "notes.txt")
         trades = IOBase(tmp_path / "trades.parquet")
 
-        # The name is enough; neither location has been written to.
+        # The name is enough; neither location has been written to. Plain text
+        # is the one representation that is both: one whole byte value, and the
+        # rows that value holds.
         assert notes.is_atomic()
-        assert not notes.is_tabular()
+        assert notes.is_tabular()
         assert trades.is_tabular()
         assert not trades.is_atomic()
 

@@ -1709,8 +1709,9 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
 }
 
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle: pread, pstream_bytes, size, capacity, reserve, url, media_type,
-        set_media_type, flush, parent, child_by_path, ls, kind);
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+        size, capacity, reserve, url,
+        bound_location, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
         self.invalidate_dimensions();

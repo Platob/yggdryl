@@ -177,42 +177,141 @@ impl Holder {
 
         #[cfg(feature = "arrow")]
         {
-            if self.has_media_surface() {
-                return self;
-            }
-
             let base = self.media_type().base().clone();
-            let supported = base == crate::MimeType::ARROW_STREAM
-                || base == crate::MimeType::ARROW_FILE
-                || base == crate::MimeType::AVRO
-                || base == crate::MimeType::PLAIN_TEXT
-                || cfg!(feature = "parquet") && base == crate::MimeType::PARQUET;
-            if !supported {
-                return self;
-            }
-
-            // Keep an existing page cache outside the media wrapper. Besides
-            // preserving the cache's one-layer invariant, this lets its
-            // IOMedia delegation reach the retained encoding override.
-            if let Self::Buffered(buffered) = self {
-                let options = *buffered.options();
-                let held = buffered.into_handle().into_media();
-                return Self::Buffered(Box::new(Buffered::new(held, options)));
-            }
-
-            if base == crate::MimeType::ARROW_STREAM || base == crate::MimeType::ARROW_FILE {
-                return Self::Media(Box::new(crate::media::Media::ipc(self)));
-            }
-            #[cfg(feature = "parquet")]
-            if base == crate::MimeType::PARQUET {
-                return Self::Media(Box::new(crate::media::Media::parquet(self)));
-            }
-            if base == crate::MimeType::PLAIN_TEXT {
-                return self.into_text();
-            }
-            debug_assert_eq!(base, crate::MimeType::AVRO);
-            Self::Media(Box::new(crate::media::Media::avro(self)))
+            self.into_media_base(&base)
         }
+    }
+
+    /// Retain the content coding *and* record implementation this handle's
+    /// *name* declares.
+    ///
+    /// [`Self::into_coded`] and [`Self::into_media`] each ask the handle what
+    /// it holds, and an unresolved location answers that by looking at the
+    /// store. This asks the location instead, so composing costs nothing, works
+    /// on a resource that is not there yet, and never turns a description into
+    /// a round trip - which is what lets a handle arrive composed the moment it
+    /// is described. A handle with no location - an in-memory buffer - keeps
+    /// answering from what it holds, because that is already free.
+    ///
+    /// The coding goes underneath, because the record implementation reads the
+    /// *decoded* bytes: `trades.txt.gz` becomes text records over a gzip view
+    /// over the location. Both halves stay lazy and both stay idempotent, so a
+    /// handle that already presents decoded bytes or already retains a record
+    /// implementation keeps the one it has.
+    ///
+    /// A name is a name, not a probe: a *container* whose own name ends in a
+    /// record suffix composes as that encoding, exactly as
+    /// [`Self::into_media`] would once it had looked.
+    ///
+    /// ```
+    /// use yggdryl::holder::{Buffer, Holder};
+    /// use yggdryl::{Codec, IOBase, MimeType, Url};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let named = Url::from_str("file:///trades.txt.gz")?;
+    /// let stored = Codec::Gzip.dump(b"AAPL,1\n")?;
+    /// let handle = Holder::buffer(Buffer::from_bytes(stored).with_media_type(named.media_type()));
+    ///
+    /// let composed = handle.into_declared_media();
+    ///
+    /// // Text records over the decoded bytes, with the coding removed.
+    /// assert!(matches!(composed, Holder::Text(_)));
+    /// assert_eq!(composed.read_all_bytes()?, b"AAPL,1\n");
+    /// assert_eq!(composed.media_type().base(), &MimeType::PLAIN_TEXT);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn into_declared_media(self) -> Self {
+        // Only the two unresolved roles would look at the store to answer
+        // [`IOBase::media_type`]; their name says the same thing for free.
+        // Every other variant already answers from what it is, which is how a
+        // directory - whose own name may end in a record suffix - stays a
+        // directory here.
+        let media_type = match &self {
+            Self::Path(path) => path.url().media_type(),
+            Self::FsPath(path) => path.url().media_type(),
+            other => other.media_type().clone(),
+        };
+        self.into_media_as(&media_type)
+    }
+
+    /// Retain the content coding and record implementation `media_type` names.
+    #[must_use]
+    fn into_media_as(self, media_type: &MediaType) -> Self {
+        // A handle that already retains a record implementation is already
+        // composed; re-applying the coding underneath it would stack a second
+        // one for the same declaration.
+        #[cfg(feature = "arrow")]
+        if self.has_media_surface() {
+            return self;
+        }
+
+        let codec = crate::Codec::from_media_type(media_type);
+
+        // Parquet compresses internally, so `trades.parquet.gz` names a file no
+        // other Parquet reader can open. Composing it would hide that behind a
+        // decoded view; leaving the name alone keeps the writer's refusal,
+        // which is the answer a caller needs before the file exists.
+        #[cfg(feature = "parquet")]
+        if !codec.is_identity() && *media_type.base() == crate::MimeType::PARQUET {
+            return self;
+        }
+
+        let coded = match codec {
+            crate::Codec::Identity => self,
+            codec => self.into_coded_with(codec, crate::Level::DEFAULT),
+        };
+
+        #[cfg(not(feature = "arrow"))]
+        {
+            coded
+        }
+
+        #[cfg(feature = "arrow")]
+        {
+            coded.into_media_base(media_type.base())
+        }
+    }
+
+    /// Retain the record implementation one base representation names.
+    #[cfg(feature = "arrow")]
+    #[must_use]
+    fn into_media_base(self, base: &crate::MimeType) -> Self {
+        if self.has_media_surface() {
+            return self;
+        }
+
+        let supported = *base == crate::MimeType::ARROW_STREAM
+            || *base == crate::MimeType::ARROW_FILE
+            || *base == crate::MimeType::AVRO
+            || *base == crate::MimeType::PLAIN_TEXT
+            || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
+        if !supported {
+            return self;
+        }
+
+        // Keep an existing page cache outside the media wrapper. Besides
+        // preserving the cache's one-layer invariant, this lets its
+        // IOMedia delegation reach the retained encoding override.
+        if let Self::Buffered(buffered) = self {
+            let options = *buffered.options();
+            let held = buffered.into_handle().into_media_base(base);
+            return Self::Buffered(Box::new(Buffered::new(held, options)));
+        }
+
+        if *base == crate::MimeType::ARROW_STREAM || *base == crate::MimeType::ARROW_FILE {
+            return Self::Media(Box::new(crate::media::Media::ipc(self)));
+        }
+        #[cfg(feature = "parquet")]
+        if *base == crate::MimeType::PARQUET {
+            return Self::Media(Box::new(crate::media::Media::parquet(self)));
+        }
+        if *base == crate::MimeType::PLAIN_TEXT {
+            return self.into_text();
+        }
+        debug_assert_eq!(*base, crate::MimeType::AVRO);
+        Self::Media(Box::new(crate::media::Media::avro(self)))
     }
 
     /// Materialize this holder and retain any record metadata the inferred
@@ -302,6 +401,11 @@ impl Holder {
     /// `level` is the scale writes encode at; reads ignore it. As with
     /// [`Self::into_coded`], a holder that already presents decoded bytes is
     /// returned unchanged, so neither argument re-codes an existing view.
+    ///
+    /// A page cache and a retained plain-text configuration both stay outside
+    /// the coding: the cache for its one-layer invariant, and the text wrapper
+    /// because its options describe the *decoded* rows, which a coding placed
+    /// over it would hide.
     #[must_use]
     pub fn into_coded_with(self, codec: crate::Codec, level: crate::Level) -> Self {
         match self {
@@ -310,6 +414,13 @@ impl Holder {
                 let options = *buffered.options();
                 let held = buffered.into_handle().into_coded_with(codec, level);
                 Self::Buffered(Box::new(Buffered::new(held, options)))
+            }
+            Self::Text(text) => {
+                let options = text.options().clone();
+                let held = text.into_handle().into_coded_with(codec, level);
+                Self::Text(Box::new(
+                    crate::media::text::Text::new(held).with_options(options),
+                ))
             }
             other => Self::Coded(Box::new(Coded::wrap(other, codec).with_level(level))),
         }
@@ -690,3 +801,6 @@ impl From<crate::media::Media> for Holder {
         Self::Media(Box::new(value))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,7 +1,10 @@
 use std::hint::black_box;
+use std::sync::Arc;
 
+use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scheme, Url};
+use yggdryl::expression::Function;
+use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scalar, Scheme, Url};
 
 use super::nested_field;
 
@@ -130,6 +133,46 @@ pub fn benchmarks(criterion: &mut Criterion) {
             black_box(&partitioned)
                 .without_partition_fields()
                 .expect("the generated root subtracts its marked columns")
+        });
+    });
+    // What a derived partition column costs: reading its declaration, and
+    // computing the whole column from the one it names.
+    let mut derived = DataType::Int32.nullable_field("year");
+    derived
+        .as_partition_mut()
+        .set_sources(["event"])
+        .expect("a non-empty source path");
+    derived
+        .as_partition_mut()
+        .set_transform(Function::Year)
+        .expect("a transform of one argument");
+    let declaring = Field::new(
+        "row",
+        DataType::from_fields([DataType::Date32.required_field("event"), derived])
+            .expect("the two columns are unique"),
+        false,
+    );
+    let events = RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(Date32Array::from((0..1_024).collect::<Vec<i32>>())) as ArrayRef,
+    )])
+    .expect("one column of one length");
+    group.bench_function("partition_transform_typed", |bencher| {
+        bencher.iter(|| {
+            black_box(&declaring)
+                .field_at(1)
+                .expect("the declared partition column")
+                .as_partition()
+                .transform()
+                .expect("a canonical transform round trips")
+        });
+    });
+    group.bench_function("partition_apply_arrow_batch_1024", |bencher| {
+        bencher.iter(|| {
+            black_box(&declaring)
+                .as_partition()
+                .apply_arrow_batch(black_box(&events))
+                .expect("the declared source column is in the batch")
         });
     });
     group.bench_function("typed_location", |bencher| {
@@ -353,5 +396,52 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // Ingest canonicalizes every row it accepts, so this is the per-row cost
+    // of the value contract. The payload columns are measured at two payload
+    // sizes: a value already in its declared representation must cost the
+    // same at both, because deciding a row is canonical never reads or copies
+    // what it holds, while a layout rewrite shares the storage it retags.
+    let payload_root = DataType::from_fields([
+        Field::new("symbol", DataType::Utf8, false),
+        Field::new("payload", DataType::Binary, false),
+        Field::new("ccy", DataType::Currency, false),
+    ])
+    .expect("the payload row schema is valid")
+    .required_field("row");
+    let large_root = DataType::from_fields([
+        Field::new("symbol", DataType::LargeUtf8, false),
+        Field::new("payload", DataType::LargeBinary, false),
+        Field::new("ccy", DataType::Currency, false),
+    ])
+    .expect("the wide-layout row schema is valid")
+    .required_field("row");
+    for bytes in [64_usize, 64 * 1024] {
+        let row = payload_root
+            .canonicalize_value(Scalar::from_sequence([
+                Scalar::from("a symbol far longer than any inline string buffer can hold"),
+                Scalar::from(vec![0x42_u8; bytes]),
+                Scalar::from("USD"),
+            ]))
+            .expect("the row satisfies its schema");
+        group.bench_function(format!("canonicalize_row_unchanged_{bytes}b"), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    black_box(&payload_root)
+                        .canonicalize_value(black_box(&row).clone())
+                        .expect("the row satisfies its schema"),
+                )
+            });
+        });
+        group.bench_function(format!("canonicalize_row_relayout_{bytes}b"), |bencher| {
+            bencher.iter(|| {
+                black_box(
+                    black_box(&large_root)
+                        .canonicalize_value(black_box(&row).clone())
+                        .expect("the row satisfies the wider layout"),
+                )
+            });
+        });
+    }
+
     group.finish();
 }

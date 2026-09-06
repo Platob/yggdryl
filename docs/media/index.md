@@ -6,20 +6,22 @@
 
 | Key | Value |
 | --- | --- |
-| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet` |
-| Variants | `Ipc`, `Parquet`, `Avro` |
+| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `handle`, `into_handle` |
+| Variants | `Ipc`, `Parquet`, `Avro`, `Text` |
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
 | Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |
 | Settings | one shared [`RecordOptions`](options.md) behind every encoding |
-| Plain text | no wrapper; every `IOBase` reaches it through `IOMedia` and [`RecordOptions`](options.md) |
+| Plain text | `Media::Text`, retaining [`TextOptions`](text.md); any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md) |
 | Content coding | the handle's business, not the encoding's |
 | Errors | an encoding with no implementation in this build is reported, never guessed |
-| Bindings | Rust only; Python and JavaScript reach an encoding through the handle |
+| Bindings | Rust: the enum; Python: `yggdryl.media.Media` with `Ipc`, `Parquet`, `Avro` under it and `Text` beside it; JavaScript: one `IOBase` class |
 
 ## Use
 
-Rust only. `Media::open` binds the IPC, Parquet, or Avro implementation the name declares.
+`Media::open` binds the implementation the name declares. Python applies the same
+choice when the handle is built, so `type(handle)` names it; JavaScript has one
+`IOBase` class.
 
 === "Rust"
 
@@ -36,6 +38,24 @@ Rust only. `Media::open` binds the IPC, Parquet, or Avro implementation the name
 
     assert!(matches!(Media::open(named("trades.arrows")?)?, Media::Ipc(_)));
     assert!(matches!(Media::open(named("trades.parquet")?)?, Media::Parquet(_)));
+    assert!(matches!(Media::open(named("trades.log")?)?, Media::Text(_)));
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+    from yggdryl.media import Ipc, Parquet, Text
+
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    # Composed at construction, and nothing is read to decide it.
+    assert isinstance(IOBase(root / "trades.arrows"), Ipc)
+    assert isinstance(IOBase(root / "trades.parquet"), Parquet)
+    assert isinstance(IOBase(root / "trades.log"), Text)
     ```
 
 ## Pages
@@ -128,6 +148,48 @@ The handle owns the coding: the same calls, different bytes underneath.
     assert_eq!(media.read_range_bytes(0, 2)?, [0x1F, 0x8B]);
     ```
 
+## The handle underneath
+
+`handle` borrows the byte handle the encoding is layered over; `into_handle`
+consumes the media and answers it.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::media::Media;
+    use yggdryl::holder::Buffer;
+    use yggdryl::Url;
+
+    let url = Url::from_str("file:///trades.arrows")?;
+    let media = Media::open(Holder::buffer(Buffer::new().with_media_type(url.media_type())))?;
+
+    assert!(matches!(media.handle(), Holder::Buffer(_)));
+    assert!(matches!(media.into_handle(), Holder::Buffer(_)));
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+    from yggdryl.coding import Gzip
+    from yggdryl.holder import Path
+    from yggdryl.media import Ipc
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    assert isinstance(IOBase(root / "trades.arrows").into_handle(), Path)
+
+    # A coded name composes one more layer: the coding goes under the encoding.
+    coded = IOBase(root / "trades.arrows.gz")
+    assert isinstance(coded, Ipc)
+    gzip_handle = coded.into_handle()
+    assert isinstance(gzip_handle, Gzip)
+    assert isinstance(gzip_handle.into_handle(), Path)
+    ```
+
 ## Unimplemented encodings
 
 The error names the media type found and the ones that would have worked.
@@ -152,7 +214,8 @@ The error names the media type found and the ones that would have worked.
 - `text/csv` on `Media::open` -> error naming the found media type; no encoding is guessed.
 - Encoding already known -> `Media::ipc` and `Media::parquet` name a variant directly.
 - Handle name not trustworthy -> `Media::open_as` takes an explicit `MimeType`.
-- Plain text -> no variant; `IOMedia` and [`RecordOptions`](options.md) on any handle.
+- Plain text -> `Media::Text`; any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md).
+- Python name with no implementation (`trades.csv`) -> nothing is composed and the handle stays a `Path`; only `Media::open` reports it.
 - `--lib media::tests` -> the enum's own module only; `media::ipc::tests` needs its own filter.
 
 ## Commands

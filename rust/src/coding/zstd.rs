@@ -181,14 +181,6 @@ impl<H: IOBase> crate::IOMedia for Zstd<H> {
 
 impl<H: IOBase> IOBase for Zstd<H> {
     crate::delegate_iobase!(coding);
-
-    fn read_all_bytes(&self) -> crate::Result<Vec<u8>> {
-        self.coding.read_all_bytes()
-    }
-
-    fn read_range_bytes(&self, offset: u64, length: usize) -> crate::Result<Vec<u8>> {
-        self.coding.read_range_bytes(offset, length)
-    }
 }
 
 #[cfg(test)]

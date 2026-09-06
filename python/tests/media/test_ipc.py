@@ -9,6 +9,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, IOBase, RecordOptions
+from yggdryl.holder import Path
 
 SCHEMA = pa.schema(
     [
@@ -71,8 +72,10 @@ class TestTheEncodingComesFromTheHandle:
         compressed = IOBase(tmp_path / "trades.arrows.gz")
         compressed.overwrite_arrow_reader(_reader(_batch()))
 
-        # Identical calls on both sides; only the name changed.
-        assert compressed.read_bytes()[:2] == b"\x1f\x8b"
+        # Identical calls on both sides; only the name changed. The handle
+        # presents the decoded stream, so the coded form is what the
+        # stored-byte role reads.
+        assert Path(tmp_path / "trades.arrows.gz").read_bytes()[:2] == b"\x1f\x8b"
         assert compressed.read_arrow_reader().read_all().num_rows == 2
 
 

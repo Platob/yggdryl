@@ -14,6 +14,8 @@ use yggdryl::Level;
 
 use crate::value_error;
 
+pub(crate) mod handles;
+
 fn level_of(level: Option<u8>) -> Level {
     level.map_or(Level::DEFAULT, Level::new)
 }

@@ -548,13 +548,13 @@ impl Digester {
     /// has the wrong width, a digest path cannot be resolved, or the batch
     /// cannot be cast to `root`.
     #[cfg(feature = "arrow")]
-    pub fn fill_arrow_batch(
+    pub fn apply_arrow_batch(
         &self,
         root: &crate::Field,
         batch: arrow_array::RecordBatch,
         force: bool,
     ) -> crate::arrow::Result<arrow_array::RecordBatch> {
-        crate::xxhash::arrow::fill_arrow_batch_with(self, root, batch, force)
+        crate::xxhash::arrow::apply_arrow_batch_with(self, root, batch, force)
     }
 }
 

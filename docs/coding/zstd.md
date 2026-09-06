@@ -7,7 +7,8 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 | | |
 | --- | --- |
 | Owns | `load`/`dump`, `dump_with_level`, `reader`/`writer`, `writer_with_level`, `Zstd<H>` |
-| Bindings | `loads`/`dumps` only; streams and `Zstd<H>` are Rust only |
+| Bindings | `loads`/`dumps` in Python and JavaScript; the handle is `yggdryl.coding.Zstd` in Python; the streams are Rust only |
+| Python handle | A `.zst` name composes `Zstd` on construction; [`IOBase.into_coded("zstd", level)`](../holder/iobase/bytes.md) names it otherwise |
 | Wire format | RFC 8878; `dump` writes one frame, `load` reads exactly one |
 | Engine | `zstd` crate |
 | Level | shared 0 to 9, clamped, default 6; maps to zstd 1 to 19 |
@@ -180,29 +181,58 @@ assert_eq!(zstd::load(&encoded)?, payload.as_bytes());
 
 ## The transparent handle
 
-Rust only. Anything that takes a handle sees decoded bytes; the wrapped handle keeps the frame.
+Anything that takes a handle sees decoded bytes; the handle underneath keeps the frame.
 
-```rust
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::coding::zstd::{self, Zstd};
+=== "Rust"
 
-let mut handle = Zstd::new(Buffer::new());
-handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-handle.flush()?;
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::coding::zstd::{self, Zstd};
 
-// The wrapper reads plain bytes and reports the decoded size.
-assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
-assert_eq!(handle.size(), 20);
+    let mut handle = Zstd::new(Buffer::new());
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+    handle.flush()?;
 
-// The wrapped handle holds the frame.
-assert_eq!(
-    zstd::load(&handle.handle().read_all_bytes()?)?,
-    b"symbol,price\nAAPL,1\n"
-);
-```
+    // The wrapper reads plain bytes and reports the decoded size.
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
+    assert_eq!(handle.size(), 20);
 
-The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib.
+    // The wrapped handle holds the frame.
+    assert_eq!(
+        zstd::load(&handle.handle().read_all_bytes()?)?,
+        b"symbol,price\nAAPL,1\n"
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+    from yggdryl.coding import Zstd, zstd
+    from yggdryl.holder import Path
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "trades.bin.zst")
+    assert isinstance(handle, Zstd)
+
+    handle.write_bytes(b"symbol,price\nAAPL,1\n")
+    handle.flush()
+
+    # The wrapper reads plain bytes and reports the decoded size.
+    assert handle.read_bytes() == b"symbol,price\nAAPL,1\n"
+    assert handle.size == 20
+
+    # `Path` addresses the stored bytes: the frame.
+    assert zstd.loads(Path(root / "trades.bin.zst").read_bytes()) == (
+        b"symbol,price\nAAPL,1\n"
+    )
+    ```
+
+The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib. Rust only from here: a handle over nothing decodes to nothing.
 
 ```rust
 use yggdryl::IOBase;

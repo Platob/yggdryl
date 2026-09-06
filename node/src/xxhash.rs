@@ -21,7 +21,7 @@ use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 
 /// Decode exactly one Arrow batch, transform it, and return one IPC batch.
-fn fill_arrow_batch_ipc(
+fn apply_arrow_batch_ipc(
     bytes: &Uint8Array,
     fill: impl FnOnce(arrow_array::RecordBatch) -> yggdryl::arrow::Result<arrow_array::RecordBatch>,
 ) -> Result<Buffer> {
@@ -341,15 +341,15 @@ macro_rules! state {
             ///
             /// The JavaScript loader owns the copied Arrow IPC boundary and
             /// removes this private method from the published class.
-            #[napi(js_name = "_fillArrowBatchIpcNative", skip_typescript)]
-            pub fn fill_arrow_batch_ipc(
+            #[napi(js_name = "_applyArrowBatchIpcNative", skip_typescript)]
+            pub fn apply_arrow_batch_ipc(
                 &self,
                 root: &JsField,
                 bytes: Uint8Array,
                 force: bool,
             ) -> Result<Buffer> {
-                fill_arrow_batch_ipc(&bytes, |batch| {
-                    self.inner.fill_arrow_batch(&root.inner, batch, force)
+                apply_arrow_batch_ipc(&bytes, |batch| {
+                    self.inner.apply_arrow_batch(&root.inner, batch, force)
                 })
             }
 

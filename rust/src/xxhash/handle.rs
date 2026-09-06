@@ -151,9 +151,10 @@ impl<H: IOBase> IOBase for Hashed<H> {
     // positional write that may extend the running prefix, the three
     // operations that can drop bytes the state has already folded in, and the
     // digest read itself.
-    crate::delegate_iobase!(handle: pread, pstream_bytes, size, capacity, reserve, url,
-        media_type, set_media_type, flush, open, opened, close, parent, child_by_path, ls,
-        kind, is_atomic, is_tabular, is_io);
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+        size, capacity, reserve, url,
+        bound_location, media_type, set_media_type, flush, open, opened, close, parent,
+        child_by_path, ls, kind, is_atomic, is_tabular, is_io);
 
     /// Write through, extending the running digest when the write is the next
     /// sequential byte and dropping it when it is not.

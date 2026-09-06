@@ -13,6 +13,11 @@ use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, Sc
 pub trait GeospatialValue: ScalarValue {
     /// Borrow the validated Well-Known Binary payload.
     fn as_bytes(&self) -> &[u8];
+    /// Borrow the shared storage behind the payload.
+    ///
+    /// The payload is already validated WKB, so reinterpreting a geometry as
+    /// a geography clones this handle rather than copying and re-reading it.
+    fn storage(&self) -> &Arc<[u8]>;
 }
 
 macro_rules! geospatial_leaf {
@@ -34,6 +39,11 @@ macro_rules! geospatial_leaf {
             /// Borrow the canonical WKB bytes.
             pub fn as_bytes(&self) -> &[u8] {
                 self.0.as_ref()
+            }
+
+            /// Borrow the shared storage without copying the payload.
+            pub fn storage(&self) -> &Arc<[u8]> {
+                &self.0
             }
 
             /// Consume this value and return its shared WKB bytes.
@@ -72,6 +82,17 @@ impl Geospatial {
         match self {
             Self::Geometry(value) => value.as_bytes(),
             Self::Geography(value) => value.as_bytes(),
+        }
+    }
+
+    /// Borrow the shared storage independently of the interpretation.
+    ///
+    /// Geometry and geography differ in the coordinate reference they name,
+    /// not in the bytes, so rewriting one as the other shares this handle.
+    pub fn storage(&self) -> &Arc<[u8]> {
+        match self {
+            Self::Geometry(value) => value.storage(),
+            Self::Geography(value) => value.storage(),
         }
     }
 }
@@ -153,6 +174,10 @@ macro_rules! geospatial_value {
             fn as_bytes(&self) -> &[u8] {
                 <$leaf>::as_bytes(self)
             }
+
+            fn storage(&self) -> &Arc<[u8]> {
+                <$leaf>::storage(self)
+            }
         }
     };
 }
@@ -196,6 +221,10 @@ impl ScalarValue for Geography {
 impl GeospatialValue for Geography {
     fn as_bytes(&self) -> &[u8] {
         Self::as_bytes(self)
+    }
+
+    fn storage(&self) -> &Arc<[u8]> {
+        Self::storage(self)
     }
 }
 

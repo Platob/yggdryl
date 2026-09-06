@@ -14,6 +14,12 @@ use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValu
 pub trait TextValue: crate::ScalarValue {
     /// Borrow the Unicode text.
     fn as_str(&self) -> &str;
+    /// Borrow the shared storage behind the text.
+    ///
+    /// Every UTF-8 representation stores the same [`SmolStr`], so one
+    /// representation adopts another's storage by cloning this handle rather
+    /// than copying the bytes.
+    fn storage(&self) -> &SmolStr;
 }
 
 macro_rules! text_leaf {
@@ -35,6 +41,11 @@ macro_rules! text_leaf {
             /// Borrow the Unicode text.
             pub fn as_str(&self) -> &str {
                 self.0.as_str()
+            }
+
+            /// Borrow the shared storage without copying the text.
+            pub fn storage(&self) -> &SmolStr {
+                &self.0
             }
 
             /// Consume this value and return its compact string.
@@ -92,6 +103,18 @@ impl Text {
             Self::Utf8(value) => value.as_str(),
             Self::LargeUtf8(value) => value.as_str(),
             Self::Utf8View(value) => value.as_str(),
+        }
+    }
+
+    /// Borrow the shared storage independently of its layout.
+    ///
+    /// The layout is the Arrow offset width, not the bytes, so rewriting a
+    /// value into another layout clones this handle instead of the text.
+    pub fn storage(&self) -> &SmolStr {
+        match self {
+            Self::Utf8(value) => value.storage(),
+            Self::LargeUtf8(value) => value.storage(),
+            Self::Utf8View(value) => value.storage(),
         }
     }
 }
@@ -169,6 +192,10 @@ macro_rules! text_value {
         impl TextValue for $leaf {
             fn as_str(&self) -> &str {
                 <$leaf>::as_str(self)
+            }
+
+            fn storage(&self) -> &SmolStr {
+                <$leaf>::storage(self)
             }
         }
     };

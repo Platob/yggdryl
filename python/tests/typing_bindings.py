@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
+
+from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
+from yggdryl.holder import Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath
+from yggdryl.holder import Path as Path_
+from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 from yggdryl import (
     AsciiEnum,
@@ -190,7 +196,23 @@ cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
-filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
+applied_root = Field(
+    "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
+)
+applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
+    source_batch, digest=True, partition=True, cast=True
+)
+applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
+applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
+)
+applied_partition_batch: pa.RecordBatch = applied_root.partition.apply_arrow_batch(
+    source_batch
+)
+applied_digest_batch: pa.RecordBatch = applied_root.digest.apply_arrow_batch(source_batch)
+partition_sources: list[str] | None = applied_root.partition.sources
+partition_transform: str | None = applied_root.partition.transform
+filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     Field(
         "rows",
         DataType.from_fields([Field("value", "int64")]),
@@ -397,6 +419,22 @@ cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_b
     batch_size=3
 )
 
+# Every storage role is an ``IOBase``; the wrappers descend one layer at a time.
+role_path: Path_ = Path_("trades.txt")
+role_file: File = File("trades.bin")
+role_folder: Folder = Folder("lake")
+role_temporary: Folder = Folder.temporary()
+role_home: Folder = Folder.home()
+role_config: Folder = Folder.config()
+role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
+role_fs_path: FsPath = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
+role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
+role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
+role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
+coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
+encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro]
+storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]
+
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /
 # generated-dataclass branch.
@@ -483,7 +521,6 @@ digest_root: Field = Field(
 digest_children: list[Field] = digest_root.digest_fields
 digest_names: list[str] = digest_root.digest_field_names
 digest_count: int = digest_root.digest_field_len
-digest_explicit: bool = digest_root.has_digest_components
 digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(
@@ -1180,3 +1217,9 @@ assert fix_message_item and (fix_message_default is None or fix_message_default)
 assert fix_message_pairs == [] or fix_message_pairs
 assert fix_message_len >= 0 and fix_message_hash
 assert fix_global is not None and fix_message_explicit == fix_message_explicit
+assert role_path is not None and role_file is not None and role_folder is not None
+assert role_temporary is not None and role_home is not None and role_config is not None
+assert role_cached is not None
+assert coding_roles and encoding_roles and storage_roles
+assert role_fs_path is not None and role_fs_file is not None
+assert role_fs_folder is not None and role_created is not None

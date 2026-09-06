@@ -14,6 +14,7 @@ import pathlib
 import pytest
 
 from yggdryl import IOBase
+from yggdryl.holder import Path
 
 PAYLOAD = '{"id": 1, "venue": "XNAS"}\n' * 64
 
@@ -61,7 +62,7 @@ class TestCompressInto:
     def test_a_gz_target_round_trips_through_a_real_file_on_disk(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = IOBase(tmp_path / "rows.json.gz")
+        coded = Path(tmp_path / "rows.json.gz")
         back = IOBase(tmp_path / "back.json")
 
         written = plain.compress_into(coded)
@@ -78,7 +79,7 @@ class TestCompressInto:
     def test_the_file_it_wrote_is_a_gzip_the_standard_library_reads(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = IOBase(tmp_path / "rows.json.gz")
+        coded = Path(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
 
         # The name promised gzip, so anything that reads gzip has to be able to
@@ -120,8 +121,8 @@ class TestCompressInto:
     def test_the_level_reaches_the_encoder_at_both_ends_of_the_scale(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        stored = IOBase(tmp_path / "stored.json.gz")
-        smallest = IOBase(tmp_path / "small.json.gz")
+        stored = Path(tmp_path / "stored.json.gz")
+        smallest = Path(tmp_path / "small.json.gz")
 
         # 0 is "wrap it and store it", so it is the one level that must come
         # out larger than the input - which is how a level that never reached
@@ -146,11 +147,11 @@ class TestDecompressInto:
     def test_the_source_name_supplies_the_coding(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = IOBase(tmp_path / "rows.json.gz")
+        coded = Path(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
         back = IOBase(tmp_path / "back.json")
 
-        reopened = IOBase(tmp_path / "rows.json.gz")
+        reopened = Path(tmp_path / "rows.json.gz")
         assert reopened.decompress_into(back) == len(PAYLOAD)
         assert back.read_text() == PAYLOAD
         # The target loses the coding this removed, so the pair is symmetric.
@@ -159,7 +160,7 @@ class TestDecompressInto:
     def test_a_coding_the_bytes_are_not_is_refused(
         self, plain: IOBase, tmp_path: pathlib.Path
     ) -> None:
-        coded = IOBase(tmp_path / "rows.json.gz")
+        coded = Path(tmp_path / "rows.json.gz")
         plain.compress_into(coded)
 
         # Overriding the name is allowed, so naming the wrong coding has to
@@ -184,14 +185,15 @@ class TestCodedView:
         path = tmp_path / "app.log.gz"
         path.write_bytes(std_gzip.compress(plain.encode()))
 
-        # The handle itself mirrors the stored bytes, coding and all.
-        source = IOBase(path)
+        # The stored-byte role mirrors what is on disk, coding and all.
+        source = Path(path)
         assert source.codec == "gzip"
         assert source.read_bytes()[:2] == b"\x1f\x8b"
 
-        # The view presents what those bytes hold, so nothing names gzip.
-        decoded = IOBase(path).into_coded()
-        assert decoded.codec is None
+        # The view presents what those bytes hold. The coding is the class it
+        # reports, not something left in its media type.
+        decoded = Path(path).into_coded()
+        assert type(decoded).__name__ == "Gzip"
         assert decoded.media_type.base == source.media_type.base
         assert decoded.read_text() == plain
         assert decoded.size == len(plain)
@@ -199,7 +201,7 @@ class TestCodedView:
         # Reads stream in bounded windows rather than materializing the value.
         assert b"".join(decoded.pstream_bytes(0, 8)) == plain.encode()
 
-    def test_the_view_is_in_place_idempotent_and_overridable(
+    def test_the_view_is_answered_idempotent_and_overridable(
         self, tmp_path: pathlib.Path
     ) -> None:
         payload = PAYLOAD.encode()
@@ -211,10 +213,14 @@ class TestCodedView:
         passthrough.write_bytes(payload)
         assert passthrough.into_coded().read_bytes() == payload
 
-        # This name says nothing about the bytes, so the caller names it.
-        handle = IOBase(path)
-        assert handle.into_coded("gzip") is handle
+        # This name says nothing about the bytes, so the caller names it. The
+        # view is a handle of its own, and the one it was built from is spent.
+        stored = IOBase(path)
+        handle = stored.into_coded("gzip")
+        assert type(handle).__name__ == "Gzip"
         assert handle.read_bytes() == payload
+        with pytest.raises(ValueError, match="consumed"):
+            stored.read_bytes()
 
         # A view already presenting decoded bytes has no second coding to
         # remove, so repeating the call never decodes twice.
@@ -227,10 +233,10 @@ class TestCodedView:
         self, tmp_path: pathlib.Path
     ) -> None:
         path = tmp_path / "notes.txt.gz"
-        handle = IOBase(path).into_coded()
+        handle = Path(path).into_coded()
 
         handle.write_text("alpha\n")
         handle.close()
 
         assert std_gzip.decompress(path.read_bytes()) == b"alpha\n"
-        assert IOBase(path).into_coded().read_text() == "alpha\n"
+        assert IOBase(path).read_text() == "alpha\n"

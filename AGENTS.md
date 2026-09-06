@@ -93,9 +93,11 @@ pin an unsettled design by implementing a binding first.
 - `Field` alone owns metadata and cache-aware mutation. `DataType` has no
   metadata. Protocol metadata is inert `<scheme>:<property>` text in one map.
   A protocol view borrows a whole `Field` and dereferences to it. Protocol-owned
-  typed vocabulary, including `digest:role`, and generic `identity:` /
-  `partition:` metadata live on those views, never on `Field`. The only
-  digest roles are `holder` and `component`. `Field`
+  typed vocabulary, including `digest:role` and the `partition:` derivation
+  pair, lives on those views, never on `Field`. `holder` is the only digest
+  role: a declaration states what a field holds or derives, never what another
+  field contributes, so a schema marks one field and leaves the ones it reads
+  ordinary columns. `Field`
   owns its own state whatever key it is stored under: `field:init`,
   `field:partition`, `alias`, `comment`, `display`, `location`.
   `PARQUET:field_id` is the reserved typed exception.
@@ -132,11 +134,13 @@ pin an unsettled design by implementing a binding first.
 - Integer digest holders accept signed or unsigned storage at the algorithm's
   exact width. Signed storage is a bit-preserving view of the unsigned digest;
   nested holder reuse normalizes it back to that unsigned payload before feed.
-- A row digest reads direct Struct children in declaration order. One or more
-  `digest:role=component` fields are the exact input; with none, every field
-  except `digest:role=holder` is input. Holders never feed themselves back into
-  a recomputation. The selected values retain ordered-sequence framing,
-  including when the selection is empty.
+- A row digest reads direct Struct children in declaration order. A holder's
+  `digest:sources` is the exact input, resolved relative to its own Struct;
+  `["*"]` and an absent list both select every field except a holder, and `"*"`
+  may not travel beside a named path. Holders never feed themselves back into a
+  recomputation, and a selected Struct holding exactly one direct holder feeds
+  that holder's value rather than being hashed again. The selected values
+  retain ordered-sequence framing, including when the selection is empty.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.
@@ -371,6 +375,14 @@ scheme vocabulary.
   decide partitions. Contradictions are typed errors naming both declarations.
 - `media::partition::partition_text` is the only partition renderer. Partition
   columns move between paths and rows through one typed implementation.
+- A derived column names its own input: `partition:transform` is an expression
+  grammar function over the field paths in `partition:sources`, both on the
+  derived column, and both stored in the one shape every `sources` property
+  has. A transform reads exactly one source today; a longer list is stored and
+  refused when the column is applied. `apply_arrow_batch` is the one verb every declaring protocol
+  answers - it walks the Structs that protocol declares and leaves a column
+  holding anything but its canonical default alone - and `Field` runs them in
+  the order their answers depend on: cast, then partition, then digest.
 
 ## Media and table formats
 
