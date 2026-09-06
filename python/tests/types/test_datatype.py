@@ -774,3 +774,21 @@ def test_a_struct_datatype_projects_the_arrow_schema_a_row_declares() -> None:
     assert isinstance(default, pa.Array)
     assert default.to_pylist() == [0]
     assert DataType("utf8").default_arrow_array().to_pylist() == [""]
+
+
+def test_a_nested_datatype_is_rebuilt_with_replacement_children() -> None:
+    struct = DataType("struct<id:int64,symbol:utf8>")
+    rebuilt = struct.with_fields([Field("id", "int32"), Field("symbol", "utf8")])
+
+    assert str(rebuilt["id"].dtype) == "int32"
+    assert [child.name for child in rebuilt] == ["id", "symbol"]
+
+    # The layout is kept, so the child count is part of the contract.
+    with pytest.raises(ValueError):
+        struct.with_fields([Field("id", "int32")])
+
+    # A list still holds exactly one item field, and the rebuilt datatype
+    # renders as the canonical lossless form the grammar round-trips.
+    widened = DataType("list<int32>").with_fields([Field("item", "int64")])
+    assert DataType.from_str(str(widened)) == widened
+    assert str(widened["item"].dtype) == "int64"

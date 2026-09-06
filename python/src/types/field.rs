@@ -434,6 +434,15 @@ impl PyField {
     }
 
     /// Returns the core-selected Field default as an exact `PyArrow` Scalar.
+    /// Materializes this field's canonical default as a one-row `pyarrow.Array`.
+    ///
+    /// `default_arrow_scalar` is the same value pinned as a scalar; this is
+    /// the array a column of one default row is.
+    fn default_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
     fn default_arrow_scalar<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let array = self.inner.default_arrow_array().map_err(value_error)?;
         default_arrow_scalar_to_pyarrow(py, &self.inner, &array)
@@ -1971,6 +1980,30 @@ impl PyField {
     #[getter]
     fn metadata(slf: Py<Self>) -> PyFieldMetadata {
         PyFieldMetadata { field: slf }
+    }
+
+    /// Replace every metadata entry with exactly these, atomically.
+    ///
+    /// The live `metadata` view mutates entry by entry; this validates the
+    /// whole replacement first, so a rejected entry leaves the field with the
+    /// entries it already had rather than a half-applied set.
+    #[pyo3(signature = (values = None, /, **kwargs))]
+    fn set_metadata(
+        &mut self,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        self.require_mutable()?;
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        self.inner.set_metadata(pairs).map_err(value_error)
     }
 
     /// Reach a nested child by name or by position.

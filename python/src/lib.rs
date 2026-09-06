@@ -365,6 +365,15 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<expression::PyBound>()?;
     module.add_class::<expression::PyStatement>()?;
     module.add_class::<expression::PyBoundStatement>()?;
+    module.add_class::<expression::PyBounds>()?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_needs_quoting,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_vocabularies,
+        module
+    )?)?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;

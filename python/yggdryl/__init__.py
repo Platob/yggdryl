@@ -8,7 +8,7 @@ from ._native import (
     __version__,
     combined,
 )
-from .expression import Bound, BoundStatement, Expression, Statement
+from .expression import Bound, Bounds, BoundStatement, Expression, Statement
 from .holder import IOBase, IOCursor
 from .media import MediaType, MimeType, RecordOptions, TextOptions
 from .types import (
@@ -28,6 +28,7 @@ __all__ = [
     "ArrowCastPlan",
     "AsciiEnum",
     "Bound",
+    "Bounds",
     "BoundStatement",
     "DataType",
     "Expression",

@@ -2097,3 +2097,32 @@ def test_a_protocol_view_replaces_only_its_own_properties() -> None:
     field.fix.set()
     assert len(field.fix) == 0
     assert field.comment == "kept"
+
+
+def test_a_field_replaces_its_whole_metadata_atomically() -> None:
+    field = Field("id", "int64")
+
+    field.set_metadata({"a": "1"}, b="2")
+    assert dict(field.metadata) == {"a": "1", "b": "2"}
+
+    # The replacement is the whole set, so an omitted key is removed.
+    field.set_metadata({"a": "3"})
+    assert dict(field.metadata) == {"a": "3"}
+    field.set_metadata()
+    assert dict(field.metadata) == {}
+
+    # A rejected entry leaves the field with what it already had.
+    field.set_metadata({"comment": "kept"})
+    with pytest.raises(ValueError):
+        field.set_metadata({"comment": "kept", "PARQUET:field_id": "not an integer"})
+    assert dict(field.metadata) == {"comment": "kept"}
+
+
+def test_a_field_materializes_its_default_as_a_one_row_array() -> None:
+    array = Field("id", "int64").default_arrow_array()
+    assert isinstance(array, pa.Array)
+    assert len(array) == 1
+
+    # A required field materializes its present default; a nullable one is null.
+    assert Field("id", "int64", nullable=False).default_arrow_array().to_pylist() == [0]
+    assert Field("id", "int64").default_arrow_array().to_pylist() == [None]

@@ -972,6 +972,22 @@ impl PyDataType {
         core_dtype_to_pyarrow(py, &self.inner)
     }
 
+    /// Rebuild this nested datatype with replacement children.
+    ///
+    /// The layout is kept, so exactly as many children as it declares are
+    /// required, and the rebuilt datatype is validated - a `list` still holds
+    /// one item field and a `map` still holds its entry struct.
+    fn with_fields(&self, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut children = Vec::new();
+        for field in fields.try_iter()? {
+            children.push(crate::types::field::core_field_from_value(&field?)?);
+        }
+        self.inner
+            .with_fields(children)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     /// Projects a Struct datatype as a `pyarrow.Schema`.
     ///
     /// This is what a non-null Struct `Field` projects, under the core's

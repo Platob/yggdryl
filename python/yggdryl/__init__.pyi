@@ -7,6 +7,7 @@ from ._native import (
 )
 from .expression import (
     Bound as Bound,
+    Bounds as Bounds,
     BoundStatement as BoundStatement,
     Expression as Expression,
     Statement as Statement,
