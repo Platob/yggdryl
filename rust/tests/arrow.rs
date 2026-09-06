@@ -1,5 +1,7 @@
 //! Arrow runtime integration tests.
 
+#[path = "arrow/arrow_value.rs"]
+mod arrow_value;
 #[path = "arrow/cast_coverage.rs"]
 mod cast_coverage;
 #[path = "arrow/cast_plan.rs"]

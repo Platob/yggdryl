@@ -471,14 +471,20 @@ impl PyArrowValue {
 
     /// Hand this value to `NumPy` as one array.
     ///
-    /// A column becomes a one-dimensional array; rows become the record array
-    /// their struct column already is. Arrow's null mask has no `NumPy`
-    /// counterpart, so `PyArrow`'s own conversion decides what a null becomes.
+    /// A column becomes a one-dimensional array. `NumPy` has no counterpart
+    /// for Arrow's null mask or its nested layouts, so the crossing is
+    /// allowed to copy and `PyArrow`'s own conversion decides what each value
+    /// becomes - a null becomes `nan`, and rows become an object array of
+    /// mappings rather than a record array.
     fn into_numpy<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let value = self.take()?;
         let field = value.field().clone();
         let array = value.into_array().map_err(value_error)?;
-        arrow_array_to_pyarrow(py, &array, Some(&field))?.call_method0("to_numpy")
+        arrow_array_to_pyarrow(py, &array, Some(&field))?.call_method(
+            "to_numpy",
+            (),
+            Some(&[("zero_copy_only", false)].into_py_dict(py)?),
+        )
     }
 
     /// Cross into the native value model.

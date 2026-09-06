@@ -179,8 +179,19 @@ class TestCrossings:
         with pytest.raises(ValueError, match="one row"):
             ArrowValue.from_py(pa.array([1, 2, 3])).into_arrow_scalar()
 
-    def test_numpy_takes_a_column_back(self) -> None:
+    def test_numpy_takes_every_shape_back(self) -> None:
         assert list(ArrowValue.from_py(pa.array([1, 2, 3])).into_numpy()) == [1, 2, 3]
+        assert ArrowValue.from_py(pa.scalar(7, pa.int64())).into_numpy().tolist() == [7]
+
+        # NumPy has no counterpart for Arrow's null mask or its nested
+        # layouts, so both are allowed to copy rather than being refused.
+        nulled = ArrowValue.from_py(pa.array([1, None, 3])).into_numpy()
+        assert np.isnan(nulled[1])
+
+        # A struct column has no NumPy layout, so PyArrow's own conversion
+        # answers an object array of mappings rather than a record array.
+        rows = ArrowValue.from_py(quotes().to_batches()[0]).into_numpy()
+        assert rows[0] == {"symbol": "AAPL", "size": 100}
 
     def test_the_native_value_model_is_one_call_away(self) -> None:
         value = ArrowValue.from_py(quotes().to_batches()[0], root())

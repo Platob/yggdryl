@@ -223,6 +223,7 @@ rows parse into.
 - A structured text read holds the parsed document, so it answers `batch`, never `stream`. JSON writes one array, TOML one array of tables under the root's name, and JSON Lines and YAML stream one batch of rows at a time.
 - A media type that names neither a record encoding this build implements nor a structured text format -> `Error::InvalidRecord` naming it.
 - Python: only a `stream` is one-shot; reading a consumed one -> `ValueError`. A NumPy array of more than one dimension -> `TypeError`.
+- Python `into_numpy`: NumPy has no null mask and no nested layout, so the crossing copies - a null becomes `nan` and rows become an object array of mappings.
 - JavaScript: Rust and Python only. A stream has no honest copied-IPC representation.
 
 ## Commands
