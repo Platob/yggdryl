@@ -1,6 +1,4 @@
-from typing import Any
-
-import pyarrow
+import pyarrow  # type: ignore[import-untyped]
 
 from ._native import (
     Digest as Digest,
