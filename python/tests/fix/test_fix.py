@@ -770,8 +770,10 @@ def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
     root = Field(
         "row", DataType.from_fields([seed.field_by_tag(55)]), nullable=False
     )
+    # A text field reads any value that spells text, a number included, so
+    # what it refuses is a value with no spelling at all.
     with pytest.raises(ValueError, match="Symbol"):
-        FixMsg(root, {"Symbol": 5})
+        FixMsg(root, {"Symbol": [1]})
     with pytest.raises(ValueError):
         FixMsg(Field("scalar", "utf8"), {"Symbol": "AAPL"})
 
