@@ -51,7 +51,11 @@ test('the protocol view carries the typed fix vocabulary', () => {
   // Ordinary namespaced text, in the one metadata map.
   assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
   assert.equal(field.fix.get('tag'), '38')
-  assert.equal(field.fix.size, 4)
+  // Three, not four: a description is a fact about the column rather than a
+  // FIX fact, so it lives on the generic key every catalog reads.
+  assert.equal(field.get('description'), 'Quantity ordered.')
+  assert.equal(field.has('fix:description'), false)
+  assert.equal(field.fix.size, 3)
 
   // An empty array removes a list property; `delete` removes any of them.
   field.fix.tags = []
@@ -840,12 +844,17 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     Object.keys(fix).sort(),
     [
       'FixMsg',
+      'FixProjection',
+      'FixReader',
       'FixRegistry',
       'STANDARD_BRANCH',
       'USER_TAG_MAX',
       'USER_TAG_MIN',
+      'crateFields',
       'globalRegistry',
       'installGlobalRegistry',
+      'schema',
+      'schemaTags',
     ],
   )
   assert.equal(fix.STANDARD_BRANCH, '')
@@ -855,9 +864,16 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     'FixFieldIterator',
     'FixMsg',
     'FixMsgEntries',
+    'FixProjection',
+    'FixReader',
     'FixRegistry',
     'JsFixMsg',
+    'JsFixProjection',
+    'JsFixReader',
     'JsFixRegistry',
+    'fixCrateFields',
+    'fixSchema',
+    'fixSchemaTags',
     '_fixStandardBranchNative',
     '_fixStandardTagLimitNative',
     'fixGlobalRegistryNative',
@@ -890,4 +906,143 @@ test('installing the process default wins before anything resolves it', () => {
     { encoding: 'utf8' },
   )
   assert.equal(output.trim(), 'ok')
+})
+
+test('a reader parses every frame shape the core reads', () => {
+  const registry = seed()
+  const reader = new fix.FixReader(registry)
+
+  assert.equal(reader.text('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|').byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.bytes(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
+  assert.equal(
+    reader.fixtext(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
+    'AAPL',
+  )
+  assert.equal(reader.pairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
+  assert.ok(reader.registry.equals(registry))
+
+  // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
+  // whose value packs its members behind the two control bytes ULLINK uses.
+  const bridge = reader.ultext(
+    Buffer.from(
+      '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
+        '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
+      'binary',
+    ),
+  )
+  assert.equal(bridge.byTag(55).toJSON(), 'TTF')
+  assert.equal(bridge.byTag(38).toJSON(), 1200)
+  assert.equal(bridge.byTag(44).toJSON(), 41.25)
+  assert.equal(bridge.party('1')[0].toJSON(), 'BUYSIDE')
+  assert.equal(bridge.digest().length, 16)
+  // The counter says two occurrences and one arrived: reported, not repaired.
+  assert.equal(bridge.anomalies().length, 1)
+  assert.match(bridge.anomalies()[0], /453/)
+})
+
+test('a reader takes the pins the core takes', () => {
+  const registry = seed()
+
+  // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
+  // pinned version is what decides which name the row answers to.
+  const dated = new fix.FixReader(registry, { sourceVersion: '4.2' })
+  assert.ok(dated.text('8=FIX.4.4|35=8|32=100|10=0|').getByName('lastshares') !== null)
+
+  // A stated absence produces no field at all.
+  const silent = new fix.FixReader(registry, { nullValues: ['<none>'] })
+  assert.equal(silent.text('8=FIX.4.4|35=D|55=<none>|10=0|').getByTag(55), null)
+
+  assert.throws(() => new fix.FixReader(registry, { branch: 'not a branch' }))
+})
+
+test('the fixed row is named by tag and never shifts', () => {
+  const registry = seed()
+  const schema = fix.schema(registry, 'FixMessage')
+  assert.equal(schema.fieldAt(0).name, '8')
+  assert.equal(schema.fieldAt(2).name, '35')
+  assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'entries')
+  assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'unmapped')
+  assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
+
+  const projection = new fix.FixProjection(registry, 'FixMessage')
+  assert.equal(projection.size, schema.fieldLen)
+  assert.equal(projection.positionOf(35), 2)
+  assert.equal(projection.positionOf(999999), null)
+  assert.equal(projection.carried, 0)
+  assert.equal(projection.field.name, 'FixMessage')
+
+  const reader = new fix.FixReader(registry)
+  const row = reader.text('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|').toRow(projection).toJSON()
+  assert.equal(row.length, schema.fieldLen)
+  assert.equal(row[projection.positionOf(35)], 'D')
+  assert.equal(row[projection.positionOf(55)], 'AAPL')
+  // A tag no dictionary explains is still there, in its own column.
+  assert.equal(row[row.length - 1].length, 1)
+})
+
+test("a capture's own columns lead the row", () => {
+  const registry = seed()
+  const carrier = fields.struct(
+    'line',
+    [fields.utf8('url', { nullable: false }), fields.binary('body', { nullable: false })],
+    { nullable: false },
+  )
+  const plain = new fix.FixProjection(registry, 'FixMessage')
+  const carried = new fix.FixProjection(registry, 'FixMessage', carrier)
+
+  assert.equal(carried.carried, 2)
+  assert.deepEqual(carried.carriedPositions, [0, 1])
+  assert.equal(carried.column(0).name, 'url')
+  assert.equal(carried.size, plain.size + 2)
+  assert.equal(carried.positionOf(35), plain.positionOf(35) + 2)
+
+  // A carried column carries no tag, so a row answers null there: the capture
+  // fills it, and nothing in the message says what it held.
+  const row = new fix.FixReader(registry).text('8=FIX.4.4|35=D|10=0|').toRow(carried).toJSON()
+  assert.equal(row[0], null)
+  assert.equal(row[carried.positionOf(35)], 'D')
+})
+
+test('the crate fields declare their own protocols', () => {
+  const held = fix.crateFields()
+  assert.deepEqual(
+    held.map((field) => field.name),
+    [
+      'msghash',
+      'version',
+      'symbolticker',
+      'timestamp',
+      'unixpartition',
+      'parentclordid',
+      'parentorderid',
+    ],
+  )
+
+  const digest = held[0]
+  assert.equal(digest.getProperty('digest', 'role'), 'holder')
+  assert.equal(digest.getProperty('digest', 'algorithm'), 'xxh3-128')
+  assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
+  assert.ok(digest.description)
+
+  const partition = held[4]
+  assert.equal(partition.getProperty('partition', 'sources'), '["30004"]')
+  assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
+})
+
+test('a message says everything the core derives about it', () => {
+  const registry = seed()
+  const reader = new fix.FixReader(registry)
+  const message = reader.text('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|')
+
+  assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
+  assert.ok(message.marketTimestamp() !== null)
+  assert.ok(message.unixPartition(3600) !== null)
+  // A buy order at a price is a party willing to pay it, so the bid lane it
+  // never wrote is still true of it.
+  assert.equal(message.lifted('bidpx').toJSON(), 10.5)
+  assert.match(message.liftSource('bidpx'), /^44/)
+  assert.ok(message.lift().length > 0)
+  assert.equal(message.digest().length, 16)
+  assert.equal(message.arrivals()[0][0], 8)
+  assert.equal(message.toBytes(124).toString().split('|')[0], '8=FIX.4.4')
 })

@@ -21,11 +21,16 @@ import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
+    FixMsg,
+    FixProjection,
+    FixReader,
+    FixRegistry,
     STANDARD_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
-    FixMsg,
-    FixRegistry,
+    fix_crate_fields,
+    fix_schema,
+    fix_schema_tags,
     global_registry,
     install_global_registry,
 )
@@ -77,7 +82,11 @@ def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
     # Ordinary namespaced text, in the one metadata map.
     assert field.metadata["fix:aliases"] == "Qty,Quantity"
     assert field.fix["tag"] == "38"
-    assert len(field.fix) == 4
+    # Three, not four: a description is a fact about the column rather than a
+    # FIX fact, so it lives on the generic key every catalog reads.
+    assert field.metadata["description"] == "Quantity ordered."
+    assert "fix:description" not in field.metadata
+    assert len(field.fix) == 3
 
     # An empty list removes the property; `del` removes any of them.
     field.fix.tags = []
@@ -891,3 +900,125 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
     assert message.value.kind == "sequence"
     assert message.field.fix.tag is None
     assert message.field.fix.id is None
+
+
+def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
+    """One reader, five entry points, and each is the core's own."""
+    reader = FixReader(seed)
+
+    framed = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    assert framed.by_tag(55).as_py() == "AAPL"
+    assert reader.bytes(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert reader.fixtext(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+        55
+    ).as_py() == "AAPL"
+    assert reader.pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+
+    # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
+    # whose value packs its members behind the two control bytes ULLINK uses.
+    bridge = reader.ultext(
+        b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
+        b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
+    )
+    assert bridge.by_tag(55).as_py() == "TTF"
+    assert bridge.by_tag(38).as_py() == 1200.0
+    assert bridge.by_tag(44).as_py() == 41.25
+    party = bridge.party("1")
+    assert party is not None
+    assert party[0] is not None and party[0].as_py() == "BUYSIDE"
+    # The counter says two occurrences and one arrived: reported, not repaired.
+    assert len(bridge.anomalies()) == 1
+    assert "453" in bridge.anomalies()[0]
+
+
+def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
+    """A branch, a version and the spellings that mean nothing was sent."""
+    assert FixReader(seed).registry == seed
+
+    # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
+    # pinned version is what decides which name the row answers to.
+    dated = FixReader(seed, source_version="4.2")
+    assert dated.text("8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+
+    # A stated absence produces no field at all.
+    silent = FixReader(seed, null_values=["<none>"])
+    assert silent.text("8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+
+    with pytest.raises(ValueError):
+        FixReader(seed, branch="not a branch")
+
+
+def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
+    """The one shape a whole capture lands in."""
+    schema = fix_schema(seed, "FixMessage")
+    columns = [child.name for child in schema]
+    assert columns[:3] == ["8", "9", "35"], "named by tag, in message order"
+    assert columns[-2:] == ["entries", "unmapped"], "and the two lists close it"
+    assert fix_schema_tags()[:3] == [8, 9, 35]
+
+    projection = FixProjection(seed, "FixMessage")
+    assert len(projection) == len(columns)
+    assert projection.position_of(35) == 2
+    assert projection.position_of(999_999) is None
+    assert projection.carried == 0
+    assert projection.field.name == "FixMessage"
+
+    reader = FixReader(seed)
+    row = reader.text("8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    assert len(row) == len(columns)
+    assert row[projection.position_of(35)] == "D"
+    assert row[projection.position_of(55)] == "AAPL"
+    # A tag no dictionary explains is still there, in its own column.
+    assert len(row[-1]) == 1
+
+
+def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
+    """Where a line was read from is what a monitor orders and joins on."""
+    carrier = Field(
+        "line",
+        DataType.from_fields(
+            [
+                Field("url", DataType("utf8"), nullable=False),
+                Field("body", DataType("binary"), nullable=False),
+            ]
+        ),
+        nullable=False,
+    )
+    plain = FixProjection(seed, "FixMessage")
+    carried = FixProjection(seed, "FixMessage", carrier)
+
+    assert carried.carried == 2
+    assert carried.carried_positions == [0, 1]
+    assert carried.column(0).name == "url"
+    assert len(carried) == len(plain) + 2
+    assert carried.position_of(35) == plain.position_of(35) + 2
+
+    # A carried column carries no tag, so a row answers null there: the capture
+    # fills it, and nothing in the message says what it held.
+    row = FixReader(seed).text("8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    assert row[0] is None
+    assert row[carried.position_of(35)] == "D"
+
+
+def test_the_crate_fields_declare_their_own_protocols() -> None:
+    """The digest says how it was taken, the partition what it derives from."""
+    fields = {field.name: field for field in fix_crate_fields()}
+    assert list(fields) == [
+        "msghash",
+        "version",
+        "symbolticker",
+        "timestamp",
+        "unixpartition",
+        "parentclordid",
+        "parentorderid",
+    ]
+
+    held = fields["msghash"]
+    assert held.metadata["digest:role"] == "holder"
+    assert held.metadata["digest:algorithm"] == "xxh3-128"
+    assert held.metadata["digest:sources"] == '["entries"]'
+    assert held.description is not None
+
+    held = fields["unixpartition"]
+    assert held.metadata["partition:sources"] == '["30004"]'
+    assert held.metadata["iceberg:transform"] == "truncate[3600]"

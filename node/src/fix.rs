@@ -17,17 +17,18 @@
 use std::sync::Arc;
 
 use napi::JsValue as _;
-use napi::bindgen_prelude::{ClassInstance, Env, Generator, Result, Unknown, ValueType};
+use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unknown, ValueType};
 use napi_derive::napi;
 use yggdryl::{
     Field as CoreField, FixBranch as CoreFixBranch, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
+    FixMsg as CoreFixMsg, FixProjection as CoreFixProjection, FixReader as CoreFixReader,
+    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input};
 use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
-use crate::{exact_i32, napi_error, napi_type_error};
+use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
 
 /// What a mutation says when something else still holds the dictionary.
 const SHARED: &str =
@@ -54,11 +55,13 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
 
 /// Retain branch text beside a packed identifier for a field write.
 pub(crate) fn id_parts_from_js(text: &str) -> Result<(CoreFixBranch, CoreFixId)> {
-    let branch = text
-        .split_once(':')
-        .map(|(_, branch)| branch)
-        .ok_or_else(|| napi::Error::from_reason("a FIX identifier requires tag:branch"))?;
-    Ok((branch_from_js(branch)?, id_from_js(text)?))
+    // The core parses first, so a malformed identifier is refused in the
+    // grammar's own words - the same words Python's boundary answers with -
+    // rather than in a sentence this file invented. A parsed identifier
+    // always carries the colon, so the split below cannot fail after it.
+    let id = id_from_js(text)?;
+    let branch = text.split_once(':').map_or("", |(_, branch)| branch);
+    Ok((branch_from_js(branch)?, id))
 }
 
 /// What an absent `fix:branch` means, for the `fix` namespace to freeze.
@@ -178,6 +181,57 @@ impl JsFixRegistry {
         let holder = folder_from_input(location)?;
         CoreFixRegistry::from_handle(&holder)
             .map(|registry| Self::from_arc(Arc::new(registry)))
+            .map_err(napi_error)
+    }
+
+    /// Write every populated shard under `<location>/<tree>/<branch>`, removing
+    /// Read an Ullink `CBlock` into a dictionary, with what it declared.
+    ///
+    /// Answers the dictionary and the message roots the file spelled out, in
+    /// the order it spelled them. `branch` is the dialect its user-range tags
+    /// belong to; with none named they stay on the standard branch.
+    #[napi(ts_return_type = "[FixRegistry, Array<Field>]")]
+    pub fn from_cfb(
+        location: LocationInput<'_>,
+        branch: Option<String>,
+    ) -> Result<(Self, Vec<JsField>)> {
+        let handle = folder_from_input(location)?;
+        let branch = branch.map(|held| branch_from_js(&held)).transpose()?;
+        let (registry, roots) =
+            CoreFixRegistry::from_cfb(&handle, branch.as_ref()).map_err(napi_error)?;
+        Ok((
+            Self::from_arc(Arc::new(registry)),
+            roots.into_iter().map(JsField::from_core).collect(),
+        ))
+    }
+
+    /// Add the fields this crate defines on its own branch.
+    ///
+    /// A dictionary that has them can type a `msghash` or `timestamp` column
+    /// from the registry like any other. One that does not is unchanged:
+    /// nothing in reading a message needs them, because every one of them is a
+    /// fact about the capture rather than about the wire.
+    #[napi]
+    pub fn with_crate_fields(&mut self) -> Result<()> {
+        let held = self
+            .inner_mut()?
+            .clone()
+            .with_crate_fields()
+            .map_err(napi_error)?;
+        self.inner = Arc::new(held);
+        Ok(())
+    }
+
+    /// Register one message type, answering the value it takes.
+    ///
+    /// A type the code set does not have is added to it rather than rejected,
+    /// and the value it takes is the core's: itself where it fits, a stable
+    /// synthesized value where it does not. Idempotent.
+    #[napi]
+    pub fn register_msgtype(&mut self, spelling: String) -> Result<String> {
+        self.inner_mut()?
+            .register_msgtype(&spelling)
+            .map(|held| held.as_str().to_owned())
             .map_err(napi_error)
     }
 
@@ -495,6 +549,11 @@ pub struct JsFixMsg {
 }
 
 impl JsFixMsg {
+    /// Wrap a message the core built.
+    pub(crate) const fn from_core(inner: CoreFixMsg) -> Self {
+        Self { inner }
+    }
+
     /// The value both the hash and the JSON document read.
     fn identity_value(&self) -> Scalar {
         Scalar::from_sequence([
@@ -681,6 +740,120 @@ impl JsFixMsg {
         }
     }
 
+    /// The digest of what this message said, as sixteen bytes.
+    ///
+    /// Over the arrival record with the envelope tags left out, so two
+    /// republications of one message digest alike however their sequence
+    /// numbers and sending times differ.
+    #[napi]
+    pub fn digest(&self) -> Buffer {
+        Buffer::from(self.inner.digest().to_be_bytes().to_vec())
+    }
+
+    /// One instrument symbol that is the same across venues, or `null`.
+    #[napi]
+    pub fn symbol_ticker(&self) -> Option<JsScalar> {
+        answered(&self.inner.symbol_ticker())
+    }
+
+    /// The timestamp a capture is ordered by, or `null`.
+    #[napi]
+    pub fn market_timestamp(&self) -> Option<JsScalar> {
+        answered(&self.inner.market_timestamp())
+    }
+
+    /// The partition that timestamp falls in, in whole seconds.
+    #[napi]
+    pub fn unix_partition(&self, seconds: f64) -> Result<Option<JsScalar>> {
+        let seconds = exact_i64(seconds, "seconds")?;
+        Ok(answered(&self.inner.unix_partition(seconds)))
+    }
+
+    /// One lifted facet's value, or `null` where nothing carries it.
+    #[napi]
+    pub fn lifted(&self, facet: String) -> Option<JsScalar> {
+        self.inner.lifted(&facet).cloned().map(JsScalar::from_core)
+    }
+
+    /// Which field a lifted facet came from, or `null`.
+    #[napi]
+    pub fn lift_source(&self, facet: String) -> Option<String> {
+        self.inner.lift_source(&facet).map(|id| id.to_string())
+    }
+
+    /// Every facet this message lifts, in the table's own order.
+    #[napi(ts_return_type = "Array<[string, Scalar]>")]
+    pub fn lift(&self) -> Vec<(String, JsScalar)> {
+        self.inner
+            .lift()
+            .into_iter()
+            .map(|(facet, value)| (facet.to_owned(), JsScalar::from_core(value.clone())))
+            .collect()
+    }
+
+    /// One party by its role: identifier, source, role, qualifier.
+    #[napi(ts_return_type = "Array<Scalar | null> | null")]
+    pub fn party(&self, role: String) -> Option<Vec<Option<JsScalar>>> {
+        let held = self.inner.party(&role)?;
+        Some(vec![
+            held.id().cloned().map(JsScalar::from_core),
+            held.source().cloned().map(JsScalar::from_core),
+            held.role().cloned().map(JsScalar::from_core),
+            held.qualifier().cloned().map(JsScalar::from_core),
+        ])
+    }
+
+    /// One regulatory timestamp by its type, or `null`.
+    #[napi]
+    pub fn trd_reg_timestamp(&self, kind: String) -> Option<JsScalar> {
+        self.inner
+            .trd_reg_timestamp(&kind)
+            .cloned()
+            .map(JsScalar::from_core)
+    }
+
+    /// What this message says about itself that does not add up.
+    ///
+    /// Derived by comparing the row against the arrival record, so a caller
+    /// who never asks pays nothing.
+    #[napi]
+    pub fn anomalies(&self) -> Vec<String> {
+        self.inner
+            .anomalies()
+            .map(|held| held.to_string())
+            .collect()
+    }
+
+    /// What arrived, in arrival order, untranslated.
+    #[napi(ts_return_type = "Array<[number, string | null, string, string]>")]
+    pub fn arrivals(&self) -> Vec<(f64, Option<String>, String, String)> {
+        self.inner
+            .entries()
+            .iter()
+            .map(|entry| {
+                (
+                    f64::from(entry.tag()),
+                    entry.branch().map(ToOwned::to_owned),
+                    entry.key().to_owned(),
+                    entry.value().to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    /// This message as the fixed row a table holds.
+    #[napi]
+    pub fn to_row(&self, projection: &JsFixProjection) -> JsScalar {
+        JsScalar::from_core(self.inner.to_row(&projection.inner))
+    }
+
+    /// Re-emit this message on the wire, separated by `separator`.
+    #[napi]
+    pub fn to_bytes(&self, separator: Option<f64>) -> Result<Buffer> {
+        let separator = separator_byte(separator)?;
+        Ok(Buffer::from(self.inner.into_bytes(separator)))
+    }
+
     /// Whether two messages carry the same schema, value and dictionary.
     #[napi]
     pub fn equals(&self, other: &JsFixMsg) -> bool {
@@ -746,6 +919,330 @@ impl Generator for JsFixMsgEntries {
         self.index += 1;
         Some((name, JsScalar::from_core(value)))
     }
+}
+
+/// One separator byte, or the FIX default where none was named.
+///
+/// A separator is one byte and a JavaScript number is not, so the narrowing is
+/// stated here once rather than repeated at each entry point that takes one.
+fn separator_byte(separator: Option<f64>) -> Result<u8> {
+    let Some(held) = separator else {
+        return Ok(SOH);
+    };
+    u8::try_from(exact_i64(held, "separator")?).map_err(|_| napi_error("a separator is one byte"))
+}
+
+/// The separator FIX itself uses.
+const SOH: u8 = 0x01;
+
+/// One value answered, or nothing where it is null.
+///
+/// A derived fact that no message carries is absent rather than a null value:
+/// JavaScript already spells absence, and a `Scalar` holding null would make a
+/// caller ask the same question twice.
+fn answered(value: &Scalar) -> Option<JsScalar> {
+    (!value.is_null()).then(|| JsScalar::from_core(value.clone()))
+}
+
+/// One dictionary, reading captured lines into messages.
+///
+/// The reader is the whole parse surface: a captured line with a verb in front
+/// of it, a bare frame, a numeric frame with a stated separator, a bridge's
+/// name/value text, or pairs a caller already has. Each redirects to the core
+/// method of the same name, so nothing here decides a dialect, a version or a
+/// separator - it only carries what JavaScript said across.
+///
+/// A reader caches the projection of whichever version it was last asked for,
+/// so a capture read at one version pays the resolution once rather than once
+/// per row. Cloning one gives it a cache of its own, exactly as the core does.
+#[napi(js_name = "FixReader")]
+pub struct JsFixReader {
+    inner: CoreFixReader,
+    registry: Arc<CoreFixRegistry>,
+}
+
+#[napi]
+impl JsFixReader {
+    /// Open a reader over one dictionary, or over the process default.
+    #[napi(constructor)]
+    pub fn new(
+        registry: Option<ClassInstance<'_, JsFixRegistry>>,
+        options: Option<FixReaderOptions>,
+    ) -> Result<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
+        };
+        let options = options.unwrap_or_default();
+        let mut inner = CoreFixReader::new(Arc::clone(&registry));
+        if let Some(held) = &options.branch {
+            inner = inner.branch(&branch_from_js(held)?);
+        }
+        if let Some(held) = &options.source_version {
+            inner = inner.source_version(version_from_js(held)?);
+        }
+        if let Some(held) = &options.target_version {
+            inner = inner.target_version(version_from_js(held)?);
+        }
+        if let Some(held) = options.null_values {
+            inner = inner.null_values(held);
+        }
+        Ok(Self { inner, registry })
+    }
+
+    /// The dictionary this reader resolves against, sharing it.
+    #[napi(getter)]
+    pub fn registry(&self) -> JsFixRegistry {
+        JsFixRegistry::from_arc(Arc::clone(&self.registry))
+    }
+
+    /// One captured line, whatever it is wrapped in.
+    #[napi]
+    pub fn text(&self, row: String) -> Result<JsFixMsg> {
+        self.inner
+            .text(&row)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// One captured line as bytes, whatever it is wrapped in.
+    #[napi]
+    pub fn bytes(&self, row: Buffer) -> Result<JsFixMsg> {
+        self.inner
+            .bytes(&row)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// One numeric frame with the separator stated rather than inferred.
+    #[napi]
+    pub fn fixtext(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
+        let separator = separator_byte(separator)?;
+        self.inner
+            .fixtext(&body, separator)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// One bridge frame, whose keys are names rather than tags.
+    #[napi]
+    pub fn ultext(&self, body: Buffer) -> Result<JsFixMsg> {
+        self.inner
+            .ultext(&body)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Pairs a caller already holds, in the order they arrived.
+    #[napi(ts_args_type = "pairs: Array<[string, string]>")]
+    pub fn pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
+        let borrowed: Vec<(&[u8], &[u8])> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
+            .collect();
+        self.inner
+            .pairs(borrowed)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// A cheap clone, with a projection cache of its own.
+    ///
+    /// Two readers differing in version would otherwise clear each other's
+    /// cache every row, which is exactly when a reader is usually cloned.
+    #[napi(js_name = "clone")]
+    pub fn clone_js(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            registry: Arc::clone(&self.registry),
+        }
+    }
+
+    /// How this reader renders: the dictionary it reads against.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        format!("FixReader({} fields)", self.registry.len())
+    }
+}
+
+/// How a reader is pinned, where a caller pins it at all.
+#[napi(object)]
+#[derive(Default)]
+pub struct FixReaderOptions {
+    /// The dialect every row is read in, rather than the one each row implies.
+    pub branch: Option<String>,
+    /// The version arriving rows are written in.
+    pub source_version: Option<String>,
+    /// The version built messages are expressed in.
+    pub target_version: Option<String>,
+    /// The spellings that mean "nothing was sent".
+    pub null_values: Option<Vec<String>>,
+}
+
+/// Read one FIX version, or report the native parse failure.
+fn version_from_js(text: &str) -> Result<CoreVersion> {
+    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
+    spelling.parse::<CoreVersion>().map_err(napi_error)
+}
+
+/// Where each fixed column sits, resolved once against one dictionary.
+///
+/// A row projection asks for the same tags in the same order for every message
+/// in a capture, and each ask through the ordinary tiers is a hash, a
+/// verification and a branch walk. Building one turns the per-row cost into an
+/// indexed read, which is the whole reason a fixed schema is worth having.
+#[napi(js_name = "FixProjection")]
+pub struct JsFixProjection {
+    inner: CoreFixProjection,
+}
+
+#[napi]
+impl JsFixProjection {
+    /// Resolve every fixed column against one dictionary.
+    ///
+    /// `carrier` is a capture's own root - where a line was read from, which
+    /// line it was, what stamped it - whose columns lead the row where one is
+    /// given, because that is what a monitor orders and joins on.
+    #[napi(constructor)]
+    pub fn new(
+        registry: Option<ClassInstance<'_, JsFixRegistry>>,
+        name: Option<String>,
+        carrier: Option<&JsField>,
+    ) -> Result<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
+        };
+        let name = name.unwrap_or_else(|| "fix".to_owned());
+        let read = yggdryl::fix_schema(&registry, name).map_err(napi_error)?;
+        let inner = match carrier {
+            None => CoreFixProjection::from_field(read),
+            Some(held) => CoreFixProjection::carrying(&held.inner, read).map_err(napi_error)?,
+        };
+        Ok(Self { inner })
+    }
+
+    /// Wrap a root that is already the fixed schema.
+    #[napi(factory, ts_return_type = "FixProjection")]
+    pub fn from_field(field: &JsField) -> Self {
+        Self {
+            inner: CoreFixProjection::from_field(field.inner.clone()),
+        }
+    }
+
+    /// The root this projection fills.
+    #[napi(getter)]
+    pub fn field(&self) -> JsField {
+        JsField::from_core(self.inner.field().clone())
+    }
+
+    /// The tag each column carries, in column order; 0 where it carries none.
+    #[allow(clippy::cast_lossless)]
+    #[napi(getter)]
+    pub fn tags(&self) -> Vec<f64> {
+        self.inner
+            .tags()
+            .iter()
+            .map(|held| f64::from(*held))
+            .collect()
+    }
+
+    /// How many leading columns are the capture's rather than FIX's.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn carried(&self) -> f64 {
+        self.inner.carried() as f64
+    }
+
+    /// Where each carried column sat in the capture it came from.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn carried_positions(&self) -> Vec<f64> {
+        self.inner
+            .carried_positions()
+            .iter()
+            .map(|held| *held as f64)
+            .collect()
+    }
+
+    /// How many columns carry a value rather than the arrival record.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn value_columns(&self) -> f64 {
+        self.inner.value_columns() as f64
+    }
+
+    /// How many columns there are in all.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn size(&self) -> f64 {
+        self.inner.tags().len() as f64
+    }
+
+    /// The field behind one column, by position.
+    #[napi]
+    pub fn column(&self, at: f64) -> Result<Option<JsField>> {
+        let at = usize::try_from(exact_i64(at, "at")?)
+            .map_err(|_| napi_error("a column position is not negative"))?;
+        Ok(self.inner.column(at).cloned().map(JsField::from_core))
+    }
+
+    /// Where one tag's column sits, without a dictionary lookup.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi]
+    pub fn position_of(&self, tag: f64) -> Result<Option<f64>> {
+        let tag = exact_i32(tag, "tag")?;
+        Ok(self.inner.position_of(tag).map(|held| held as f64))
+    }
+
+    /// How this projection renders: its root and how wide a row is.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        format!(
+            "FixProjection({:?}, {} columns)",
+            self.inner.field().name(),
+            self.inner.tags().len()
+        )
+    }
+}
+
+/// The fixed root every message answers as, built from one dictionary.
+///
+/// Header, the fields a consumer reads, the groups worth persisting whole, the
+/// trailer, this crate's own derived facts, and the two lists that close every
+/// row. Columns are named by tag, because a tag is the one name a field has in
+/// every version and every dialect.
+#[napi(js_name = "fixSchema")]
+pub fn fix_schema(
+    registry: Option<ClassInstance<'_, JsFixRegistry>>,
+    name: Option<String>,
+) -> Result<JsField> {
+    let registry = match registry {
+        Some(held) => Arc::clone(&held.inner),
+        None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
+    };
+    let name = name.unwrap_or_else(|| "fix".to_owned());
+    yggdryl::fix_schema(&registry, name)
+        .map(JsField::from_core)
+        .map_err(napi_error)
+}
+
+/// One row's columns, in order, as tags.
+#[allow(clippy::cast_lossless)]
+#[napi(js_name = "fixSchemaTags")]
+pub fn fix_schema_tags() -> Vec<f64> {
+    yggdryl::fix_schema_tags()
+        .into_iter()
+        .map(f64::from)
+        .collect()
+}
+
+/// The fields this crate defines on its own branch, in tag order.
+#[napi(js_name = "fixCrateFields")]
+pub fn fix_crate_fields() -> Result<Vec<JsField>> {
+    yggdryl::fix_crate_fields()
+        .map(|held| held.iter().cloned().map(JsField::from_core).collect())
+        .map_err(napi_error)
 }
 
 /// The process-wide registry, loading it on the first call.

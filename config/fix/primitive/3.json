@@ -1084,14 +1084,14 @@
   {
     "name": "msgdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "msgdirection"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the direction of the message.",
       "display": "MsgDirection",
       "fix:codes": "{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Send\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"msgdirection\",\"type\":\"char\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"msgdirection\",\"type\":\"char\"},{\"since\":\"5.0SP2\",\"name\":\"msgdirection\",\"type\":\"msgdirection\"}]}",
       "fix:tag": "385"
     }
   },

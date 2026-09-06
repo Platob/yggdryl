@@ -15,6 +15,7 @@
 //! | `set` | create or replace a field |
 //! | `rm` | remove a field |
 //! | `ingest` | read a `.cfb` into the dictionary, creating or merging |
+//! | `schema` | the one row shape a whole capture lands in |
 //! | `check` | what the dictionary is wrong about |
 //! | `diff` | what changed against another dictionary |
 //! | `shell` | all of the above, interactively, with completion |
@@ -22,6 +23,7 @@
 mod diff;
 mod quality;
 mod registry;
+mod schema;
 mod shell;
 mod style;
 
@@ -99,6 +101,22 @@ enum Command {
         #[arg(long)]
         merge: bool,
     },
+    /// Print the one row shape a whole capture lands in.
+    Schema {
+        /// Also carry the columns a capture with this row header supplies.
+        ///
+        /// The regex the text reader frames lines with. Its named captures
+        /// become columns ahead of the FIX ones, typed by what their syntax
+        /// can match.
+        #[arg(long)]
+        rowheader: Option<String>,
+        /// What the root is called.
+        #[arg(long, default_value = "FixMessage")]
+        name: String,
+        /// Write it here as JSON rather than printing it.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Check what the dictionary is wrong about.
     Check,
     /// Show what changed against another dictionary.
@@ -158,6 +176,14 @@ fn run(cli: &Cli, annotate: bool) -> Result<ExitCode> {
         } => {
             ingest(&mut store, path, branch.as_deref(), *merge)?;
             store.save()?;
+        }
+        Command::Schema {
+            rowheader,
+            name,
+            out,
+        } => {
+            let field = schema::build(store.registry(), rowheader.as_deref(), name)?;
+            schema::render(&field, out.as_deref())?;
         }
         Command::Check => {
             let report = quality::check(store.registry());
@@ -240,7 +266,7 @@ fn interactive(store: &mut registry::Store) -> Result<()> {
     style::note("tab completes · ↑ recalls · ctrl-d leaves · `help` lists commands");
 
     let commands: Vec<String> = [
-        "list", "show", "set", "rm", "ingest", "check", "diff", "save", "help", "quit",
+        "list", "show", "set", "rm", "ingest", "schema", "check", "diff", "save", "help", "quit",
     ]
     .iter()
     .map(|held| (*held).to_owned())
@@ -304,6 +330,7 @@ fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
                 ("set <name> <type> <tag>", "create or replace a field"),
                 ("rm <key>", "remove a field"),
                 ("ingest <path.cfb>", "read a CBlock in"),
+                ("schema", "the one row shape a capture lands in"),
                 ("check", "what the dictionary is wrong about"),
                 ("save", "write the dictionary back"),
                 ("quit", "leave"),
@@ -343,6 +370,10 @@ fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
                 return Ok(());
             };
             ingest(store, std::path::Path::new(path), None, true)?;
+        }
+        "schema" => {
+            let field = schema::build(store.registry(), None, "FixMessage")?;
+            schema::render(&field, rest.first().map(std::path::Path::new))?;
         }
         "check" => quality::render(&quality::check(store.registry())),
         "save" => {

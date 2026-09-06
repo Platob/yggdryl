@@ -302,7 +302,7 @@ impl FixBatchReader {
             // matches the capture's.
             let message = reader.bytes(&row).unwrap_or_else(|_| empty(&reader));
             let direction = direction_of(&row, default);
-            Ok((message, direction))
+            Ok((message, direction, Vec::new()))
         });
         Self::stream(field, messages, &options)
     }
@@ -330,9 +330,9 @@ impl FixBatchReader {
         options: FixOptions,
     ) -> Result<BatchReader> {
         let options = options.with_payload_column(column);
-        let field = options.source_field(&registry)?;
-        let carried = crate::arrow::field_from_arrow_schema("row", source.schema().as_ref())?;
-        let names: Vec<SmolStr> = carried
+        let read = options.source_field(&registry)?;
+        let carrier = crate::arrow::field_from_arrow_schema("row", source.schema().as_ref())?;
+        let names: Vec<SmolStr> = carrier
             .dtype()
             .as_fields()
             .map(|fields| {
@@ -342,6 +342,11 @@ impl FixBatchReader {
                     .collect()
             })
             .unwrap_or_default();
+        // Which of the capture's own columns survive the FIX columns' claim on
+        // a name is decided once here, from the schema, rather than per row.
+        let projection = super::FixProjection::carrying(&carrier, read)?;
+        let field = projection.field().clone();
+        let kept: Vec<usize> = projection.carried_positions().to_vec();
         let reader = options.reader(Arc::clone(&registry));
         let separator = options.separator;
         let payload = options.payload_column.clone();
@@ -362,12 +367,21 @@ impl FixBatchReader {
                 Err(error) => vec![Err(crate::arrow::from_reader_error(error))],
             })
             .map(move |row| {
-                let row = row?;
-                let record = named(&names, &row);
+                let record = named(&names, &row?);
                 let bytes = column_bytes(&record, &payload).unwrap_or_default();
                 let message = read_record(&reader, &record, &bytes, separator)?;
                 let direction = stated(&record).or_else(|| direction_of(&bytes, default));
-                Ok((message, direction))
+                // By position: the columns kept were decided from the schema,
+                // and a row of that schema arrives in that order.
+                let front = kept
+                    .iter()
+                    .map(|at| {
+                        record
+                            .get(*at)
+                            .map_or(Scalar::Null, |(_, held)| held.clone())
+                    })
+                    .collect();
+                Ok((message, direction, front))
             });
         Self::stream(field, records, &options)
     }
@@ -375,7 +389,7 @@ impl FixBatchReader {
     /// The one stream both constructors end in.
     fn stream<I>(field: Field, messages: I, options: &FixOptions) -> Result<BatchReader>
     where
-        I: Iterator<Item = Result<(FixMsg, Option<&'static str>)>> + Send + 'static,
+        I: Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static,
     {
         let dedup = options.dedup;
         // Resolved once for the whole capture: every row asks for the same
@@ -385,7 +399,7 @@ impl FixBatchReader {
         let mut last: Option<u128> = None;
         let rows = messages.filter_map(move |held| match held {
             Err(error) => Some(Err(error)),
-            Ok((message, direction)) => {
+            Ok((message, direction, front)) => {
                 if dedup {
                     let digest = message.digest();
                     if last == Some(digest) {
@@ -393,7 +407,7 @@ impl FixBatchReader {
                     }
                     last = Some(digest);
                 }
-                Some(row_of(&message, &projection, direction))
+                Some(row_of(&message, &projection, direction, front))
             }
         });
         Ok(crate::arrow::rows::result_reader(
@@ -408,24 +422,36 @@ impl FixBatchReader {
 }
 
 /// One message as the fixed row its columns are read from.
+///
+/// `front` is the capture's own columns, already in schema order, and it leads
+/// the row: a monitor orders and joins on the arrival time and the file offset
+/// the capture supplied, and because the row counts match exactly, carrying
+/// them is a slice rather than a join.
 fn row_of(
     message: &FixMsg,
     projection: &super::FixProjection,
     direction: Option<&'static str>,
+    front: Vec<Scalar>,
 ) -> Result<Scalar> {
-    let mut row = message.to_row(projection);
+    // The row is the projection's whole width already: a carried column
+    // carries no tag, so it comes back null and is filled here rather than
+    // spliced in, which keeps `position_of` an index into the row itself.
+    let mut held = message
+        .to_row(projection)
+        .as_sequence()
+        .map(<[Scalar]>::to_vec)
+        .unwrap_or_default();
+    for (slot, value) in held.iter_mut().zip(front) {
+        *slot = value;
+    }
     // The direction is the one column no message carries: it is read from the
     // line in front of the frame, which is gone by the time a row is built.
     if let Some(at) = projection.position_of(super::MSGDIRECTION_TAG) {
-        if let Some(values) = row.as_sequence() {
-            let mut held = values.to_vec();
-            if let Some(slot) = held.get_mut(at) {
-                *slot = direction.map_or(Scalar::Null, Scalar::from);
-            }
-            row = Scalar::from_sequence(held);
+        if let Some(slot) = held.get_mut(at) {
+            *slot = direction.map_or(Scalar::Null, Scalar::from);
         }
     }
-    Ok(row)
+    Ok(Scalar::from_sequence(held))
 }
 
 /// A row nobody could read, which is still a row.

@@ -321,6 +321,21 @@
   color: var(--md-default-fg-color--light);
 }
 
+/* A decoded frame is several tables one under another, so each says what it is
+ * without stealing a heading level from the page's own outline. */
+.ygg-pg__section {
+  margin-top: 1em;
+}
+
+.md-typeset .ygg-pg__heading {
+  margin: 0 0 0.4em;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+
 /* The tables carry a class, so Material's own table rules do not reach them. */
 .ygg-pg table {
   border-collapse: collapse;

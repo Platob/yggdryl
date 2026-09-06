@@ -465,25 +465,59 @@ impl TextOptions {
         self.linesep.as_ref().map_or(b"\n", LineSep::as_bytes)
     }
 
-    /// Build the decoder's source field without reading the resource.
-    pub(crate) fn source_field(&self) -> Result<Field> {
+    /// The root a text read answers `schema()` with, built without reading.
+    ///
+    /// The fixed prefix first - where the line came from, which line it was,
+    /// what it was classified as, and the line itself - then one nullable
+    /// column per named capture, in the order the row header declares them and
+    /// typed by what its syntax can match. Public because a caller composing a
+    /// text read with something that reads its payload needs the columns
+    /// before there is a resource to read, exactly as
+    /// [`FixOptions::source_field`](crate::FixOptions::source_field) does.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the columns do not make a
+    /// struct.
+    pub fn source_field(&self) -> Result<Field> {
         let mut fields = Vec::with_capacity(7 + self.captures.len());
-        fields.push(DataType::Utf8.required_field("url"));
+        fields.push(described(
+            DataType::Utf8.required_field("url"),
+            "The URL of the object this line was read from.",
+        )?);
         if self.with_rownum.is_some() {
-            fields.push(DataType::Int64.required_field("rownum"));
+            fields.push(described(
+                DataType::Int64.required_field("rownum"),
+                "The physical line number within that object.",
+            )?);
         }
         if self.with_direction {
-            fields.push(DataType::MsgDirection.nullable_field("direction"));
+            fields.push(described(
+                DataType::MsgDirection.nullable_field("direction"),
+                "Which way the line moved, read from the verb in front of it.",
+            )?);
         }
         if self.with_mimetype {
-            fields.push(DataType::Utf8.required_field("mimetype"));
+            fields.push(described(
+                DataType::Utf8.required_field("mimetype"),
+                "What the line was classified as.",
+            )?);
         }
         if self.with_msgtype {
-            fields.push(DataType::MsgType.nullable_field("msgtype"));
+            fields.push(described(
+                DataType::MsgType.nullable_field("msgtype"),
+                "The message type read from the line.",
+            )?);
         }
-        fields.push(DataType::Binary.required_field("body"));
+        fields.push(described(
+            DataType::Binary.required_field("body"),
+            "The line itself, with whatever was read off its front removed.",
+        )?);
         if self.max_record_byte_size.is_some() {
-            fields.push(DataType::UInt64.nullable_field("dropped_byte_size"));
+            fields.push(described(
+                DataType::UInt64.nullable_field("dropped_byte_size"),
+                "How many bytes of this record went over the retained limit.",
+            )?);
         }
         fields.extend(self.captures.iter().map(|capture| {
             let dtype = if self.autotype {
@@ -505,6 +539,17 @@ impl TextOptions {
         }));
         Ok(DataType::from_fields(fields)?.required_field(self.name.clone()))
     }
+}
+
+/// One fixed column with the wording that says what it is.
+///
+/// On the generic `description` key, not behind a scheme: what a column holds
+/// is a fact about the column, and every catalog the crate writes to has a
+/// place for one. A caller declaring its own root replaces these along with
+/// everything else, which is what declaring a root means.
+fn described(mut field: Field, description: &str) -> Result<Field> {
+    field.set_description(description)?;
+    Ok(field)
 }
 
 impl Default for TextOptions {

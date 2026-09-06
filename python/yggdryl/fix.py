@@ -11,6 +11,15 @@ branch-qualified dotted path and persists them as JSON shards through any
 was resolved against. Resolution, folding, merging, sharding and validation are
 native; this module only names them.
 
+:class:`FixReader` turns a captured line into one of those messages, and
+:func:`fix_schema` is the one fixed row a whole capture lands in - columns named
+by tag, because a tag is the one name a field has in every version and every
+dialect. :class:`FixProjection` resolves those columns once so a row is an
+indexed read rather than a dictionary lookup per column, and
+:func:`fix_crate_fields` is what this crate itself adds beside the
+specification: the digest, the version read, the cross-venue symbol, the market
+clock, the partition it falls in, and the two parent order identifiers.
+
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
 ``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
 non-standard branch may claim.
@@ -23,7 +32,12 @@ from ._native import (
     USER_TAG_MAX,
     USER_TAG_MIN,
     FixMsg,
+    FixProjection,
+    FixReader,
     FixRegistry,
+    fix_crate_fields,
+    fix_schema,
+    fix_schema_tags,
     global_registry,
     install_global_registry,
 )
@@ -33,7 +47,12 @@ __all__ = [
     "USER_TAG_MAX",
     "USER_TAG_MIN",
     "FixMsg",
+    "FixProjection",
+    "FixReader",
     "FixRegistry",
+    "fix_crate_fields",
+    "fix_schema",
+    "fix_schema_tags",
     "global_registry",
     "install_global_registry",
 ]

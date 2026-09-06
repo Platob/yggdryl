@@ -3,9 +3,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use yggdryl::holder::local::Folder;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
+use yggdryl::{DataType, FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
 
 fn registry() -> Arc<FixRegistry> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -305,6 +306,71 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
     .unwrap();
     let rows: usize = again.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2, "a row in is still a row out");
+}
+
+#[test]
+fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
+    let registry = registry();
+    // Shaped the way the text line reader shapes a capture: where the line was
+    // read from, which line it was, what stamped it, and the frame itself.
+    let capture = DataType::from_fields([
+        DataType::Utf8.required_field("url"),
+        DataType::Int64.required_field("rownum"),
+        DataType::Utf8.nullable_field("threadname"),
+        DataType::Binary.required_field("body"),
+        // A name a FIX column already takes, which yields to it: one column
+        // per name, and the FIX one is what a reader spelling it means.
+        DataType::Utf8.nullable_field("entries"),
+    ])
+    .expect("a capture root")
+    .required_field("line");
+
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from("file:///capture.log"),
+        Scalar::from(7_i64),
+        Scalar::from("session-a"),
+        Scalar::from(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
+        Scalar::from("ignored"),
+    ])]);
+    let batch = yggdryl::arrow::batch_from_value(&capture, &rows).expect("a capture batch");
+    let schema = batch.schema();
+    let source = yggdryl::arrow::batch_reader(schema, [batch]);
+
+    let read = FixBatchReader::from_column(registry, source, "body", FixOptions::new())
+        .expect("a carried reader");
+    let columns: Vec<String> = read
+        .schema()
+        .fields()
+        .iter()
+        .map(|held| held.name().clone())
+        .collect();
+    assert_eq!(
+        &columns[..4],
+        ["url", "rownum", "threadname", "body"],
+        "the capture leads the row"
+    );
+    assert_eq!(
+        columns.iter().filter(|held| *held == "entries").count(),
+        1,
+        "the clashing capture column yielded to the FIX one"
+    );
+    assert!(columns.contains(&"35".to_owned()), "the tags follow it");
+
+    let batches: Vec<_> = read.map(|held| held.expect("a batch")).collect();
+    assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
+    let held = yggdryl::arrow::batch_to_value(&batches[0]).expect("a value");
+    let row = held.as_sequence().expect("one row")[0]
+        .as_sequence()
+        .expect("its columns")
+        .to_vec();
+    assert_eq!(row[0].as_str(), Some("file:///capture.log"));
+    assert_eq!(row[1].as_i64(), Some(7));
+    assert_eq!(row[2].as_str(), Some("session-a"));
+    let at = columns
+        .iter()
+        .position(|held| held == "35")
+        .expect("the msgtype column");
+    assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
 }
 
 #[test]

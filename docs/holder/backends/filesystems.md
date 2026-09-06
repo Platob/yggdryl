@@ -33,13 +33,8 @@ Pass the filesystem and its opaque path separately.
     };
 
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
-<<<<<<< HEAD
-    // A memory filesystem starts empty, where a real bucket already exists.
-    filesystem.create_dir("bucket", true)?;
-=======
     // The bucket is a directory to the filesystem, and an object write needs it.
     Folder::from_path(Arc::clone(&filesystem), "bucket", None)?.create(false)?;
->>>>>>> origin/main
     let file = File::from_path(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -51,11 +46,8 @@ Pass the filesystem and its opaque path separately.
     let mut output = file.open_output_stream(Some(&metadata))?;
     output.write(b"literal")?;
     output.close()?;
-<<<<<<< HEAD
-=======
 
     assert_eq!(file.read_all_bytes()?, b"literal");
->>>>>>> origin/main
     ```
 
 === "Python"

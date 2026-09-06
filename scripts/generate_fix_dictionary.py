@@ -141,9 +141,12 @@ LOGICAL_NAMES = {
     "localmktdatetime", "time", "date",
 }
 
-# The two tags the standard declares as code sets and the crate types with a
-# datatype of their own. Honouring the declaration, not guessing at one.
-CODED_TAGS = {35: "msgtype", 54: "side"}
+# The tags the standard declares as code sets and the crate types with a
+# datatype of their own. Honouring the declaration, not guessing at one: the
+# code set stays the field's vocabulary, and the datatype is how a value of it
+# is stored. Tag 385 is here because a direction is what every capture in this
+# crate carries on its own lines, so it is read far more often than it arrives.
+CODED_TAGS = {35: "msgtype", 54: "side", 385: "msgdirection"}
 
 # The crate's own branch, and the two fields it registers on it.
 CRATE_BRANCH = "yggdryl"
@@ -613,6 +616,7 @@ def dtype_document(name: str) -> dict[str, Any]:
         "Date": {"type": "date32"},
         "msgtype": {"type": "msgtype"},
         "side": {"type": "side"},
+        "msgdirection": {"type": "msgdirection"},
     }
     document = documents.get(name)
     if document is None:

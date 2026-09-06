@@ -305,14 +305,17 @@ Each field carries the specification's wording as its description and a display 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
 
-    assert_eq!(registry.field_by_tag(55)?.name(), "Symbol");
-    assert_eq!(registry.field_by_name("ticker", Some(&standard))?.name(), "Symbol");
-    assert_eq!(registry.field_by_tag(20)?.name(), "ExecType");
+    // Names are folded once, so a caller spells one however they have it and
+    // the specification's own spelling stays on `display`.
+    assert_eq!(registry.field_by_tag(55)?.name(), "symbol");
+    assert_eq!(registry.field_by_name("SYMBOL", Some(&standard))?.name(), "symbol");
+    assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
     assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("Client order ID"));
+    assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("ClOrdID"));
     // Every seed field is a specification field, so none states a branch.
     assert!(registry.iter().all(|field| !field.has_metadata("fix:branch")));
-    assert!(registry.len() < 40);
+    // The whole published dictionary, not a sample of it.
+    assert!(registry.len() > 6_000);
     ```
 
 === "Python"
@@ -326,15 +329,16 @@ Each field carries the specification's wording as its description and a display 
     seed = pathlib.Path("config/fix").resolve()
     registry = FixRegistry.from_handle(seed)
 
-    assert registry.field_by_tag(55).name == "Symbol"
-    assert registry.field_by_id("55:").name == "Symbol"
-    assert registry.field_by_name("ticker", STANDARD_BRANCH).name == "Symbol"
-    assert registry.field_by_tag(20).name == "ExecType"
+    assert registry.field_by_tag(55).name == "symbol"
+    assert registry.field_by_id("55:").name == "symbol"
+    assert registry.field_by_name("SYMBOL", STANDARD_BRANCH).name == "symbol"
+    assert registry.field_by_tag(150).display == "ExecType"
     assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
-    assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "Client order ID"
+    assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "ClOrdID"
     # Every seed field is a specification field, so none states a branch.
     assert all("fix:branch" not in field.metadata for field in registry)
-    assert len(registry) < 40
+    # The whole published dictionary, not a sample of it.
+    assert len(registry) > 6_000
     ```
 
 === "JavaScript"
@@ -348,15 +352,16 @@ Each field carries the specification's wording as its description and a display 
     const standard = fix.STANDARD_BRANCH
     const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
 
-    assert.equal(registry.fieldByTag(55).name, 'Symbol')
-    assert.equal(registry.fieldById('55:').name, 'Symbol')
-    assert.equal(registry.fieldByName('ticker', standard).name, 'Symbol')
-    assert.equal(registry.fieldByTag(20).name, 'ExecType')
+    assert.equal(registry.fieldByTag(55).name, 'symbol')
+    assert.equal(registry.fieldById('55:').name, 'symbol')
+    assert.equal(registry.fieldByName('SYMBOL', standard).name, 'symbol')
+    assert.equal(registry.fieldByTag(150).display, 'ExecType')
     assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
-    assert.equal(registry.fieldByName('ClOrdID', standard).display, 'Client order ID')
+    assert.equal(registry.fieldByName('ClOrdID', standard).display, 'ClOrdID')
     // Every seed field is a specification field, so none states a branch.
     assert.ok([...registry].every((field) => field.has('fix:branch') === false))
-    assert.ok(registry.size < 40)
+    // The whole published dictionary, not a sample of it.
+    assert.ok(registry.size > 6_000)
     ```
 
 ## Edges

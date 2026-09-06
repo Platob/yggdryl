@@ -6,6 +6,8 @@ import {
   Url,
   fix,
   type FixMsg,
+  type FixProjection,
+  type FixReader,
   type FixRegistry,
   type FixValueInput,
   type LocationInput,
@@ -205,3 +207,91 @@ field.fix.branch = 55
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]
+
+// The reader is a class over one dictionary, with every pin optional.
+const readerClass: typeof FixReader = fix.FixReader
+const reader: FixReader = new fix.FixReader(loaded)
+const pinned: FixReader = new fix.FixReader(loaded, {
+  branch: 'cme',
+  sourceVersion: '4.2',
+  targetVersion: '4.4',
+  nullValues: ['<none>'],
+})
+const readRegistry: FixRegistry = reader.registry
+const fromText: FixMsg = reader.text('8=FIX.4.4|35=D|10=0|')
+const fromBytes: FixMsg = reader.bytes(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromFrame: FixMsg = reader.fixtext(Buffer.from('8=FIX.4.4'), 1)
+const fromBridge: FixMsg = reader.ultext(Buffer.from('#SYMBOL=TTF'))
+const fromPairs: FixMsg = reader.pairs([['55', 'AAPL']])
+const readerCopy: FixReader = reader.clone()
+
+// The projection is the fixed row's index, and the schema is its root.
+const projectionClass: typeof FixProjection = fix.FixProjection
+const projection: FixProjection = new fix.FixProjection(loaded, 'FixMessage')
+const carried: FixProjection = new fix.FixProjection(loaded, 'FixMessage', field)
+const wrapped: FixProjection = fix.FixProjection.fromField(field)
+const columns: number = projection.size
+const tagsOf: number[] = projection.tags
+const carriedCount: number = projection.carried
+const carriedAt: number[] = projection.carriedPositions
+const valueColumns: number = projection.valueColumns
+const column: Field | null = projection.column(0)
+const at: number | null = projection.positionOf(35)
+const fixedRow: Scalar = fromText.toRow(projection)
+
+// The three functions that build a fixed row without one.
+const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
+const fixedSchemaTags: number[] = fix.schemaTags()
+const crateFields: Field[] = fix.crateFields()
+
+// Everything the core derives about a message.
+const digest: Buffer = fromText.digest()
+const ticker: Scalar | null = fromText.symbolTicker()
+const clock: Scalar | null = fromText.marketTimestamp()
+const partition: Scalar | null = fromText.unixPartition(3600)
+const lifted: Scalar | null = fromText.lifted('bidpx')
+const liftSource: string | null = fromText.liftSource('bidpx')
+const lift: Array<[string, Scalar]> = fromText.lift()
+const party: Array<Scalar | null> | null = fromText.party('1')
+const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
+const anomalies: string[] = fromText.anomalies()
+const arrivals: Array<[number, string | null, string, string]> = fromText.arrivals()
+const wire: Buffer = fromText.toBytes(124)
+
+void readerClass
+void pinned
+void readRegistry
+void fromBytes
+void fromFrame
+void fromBridge
+void fromPairs
+void readerCopy
+void projectionClass
+void carried
+void wrapped
+void columns
+void tagsOf
+void carriedCount
+void carriedAt
+void valueColumns
+void column
+void at
+void fixedRow
+void fixedSchema
+void fixedSchemaTags
+void crateFields
+void digest
+void ticker
+void clock
+void partition
+void lifted
+void liftSource
+void lift
+void party
+void regulatory
+void anomalies
+void arrivals
+void wire
+
+// @ts-expect-error a projection is built from a registry, never from a number
+new fix.FixProjection(55)

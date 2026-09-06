@@ -268,8 +268,7 @@ impl FixRegistry {
             return Some(field);
         }
         let (head, rest) = path.split_once('.')?;
-        self.get_field_by_name(head, branch)?
-            .get_field_by_path(rest)
+        descend(self.get_field_by_name(head, branch)?, rest)
     }
 
     /// Returns the field a dotted path reaches, raising absence.
@@ -1034,4 +1033,42 @@ mod tests {
         );
         assert_eq!(registry.fields, before);
     }
+}
+/// The field a dotted path reaches under one resolved head, folding as it goes.
+///
+/// The generic walk matches a child's name exactly, which is right for a schema
+/// a caller wrote and wrong for a dictionary: the head already folded, so
+/// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
+/// one function disagreeing with itself. The exact walk is still tried first,
+/// because it is the cheap answer and the common one.
+fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+    if let Some(held) = field.get_field_by_path(path) {
+        return Some(held);
+    }
+    let (head, rest) = match path.split_once('.') {
+        None => (path, None),
+        Some((head, rest)) => (head, Some(rest)),
+    };
+    let child = folded_child(field, head)?;
+    match rest {
+        None => Some(child),
+        Some(rest) => descend(child, rest),
+    }
+}
+
+/// One child by folded name, reaching through a group's item where it has one.
+///
+/// A repeating group is a List of one `item` Struct, so a member is the item's
+/// child and not the list's - and nobody spelling a path says `item`.
+fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        if crate::types::folds_equal(item.name(), name) {
+            return Some(item);
+        }
+        return folded_child(item, name);
+    }
+    field
+        .fields()
+        .iter()
+        .find(|held| crate::types::folds_equal(held.name(), name))
 }

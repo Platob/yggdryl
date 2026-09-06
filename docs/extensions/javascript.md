@@ -705,10 +705,10 @@ const seed = path.resolve('config/fix')
 
 // One folder, named however JavaScript names one - the coercion `Catalog` uses.
 const url = Url.fromPath(seed)
-for (const location of [seed, url.toString(), url, new IOBase(seed)]) {
-  assert.equal(fix.FixRegistry.fromHandle(location).size, 34)
-}
 const registry = fix.FixRegistry.fromHandle(seed)
+for (const location of [seed, url.toString(), url, new IOBase(seed)]) {
+  assert.equal(fix.FixRegistry.fromHandle(location).size, registry.size)
+}
 
 // A key is a number tag or a string name, and a tag that would not fit i32 is
 // refused rather than narrowed into a different one.
@@ -719,60 +719,63 @@ assert.throws(() => registry.get(55n), {
   message: 'key must be a number tag or a string name, got BigInt',
 })
 
-// A branch and an identifier cross as text: the branch leads a name or path
-// lookup, and a malformed one throws rather than missing.
-assert.equal(fix.STANDARD_BRANCH, 'standard')
-assert.equal(fix.STANDARD_TAG_LIMIT, 5000)
-assert.equal(registry.fieldByName(fix.STANDARD_BRANCH, 'ticker').name, 'Symbol')
-assert.equal(registry.fieldByPath(fix.STANDARD_BRANCH, 'NoPartyIDs.PartyID').fix.tag, 448)
-assert.equal(registry.fieldById('standard:55').fix.id, 'standard:55')
-assert.throws(() => registry.fieldByName('2cme', 'Symbol'), /fix branch/)
+// A branch and an identifier cross as text: the branch follows the name or
+// path it qualifies, and a malformed one throws rather than missing.
+assert.equal(fix.STANDARD_BRANCH, '')
+assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
+// Names are folded once, so a caller spells one however they have it.
+assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
+assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', fix.STANDARD_BRANCH).fix.tag, 448)
+assert.equal(registry.fieldById('55:').fix.id, '55:')
+assert.throws(() => registry.fieldByName('symbol', '2cme'), /fix branch/)
 assert.throws(() => registry.fieldById('55'), /fix identifier/)
 assert.throws(() => registry.fieldById(55), /into rust type `String`/)
 
 // Absence throws with the native message; the `get` half answers null.
 assert.throws(
-  () => registry.fieldByName(fix.STANDARD_BRANCH, 'Nope'),
+  () => registry.fieldByName('Nope', fix.STANDARD_BRANCH),
   /expected a fix field at "name/,
 )
-assert.equal(registry.getFieldByName(fix.STANDARD_BRANCH, 'Nope'), null)
+assert.equal(registry.getFieldByName('Nope', fix.STANDARD_BRANCH), null)
 assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
 
 // The typed vocabulary is answered by the fix view alone, and a tag the FIX
 // specification assigns cannot move to another dictionary.
 const symbol = registry.fieldByTag(55)
 assert.equal(symbol.fix.tag, 55)
-assert.equal(symbol.fix.id, 'standard:55')
+assert.equal(symbol.fix.id, '55:')
+// The specification's own spelling stays on the generic display key.
+assert.equal(symbol.display, 'Symbol')
 assert.throws(() => symbol.iceberg.tag, { name: 'TypeError', message: /iceberg/ })
 const vendor = Field.from('TradeID: utf8')
-vendor.fix.id = 'CME:5001'
-assert.equal(vendor.fix.id, 'cme:5001')
+vendor.fix.id = '5001:CME'
+assert.equal(vendor.fix.id, '5001:cme')
 assert.equal(vendor.fix.branch, 'cme')
 assert.throws(() => {
   vendor.fix.tag = 35
 }, /fix:branch/)
-assert.equal(vendor.fix.id, 'cme:5001')
+assert.equal(vendor.fix.id, '5001:cme')
 
 // A message shares the dictionary it resolved against, so mutating it refuses.
 const root = fields.struct('row', [symbol], { nullable: false })
-const message = new fix.FixMsg(root, { Symbol: 'AAPL' }, registry)
+const message = new fix.FixMsg(root, { symbol: 'AAPL' }, registry)
 assert.throws(() => registry.remove(55), /shared with a message/)
-assert.equal(registry.clone().remove(55).name, 'Symbol')
+assert.equal(registry.clone().remove(55).name, 'symbol')
 
 // A vendor field leaves by its identifier: `remove` reads a string as a
 // standard-branch name.
 const venue = fix.FixRegistry.fromFields([vendor])
 assert.equal(venue.remove('TradeID'), null)
-assert.equal(venue.removeById('cme:5001').name, 'TradeID')
+assert.equal(venue.removeById('5001:cme').name, 'TradeID')
 assert.equal(venue.size, 0)
 
 // Both collections are lazy native iterators the loader gives the protocol.
-assert.equal([...registry].length, 34)
-assert.deepEqual([...message].map(([name]) => name), ['Symbol'])
-assert.equal(message.at('ticker').asJs(), 'AAPL')
+assert.equal([...registry].length, registry.size)
+assert.deepEqual([...message].map(([name]) => name), ['symbol'])
+assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.branch, fix.STANDARD_BRANCH)
-assert.equal(message.byId('standard:55').asJs(), 'AAPL')
-assert.equal(message.getById('cme:5001'), null)
+assert.equal(message.byId('55:').asJs(), 'AAPL')
+assert.equal(message.getById('5001:cme'), null)
 ```
 
 `FixMsg`'s constructor is the one widening gate: the core alone types, orders,

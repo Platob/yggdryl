@@ -1468,7 +1468,7 @@ impl PyScalarIterator {
 }
 
 /// Owning lazy iterator over exact native mapping/record entries.
-#[pyclass(name = "ValueEntryIterator", module = "yggdryl._native")]
+#[pyclass(name = "ScalarEntryIterator", module = "yggdryl._native")]
 pub(crate) struct PyScalarEntryIterator {
     inner: std::vec::IntoIter<(Scalar, Scalar)>,
 }

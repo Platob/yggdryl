@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixReader, FixRegistry, Scalar, Version};
+use yggdryl::{DataType, FixEntry, FixReader, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -219,6 +219,66 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     };
     assert_eq!(item.name(), "item");
     assert!(!item.is_nullable());
+}
+
+#[test]
+fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
+    let reader = reader();
+    // One real bridge frame, byte for byte: a leading separator, `#`-prefixed
+    // name keys, and one occurrence whose value packs its members behind the
+    // two control bytes ULLINK separates them with.
+    let line: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
+|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
+
+    // The dialect is read off the frame, so the bytes entry point and the
+    // bridge one answer the same message rather than two spellings of it.
+    let message = reader.bytes(line).unwrap();
+    assert_eq!(message, reader.ultext(line).unwrap());
+
+    // Names resolve to tags, and each value takes its field's own type: a
+    // quantity and a price are numbers, and a side is the packed code.
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("TTF"));
+    assert_eq!(message.by_tag(54).unwrap().as_str(), Some("1"));
+    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(1200.0));
+    assert_eq!(message.by_tag(44).unwrap().as_f64(), Some(41.25));
+
+    // The occurrence's packed members became three real fields under one
+    // nesting, each resolved to its own tag rather than kept as text.
+    let occurrences = message
+        .by_tag(453)
+        .unwrap()
+        .as_sequence()
+        .expect("the party group")
+        .to_vec();
+    assert_eq!(occurrences.len(), 1);
+    assert_eq!(
+        occurrences[0].as_sequence().map(<[Scalar]>::len),
+        Some(3),
+        "three members, split on the control bytes"
+    );
+    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    assert_eq!(
+        &keys[5..],
+        [
+            "NOPARTYIDS[0].PARTYID",
+            "NOPARTYIDS[0].PARTYIDSOURCE",
+            "NOPARTYIDS[0].PARTYROLE",
+        ]
+    );
+
+    // Which is enough to lift the party the frame is about.
+    let held = message.party("1").expect("the buy-side party");
+    assert_eq!(held.id().and_then(Scalar::as_str), Some("BUYSIDE"));
+    assert_eq!(held.source().and_then(Scalar::as_str), Some("D"));
+
+    // The counter says two occurrences and one arrived. That is the frame's
+    // own contradiction, reported rather than repaired: nothing invents the
+    // occurrence that is missing, and nothing rewrites the count that is
+    // wrong.
+    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
+    assert_eq!(anomalies.len(), 1, "{anomalies:?}");
+    assert!(anomalies[0].contains("453"), "{anomalies:?}");
+    assert!(anomalies[0].contains('2'), "{anomalies:?}");
 }
 
 #[test]

@@ -429,9 +429,11 @@ It is a second key beside [`AsciiEnum`](../types/ascii.md), not a second copy: t
     // Tier 3: the leading abbreviation of the description.
     assert_eq!(view.code_value("gtd"), Some("6"));
 
-    // A version hides a code added after it, and one deprecated at or before.
+    // A version hides a code deprecated at or before it, and nothing else: a
+    // value added later still resolves, because a venue that stated the wrong
+    // version is a venue whose values are still worth reading.
     assert_eq!(view.code_value("BasisPoints"), Some("7"));
-    assert_eq!(view.code_value_at("4.4".parse::<Version>()?, "BasisPoints"), None);
+    assert_eq!(view.code_value_at("4.4".parse::<Version>()?, "BasisPoints"), Some("7"));
 
     // A venue's own spelling falls through unchanged rather than failing.
     assert_eq!(view.code_value("VenueOwnCommission"), None);
@@ -486,14 +488,14 @@ Several sources describe one tag — FIX Latest, a QuickFIX dictionary, a vendor
 | `fix:branch`, `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
 | `fix:tags` | union, incoming first, order kept, deduplicated |
 | `fix:aliases` | union, folded, incoming first — then rewritten from the merged lineage |
-| `fix:description` | never compared: incoming wins when it has one, stored is kept when it does not |
+| `description` | not FIX's key, so this half leaves it alone in both directions; `FixRegistry::update` carries it through the generic merge |
 | `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
 | `fix:codes` | merged by wire value, incoming winning a shared value |
 | any other `fix:` key | incoming wins; stored keeps what only it has |
 
 Precedence is the caller's ordering, not a field on the merge. A generator folds its lowest-priority source first, so the highest-priority one is the last merged and wins — one concept, in the one place that knows about sources.
 
-A description is never compared because it is the longest value a field carries and comparing two costs more than the write it would save.
+A description is not merged here at all: what a column holds is a fact about the column rather than a FIX fact, so it lives on the generic `description` key beside `alias`, `comment` and `display`, and the generic half of `update` is what folds it.
 
 The whole merged namespace is written once. `FixRegistry::update` calls it for the `fix:` half and the shared metadata merge for the generic half, because the protocol view reaches only its own namespace by design.
 
@@ -523,8 +525,10 @@ The whole merged namespace is written once. `FixRegistry::update` calls it for t
 
     assert_eq!(merged.tags()?, [67, 65]);
     // The stored side keeps what only it declared.
-    assert_eq!(merged.description(), Some("the stored wording"));
     assert_eq!(merged.code_name("9"), Some("StoredOnly"));
+    // A description is not this half's key, so merging two FIX views leaves it
+    // alone in both directions; `FixRegistry::update` is what carries it.
+    assert_eq!(merged.description(), None);
     // The aliases come from the merged lineage, never from the union.
     assert_eq!(merged.aliases().collect::<Vec<_>>(), ["LastShares"]);
     ```
@@ -577,12 +581,14 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     FixRegistry::install_global(registry)?;
 
     let global = FixRegistry::global()?;
-    assert_eq!(global.field_by_tag(55)?.name(), "Symbol");
+    // Names are folded, and the specification's own spelling stays on `display`.
+    assert_eq!(global.field_by_tag(55)?.name(), "symbol");
+    assert_eq!(global.field_by_tag(55)?.display(), Some("Symbol"));
     assert!(Arc::ptr_eq(FixRegistry::global()?, global), "resolved once");
 
     // A message built without a registry links that same `Arc`.
     let root = DataType::from_fields([global.field_by_tag(55)?.clone()])?.required_field("row");
-    let msg = FixMsg::new(root, Scalar::from_record([("Symbol", Scalar::from("AAPL"))])?)?;
+    let msg = FixMsg::new(root, Scalar::from_record([("symbol", Scalar::from("AAPL"))])?)?;
     assert!(Arc::ptr_eq(msg.registry(), global));
 
     // Once resolved, the default is fixed.
@@ -604,12 +610,14 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     install_global_registry(seed)
 
     default = global_registry()
-    assert default.field_by_tag(55).name == "Symbol"
+    # Names are folded, and the specification's own spelling stays on `display`.
+    assert default.field_by_tag(55).name == "symbol"
+    assert default.field_by_tag(55).display == "Symbol"
     assert default == global_registry(), "resolved once"
 
     # A message built without a registry links that same dictionary.
     root = Field("row", DataType.from_fields([default.field_by_tag(55)]), nullable=False)
-    assert FixMsg(root, {"Symbol": "AAPL"}).registry == default
+    assert FixMsg(root, {"symbol": "AAPL"}).registry == default
 
     # Once resolved, the default is fixed.
     with pytest.raises(ValueError, match="already resolved"):
@@ -628,12 +636,14 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     fix.installGlobalRegistry(seed)
 
     const global = fix.globalRegistry()
-    assert.equal(global.fieldByTag(55).name, 'Symbol')
+    // Names are folded, and the specification's own spelling stays on `display`.
+    assert.equal(global.fieldByTag(55).name, 'symbol')
+    assert.equal(global.fieldByTag(55).display, 'Symbol')
     assert.ok(global.equals(fix.globalRegistry()), 'resolved once')
 
     // A message built without a registry links that same dictionary.
     const root = fields.struct('row', [global.fieldByTag(55)], { nullable: false })
-    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(global))
+    assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(global))
 
     // Once resolved, the default is fixed.
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
@@ -667,7 +677,7 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
 === "Rust"
 
     ```rust
-    use yggdryl::types::{Direction, MsgType};
+    use yggdryl::types::{MsgDirection, MsgType};
     use yggdryl::MimeType;
 
     let line = b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=001|";

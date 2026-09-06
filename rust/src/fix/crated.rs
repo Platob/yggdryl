@@ -27,7 +27,7 @@
 
 use std::sync::LazyLock;
 
-use crate::{DataType, Field, Result, TimeUnit, Timezone};
+use crate::{DataType, DigestAlgorithm, Field, Result, TimeUnit, Timezone};
 
 use super::FixBranch;
 
@@ -61,6 +61,9 @@ pub const PARENTORDERID_TAG: i32 = 30007;
 /// since 4.4, and a field it already declares is never given a second tag.
 pub const MSGDIRECTION_TAG: i32 = 385;
 
+/// The algorithm a message digest is taken with.
+const DIGEST_ALGORITHM: DigestAlgorithm = DigestAlgorithm::Xxh128;
+
 /// The digest's width in bytes, which is the algorithm's.
 const DIGEST_WIDTH: i32 = 16;
 
@@ -79,31 +82,96 @@ fn branch() -> Result<FixBranch> {
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| build().ok());
 
-/// One field on the crate's branch.
-fn crated(name: &str, tag: i32, dtype: DataType) -> Result<Field> {
+/// One field on the crate's branch, with the wording that explains it.
+///
+/// The description goes on the generic key rather than behind the `fix:`
+/// scheme, because it is a fact about the column and every catalog the crate
+/// writes to has a place for one.
+fn crated(name: &str, tag: i32, dtype: DataType, description: &str) -> Result<Field> {
     let mut field = dtype.nullable_field(name);
     field.as_fix_mut().set_id(&branch()?, tag)?;
+    field.set_description(description)?;
     Ok(field)
 }
 
 /// Builds every field this crate defines.
+///
+/// Two of them declare more than a type. `msghash` is a digest holder, so it
+/// says which algorithm filled it and what it read; `unixpartition` is a
+/// derived partition column, so it says which column it derives from and how.
+/// Both are said in the protocols the crate already has - `digest:` and
+/// `partition:` beside `iceberg:` - rather than in a spelling only a FIX
+/// reader would know to look for.
 fn build() -> Result<Vec<Field>> {
+    // `FixedSizeBinary`, big-endian, because a digest is not a string and
+    // must not become one. Big-endian is the one layout where byte order and
+    // numeric order agree on every machine: a little-endian digest sorts
+    // differently than it compares, and someone eventually sorts it.
+    let mut msghash = crated(
+        "msghash",
+        MSGHASH_TAG,
+        DataType::fixed_size_binary(DIGEST_WIDTH)?,
+        "The xxh128 digest of what the message said, over the arrival \
+             record with the envelope tags left out.",
+    )?;
+    // Holder first: the algorithm and the sources are both refused on a field
+    // that has not said it holds a digest.
+    msghash.as_digest_mut().set_holder()?;
+    msghash.as_digest_mut().set_algorithm(DIGEST_ALGORITHM)?;
+    // The arrival record, because that is what the digest actually reads: the
+    // columns are one reading of a message and `entries` is the message.
+    msghash
+        .as_digest_mut()
+        .set_sources([super::ENTRIES_COLUMN])?;
+
+    // The partition that timestamp falls in, as whole seconds since the
+    // epoch. An integer rather than a rendered date: a partition value is
+    // compared and ranged over, and a string would sort lexically.
+    let mut unixpartition = crated(
+        "unixpartition",
+        UNIXPARTITION_TAG,
+        DataType::Int64,
+        "The partition the market timestamp falls in, as whole seconds \
+             since the epoch floored to the partition width.",
+    )?;
+    // Named by the column it reads, which is the tag, because that is what
+    // the column is called in a row.
+    unixpartition
+        .as_partition_mut()
+        .set_sources([super::schema::rendered(TIMESTAMP_TAG)])?;
+    // `truncate[3600]`, not `hour`: the value is seconds floored to a multiple
+    // of the width, which is what Iceberg's truncate transform means, whereas
+    // its `hour` yields hours since the epoch and the grammar's own `hour`
+    // yields the clock hour. The transform that says what the column holds is
+    // the one that goes on it.
+    //
+    // Written through the protocol view rather than through the Iceberg
+    // builder, because these fields exist whether or not the crate was built
+    // with Iceberg and a declaration is text either way.
+    unixpartition
+        .as_iceberg_mut()
+        .insert("transform", partition_transform())?;
+
     Ok(vec![
-        // `FixedSizeBinary`, big-endian, because a digest is not a string and
-        // must not become one. Big-endian is the one layout where byte order
-        // and numeric order agree on every machine: a little-endian digest
-        // sorts differently than it compares, and someone eventually sorts it.
-        crated(
-            "msghash",
-            MSGHASH_TAG,
-            DataType::fixed_size_binary(DIGEST_WIDTH)?,
-        )?,
+        msghash,
         // The version the message was *read* at, which is not always the one
         // its `BeginString` claims: a venue that mislabels its session still
         // produces rows, and the column says which dictionary answered them.
-        crated("version", VERSION_TAG, DataType::Utf8)?,
+        crated(
+            "version",
+            VERSION_TAG,
+            DataType::Utf8,
+            "The FIX version the message was read at, which is not always \
+             the one its BeginString claims.",
+        )?,
         // One symbol for one instrument, whatever the venue called it.
-        crated("symbolticker", SYMBOLTICKER_TAG, DataType::Utf8)?,
+        crated(
+            "symbolticker",
+            SYMBOLTICKER_TAG,
+            DataType::Utf8,
+            "One instrument symbol that is the same across venues, qualified \
+             by its scheme and its exchange where the message states them.",
+        )?,
         // The timestamp a capture is ordered by, in UTC because a capture
         // spans venues and a local time cannot be compared across them.
         crated(
@@ -113,20 +181,39 @@ fn build() -> Result<Vec<Field>> {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
             },
+            "The market timestamp a capture is ordered by: the first clock \
+             the message answers, in decreasing exactness.",
         )?,
-        // The partition that timestamp falls in, as whole seconds since the
-        // epoch. An integer rather than a rendered date: a partition value is
-        // compared and ranged over, and a string would sort lexically.
-        crated("unixpartition", UNIXPARTITION_TAG, DataType::Int64)?,
+        unixpartition,
         // Where an order came from. FIX threads a replace chain through
         // `OrigClOrdID(41)`, which says what this message *replaces* - not
         // what it descends from. A slice of a parent order, or a leg of a
         // basket, has a parent that no standard tag names, and a desk that
         // cannot roll its children up to it cannot answer for the order it
         // actually took.
-        crated("parentclordid", PARENTCLORDID_TAG, DataType::Utf8)?,
-        crated("parentorderid", PARENTORDERID_TAG, DataType::Utf8)?,
+        crated(
+            "parentclordid",
+            PARENTCLORDID_TAG,
+            DataType::Utf8,
+            "The client order identifier this order descends from, which no \
+             standard tag names.",
+        )?,
+        crated(
+            "parentorderid",
+            PARENTORDERID_TAG,
+            DataType::Utf8,
+            "The venue order identifier this order descends from, which no \
+             standard tag names.",
+        )?,
     ])
+}
+
+/// The default partition width, spelled as the transform that produces it.
+///
+/// One rendering in one place, so the declared transform and the value the row
+/// carries can never say different things.
+fn partition_transform() -> String {
+    format!("truncate[{DEFAULT_PARTITION_SECONDS}]")
 }
 
 /// The fields this crate defines, in tag order.

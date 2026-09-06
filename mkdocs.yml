@@ -209,6 +209,8 @@ nav:
     - Registry: fix/registry.md
     - Store: fix/store.md
     - Message: fix/message.md
+    - Capture: fix/capture.md
+    - CLI: fix/cli.md
   - Extensions:
     - extensions/index.md
     - Python: extensions/python.md

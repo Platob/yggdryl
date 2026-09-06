@@ -767,6 +767,15 @@ export declare class Field {
    * no protocol. Every protocol view falls back to it.
    */
   get display(): string | null
+  /**
+   * Shared wording saying what this field holds.
+   *
+   * The one straight description of the column's content, belonging to no
+   * protocol: a FIX field's specification wording and a capture column's
+   * own sentence are the same key, because a catalog reading either wants
+   * the same answer.
+   */
+  get description(): string | null
   /** Arrow/Parquet signed 32-bit field identifier stored in metadata. */
   get parquetFieldId(): number | null
   /**
@@ -841,6 +850,10 @@ export declare class Field {
   setDisplay(value: string): void
   /** Remove and return the shared display name. */
   removeDisplay(): string | null
+  /** Set the shared description. */
+  setDescription(value: string): void
+  /** Remove and return the shared description. */
+  removeDescription(): string | null
   /** Set the canonical Arrow/Parquet signed 32-bit field identifier. */
   setParquetFieldId(id: number): void
   /** Remove and return the Arrow/Parquet signed 32-bit field identifier. */
@@ -1180,6 +1193,43 @@ export declare class FixMsg {
    * The loader wires `Symbol.iterator` over this.
    */
   entries(): Generator<[string, Scalar]>
+  /**
+   * The digest of what this message said, as sixteen bytes.
+   *
+   * Over the arrival record with the envelope tags left out, so two
+   * republications of one message digest alike however their sequence
+   * numbers and sending times differ.
+   */
+  digest(): Buffer
+  /** One instrument symbol that is the same across venues, or `null`. */
+  symbolTicker(): JsScalar | null
+  /** The timestamp a capture is ordered by, or `null`. */
+  marketTimestamp(): JsScalar | null
+  /** The partition that timestamp falls in, in whole seconds. */
+  unixPartition(seconds: number): JsScalar | null
+  /** One lifted facet's value, or `null` where nothing carries it. */
+  lifted(facet: string): JsScalar | null
+  /** Which field a lifted facet came from, or `null`. */
+  liftSource(facet: string): string | null
+  /** Every facet this message lifts, in the table's own order. */
+  lift(): Array<[string, Scalar]>
+  /** One party by its role: identifier, source, role, qualifier. */
+  party(role: string): Array<Scalar | null> | null
+  /** One regulatory timestamp by its type, or `null`. */
+  trdRegTimestamp(kind: string): JsScalar | null
+  /**
+   * What this message says about itself that does not add up.
+   *
+   * Derived by comparing the row against the arrival record, so a caller
+   * who never asks pays nothing.
+   */
+  anomalies(): Array<string>
+  /** What arrived, in arrival order, untranslated. */
+  arrivals(): Array<[number, string | null, string, string]>
+  /** This message as the fixed row a table holds. */
+  toRow(projection: JsFixProjection): JsScalar
+  /** Re-emit this message on the wire, separated by `separator`. */
+  toBytes(separator?: number | undefined | null): Buffer
   /** Whether two messages carry the same schema, value and dictionary. */
   equals(other: FixMsg): boolean
   /** Deterministic hash bits over the schema and the value. */
@@ -1206,6 +1256,86 @@ export declare class FixMsgEntries {
 
 }
 export type JsFixMsgEntries = FixMsgEntries
+
+/**
+ * Where each fixed column sits, resolved once against one dictionary.
+ *
+ * A row projection asks for the same tags in the same order for every message
+ * in a capture, and each ask through the ordinary tiers is a hash, a
+ * verification and a branch walk. Building one turns the per-row cost into an
+ * indexed read, which is the whole reason a fixed schema is worth having.
+ */
+export declare class FixProjection {
+  /**
+   * Resolve every fixed column against one dictionary.
+   *
+   * `carrier` is a capture's own root - where a line was read from, which
+   * line it was, what stamped it - whose columns lead the row where one is
+   * given, because that is what a monitor orders and joins on.
+   */
+  constructor(registry?: FixRegistry | undefined | null, name?: string | undefined | null, carrier?: JsField | undefined | null)
+  /** Wrap a root that is already the fixed schema. */
+  static fromField(field: JsField): FixProjection
+  /** The root this projection fills. */
+  get field(): JsField
+  /** The tag each column carries, in column order; 0 where it carries none. */
+  get tags(): Array<number>
+  /** How many leading columns are the capture's rather than FIX's. */
+  get carried(): number
+  /** Where each carried column sat in the capture it came from. */
+  get carriedPositions(): Array<number>
+  /** How many columns carry a value rather than the arrival record. */
+  get valueColumns(): number
+  /** How many columns there are in all. */
+  get size(): number
+  /** The field behind one column, by position. */
+  column(at: number): JsField | null
+  /** Where one tag's column sits, without a dictionary lookup. */
+  positionOf(tag: number): number | null
+  /** How this projection renders: its root and how wide a row is. */
+  toString(): string
+}
+export type JsFixProjection = FixProjection
+
+/**
+ * One dictionary, reading captured lines into messages.
+ *
+ * The reader is the whole parse surface: a captured line with a verb in front
+ * of it, a bare frame, a numeric frame with a stated separator, a bridge's
+ * name/value text, or pairs a caller already has. Each redirects to the core
+ * method of the same name, so nothing here decides a dialect, a version or a
+ * separator - it only carries what JavaScript said across.
+ *
+ * A reader caches the projection of whichever version it was last asked for,
+ * so a capture read at one version pays the resolution once rather than once
+ * per row. Cloning one gives it a cache of its own, exactly as the core does.
+ */
+export declare class FixReader {
+  /** Open a reader over one dictionary, or over the process default. */
+  constructor(registry?: FixRegistry | undefined | null, options?: FixReaderOptions | undefined | null)
+  /** The dictionary this reader resolves against, sharing it. */
+  get registry(): FixRegistry
+  /** One captured line, whatever it is wrapped in. */
+  text(row: string): FixMsg
+  /** One captured line as bytes, whatever it is wrapped in. */
+  bytes(row: Buffer): FixMsg
+  /** One numeric frame with the separator stated rather than inferred. */
+  fixtext(body: Buffer, separator?: number | undefined | null): FixMsg
+  /** One bridge frame, whose keys are names rather than tags. */
+  ultext(body: Buffer): FixMsg
+  /** Pairs a caller already holds, in the order they arrived. */
+  pairs(pairs: Array<[string, string]>): FixMsg
+  /**
+   * A cheap clone, with a projection cache of its own.
+   *
+   * Two readers differing in version would otherwise clear each other's
+   * cache every row, which is exactly when a reader is usually cloned.
+   */
+  clone(): FixReader
+  /** How this reader renders: the dictionary it reads against. */
+  toString(): string
+}
+export type JsFixReader = FixReader
 
 /**
  * FIX field definitions resolved by identifier, by tag, by name, or by dotted
@@ -1235,6 +1365,32 @@ export declare class FixRegistry {
    * layout, throw with the URL named.
    */
   static fromHandle(location: LocationInput): FixRegistry
+  /**
+   * Write every populated shard under `<location>/<tree>/<branch>`, removing
+   * Read an Ullink `CBlock` into a dictionary, with what it declared.
+   *
+   * Answers the dictionary and the message roots the file spelled out, in
+   * the order it spelled them. `branch` is the dialect its user-range tags
+   * belong to; with none named they stay on the standard branch.
+   */
+  static fromCfb(location: LocationInput, branch?: string | undefined | null): [FixRegistry, Array<Field>]
+  /**
+   * Add the fields this crate defines on its own branch.
+   *
+   * A dictionary that has them can type a `msghash` or `timestamp` column
+   * from the registry like any other. One that does not is unchanged:
+   * nothing in reading a message needs them, because every one of them is a
+   * fact about the capture rather than about the wire.
+   */
+  withCrateFields(): void
+  /**
+   * Register one message type, answering the value it takes.
+   *
+   * A type the code set does not have is added to it rather than rejected,
+   * and the value it takes is the core's: itself where it fits, a stable
+   * synthesized value where it does not. Idempotent.
+   */
+  registerMsgtype(spelling: string): string
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
    * the shards, branch folders and trees no field populates any more.
@@ -4063,6 +4219,34 @@ export interface FileSelector {
   /** Whether a missing base directory produces an empty listing. */
   allowNotFound: boolean
 }
+
+/** The fields this crate defines on its own branch, in tag order. */
+export declare function fixCrateFields(): Array<JsField>
+
+/** How a reader is pinned, where a caller pins it at all. */
+export interface FixReaderOptions {
+  /** The dialect every row is read in, rather than the one each row implies. */
+  branch?: string
+  /** The version arriving rows are written in. */
+  sourceVersion?: string
+  /** The version built messages are expressed in. */
+  targetVersion?: string
+  /** The spellings that mean "nothing was sent". */
+  nullValues?: Array<string>
+}
+
+/**
+ * The fixed root every message answers as, built from one dictionary.
+ *
+ * Header, the fields a consumer reads, the groups worth persisting whole, the
+ * trailer, this crate's own derived facts, and the two lists that close every
+ * row. Columns are named by tag, because a tag is the one name a field has in
+ * every version and every dialect.
+ */
+export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
+
+/** One row's columns, in order, as tags. */
+export declare function fixSchemaTags(): Array<number>
 
 /**
  * The Iceberg option fields, as one JavaScript options object.

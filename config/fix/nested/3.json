@@ -96,7 +96,7 @@
             {
               "name": "msgdirection",
               "dtype": {
-                "type": "utf8"
+                "type": "msgdirection"
               },
               "nullable": true,
               "metadata": {
