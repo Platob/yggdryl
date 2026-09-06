@@ -736,8 +736,9 @@ impl PyCatalog {
 
     /// The warehouse folder the catalog resolves names against.
     #[getter]
-    fn warehouse(&self) -> PyResult<PyIOBase> {
-        Ok(PyIOBase::from_core(
+    fn warehouse(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        crate::iobase::describe(
+            py,
             Holder::folder(
                 self.inner
                     .warehouse()
@@ -748,7 +749,7 @@ impl PyCatalog {
                     .map_err(value_error)?,
             )
             .map_err(value_error)?,
-        ))
+        )
     }
 
     /// Open the table a dotted name addresses - the one-call spelling of
@@ -983,12 +984,13 @@ impl PyTable {
     /// a table on a foreign Arrow filesystem must hand back a folder on that
     /// filesystem, not the local path its URL happens to spell.
     #[getter]
-    fn root(&self) -> PyResult<PyIOBase> {
+    fn root(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let root = self.inner.root();
         if let Some(holder) = crate::iobase::fs_folder_holder(root) {
-            return Ok(PyIOBase::from_core(holder));
+            return crate::iobase::describe(py, holder);
         }
-        Ok(PyIOBase::from_core(
+        crate::iobase::describe(
+            py,
             Holder::folder(
                 root.url()
                     .ok_or_else(|| PyValueError::new_err("this table has no location"))?
@@ -997,7 +999,7 @@ impl PyTable {
                     .map_err(value_error)?,
             )
             .map_err(value_error)?,
-        ))
+        )
     }
 
     /// The table's base location, as a URI.

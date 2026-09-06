@@ -7,7 +7,8 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 | | |
 | --- | --- |
 | Owns | `load`/`dump`, `dump_with_level`, `reader`/`writer`, `writer_with_level`, `Gzip<H>` |
-| Bindings | `loads`/`dumps` only; streams and `Gzip<H>` are Rust only |
+| Bindings | `loads`/`dumps` in Python and JavaScript; the handle is `yggdryl.coding.Gzip` in Python; the streams are Rust only |
+| Python handle | A `.gz` name composes `Gzip` on construction; [`IOBase.into_coded("gzip", level)`](../holder/iobase/bytes.md) names it otherwise |
 | Wire format | RFC 1952, shared with Python `gzip` and `node:zlib` |
 | Engine | `zlib-rs` |
 | Level | 0 to 9, clamped, default 6 |
@@ -163,27 +164,56 @@ assert_eq!(&head, b"symbol");
 
 ## A handle that hides the coding
 
-Rust only. Downstream encodings and codecs never see the coding.
+Downstream encodings and codecs never see the coding.
 
-```rust
-use yggdryl::coding::gzip::{self, Gzip};
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
+=== "Rust"
 
-let mut handle = Gzip::new(Buffer::new());
-handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-handle.flush()?;
+    ```rust
+    use yggdryl::coding::gzip::{self, Gzip};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
-// The wrapper reads and measures the plain bytes.
-assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
-assert_eq!(handle.size(), 20);
+    let mut handle = Gzip::new(Buffer::new());
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+    handle.flush()?;
 
-// The wrapped handle holds the gzip member.
-let inner = handle.into_handle()?;
-assert_eq!(gzip::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
-```
+    // The wrapper reads and measures the plain bytes.
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
+    assert_eq!(handle.size(), 20);
 
-A level set on the handle reaches its encoder:
+    // The wrapped handle holds the gzip member.
+    let inner = handle.into_handle()?;
+    assert_eq!(gzip::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+    from yggdryl.coding import Gzip, gzip
+    from yggdryl.holder import Path
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "trades.csv.gz")
+    assert isinstance(handle, Gzip)
+
+    handle.write_bytes(b"symbol,price\nAAPL,1\n")
+    handle.flush()
+
+    # The wrapper reads and measures the plain bytes.
+    assert handle.read_bytes() == b"symbol,price\nAAPL,1\n"
+    assert handle.size == 20
+
+    # `Path` addresses the stored bytes: the gzip member.
+    assert gzip.loads(Path(root / "trades.csv.gz").read_bytes()) == (
+        b"symbol,price\nAAPL,1\n"
+    )
+    ```
+
+Rust only. A level set on the handle reaches its encoder; Python passes it to `into_coded`.
 
 ```rust
 use yggdryl::coding::gzip::Gzip;
@@ -201,43 +231,88 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
 
 ## A `.gz` name is enough
 
-Rust only. A compound [filename](../uri/path.md) names the coding.
+A compound [filename](../uri/path.md) names the coding.
 
-```rust
-use yggdryl::coding::Coded;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::{MediaType, MimeType};
+=== "Rust"
 
-// `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
-let named = MediaType::from_file_name("trades.csv.gz");
-assert_eq!(named.base(), &MimeType::CSV);
-assert_eq!(yggdryl::Codec::from_media_type(&named), yggdryl::Codec::Gzip);
+    ```rust
+    use yggdryl::coding::Coded;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{MediaType, MimeType};
 
-// A handle that declares that media type picks its own coding.
-let mut handle = Coded::infer(Buffer::new().with_media_type(named));
-assert_eq!(handle.codec(), yggdryl::Codec::Gzip);
+    // `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
+    let named = MediaType::from_file_name("trades.csv.gz");
+    assert_eq!(named.base(), &MimeType::CSV);
+    assert_eq!(yggdryl::Codec::from_media_type(&named), yggdryl::Codec::Gzip);
 
-handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-handle.flush()?;
-assert_eq!(yggdryl::coding::gzip::load(&handle.handle().read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
-```
+    // A handle that declares that media type picks its own coding.
+    let mut handle = Coded::infer(Buffer::new().with_media_type(named));
+    assert_eq!(handle.codec(), yggdryl::Codec::Gzip);
 
-A coded handle reports the *decoded* media type:
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+    handle.flush()?;
+    assert_eq!(yggdryl::coding::gzip::load(&handle.handle().read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
+    ```
 
-```rust
-use yggdryl::coding::gzip::Gzip;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::{MediaType, MimeType};
+=== "Python"
 
-let buffer = Buffer::new().with_media_type(MediaType::from_file_name("trades.csv.gz"));
-assert!(buffer.media_type().is_encoded());
+    ```python
+    import pathlib
+    import tempfile
 
-let handle = Gzip::new(buffer);
-assert_eq!(handle.media_type().base(), &MimeType::CSV);
-assert!(!handle.media_type().is_encoded());
-```
+    from yggdryl import IOBase
+    from yggdryl.coding import Gzip
+    from yggdryl.media import MediaType
+
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    # `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
+    named = MediaType.from_file_name("trades.csv.gz")
+    assert str(named.base) == "text/csv"
+    assert str(named.encodings[0]) == "application/gzip"
+
+    # Construction composes what the name declares.
+    handle = IOBase(root / "trades.csv.gz")
+    assert isinstance(handle, Gzip)
+    assert handle.codec == "gzip"
+    ```
+
+A coded handle reports the *decoded* media type; the handle underneath keeps the coding.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::coding::gzip::Gzip;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{MediaType, MimeType};
+
+    let buffer = Buffer::new().with_media_type(MediaType::from_file_name("trades.csv.gz"));
+    assert!(buffer.media_type().is_encoded());
+
+    let handle = Gzip::new(buffer);
+    assert_eq!(handle.media_type().base(), &MimeType::CSV);
+    assert!(!handle.media_type().is_encoded());
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl.holder import Path
+
+    root = pathlib.Path(tempfile.mkdtemp())
+
+    stored = Path(root / "trades.csv.gz")
+    assert stored.media_type.is_encoded()
+
+    handle = stored.into_coded()
+    assert str(handle.media_type) == "text/csv"
+    assert not handle.media_type.is_encoded()
+    ```
 
 ## Failures
 

@@ -1920,12 +1920,12 @@ class IOBase:
     def pwrite(self, offset: int, data: bytes) -> int: ...
     def append_bytes(self, data: bytes) -> int: ...
     def append(self, data: bytes | bytearray | memoryview | str) -> int: ...
-    def create_dir(self, recursive: bool = False) -> None: ...
+    def create_dir(self, recursive: bool = False) -> FsFolder: ...
     def delete_dir(self) -> None: ...
     def delete_dir_contents(self, missing_dir_ok: bool = False) -> None: ...
     def delete_root_dir_contents(self) -> None: ...
     def delete_file(self) -> None: ...
-    def mkdir(self) -> None: ...
+    def mkdir(self) -> Folder | FsFolder: ...
     def touch(self) -> None: ...
     def unlink(self) -> None: ...
     def clear(self) -> None: ...
@@ -2230,6 +2230,114 @@ class IOBase:
     def __iter__(self) -> Iterator[IOBase]: ...
     def __str__(self) -> str: ...
     def __repr__(self) -> str: ...
+
+# The role a handle turned out to be. `IOBase(...)` and every handle it leads
+# to answer one of these, so `type(handle)` names the implementation doing the
+# work; the classes add no state, only the name and what only that role can do.
+
+class Buffer(IOBase):
+    """In-memory bytes, with no location behind them."""
+
+class File(IOBase):
+    """One memory-mapped local file, mapped by the first operation to need it."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+
+class Folder(IOBase):
+    """One local directory, listed and walked without being opened."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+    @classmethod
+    def temporary(cls) -> Folder: ...
+    @classmethod
+    def home(cls) -> Folder: ...
+    @classmethod
+    def config(cls) -> Folder: ...
+
+class Path(IOBase):
+    """One local location that resolves to `File` or `Folder` when asked."""
+
+    def __init__(self, location: Url | Uri | str | PathLike[str]) -> None: ...
+
+class FsFile(IOBase):
+    """One file on a foreign filesystem, read and written through its streams."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class FsFolder(IOBase):
+    """One directory on a foreign filesystem."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class FsPath(IOBase):
+    """One location on a foreign filesystem that resolves when asked."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
+class Buffered(IOBase):
+    """Any handle read through the core's bounded page cache."""
+
+    @property
+    def cached_bytes(self) -> int: ...
+    @property
+    def cached_pages(self) -> int: ...
+    def has_cached_page(self, index: int) -> bool: ...
+    def clear_cache(self) -> None: ...
+    def into_handle(self) -> IOBase: ...
+
+class Coded(IOBase):
+    """Any handle presenting the decoded bytes of a content coding."""
+
+    def into_handle(self) -> IOBase: ...
+
+class Identity(Coded):
+    """Bytes that pass through unchanged."""
+
+class Gzip(Coded):
+    """RFC 1952 gzip framing over DEFLATE."""
+
+class Zlib(Coded):
+    """RFC 1950 zlib framing over DEFLATE, and where raw DEFLATE lands."""
+
+class Zstd(Coded):
+    """RFC 8878 Zstandard."""
+
+class Media(IOBase):
+    """Any handle retaining the record implementation its name declares."""
+
+    def into_handle(self) -> IOBase: ...
+
+class Ipc(Media):
+    """An Arrow IPC stream or file."""
+
+class Parquet(Media):
+    """An Apache Parquet file."""
+
+class Avro(Media):
+    """An Apache Avro object container."""
+
+class Text(IOBase):
+    """Plain-text rows under one retained flat configuration."""
+
+    def into_handle(self) -> IOBase: ...
 
 # A root Field, however Python spells one: the native wrapper, a field
 # expression, a PyArrow Schema, or a PyArrow Field.

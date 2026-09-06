@@ -10,9 +10,9 @@ This page owns positional bytes over any handle: `pread`/`pwrite`, streams, lazi
 | Invariants | `pread` short only at end of value; `pwrite` grows, zero-fills gaps; `size <= capacity`; `reserve` moves `capacity` only |
 | Lazy | Constructing touches nothing; reads of an absent resource yield nothing; writes, `truncate`, `reserve` create the resource and any missing parent |
 | Cached | Open caches, closed fetches; no ordinary read fills the cache |
-| Media type | Computed on ask, re-derived when bytes change; a declared type wins; `codec` is its last coding |
-| Errors | Bindings refuse `compress_into` to a target with no coding; `remove` refuses a container with children unless `recursive` |
-| Bindings | `IOBase`; read is `read_range_bytes`/`readRangeBytes`, write is `pwrite`; `IOCursor`, `ByteStream`, wrappers are Rust only |
+| Media type | Computed on ask, re-derived when bytes change; a declared type wins; it names the decoded type, and `codec` the coding the stored bytes carry |
+| Errors | `compress_into`/`decompress_into` refuse a handle presenting a decoded view, and a target declaring no coding; a spent handle refuses every call; `remove` refuses a container with children unless `recursive` |
+| Bindings | Read is `read_range_bytes`/`readRangeBytes`, write is `pwrite`; Python answers the `IOBase` subclass the name composes to, JavaScript one `IOBase`; `IOCursor` and `ByteStream` are Rust only |
 
 ## Use
 
@@ -358,7 +358,8 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()))
 
-    notes = root / "notes.txt"
+    # Nothing this build reads as rows, so the bytes are the whole value.
+    notes = root / "notes.json"
     assert notes.is_atomic()
     assert not notes.is_tabular()
 
@@ -367,7 +368,13 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
     assert trades.is_tabular()
     assert not trades.is_atomic()
 
+    # Plain text is both: one byte value, and the rows that value splits into.
+    log = root / "app.log"
+    assert log.is_atomic()
+    assert log.is_tabular()
+
     assert not root.is_atomic()
+    assert not root.is_tabular()
     ```
 
 === "JavaScript"
@@ -395,7 +402,7 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
     fs.rmSync(root.intoPath(), { recursive: true, force: true })
     ```
 
-*Atomic* is the byte surface, *tabular* the record surface on [Records](records.md); wherever bytes are held the two are complements. A container holding neither answers `false` to both; only a plain `Directory` is probed, stopping at the first settling leaf.
+*Atomic* is the byte surface, *tabular* the record surface on [Records](records.md). A record encoding is not one byte value and a byte value is not rows, so the two exclude each other everywhere except plain text, which is both. A container holding neither answers `false` to both; only a plain `Directory` is probed, stopping at the first settling leaf.
 
 ## Cursors
 
@@ -515,7 +522,7 @@ assert_eq!(named.media_type().base(), &MimeType::JSON);
 assert_eq!(named.codec(), Codec::Gzip);
 ```
 
-`codec` is the last coding in the media type, so compression is never a separate argument; `set_media_type` declares what content cannot identify.
+`codec` reports the coding the stored bytes carry, so compression is never a separate argument: the last coding in the media type, or the coding a composed handle already applies. `set_media_type` declares what content cannot identify.
 
 ## Adding and removing a coding
 
@@ -553,6 +560,7 @@ assert_eq!(named.codec(), Codec::Gzip);
     import tempfile
 
     from yggdryl import IOBase
+    from yggdryl.holder import Path
 
     root = pathlib.Path(tempfile.mkdtemp())
     plain = IOBase(root / "rows.json")
@@ -561,22 +569,36 @@ assert_eq!(named.codec(), Codec::Gzip);
     # Nothing wraps these bytes, so there is nothing to undo.
     assert plain.codec is None
 
-    encoded = IOBase(root / "rows.json.gz")
-    assert encoded.codec == "gzip"
+    # `Path` addresses the stored bytes. `IOBase` would compose the gzip the
+    # name declares and present the decoded value, which is not what moves here.
+    stored = Path(root / "rows.json.gz")
+    assert stored.codec == "gzip"
 
     # The target's name already said gzip, so nothing here repeats it.
-    assert plain.compress_into(encoded) == encoded.size
-    assert encoded.read_bytes()[:2] == b"\x1f\x8b"
+    assert plain.compress_into(stored) == stored.size
+    assert stored.read_bytes()[:2] == b"\x1f\x8b"
 
-    decoded = IOBase(root / "roundtrip.json")
-    assert encoded.decompress_into(decoded) == 17
+    decoded = Path(root / "roundtrip.json")
+    assert stored.decompress_into(decoded) == 17
     assert decoded.read_bytes() == plain.read_bytes()
     assert decoded.codec is None
 
-    # A target declaring no coding is refused rather than copied unchanged.
-    reason = None
+    # Writing through a coded handle is the other way to store the coded form.
+    coded = IOBase(root / "copy.json.gz")
+    assert plain.copy_into(coded) == 17
+    assert coded.read_bytes() == plain.read_bytes()
+    assert Path(root / "copy.json.gz").read_bytes()[:2] == b"\x1f\x8b"
+
+    # Which is why that handle is refused here: it codes what passes through it.
     try:
-        plain.compress_into(IOBase(root / "copy.json"))
+        plain.compress_into(coded)
+    except ValueError as error:
+        reason = str(error)
+    assert "expected a target presenting its stored bytes" in reason
+
+    # A target declaring no coding is refused rather than copied unchanged.
+    try:
+        plain.compress_into(Path(root / "copy.json"))
     except ValueError as error:
         reason = str(error)
     assert "expected a target declaring a content coding" in reason
@@ -626,12 +648,13 @@ assert_eq!(named.codec(), Codec::Gzip);
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-Both calls move every byte into another handle and add or remove a coding, recorded in the target's media type.
+Both calls move every byte into another handle and add or remove a coding, recorded in the target's media type. Both address stored bytes on either side, so a handle presenting a decoded view is refused by name rather than double-coded.
 
 | Call | Coding used |
 | --- | --- |
 | `compress_into(target)` | the target's declared coding; an explicit codec overrides |
 | `decompress_into(target)` | the source's declared coding |
+| `copy_into(target)` | the coding the target handle already applies, if any |
 | Rust `compress_into(target, codec)` | always the argument |
 | `level` | the shared 0-9 scale |
 
@@ -639,12 +662,13 @@ Readers already decode through a name's codings; see [gzip](../../coding/gzip.md
 
 ## Reading a coding in place
 
-`into_coded` retains the [coding](../../coding/index.md) the name declares and presents the decoded value, so no second handle is needed to read a compressed file as what it holds. It reads nothing until a read asks for bytes, and every read streams in bounded windows.
+A name declaring a [coding](../../coding/index.md) is composed at construction, so `IOBase("app.log.gz")` already presents the decoded value. `into_coded` is what puts a coding on a handle that addresses stored bytes. Either way the coding reads nothing until a read asks for bytes, and every read streams in bounded windows.
 
 | Call | Presents |
 | --- | --- |
-| `IOBase(path)` | the stored bytes; `codec` is the coding on them |
-| `into_coded()` | the decoded value, with that coding removed from `media_type` |
+| `IOBase(path)` | the decoded value; the name's coding sits composed underneath |
+| `Path(path)` | the stored bytes; `media_type` keeps the coding it carries |
+| `into_coded()` | the decoded value, answering a `Gzip`, `Zlib`, `Zstd`, or `Identity` and spending the handle it took |
 | `into_coded(codec, level)` | the same, for bytes whose name does not admit what they are |
 
 === "Python"
@@ -655,13 +679,34 @@ Readers already decode through a name's codings; see [gzip](../../coding/gzip.md
     import tempfile
 
     from yggdryl import IOBase
+    from yggdryl.coding import Gzip
+    from yggdryl.holder import Path
 
     root = pathlib.Path(tempfile.mkdtemp())
     path = root / "app.log.gz"
     path.write_bytes(gzip.compress(b"symbol,price\n"))
 
-    assert IOBase(path).read_bytes()[:2] == b"\x1f\x8b"
-    assert IOBase(path).into_coded().read_text() == "symbol,price\n"
+    # The name declared gzip, so the handle already reads the log it holds.
+    handle = IOBase(path)
+    assert handle.read_text() == "symbol,price\n"
+    assert str(handle.media_type) == "text/plain"
+    assert handle.codec == "gzip"
+
+    # `Path` addresses the stored bytes instead, and `into_coded` puts the
+    # coding back on.
+    stored = Path(path)
+    assert stored.read_bytes()[:2] == b"\x1f\x8b"
+    coded = stored.into_coded()
+    assert isinstance(coded, Gzip)
+    assert coded.read_text() == "symbol,price\n"
+
+    # The wrapper owns what it wraps, so the handle it took is spent.
+    reason = None
+    try:
+        stored.read_bytes()
+    except ValueError as error:
+        reason = str(error)
+    assert "consumed by a conversion" in reason
 
     # A name declaring no coding passes its bytes through, so this is safe to
     # call on any leaf; a repeat never decodes twice.
@@ -916,11 +961,15 @@ A wrapping handle removes what it wraps, cached schema or footer included.
 - `IOBase(handle)` in Python -> rebuilt; an in-memory source hands over its content and media type.
 - `is_tabular` on a `.parquet` leaf without the `parquet` feature -> `true`; `record_options` on [Records](records.md) names the undecodable encoding.
 - `is_tabular` on a folder of data files -> `true`: it reads as the table beneath it, and a partitioned tree is one table in one encoding.
+- `is_atomic` and `is_tabular` on a plain-text handle -> both `true`; every other representation answers one or the other.
 - `IOKind::Table`, `Namespace`, `Catalog` -> settle the shape outright; a leaf or an undecided location settles from the media type, with no call into the backing store.
 - `codec` with nothing to undo -> Python `None`, JavaScript `null`, never `"identity"`.
+- A composed handle -> `media_type` names the decoded type and `codec` the coding underneath it, so `IOBase("data.json.gz")` reports `application/json` and `"gzip"` together.
 - Bindings -> `codec` is a read-only property, `media_type` a settable one.
 - `compress_into` to a target declaring no coding (bindings) -> `expected a target declaring a content coding`, naming the target's media type; nothing is written.
 - `compress_into` to an in-memory target -> name the codec; the target has no name.
+- `compress_into`/`decompress_into` on a handle presenting a decoded view -> refused by name; address the stored bytes with [`Path`](../index.md), `File`, `FsPath`, or `FsFile`, or use `copy_into`, which writes through the coding.
+- Any call on a handle a conversion spent -> `this handle was consumed by a conversion`; use the handle the conversion returned.
 - `open` on an already-open handle -> no-op.
 - `open` on an absent resource -> succeeds without creating it; creation waits for the first write.
 - `close` -> publishes the pending write and releases the cache; the handle stays usable and re-materializes.

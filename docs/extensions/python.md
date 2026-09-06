@@ -11,7 +11,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `Scalar` | this page and [Scalar](../types/scalar.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
-| `IOBase` | [Holder](../holder/index.md) |
+| `IOBase`, and the role classes in `yggdryl.holder`, `yggdryl.coding`, `yggdryl.media` | this page and [Holder](../holder/index.md) |
 | `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc.md), [Parquet](../media/parquet.md) |
 | `iceberg` | [Iceberg](../media/iceberg/index.md) |
 | `MimeType`, `MediaType`, `Timezone` | [Scalar](../types/scalar.md) |
@@ -566,8 +566,7 @@ handle.pwrite(0, b"MSFT")
 assert handle.read_range_bytes(0, 4) == b"MSFT"
 
 # Children resolve the way they do for a Path.
-lake = IOBase(root / "lake" / "year=2024")
-lake.mkdir()
+lake = IOBase(root / "lake" / "year=2024").mkdir()
 (lake / "part-0.arrows").touch()
 assert [entry.name for entry in lake.iterdir()] == ["part-0.arrows"]
 assert len(list(IOBase(root / "lake").rglob("*.arrows"))) == 1
@@ -617,6 +616,92 @@ assert str(IOBase(pafs.LocalFileSystem(), (root / "trades.arrows").as_posix()).u
 ```
 
 `handle.partitions` and `url.partitions` return the `column=value` pairs a Hive path spells out, and `handle.children_where({"year": "2024"})` yields the leaves carrying them.
+
+### Handle roles
+
+A location's name declares a content coding and a record implementation, and construction composes both. It reads the name and touches no store, so `IOBase(...)` answers the class that composition names.
+
+| Construction | Handle |
+| --- | --- |
+| `IOBase("trades.txt.gz")` | `Text` over `Gzip` over `Path` |
+| `IOBase("archive.bin.gz")` | `Gzip` |
+| `IOBase("trades.parquet")`, `"trades.arrows"`, `"trades.avro"` | `Parquet`, `Ipc`, `Avro` |
+| `IOBase("trades.log")` | `Text` |
+| `IOBase("trades.json")`, `IOBase("trades")` | `Path`, because nothing this build reads is declared |
+| `IOBase("trades.parquet.gz")` | `Path`, left uncomposed so the Parquet writer refuses it |
+| `IOBase.from_bytes(b"...")` | `Buffer` |
+| `IOBase.from_fs(fs, "k.txt.gz")` | `Text` over `Gzip` over `FsPath` |
+
+The classes live in [`yggdryl.holder`](../holder/index.md), [`yggdryl.coding`](../coding/index.md), and [`yggdryl.media`](../media/index.md), and every one of them is an `IOBase` subclass that adds no state. `type(handle)` names the outermost layer, `repr(handle)` the whole composition, and `into_handle()` descends one layer.
+
+```python
+import pathlib
+import tempfile
+
+import pytest
+
+from yggdryl import IOBase
+from yggdryl.coding import Coded, Gzip
+from yggdryl.holder import Path
+from yggdryl.media import Media, Text
+
+root = pathlib.Path(tempfile.mkdtemp())
+
+handle = IOBase(root / "trades.txt.gz")
+assert type(handle) is Text
+assert repr(handle) == f'Text(Gzip(Path("{handle.url}")))'
+# Text is a holder variant of its own, so it sits directly under IOBase.
+assert not isinstance(handle, Media)
+
+# The handle reads and writes the decoded value; the coding is a layer, and
+# `codec` walks to it rather than reading this handle's own media type.
+handle.write_bytes(b"AAPL\n")
+assert handle.read_bytes() == b"AAPL\n"
+assert handle.codec == "gzip"
+assert str(handle.media_type) == "text/plain"
+
+# Descending spends the handle it descended from.
+coding = handle.into_handle()
+assert type(coding) is Gzip and isinstance(coding, Coded)
+assert type(coding.into_handle()) is Path
+with pytest.raises(ValueError, match="consumed by a conversion"):
+    handle.read_bytes()
+
+# `Path`, `File`, `FsPath`, and `FsFile` commit to a byte role and skip the
+# composition, which is how a coded name's stored bytes are addressed.
+assert Path(root / "trades.txt.gz").read_bytes()[:2] == bytes.fromhex("1f8b")
+```
+
+`buffered`, `into_text`, and `into_coded` compose the same layers explicitly. Each answers the wrapper it built and spends the handle it took, because a wrapper owns the handle it wraps and a Python object cannot change class.
+
+```python
+import pathlib
+import tempfile
+
+import pytest
+
+from yggdryl import IOBase
+from yggdryl.coding import Zstd
+from yggdryl.holder import Buffered, Folder
+
+root = pathlib.Path(tempfile.mkdtemp())
+
+cached = IOBase(root / "quotes.bin").buffered(page_size=4096)
+assert type(cached) is Buffered
+coded = cached.into_handle().into_coded("zstd")
+assert type(coded) is Zstd
+location = coded.url
+assert repr(coded.into_text()) == f'Text(Zstd(Path("{location}")))'
+with pytest.raises(ValueError, match="consumed by a conversion"):
+    cached.read_bytes()
+
+# `mkdir` and `create_dir` answer the container they created, for the same
+# reason: a byte write here would have made this location a leaf.
+assert type(IOBase(root / "lake").mkdir()) is Folder
+assert type(Folder.temporary()) is Folder
+```
+
+`Folder.temporary()`, `Folder.home()`, and `Folder.config()` name the well-known roots and create nothing.
 
 ### Bytes and ranges
 
@@ -888,7 +973,7 @@ Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills 
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`"standard"`) and `STANDARD_TAG_LIMIT` (`5000`). The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -910,7 +995,7 @@ import pickle
 import pytest
 
 from yggdryl import DataType, Field, IOBase, Url
-from yggdryl.fix import STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixMsg, FixRegistry
+from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixMsg, FixRegistry
 
 seed = pathlib.Path("config/fix").resolve()
 
@@ -929,14 +1014,15 @@ with pytest.raises(OverflowError):
 with pytest.raises(TypeError, match="int tag or a str name"):
     registry[3.5]
 
-# A branch and an identifier cross as text: the branch leads a name or path
-# lookup, and a malformed one is a ValueError rather than a miss.
-assert STANDARD_BRANCH == "standard" and STANDARD_TAG_LIMIT == 5000
-assert registry.field_by_name(STANDARD_BRANCH, "ticker").name == "Symbol"
-assert registry.field_by_path(STANDARD_BRANCH, "NoPartyIDs.PartyID").fix.tag == 448
-assert registry.field_by_id("standard:55").fix.id == "standard:55"
+# A branch and an identifier cross as text: a lookup takes the branch after
+# the name it qualifies, an identifier is the tag then the branch, and a
+# malformed one is a ValueError rather than a miss.
+assert STANDARD_BRANCH == "" and (USER_TAG_MIN, USER_TAG_MAX) == (5000, 40000)
+assert registry.field_by_name("ticker").name == "Symbol"
+assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
+assert registry.field_by_id("55:").fix.id == "55:"
 with pytest.raises(ValueError, match="fix branch"):
-    registry.field_by_name("2cme", "Symbol")
+    registry.field_by_name("Symbol", "2cme")
 with pytest.raises(ValueError, match="fix identifier"):
     registry.field_by_id("55")
 with pytest.raises(TypeError):
@@ -944,19 +1030,19 @@ with pytest.raises(TypeError):
 
 # Absence is a KeyError carrying the native message; a refusal is a ValueError.
 with pytest.raises(KeyError) as absent:
-    registry.field_by_name(STANDARD_BRANCH, "Nope")
+    registry.field_by_name("Nope")
 assert absent.value.args[0] == 'expected a fix field at "name \\"Nope\\"", got nothing'
-assert registry.get_field_by_name(STANDARD_BRANCH, "Nope") is None
+assert registry.get_field_by_name("Nope") is None
 with pytest.raises(ValueError, match="fix:tag"):
     registry.insert(Field("Untagged", "utf8"))
 
 # A tag the FIX specification assigns cannot move to another dictionary.
 vendor = Field("TradeID", "utf8")
-vendor.fix.id = "CME:5001"
-assert vendor.fix.id == "cme:5001" and vendor.fix.branch == "cme"
+vendor.fix.id = "5001:CME"
+assert vendor.fix.id == "5001:cme" and vendor.fix.branch == "cme"
 with pytest.raises(ValueError, match="fix:branch"):
     vendor.fix.tag = 35
-assert vendor.fix.id == "cme:5001"
+assert vendor.fix.id == "5001:cme"
 
 # A message shares the dictionary it resolved against, so mutating it refuses.
 root = Field("row", DataType.from_fields([registry.field_by_tag(55)]), nullable=False)
@@ -970,8 +1056,8 @@ assert pickle.loads(pickle.dumps(message)) == message
 assert pickle.loads(pickle.dumps(message)).registry == registry
 assert hash(message) == hash(FixMsg(root, message.value, registry))
 assert message.branch == STANDARD_BRANCH
-assert message.by_id("standard:55").as_py() == "AAPL"
-assert message.get_by_id("cme:5001") is None
+assert message.by_id("55:").as_py() == "AAPL"
+assert message.get_by_id("5001:cme") is None
 ```
 
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.
@@ -1018,9 +1104,12 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `update_schema()` on an exception -> no commit at all.
 - an Iceberg commit -> anything that exports an Arrow C stream; a scan, a time travel, and an inspection table answer a `pyarrow.RecordBatchReader`.
 - `cls=` on a decode -> the cached native Struct field, never a module named by untrusted input.
-- streaming `reader` / `writer` and the `Gzip<H>` and `Hashed<H>` handles -> Rust-only, built on Rust's `Read` / `Write`.
+- streaming `reader` / `writer` and the `Hashed<H>` handle -> Rust-only, built on Rust's `Read` / `Write`.
 - `from yggdryl.coding import gzip` -> the standard library's module names with `loads` / `dumps`; `zlib` adds `loads_raw` / `dumps_raw`.
 - a handle applies the coding its own name declares, and `IOBase.codec` asks which one.
+- `compress_into` / `decompress_into` on a handle presenting a decoded view -> refused, because a coded handle already codes what passes through it; address the stored bytes with `Path`, `File`, `FsPath`, or `FsFile`, or use `copy_into`.
+- `open()` -> caches metadata for the composition already in place; it promotes nothing under the class.
+- a handle `buffered`, `into_text`, `into_coded`, or `into_handle` already spent -> `ValueError`, because the wrapper it answered owns the value now.
 - `apply_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
 - a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
