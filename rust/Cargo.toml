@@ -30,6 +30,11 @@ parquet = ["arrow", "dep:bytes", "dep:parquet", "dep:snap"]
 # its Rust 1.94/Arrow 58 stack stays private. Public records use Yggdryl's
 # Arrow 59/IOBase path, and schema-only builds do not compile this feature.
 iceberg = ["arrow", "parquet", "dep:iceberg-official", "dep:uuid"]
+# Amazon S3 objects behind `IOBase`. Not default: the signed HTTPS client and
+# its TLS stack are a cost a local or schema-only consumer never pays. The
+# protocol is spoken directly - SigV4 over a synchronous HTTP/1.1 client - so
+# no SDK, runtime, or async executor rides in.
+s3 = ["dep:hmac", "dep:md-5", "dep:sha2", "dep:ureq"]
 
 [dependencies]
 arrow-array = { workspace = true, optional = true }
@@ -46,6 +51,12 @@ bytes = { version = "1", optional = true }
 # zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 half.workspace = true
+# HMAC-SHA256 and SHA-256 for AWS Signature Version 4: the two primitives the
+# S3 backend signs with, from the pure-Rust RustCrypto family.
+hmac = { version = "0.13", optional = true }
+# MD5 for the one S3 request that still demands `Content-MD5`: the bulk
+# delete. Same RustCrypto generation as `sha2`, so no second digest stack.
+md-5 = { version = "0.11", optional = true }
 # Metadata-only boundary: official Arrow 58 types never enter public APIs.
 iceberg-official = { package = "iceberg", version = "=0.10.1", default-features = false, optional = true }
 memmap2 = "0.9"
@@ -67,6 +78,7 @@ parquet = { version = "59.2.0", default-features = false, features = [
     "zstd",
 ], optional = true }
 serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
+sha2 = { version = "0.11", optional = true }
 smol_str = { version = "=0.3.2", features = ["serde"] }
 # Raw snappy blocks for Avro containers; optional because the parquet crate is
 # what already pulls it, so it rides that feature rather than adding a crate.
@@ -85,11 +97,21 @@ twox-hash = { version = "=2.1.3", default-features = false, features = [
     "xxhash3_128",
     "std",
 ] }
+# The synchronous HTTP/1.1 client under the S3 backend: connection pooling,
+# rustls, no async runtime. Compression is off because S3 bodies are the
+# bytes a caller asked for, and decoding them here would corrupt a range.
+ureq = { version = "3.4", default-features = false, features = ["rustls"], optional = true }
 uuid = { version = "1.18", features = ["v7"], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+# The trusted Arrow-ecosystem S3 client the S3 benchmarks are measured
+# against, on the same in-process server and the same payloads. Pinned to
+# the release that shares the reqwest and tokio versions the workspace
+# already locks, so the baseline adds no second HTTP stack.
+object_store = { version = "=0.13.2", features = ["aws"] }
 serde_json = "1.0"
+tokio = { version = "1", features = ["rt"] }
 
 
 [[bench]]
@@ -145,7 +167,9 @@ harness = false
 # Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against
 # the handle each backend wraps, record round trips, and listing. The vtable
 # adds no dependency, so this target compiles in a default build; the Parquet
-# leg of the record group is compiled in only when that feature is.
+# leg of the record group is compiled in only when that feature is, and the
+# S3 groups - measured against `object_store` on one in-process server -
+# only with the `s3` feature.
 [[bench]]
 name = "holder"
 path = "benchmarks/holder.rs"

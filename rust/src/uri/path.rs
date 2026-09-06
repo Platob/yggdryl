@@ -59,6 +59,15 @@ impl UriPath {
         self.0.is_empty()
     }
 
+    /// Return whether the path ends in `/`, the spelling of a container.
+    ///
+    /// Canonicalization keeps a trailing slash, so `lake/` and `lake` stay two
+    /// different paths: the first names a container outright and has no
+    /// [`Self::file_name`], the second names whatever is there.
+    pub fn has_trailing_slash(&self) -> bool {
+        self.as_str().ends_with('/')
+    }
+
     /// Iterate over non-empty path segments without allocating.
     pub fn segments(&self) -> PathSegments<'_> {
         PathSegments {

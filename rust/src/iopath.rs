@@ -24,12 +24,14 @@ pub trait IOPath: IOBase {
 
     /// Resolve what the location is, without touching its contents.
     ///
-    /// A glob answers first and answers container: a pattern names a set of
-    /// children, so everything that asks "can this hold others?" - a listing, a
-    /// walk, a generic handle picking an implementation - gets the right answer
-    /// before anything touches the file system.
+    /// A glob or a trailing slash answers first and answers container: a
+    /// pattern names a set of children and `lake/` spells a container outright,
+    /// so everything that asks "can this hold others?" - a listing, a walk, a
+    /// generic handle picking an implementation - gets the right answer before
+    /// anything touches the backing store. Only a plain name is looked up.
     fn path_kind(&self) -> IOKind {
-        if self.path_url().is_glob() || self.is_folder() {
+        let url = self.path_url();
+        if url.is_glob() || url.has_trailing_slash() || self.is_folder() {
             IOKind::Directory
         } else if self.is_file() {
             IOKind::File

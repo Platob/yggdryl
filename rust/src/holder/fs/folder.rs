@@ -248,10 +248,14 @@ impl IOBase for Folder {
         // where encoding belongs.
         let url = self.url.joinpath(name)?;
         let child = Self::new(self.filesystem.clone(), url);
-        if matches!(
-            self.filesystem.file_info(&child.location),
-            Ok(info) if info.kind == IOKind::Directory
-        ) {
+        // A trailing slash settles the role without a call: `lake/` is a
+        // container by its spelling, whether or not the filesystem has it yet.
+        if child.url.has_trailing_slash()
+            || matches!(
+                self.filesystem.file_info(&child.location),
+                Ok(info) if info.kind == IOKind::Directory
+            )
+        {
             return Ok(Holder::FsFolder(child));
         }
         Ok(Holder::FsFile(File::new(

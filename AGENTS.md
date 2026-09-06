@@ -420,8 +420,10 @@ Iceberg contract:
   offsets. Bindings never split identifiers.
 - Parse credentials by splitting authority user info at the first `:` only, so
   passwords may contain `:`. S3 authority inference treats the first path part
-  ending in `.com` or `.io` as a hostname; otherwise it is the bucket. Infer
-  region lazily from recognized AWS hosts.
+  ending in `.com` or `.io`, carrying a port, spelled as an IP literal, or named
+  `localhost` as a hostname; otherwise it is the bucket. `key` is the path below
+  the bucket as spelled, escapes and trailing slash retained. Infer region
+  lazily from recognized AWS hosts.
 - `DataType::scalar` is the one value contract: it checks a value against the
   datatype and rewrites it into the exact representation that datatype
   declares - an integer narrowed, a decimal restated at its scale, a temporal

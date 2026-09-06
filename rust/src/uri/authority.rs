@@ -48,6 +48,18 @@ impl Authority {
             .map(|(_, password)| password)
     }
 
+    /// Return whether this authority can only be an endpoint, never a bucket.
+    ///
+    /// An explicit port or an IPv6 literal is something no bucket name carries,
+    /// so an `s3` URI spelling one names a host before any suffix rule runs.
+    pub(super) fn names_host(&self) -> bool {
+        let host_port = self
+            .as_str()
+            .rsplit_once('@')
+            .map_or(self.as_str(), |(_, host_port)| host_port);
+        host_port.starts_with('[') || host_port.contains(':') || is_s3_hostname(self.host())
+    }
+
     /// Return the host without user information, brackets, or a port.
     pub fn host(&self) -> &str {
         let host_port = self
@@ -252,36 +264,51 @@ impl<'de> Deserialize<'de> for Authority {
 }
 
 impl Uri {
+    /// Interpret an `s3` URI as endpoint, bucket, and object key.
+    ///
+    /// The key is the path left after the segments the endpoint and bucket
+    /// consumed, spelled exactly as the path spells it - percent escapes and a
+    /// trailing slash retained - so the bucket root reads as `""`.
     pub(super) fn s3_location(&self) -> Option<S3Location<'_>> {
         if self.scheme != Scheme::S3 {
             return None;
         }
 
-        let mut path = self.path_segments();
-        let first = if self.has_authority && !self.authority.is_empty() {
-            self.authority.host()
-        } else {
-            path.next()?
+        let (first, mut cursor, explicit_host) =
+            if self.has_authority && !self.authority.is_empty() {
+                (self.authority.host(), 0, self.authority.names_host())
+            } else {
+                let (next, segment) = self.path.next_segment(0)?;
+                (segment, next, false)
+            };
+        let next_segment = |cursor: &mut usize| {
+            let (next, segment) = self.path.next_segment(*cursor)?;
+            *cursor = next;
+            Some(segment)
         };
 
-        if let Some(aws) = parse_aws_s3_hostname(first) {
-            return Some(S3Location {
-                hostname: Some(first),
-                bucket: aws.bucket.or_else(|| path.next()),
-                region: aws.region,
-            });
-        }
-        if is_s3_hostname(first) {
-            return Some(S3Location {
-                hostname: Some(first),
-                bucket: path.next(),
-                region: None,
-            });
-        }
+        let (hostname, bucket, region) = if let Some(aws) = parse_aws_s3_hostname(first) {
+            let bucket = match aws.bucket {
+                Some(bucket) => Some(bucket),
+                None => next_segment(&mut cursor),
+            };
+            (Some(first), bucket, aws.region)
+        } else if explicit_host || is_s3_hostname(first) {
+            (Some(first), next_segment(&mut cursor), None)
+        } else {
+            (None, Some(first), None)
+        };
+        let key = self
+            .path
+            .as_str()
+            .get(cursor..)
+            .unwrap_or("")
+            .trim_start_matches('/');
         Some(S3Location {
-            hostname: None,
-            bucket: Some(first),
-            region: None,
+            hostname,
+            bucket,
+            region,
+            key,
         })
     }
 }
@@ -291,6 +318,7 @@ pub(super) struct S3Location<'a> {
     pub(super) hostname: Option<&'a str>,
     pub(super) bucket: Option<&'a str>,
     pub(super) region: Option<&'a str>,
+    pub(super) key: &'a str,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -299,7 +327,15 @@ struct AwsS3Hostname<'a> {
     region: Option<&'a str>,
 }
 
+/// Return whether a first component spells an endpoint rather than a bucket.
+///
+/// A name ending in `.com` or `.io` is a hostname, and so is `localhost` or
+/// an IP literal: no bucket is named either, and a local S3-compatible
+/// store is what those spellings mean.
 fn is_s3_hostname(value: &str) -> bool {
+    if value.eq_ignore_ascii_case("localhost") || value.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
     [".com", ".io"].iter().any(|suffix| {
         value
             .get(value.len().saturating_sub(suffix.len())..)

@@ -254,8 +254,9 @@ fn is_windows_drive(location: &str) -> bool {
 /// handle carries has to escape the rest. The retained set is exactly URI
 /// unreserved plus sub-delims - which keeps `year=2024` spelled the way a
 /// Hive layout writes it - and everything else, the separator included,
-/// becomes a percent escape.
-fn encode_component(component: &str) -> String {
+/// becomes a percent escape. Every backend that names objects with raw text
+/// spells its URLs through this one function.
+pub(crate) fn encode_component(component: &str) -> String {
     let mut encoded = String::with_capacity(component.len());
     for byte in component.bytes() {
         if byte.is_ascii_alphanumeric()
@@ -291,7 +292,7 @@ fn encode_component(component: &str) -> String {
 /// The separators stay separators - only what sits between them is escaped -
 /// so a caller-supplied `sub/../beside.bin` still resolves its dot segments
 /// the way [`crate::UriPath::joinpath`] resolves them.
-pub(super) fn encoded_relative(relative: &str) -> String {
+pub(crate) fn encoded_relative(relative: &str) -> String {
     relative
         .split('/')
         .map(encode_component)
@@ -304,7 +305,7 @@ pub(super) fn encoded_relative(relative: &str) -> String {
 /// Invalid UTF-8 or a malformed escape leaves the component as it stands,
 /// because a location a filesystem gave us round-trips exactly and anything
 /// else is better handed over verbatim than silently mangled.
-fn decode_component(component: &str) -> String {
+pub(crate) fn decode_component(component: &str) -> String {
     if !component.contains('%') {
         return component.to_owned();
     }

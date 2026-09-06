@@ -164,8 +164,10 @@ assert editable != url
 User information splits at its first colon, so later colons remain in the
 password. S3 accessors distinguish endpoint-style hosts from bucket-style
 authorities without a network request: a first component ending in `.com` or
-`.io` is a hostname; otherwise it is the bucket. Recognized AWS S3 hostnames
-also expose their region.
+`.io`, carrying a port, spelled as an IP literal, or named `localhost` is a
+hostname; otherwise it is the bucket. Recognized AWS S3 hostnames also expose
+their region, and `key` is the path below the bucket as the path spells it -
+percent escapes and a trailing slash retained, `""` at the bucket root.
 
 === "Rust"
 
@@ -180,6 +182,12 @@ also expose their region.
     let s3 = Uri::from_str("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")?;
     assert_eq!(s3.bucket(), Some("trades"));
     assert_eq!(s3.region(), Some("eu-west-3"));
+    assert_eq!(s3.key(), Some("part.parquet"));
+
+    let local = Uri::from_str("s3://localhost:9000/trades/lake/")?;
+    assert_eq!(local.hostname(), Some("localhost"));
+    assert_eq!(local.bucket(), Some("trades"));
+    assert_eq!(local.key(), Some("lake/"));
     ```
 
 === "Python"
@@ -193,7 +201,10 @@ also expose their region.
     )
 
     s3 = Uri("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")
-    assert (s3.bucket, s3.region) == ("trades", "eu-west-3")
+    assert (s3.bucket, s3.region, s3.key) == ("trades", "eu-west-3", "part.parquet")
+
+    local = Uri("s3://localhost:9000/trades/lake/")
+    assert (local.hostname, local.bucket, local.key) == ("localhost", "trades", "lake/")
     ```
 
 === "JavaScript"
@@ -209,7 +220,10 @@ also expose their region.
     )
 
     const s3 = Uri.from('s3://trades.s3.eu-west-3.amazonaws.com/part.parquet')
-    assert.deepEqual([s3.bucket, s3.region], ['trades', 'eu-west-3'])
+    assert.deepEqual([s3.bucket, s3.region, s3.key], ['trades', 'eu-west-3', 'part.parquet'])
+
+    const local = Uri.from('s3://localhost:9000/trades/lake/')
+    assert.deepEqual([local.hostname, local.bucket, local.key], ['localhost', 'trades', 'lake/'])
     ```
 
 ## Path segments

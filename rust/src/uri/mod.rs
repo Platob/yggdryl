@@ -268,7 +268,8 @@ impl Uri {
     /// Return the network hostname, if this URI has one.
     ///
     /// For `s3`, an authority or first path part ending in `.com` or `.io` is
-    /// a hostname; any other first part is a bucket name.
+    /// a hostname, as is one carrying a port, spelled as an IP literal, or
+    /// named `localhost`; any other first part is a bucket name.
     pub fn hostname(&self) -> Option<&str> {
         if self.scheme == Scheme::S3 {
             return self.s3_location().and_then(|location| location.hostname);
@@ -286,6 +287,33 @@ impl Uri {
     /// This borrows the region from the URI and performs no network lookup.
     pub fn region(&self) -> Option<&str> {
         self.s3_location().and_then(|location| location.region)
+    }
+
+    /// Return the S3 object key when this is an `s3` URI.
+    ///
+    /// The key is the path below the bucket, spelled as the path spells it:
+    /// percent escapes stay escaped and a trailing slash stays, so a prefix
+    /// reads as `lake/` and the bucket root as `""`. Decoding the escapes is
+    /// the storage client's business, because a key can hold what a URI path
+    /// cannot.
+    ///
+    /// ```
+    /// use yggdryl::Uri;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(Uri::from_str("s3://trades/2026/part.parquet")?.key(), Some("2026/part.parquet"));
+    /// assert_eq!(Uri::from_str("s3://trades/2026/")?.key(), Some("2026/"));
+    /// assert_eq!(Uri::from_str("s3://trades/")?.key(), Some(""));
+    /// assert_eq!(
+    ///     Uri::from_str("s3://s3.eu-west-3.amazonaws.com/trades/part.parquet")?.key(),
+    ///     Some("part.parquet")
+    /// );
+    /// assert_eq!(Uri::from_str("https://example.com/part.parquet")?.key(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn key(&self) -> Option<&str> {
+        self.s3_location().map(|location| location.key)
     }
 
     /// Return whether canonical syntax contains an authority marker.

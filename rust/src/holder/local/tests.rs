@@ -619,9 +619,9 @@ mod roles {
 
 /// A listing skips private names unless a caller asks for them.
 mod privacy {
-    use crate::IOBase;
-    use crate::Url;
-    use crate::holder::local::Folder;
+    use crate::holder::Holder;
+    use crate::holder::local::{Folder, Path};
+    use crate::{IOBase, IOKind, MimeType, Url};
 
     fn root(label: &str) -> std::path::PathBuf {
         let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -652,6 +652,45 @@ mod privacy {
                 .unwrap()
                 .is_private()
         );
+        // A container spelled with its slash is judged by the same segment.
+        assert!(Url::from_str("file:///project/.git/").unwrap().is_private());
+    }
+
+    #[test]
+    fn a_trailing_slash_names_a_folder_before_anything_is_looked_up() {
+        let path = root("trailing");
+        let absent = path.join("not-yet");
+        // Nothing exists, so a plain name is undecided...
+        assert_eq!(
+            Path::new(&absent).unwrap().kind(),
+            IOKind::Unknown
+        );
+        // ...while the same name with a slash is a container, with no probe.
+        let spelled = Path::new(format!("{}/", absent.display())).unwrap();
+        assert_eq!(spelled.kind(), IOKind::Directory);
+        assert!(spelled.is_container());
+        assert!(!spelled.is_atomic());
+        assert_eq!(spelled.media_type().base(), &MimeType::DIRECTORY);
+        assert!(!absent.exists(), "asking created nothing");
+
+        // A child resolved with a slash is a folder handle outright.
+        let folder = Folder::new(&path).unwrap();
+        assert!(matches!(
+            folder.child_by_path("sub/").unwrap(),
+            Holder::Folder(_)
+        ));
+        assert!(matches!(
+            folder.child_by_path("sub").unwrap(),
+            Holder::File(_)
+        ));
+        assert!(!path.join("sub").exists(), "resolving created nothing");
+
+        // Truncating the spelled container to zero brings the directory into
+        // being, exactly as it does for an explicit folder.
+        let mut spelled = spelled;
+        spelled.truncate(0).unwrap();
+        assert!(absent.is_dir());
+        Folder::new(&path).unwrap().remove(true).unwrap();
     }
 
     #[test]
