@@ -118,7 +118,12 @@ fn an_unimplemented_encoding_is_named_rather_than_guessed() {
 
 #[test]
 fn every_variant_round_trips_batches_through_the_same_calls() {
-    let mut names = vec!["trades.arrows", "trades.arrows.gz", "trades.xml", "trades.xml.gz"];
+    let mut names = vec![
+        "trades.arrows",
+        "trades.arrows.gz",
+        "trades.xml",
+        "trades.xml.gz",
+    ];
     if cfg!(feature = "parquet") {
         names.push("trades.parquet");
     }

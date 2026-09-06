@@ -118,8 +118,12 @@ impl<R: Read> Rows<R> {
                         self.state = State::new(self.limits);
                     }
                     self.state.enter(self.stack.len(), position)?;
-                    self.stack
-                        .push(Element::open(&start, position, self.version, &mut self.state)?);
+                    self.stack.push(Element::open(
+                        &start,
+                        position,
+                        self.version,
+                        &mut self.state,
+                    )?);
                 }
                 Event::Empty(start) => {
                     if self.skipping > 0 {
@@ -140,8 +144,7 @@ impl<R: Read> Rows<R> {
                         self.state = State::new(self.limits);
                     }
                     self.state.enter(self.stack.len(), position)?;
-                    let element =
-                        Element::open(&start, position, self.version, &mut self.state)?;
+                    let element = Element::open(&start, position, self.version, &mut self.state)?;
                     if let Some(row) = self.place(element)? {
                         return Ok(Some(row));
                     }
@@ -264,8 +267,5 @@ pub(crate) fn read_names<R: Read>(
 ) -> Result<(Option<SmolStr>, Option<SmolStr>)> {
     let mut rows = Rows::new(source, options);
     rows.next().transpose()?;
-    Ok((
-        rows.root().map(SmolStr::new),
-        rows.row().map(SmolStr::new),
-    ))
+    Ok((rows.root().map(SmolStr::new), rows.row().map(SmolStr::new)))
 }

@@ -232,11 +232,7 @@ pub(crate) fn content(document: Scalar) -> Scalar {
     if entries.len() != 1 {
         return document;
     }
-    entries
-        .values()
-        .next()
-        .cloned()
-        .unwrap_or(document)
+    entries.values().next().cloned().unwrap_or(document)
 }
 
 /// Decode one XML document from a byte reader.

@@ -38,7 +38,10 @@ pub(crate) fn parse(input: &str, limits: Limits) -> Result<Scalar> {
 
     loop {
         let position = position(&reader);
-        match reader.read_event().map_err(|error| protocol(error, position))? {
+        match reader
+            .read_event()
+            .map_err(|error| protocol(error, position))?
+        {
             Event::Decl(declaration) => {
                 version = declaration
                     .xml_version()

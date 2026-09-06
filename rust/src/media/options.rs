@@ -858,12 +858,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Parquet options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Parquet options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
         }
     }
 

@@ -147,10 +147,7 @@ impl RowIndex {
     pub(crate) fn require(&self, row: u64) -> Result<RowSpan> {
         self.get(row).ok_or_else(|| Error::InvalidRecord {
             path: smol_str::format_smolstr!("$[{row}]"),
-            reason: crate::text::expected_got(
-                format_args!("a row below {}", self.len()),
-                row,
-            ),
+            reason: crate::text::expected_got(format_args!("a row below {}", self.len()), row),
         })
     }
 
@@ -216,17 +213,18 @@ pub(crate) fn require_positional<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
         path: SmolStr::new_static("$.encoding"),
         reason: crate::text::expected_got(
             "stored XML bytes to address a row in",
-            format_args!("a {} content coding, which has no row offsets", handle.codec()),
+            format_args!(
+                "a {} content coding, which has no row offsets",
+                handle.codec()
+            ),
         ),
     })
 }
 
 /// Scan one document for the byte span of every row it holds.
 pub(crate) fn scan<R: Read>(source: R, options: &XmlOptions) -> Result<RowIndex> {
-    let mut reader = quick_xml::Reader::from_reader(std::io::BufReader::with_capacity(
-        FETCH_BYTE_SIZE,
-        source,
-    ));
+    let mut reader =
+        quick_xml::Reader::from_reader(std::io::BufReader::with_capacity(FETCH_BYTE_SIZE, source));
     let config = reader.config_mut();
     config.check_end_names = true;
     config.allow_unmatched_ends = false;

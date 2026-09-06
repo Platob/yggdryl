@@ -224,14 +224,17 @@ impl<H: IOBase> Xml<H> {
         let mut rows = Vec::new();
         for batch in batches {
             let batch = batch.map_err(crate::arrow::from_reader_error)?;
-            let names = crate::arrow::field_from_arrow_schema(self.options.name(), &batch.schema())?;
+            let names =
+                crate::arrow::field_from_arrow_schema(self.options.name(), &batch.schema())?;
             let values = crate::arrow::batch_to_value(&batch)?;
             let Some(values) = values.as_sequence() else {
                 continue;
             };
             let children = names.fields();
             for row in values {
-                let Some(row) = row.as_sequence() else { continue };
+                let Some(row) = row.as_sequence() else {
+                    continue;
+                };
                 rows.push(Scalar::from_record(
                     children
                         .iter()
@@ -321,7 +324,9 @@ impl<H: IOBase> IOMedia for Xml<H> {
         if let Some(field) = self.options.field() {
             return Ok(field.fields().len());
         }
-        Ok(arrow::read_field(&self.handle, &self.options)?.fields().len())
+        Ok(arrow::read_field(&self.handle, &self.options)?
+            .fields()
+            .len())
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
@@ -358,11 +363,7 @@ impl<H: IOBase> IOMedia for Xml<H> {
         IOMedia::overwrite_prepared_arrow_reader(&mut self.handle, batches, options)
     }
 
-    fn append_arrow_reader(
-        &mut self,
-        batches: BatchReader,
-        options: &RecordOptions,
-    ) -> Result<()> {
+    fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
         self.require_xml_options(options)?;
         self.invalidate_index();
         IOMedia::append_arrow_reader(&mut self.handle, batches, options)

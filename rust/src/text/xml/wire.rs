@@ -130,11 +130,16 @@ where
         };
         check_name(attribute)?;
         write!(writer, " {attribute}=\"")?;
-        write_escaped(writer, &attribute_text(value, attribute)?, Escaping::Attribute)?;
+        write_escaped(
+            writer,
+            &attribute_text(value, attribute)?,
+            Escaping::Attribute,
+        )?;
         writer.write_all(b"\"")?;
     }
 
-    let children = entries.filter(|(key, _)| !key.starts_with(ATTRIBUTE_PREFIX) && *key != TEXT_KEY);
+    let children =
+        entries.filter(|(key, _)| !key.starts_with(ATTRIBUTE_PREFIX) && *key != TEXT_KEY);
     if own_text.is_none() && children.clone().next().is_none() {
         writer.write_all(b"/>")?;
         return Ok(());
@@ -227,11 +232,9 @@ pub(crate) fn text(value: &Scalar) -> Result<smol_str::SmolStr> {
     use base64::Engine as _;
 
     Ok(match value {
-        Scalar::Boolean(value) => smol_str::SmolStr::new_static(if value.get() {
-            "true"
-        } else {
-            "false"
-        }),
+        Scalar::Boolean(value) => {
+            smol_str::SmolStr::new_static(if value.get() { "true" } else { "false" })
+        }
         Scalar::Integer(value) => {
             if value.is_negative() {
                 format_smolstr!("-{}", value.magnitude())
@@ -263,7 +266,9 @@ pub(crate) fn text(value: &Scalar) -> Result<smol_str::SmolStr> {
             codec_error("a temporal beyond the classic spelling has no character data")
         })?,
         Scalar::Null | Scalar::Nested(_) => {
-            return Err(codec_error("expected a leaf value to write as character data"));
+            return Err(codec_error(
+                "expected a leaf value to write as character data",
+            ));
         }
     })
 }

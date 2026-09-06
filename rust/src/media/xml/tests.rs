@@ -95,7 +95,11 @@ fn a_document_round_trips_through_the_shared_record_surface() {
         .unwrap();
 
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id><symbol>AAPL</symbol></row>\n  \
          <row><id>2</id><symbol/></row>\n</rows>"
     );
@@ -161,8 +165,9 @@ fn a_repeated_element_is_a_list_and_a_single_one_fills_it() {
         "<rows><row><leg>1</leg><leg>2</leg></row><row><leg>3</leg></row></rows>",
     )
     .with_field(
-        DataType::from_fields([DataType::list(DataType::Int64.nullable_field("item"))
-            .nullable_field("leg")])
+        DataType::from_fields([
+            DataType::list(DataType::Int64.nullable_field("item")).nullable_field("leg")
+        ])
         .unwrap()
         .required_field("row"),
     );
@@ -231,9 +236,7 @@ fn the_row_index_names_the_bytes_each_row_occupies() {
         assert!(text.contains(&format!("<id>{}</id>", row + 1)), "{text}");
     }
     assert_eq!(
-        &media
-            .read_range_bytes(index.content_end(), 7)
-            .unwrap(),
+        &media.read_range_bytes(index.content_end(), 7).unwrap(),
         b"</rows>"
     );
 }
@@ -243,11 +246,8 @@ fn one_row_reads_out_of_its_own_bytes() {
     let media = stored("trades.xml", rows_document());
     assert_eq!(
         media.read_row_scalar(1).unwrap(),
-        Scalar::from_record([
-            ("id", Scalar::from("2")),
-            ("symbol", Scalar::from("MSFT")),
-        ])
-        .unwrap()
+        Scalar::from_record([("id", Scalar::from("2")), ("symbol", Scalar::from("MSFT")),])
+            .unwrap()
     );
     assert_eq!(media.read_range_scalars(1, 2).unwrap().len(), 2);
     assert_eq!(media.read_range_scalars(2, 10).unwrap().len(), 1);
@@ -276,11 +276,8 @@ fn a_replacement_of_the_same_length_is_written_where_the_row_was() {
     media
         .write_row_scalar(
             1,
-            &Scalar::from_record([
-                ("id", Scalar::from("2")),
-                ("symbol", Scalar::from("TSLA")),
-            ])
-            .unwrap(),
+            &Scalar::from_record([("id", Scalar::from("2")), ("symbol", Scalar::from("TSLA"))])
+                .unwrap(),
         )
         .unwrap();
 
@@ -289,7 +286,11 @@ fn a_replacement_of_the_same_length_is_written_where_the_row_was() {
     assert_eq!(after.spans(), before.spans());
     assert_eq!(after.content_end(), before.content_end());
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         rows_document().replace("MSFT", "TSLA")
     );
 }
@@ -302,11 +303,8 @@ fn a_longer_and_a_shorter_replacement_move_only_what_follows() {
         media
             .write_row_scalar(
                 1,
-                &Scalar::from_record([
-                    ("id", Scalar::from("2")),
-                    ("symbol", Scalar::from(symbol)),
-                ])
-                .unwrap(),
+                &Scalar::from_record([("id", Scalar::from("2")), ("symbol", Scalar::from(symbol))])
+                    .unwrap(),
             )
             .unwrap();
 
@@ -314,7 +312,11 @@ fn a_longer_and_a_shorter_replacement_move_only_what_follows() {
         assert_eq!(after.len(), 3);
         assert_eq!(after.get(0), before.get(0), "{symbol}");
         assert_eq!(
-            media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+            media
+                .read_all_bytes()
+                .map(String::from_utf8)
+                .unwrap()
+                .unwrap(),
             rows_document().replace("MSFT", symbol),
             "{symbol}"
         );
@@ -334,7 +336,11 @@ fn removing_a_row_takes_the_layout_that_introduced_it() {
     let mut media = stored("trades.xml", rows_document());
     media.remove_row(1).unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id><symbol>AAPL</symbol></row>\n  \
          <row><id>3</id><symbol>NVDA</symbol></row>\n</rows>"
     );
@@ -352,7 +358,11 @@ fn appending_rewrites_the_end_tag_and_nothing_before_it() {
         .unwrap();
     assert_eq!(added, 2);
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         format!(
             "{}\n  <row><id>4</id></row>\n  <row><id>5</id></row>\n</rows>",
             rows_document().trim_end_matches("\n</rows>")
@@ -368,7 +378,11 @@ fn appending_to_an_empty_document_element_opens_it_first() {
         .append_row_scalars([Scalar::from_record([("id", Scalar::from("1"))]).unwrap()])
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id></row>\n</rows>"
     );
 }
@@ -380,7 +394,11 @@ fn appending_to_nothing_writes_the_document_the_options_name() {
         .append_row_scalars([Scalar::from_record([("id", Scalar::from("1"))]).unwrap()])
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id></row>\n</rows>"
     );
 }
@@ -395,7 +413,11 @@ fn a_positional_write_keeps_a_stored_document_s_own_names() {
         .append_row_scalars([Scalar::from_record([("ClOrdID", Scalar::from("A-2"))]).unwrap()])
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<Orders>\n  <Order><ClOrdID>A-1</ClOrdID></Order>\n  \
          <Order><ClOrdID>A-2</ClOrdID></Order>\n</Orders>"
     );
@@ -408,7 +430,11 @@ fn a_positional_range_write_replaces_exactly_the_rows_it_names() {
         .write_range_arrow_reader(1, 2, reader(vec![9], vec![Some("ZM")]))
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id><symbol>AAPL</symbol></row>\n  \
          <row><id>9</id><symbol>ZM</symbol></row>\n</rows>"
     );
@@ -426,7 +452,11 @@ fn an_append_through_the_record_surface_keeps_the_stored_rows() {
         .unwrap();
     assert_eq!(media.row_size().unwrap(), 2);
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row><id>1</id><symbol>AAPL</symbol></row>\n  \
          <row><id>2</id><symbol>MSFT</symbol></row>\n</rows>"
     );
@@ -437,20 +467,30 @@ fn a_merge_updates_a_stored_row_and_appends_the_rest() {
     let mut media = Xml::new(handle("trades.xml")).with_field(typed_field());
     let options = media.record_options().unwrap();
     media
-        .overwrite_arrow_reader(reader(vec![1, 2], vec![Some("AAPL"), Some("MSFT")]), &options)
+        .overwrite_arrow_reader(
+            reader(vec![1, 2], vec![Some("AAPL"), Some("MSFT")]),
+            &options,
+        )
         .unwrap();
 
     let mut merging = media.record_options().unwrap();
     merging.set_merge_by_names(vec!["id".to_owned()]);
     media
-        .merge_arrow_reader(reader(vec![2, 3], vec![Some("TSLA"), Some("NVDA")]), &merging)
+        .merge_arrow_reader(
+            reader(vec![2, 3], vec![Some("TSLA"), Some("NVDA")]),
+            &merging,
+        )
         .unwrap();
 
     assert_eq!(media.row_size().unwrap(), 3);
     let batches = collected(&media);
     assert_eq!(
         column(&batches, "symbol"),
-        vec![Scalar::from("AAPL"), Scalar::from("TSLA"), Scalar::from("NVDA")]
+        vec![
+            Scalar::from("AAPL"),
+            Scalar::from("TSLA"),
+            Scalar::from("NVDA")
+        ]
     );
 }
 
@@ -482,7 +522,11 @@ fn the_layout_a_write_uses_is_the_one_the_options_ask_for() {
         .overwrite_arrow_reader(reader(vec![1], vec![Some("AAPL")]), &options)
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows><row><id>1</id><symbol>AAPL</symbol></row></rows>"
     );
 
@@ -496,7 +540,11 @@ fn the_layout_a_write_uses_is_the_one_the_options_ask_for() {
         .overwrite_arrow_reader(reader(vec![1], vec![Some("AAPL")]), &options)
         .unwrap();
     assert_eq!(
-        indented.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        indented
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<rows>\n  <row>\n    <id>1</id>\n    <symbol>AAPL</symbol>\n  </row>\n</rows>"
     );
 }
@@ -516,7 +564,11 @@ fn the_document_and_row_names_a_write_uses_are_the_declared_ones() {
         .overwrite_arrow_reader(reader(vec![1], vec![Some("AAPL")]), &options)
         .unwrap();
     assert_eq!(
-        media.read_all_bytes().map(String::from_utf8).unwrap().unwrap(),
+        media
+            .read_all_bytes()
+            .map(String::from_utf8)
+            .unwrap()
+            .unwrap(),
         "<Trades>\n  <Trade><id>1</id><symbol>AAPL</symbol></Trade>\n</Trades>"
     );
     assert_eq!(media.row_size().unwrap(), 1);
@@ -524,7 +576,10 @@ fn the_document_and_row_names_a_write_uses_are_the_declared_ones() {
 
 #[test]
 fn a_declared_element_name_has_to_be_one_xml_can_carry() {
-    let error = XmlOptions::new().with_row("1st row").unwrap_err().to_string();
+    let error = XmlOptions::new()
+        .with_row("1st row")
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("XML element"), "{error}");
 }
 
@@ -537,7 +592,10 @@ fn an_opened_document_reuses_one_index_across_positional_writes() {
     assert!(Arc::ptr_eq(&index, &media.read_row_index().unwrap()));
 
     media
-        .write_row_scalar(0, &Scalar::from_record([("id", Scalar::from("7"))]).unwrap())
+        .write_row_scalar(
+            0,
+            &Scalar::from_record([("id", Scalar::from("7"))]).unwrap(),
+        )
         .unwrap();
     let after = media.read_row_index().unwrap();
     assert_eq!(after.len(), 3);
