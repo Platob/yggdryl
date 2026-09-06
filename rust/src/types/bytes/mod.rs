@@ -9,6 +9,7 @@ mod scalars;
 
 pub use dtypes::BytesType;
 pub use fields::*;
+pub(crate) use scalars::bytes_from_value;
 pub use scalars::{
     Binary, BinaryScalar, BinaryView, BinaryViewScalar, Bytes, BytesValue, FixedSizeBinary,
     FixedSizeBinaryScalar, LargeBinary, LargeBinaryScalar,

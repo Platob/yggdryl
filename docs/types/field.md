@@ -511,7 +511,7 @@ protocol is done, so a required column its protocol did not write is still refus
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
     use yggdryl::expression::Function;
-    use yggdryl::{DataType, Nullability};
+    use yggdryl::{ArrowCastOptions, DataType};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
@@ -530,20 +530,20 @@ protocol is done, so a required column its protocol did not write is still refus
         Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     )])?;
 
-    let applied = root.apply_arrow_batch(&batch, true, true, true, Nullability::Default)?;
+    let applied = root.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
 
     assert_eq!(applied.num_columns(), 3);
     // The digest saw the derived column, because the partition step ran first.
     assert_eq!(applied.column(2).null_count(), 0);
     // Applying again writes nothing: every column now holds a written value.
     assert_eq!(
-        root.apply_arrow_batch(&applied, true, true, true, Nullability::Default)?,
+        root.apply_arrow_batch(&applied, true, true, true, ArrowCastOptions::new())?,
         applied,
     );
 
     // The same shape, with no rows read and no batch pulled.
     let shape =
-        root.apply_arrow_schema(batch.schema(), true, true, true, Nullability::Default)?;
+        root.apply_arrow_schema(batch.schema(), true, true, true, ArrowCastOptions::new())?;
     assert_eq!(shape, applied.schema());
 
     let mut stream = root.apply_arrow_reader(
@@ -551,7 +551,7 @@ protocol is done, so a required column its protocol did not write is still refus
         true,
         true,
         true,
-        Nullability::Default,
+        ArrowCastOptions::new(),
     )?;
     assert_eq!(arrow_array::RecordBatchReader::schema(&stream), shape);
     assert_eq!(stream.next().expect("one batch")?.num_columns(), 3);

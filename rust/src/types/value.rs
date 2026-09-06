@@ -7,17 +7,19 @@
 //! declares, and returns the input untouched when nothing needed changing.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::boolean::boolean_from_text;
+use crate::types::bytes::bytes_from_value;
 use crate::types::decimal::{validate_decimal_value, validate_decimal256_value};
-use crate::types::floating::{FloatWidth, canonical_float};
+use crate::types::floating::{FloatWidth, canonical_float, float_from_text};
 use crate::types::integer::{
-    canonical_signed, canonical_unsigned, validate_integer_tuple, validate_signed,
-    validate_unsigned,
+    canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
+    validate_signed, validate_unsigned,
 };
 use crate::types::temporal::{validate_date64, validate_time};
+use crate::types::text::text_from_value;
 use crate::types::{
     AsciiFamily, Bytes, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Temporal,
     Text, ascii_bytes, ascii_free_text, ascii_text, code_cell_text, default_value_for_field,
@@ -221,10 +223,12 @@ pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
 /// A [`crate::TypedScalar`] is one value and one datatype with no field around
 /// them, so it validates through the same walk a column value takes and
 /// reports the same failures, rooted at the value itself. A null is accepted
-/// by every datatype, because nullability belongs to the field that holds the
-/// column rather than to the value in it.
+/// by every datatype that can spell one, because nullability belongs to the
+/// field that holds the column rather than to the value in it - and a union
+/// and a run-end layout cannot: each spells absence through a child, so a
+/// bare null is not a value either of them holds.
 pub(crate) fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
-    if matches!(value, Scalar::Null) {
+    if spells_bare_null(dtype, value) {
         return Ok(());
     }
     validate_dtype_value(dtype, value, 0).map_err(|failure| {
@@ -247,13 +251,25 @@ pub(crate) fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Resu
 /// synthetic row to get there, which is what a scalar used to cost.
 pub(crate) fn dtype_scalar(dtype: &DataType, value: Scalar) -> Result<Scalar> {
     validate_dtype_value_for(dtype, &value)?;
-    if matches!(value, Scalar::Null) {
+    if spells_bare_null(dtype, &value) {
         return Ok(value);
     }
     // The value has no field around it, so a refusal is already rooted at the
     // value itself, exactly as the check above roots one.
     let (canonical, changed) = canonicalize_dtype_value(dtype, &value)?;
     Ok(if changed { canonical } else { value })
+}
+
+/// Whether a bare [`Scalar::Null`] is a value this datatype holds.
+///
+/// Absence is a value for every layout that stores it beside the values, and
+/// a union and a run-end layout do not: they spell it inside a child, so the
+/// value is the pair or the values entry that carries the null, never the
+/// bare null itself. The crate's nested walk already applies this rule to a
+/// child; it is the same rule at a root.
+fn spells_bare_null(dtype: &DataType, value: &Scalar) -> bool {
+    matches!(value, Scalar::Null)
+        && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_))
 }
 
 /// Rewrite one row value into the exact representation a root field declares.
@@ -351,32 +367,87 @@ fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
     }
 }
 
-/// The byte storage behind a value, shared rather than copied.
+/// The value a datatype reads out of a spelling that is not its own storage.
 ///
-/// Bytes and geospatial values each hold one `Arc<[u8]>`, so rewriting either
-/// into another byte layout hands the same buffer to the new representation.
-/// Every other kind carries no byte storage and answers `None`, matching what
-/// [`Scalar::as_bytes`] reads.
-fn shared_bytes(value: &Scalar) -> Option<Arc<[u8]>> {
+/// A datatype declares one storage and a caller may hold the same value under
+/// another: text spells every number, boolean, decimal and temporal, and every
+/// value carrying characters or bytes spells a byte payload. The readings are
+/// the ones this crate already owns - [`Scalar::from_temporal_text`] is what a
+/// *text column* entering a temporal reads through, and each family's
+/// canonical `Display` is what it prints - so a row takes the spellings a
+/// column takes rather than a narrower set of its own.
+///
+/// `None` means there is nothing to read: the value is already in the
+/// datatype's own family, or it carries no spelling of it, and the ordinary
+/// refusal names what arrived. `Some(Err)` is a spelling that was read and
+/// then refused, which keeps the reader's own reason.
+fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
+    use DataType as D;
+    match dtype {
+        // A text column stores the spelling every tier prints.
+        D::Utf8 | D::LargeUtf8 | D::Utf8View if !matches!(value, Scalar::Text(_)) => {
+            Some(text_from_value(value)?.map(Scalar::from))
+        }
+        // A byte column stores one payload, however the value spells it. The
+        // declared layout is the offset width, which the restatement below
+        // retags without copying the payload.
+        D::Binary | D::LargeBinary | D::BinaryView | D::FixedSizeBinary(_)
+            if !matches!(value, Scalar::Bytes(_)) =>
+        {
+            Some(Ok(Scalar::Bytes(Bytes::Binary(crate::types::Binary::new(
+                bytes_from_value(value)?,
+            )))))
+        }
+        // A record is a name-to-value map, so a map column reads it as its
+        // entries; the key field then reads each name as its own datatype,
+        // exactly as a struct root reads a record's field names.
+        D::Map(_) => {
+            let record = value.as_record()?;
+            Some(Scalar::from_mapping(
+                record
+                    .iter()
+                    .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
+                    .collect::<Vec<_>>(),
+            ))
+        }
+        _ => read_text_as(dtype, text_reading(value)?),
+    }
+}
+
+/// The text a value offers a datatype that stores something else.
+///
+/// Only [`Scalar::Text`] is a spelling waiting to be read. An ASCII value and
+/// a generic enum member also answer [`Scalar::as_str`], but their identity is
+/// the width and the member rather than the characters, and a column refuses
+/// them into a number for the same reason.
+fn text_reading(value: &Scalar) -> Option<&str> {
     match value {
-        Scalar::Bytes(bytes) => Some(Arc::clone(bytes.storage())),
-        Scalar::Geospatial(geospatial) => Some(Arc::clone(geospatial.storage())),
+        Scalar::Text(text) => Some(text.as_str()),
         _ => None,
     }
 }
 
-/// The text storage behind a value, shared rather than copied.
-///
-/// Text and ASCII each hold one `SmolStr`, and a static enum member names a
-/// `&'static str` that `SmolStr` retains without allocating. The kinds are the
-/// ones [`Scalar::as_str`] reads.
-fn shared_text(value: &Scalar) -> Option<SmolStr> {
-    match value {
-        Scalar::Text(text) => Some(text.storage().clone()),
-        Scalar::Ascii(ascii) => Some(ascii.storage().clone()),
-        Scalar::Enum(member) => Some(SmolStr::new_static(member.as_str())),
-        _ => None,
-    }
+/// Read one text spelling into the family a datatype declares.
+fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
+    use DataType as D;
+    Some(match dtype {
+        D::Boolean => Ok(boolean_from_text(text)?),
+        D::Int8 | D::Int16 | D::Int32 | D::Int64 | D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => {
+            Ok(integer_from_text(text)?)
+        }
+        D::Float16 | D::Float32 | D::Float64 => Ok(float_from_text(text)?),
+        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } | D::Decimal256 { .. } => {
+            Scalar::from_decimal_text(dtype, text)
+        }
+        D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::DateTime64 { .. }
+        | D::Duration32(_)
+        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text),
+        _ => return None,
+    })
 }
 
 /// Check the logical temporal family and the zone a datatype can preserve.
@@ -402,6 +473,13 @@ fn temporal_matches(
 #[allow(clippy::too_many_lines)]
 fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar, bool)> {
     use DataType as D;
+    // A spelling is read once, into the datatype's own family; the walk below
+    // then restates that value into the exact representation declared. A
+    // reading always rewrote something, so it is always a change.
+    if let Some(read) = read_as(dtype, value) {
+        let (canonical, _) = canonicalize_dtype_value(dtype, &read?)?;
+        return Ok((canonical, true));
+    }
     match dtype {
         D::Decimal32 { scale, .. } => {
             let coefficient = if value.is_decimal() {
@@ -523,11 +601,9 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         _ => {}
     }
-    if let Some(physical) = restated(dtype, value) {
-        // A restatement always rewrote something, so it is always a change.
-        let (canonical, _) = canonicalize_dtype_value(dtype, &Scalar::from(physical))?;
-        return Ok((canonical, true));
-    }
+    // Every datatype `restated` names returned from the match above, which
+    // restates the value inline; only validation, which has no such match,
+    // still consults it.
     match dtype {
         D::Null | D::Boolean => Ok((value.clone(), false)),
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(dtype, value),
@@ -541,6 +617,24 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         // and nothing is built; a rewrite adopts the source's storage handle
         // rather than copying the payload into a second buffer.
         D::Binary | D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => {
+            // The reading above rewrote every other kind into these bytes, so
+            // only a payload of the declared layout reaches here unchanged. A
+            // fixed width is part of that layout, exactly as it is for a fixed
+            // ASCII value, so it is compared rather than assumed.
+            let Some(bytes) = value.as_bytes() else {
+                return canonicalization_failure(dtype);
+            };
+            if let D::FixedSizeBinary(width) = dtype
+                && usize::try_from(*width).ok() != Some(bytes.len())
+            {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!(
+                        "fixed_size_binary({width}) requires {width} bytes, got {}",
+                        bytes.len()
+                    ),
+                });
+            }
             if matches!(
                 (dtype, value),
                 (D::Binary, Scalar::Bytes(Bytes::Binary(_)))
@@ -553,7 +647,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             ) {
                 return Ok((value.clone(), false));
             }
-            let Some(bytes) = shared_bytes(value) else {
+            let Some(bytes) = bytes_from_value(value) else {
                 return canonicalization_failure(dtype);
             };
             let canonical = match dtype {
@@ -583,9 +677,13 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             ) {
                 return Ok((value.clone(), false));
             }
-            let Some(text) = shared_text(value) else {
+            // The reading above rewrote every other kind into this text, so
+            // only a string of another layout reaches here, and it hands over
+            // its storage rather than a copy of its characters.
+            let Scalar::Text(source) = value else {
                 return canonicalization_failure(dtype);
             };
+            let text = source.storage().clone();
             let canonical = match dtype {
                 D::Utf8 => Scalar::Text(Text::Utf8(crate::types::Utf8::new(text))),
                 D::LargeUtf8 => Scalar::Text(Text::LargeUtf8(crate::types::LargeUtf8::new(text))),
@@ -719,7 +817,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             ) {
                 return Ok((value.clone(), false));
             }
-            let Some(bytes) = shared_bytes(value) else {
+            let Some(bytes) = bytes_from_value(value) else {
                 return canonicalization_failure(dtype);
             };
             let canonical = match dtype {
@@ -756,6 +854,19 @@ fn temporal_or_integer(
         .as_i128()
         .and_then(|value| i64::try_from(value).ok())
         .ok_or_else(|| canonical_error("expected a signed 64-bit temporal count"))
+}
+
+/// The reason one error carries, as a record error restates it.
+pub(crate) fn reason_of(error: &Error) -> SmolStr {
+    match error {
+        Error::Parse {
+            target,
+            position,
+            reason,
+        } => format_smolstr!("expected an ISO {target}: {reason} at byte {position}"),
+        Error::InvalidRecord { reason, .. } => reason.clone(),
+        other => SmolStr::new(other.to_string()),
+    }
 }
 
 pub(crate) fn canonical_error(reason: &'static str) -> Error {
@@ -945,7 +1056,11 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     };
     let (payload, payload_changed) = canonicalize_field_value(field, payload)
         .map_err(|error| prepend_canonical_error(error, PathSegment::Union(type_id_number)))?;
-    let id_changed = type_id.as_i64() != Some(i64::from(type_id_number));
+    // The type id has one canonical representation - the `Int64` a union row
+    // reads back as - so a narrower spelling of the same number is a change,
+    // and the canonical value no longer depends on whether the payload needed
+    // one too.
+    let id_changed = !matches!(type_id.as_integer(), Some(crate::types::Integer::I64(_)));
     if id_changed || payload_changed {
         Ok((
             Scalar::from_sequence([Scalar::from(i64::from(type_id_number)), payload]),
@@ -987,34 +1102,43 @@ fn canonical_map(map: &crate::MapType, value: &Scalar) -> Result<(Scalar, bool)>
                         .0,
                 ));
             }
-            if let Some(duplicate) = duplicate_mapping_key_index(&canonical) {
+            let canonical = Scalar::from_mapping(canonical)?;
+            if let Some((index, reason)) =
+                broken_map_invariant(map, canonical.as_mapping().unwrap_or_default())
+            {
                 return Err(Error::InvalidRecord {
-                    path: SmolStr::from(format!("$[{duplicate}].key")),
-                    reason: SmolStr::new_static(
-                        "map keys collide after schema-directed physical normalization",
+                    path: format_smolstr!("$[{index}].key"),
+                    reason: format_smolstr!(
+                        "{reason} after schema-directed physical normalization"
                     ),
                 });
-            }
-            let canonical = Scalar::from_mapping(canonical)?;
-            let canonical_entries = canonical.as_mapping().unwrap_or_default();
-            if map.keys_sorted() {
-                if let Some(index) = canonical_entries
-                    .windows(2)
-                    .position(|pair| pair[0].0 > pair[1].0)
-                    .map(|index| index + 1)
-                {
-                    return Err(Error::InvalidRecord {
-                        path: SmolStr::from(format!("$[{index}].key")),
-                        reason: SmolStr::new_static(
-                            "map keys are not sorted after schema-directed physical normalization",
-                        ),
-                    });
-                }
             }
             return Ok((canonical, true));
         }
     }
     Ok((value.clone(), false))
+}
+
+/// The first entry breaking an invariant a map carries past its two fields.
+///
+/// A map is a key-to-value function, so a key appears once, and a map that
+/// declares sorted keys carries them in order. The column tier checks both on
+/// every batch it ingests, so the row tier checks the entries a caller
+/// declares and checks them again once canonicalization has run - narrowing
+/// two distinct keys can collide them, and restating them can reorder them.
+fn broken_map_invariant(
+    map: &crate::MapType,
+    entries: &[(Scalar, Scalar)],
+) -> Option<(usize, &'static str)> {
+    if let Some(index) = duplicate_mapping_key_index(entries) {
+        return Some((index, "map keys collide"));
+    }
+    if map.keys_sorted()
+        && let Some(index) = entries.windows(2).position(|pair| pair[0].0 > pair[1].0)
+    {
+        return Some((index + 1, "map keys are not sorted"));
+    }
+    None
 }
 
 fn duplicate_mapping_key_index(entries: &[(Scalar, Scalar)]) -> Option<usize> {
@@ -1180,6 +1304,12 @@ fn validate_dtype_value(
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     use DataType as D;
+    if let Some(read) = read_as(dtype, value) {
+        return match read {
+            Ok(read) => validate_dtype_value(dtype, &read, depth),
+            Err(error) => Err(ValidationFailure::new(reason_of(&error))),
+        };
+    }
     if let Some(physical) = restated(dtype, value) {
         return validate_dtype_value(dtype, &Scalar::from(physical), depth);
     }
@@ -1221,13 +1351,17 @@ fn validate_dtype_value(
         D::Binary | D::LargeBinary | D::BinaryView => {
             require(matches!(value, Scalar::Bytes(_)), dtype.name(), value)
         }
-        D::FixedSizeBinary(width) => match value.as_bytes() {
-            Some(bytes) if usize::try_from(*width).ok() == Some(bytes.len()) => Ok(()),
-            Some(bytes) => Err(ValidationFailure::new(format_smolstr!(
+        D::FixedSizeBinary(width) => match value {
+            Scalar::Bytes(bytes)
+                if usize::try_from(*width).ok() == Some(bytes.as_bytes().len()) =>
+            {
+                Ok(())
+            }
+            Scalar::Bytes(bytes) => Err(ValidationFailure::new(format_smolstr!(
                 "fixed_size_binary({width}) requires {width} bytes, got {}",
-                bytes.len()
+                bytes.as_bytes().len()
             ))),
-            None => Err(expected("fixed-size binary bytes", value)),
+            _ => Err(expected(dtype.name(), value)),
         },
         D::Utf8 | D::LargeUtf8 | D::Utf8View => {
             require(matches!(value, Scalar::Text(_)), dtype.name(), value)
@@ -1486,7 +1620,12 @@ fn validate_map(
         validate_field_value_at_depth(value_field, entry_value, depth)
             .map_err(|failure| failure.prepend(PathSegment::MapValue(index)))?;
     }
-    Ok(())
+    match broken_map_invariant(map, entries) {
+        Some((index, reason)) => {
+            Err(ValidationFailure::new(reason).prepend(PathSegment::MapKey(index)))
+        }
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]

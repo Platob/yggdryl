@@ -11,6 +11,7 @@ use arrow_schema::DataType as ArrowDataType;
 
 use crate::arrow::{Error, Result};
 use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
+use crate::types::bytes::casts::variable_binary_source;
 use crate::types::cast::arrow_cast_exposed;
 use crate::types::cast::{downcast, internal_target_error, named_cell};
 use crate::types::nested::casts::is_exposed;
@@ -51,6 +52,12 @@ pub(crate) fn ingest_ascii_array(
             }
             return Ok(Arc::clone(array));
         }
+        return padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
+            source.is_valid(index).then(|| source.value(index))
+        });
+    }
+    if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
+        let source = downcast::<BinaryArray>(bytes.as_ref())?;
         return padded_ascii_array(field, width, source.len(), exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });
@@ -123,33 +130,27 @@ fn ingest_variable_ascii_array(
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    match array.data_type() {
-        ArrowDataType::Binary => {
-            let source = downcast::<BinaryArray>(array.as_ref())?;
-            for index in 0..source.len() {
-                if is_exposed(exposure, index) && source.is_valid(index) {
-                    ascii_free_cell(field, index, source.value(index))?;
-                }
+    if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
+        let source = downcast::<BinaryArray>(bytes.as_ref())?;
+        for index in 0..source.len() {
+            if is_exposed(exposure, index) && source.is_valid(index) {
+                ascii_free_cell(field, index, source.value(index))?;
             }
-            return Ok(Arc::clone(array));
         }
-        // The width's padding is storage, so a fixed cell is trimmed by the
-        // width's own rule before it is stored as the bytes it is.
-        ArrowDataType::FixedSizeBinary(width) => {
-            let width = *width;
-            let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-            return variable_ascii_array(
-                field,
-                source.len(),
-                exposure,
-                budget,
-                |index| match source.is_valid(index).then(|| source.value(index)) {
-                    Some(padded) => ascii_cell(field, index, width, padded).map(Some),
-                    None => Ok(None),
-                },
-            );
-        }
-        _ => {}
+        return Ok(bytes);
+    }
+    // The width's padding is storage, so a fixed cell is trimmed by the
+    // width's own rule before it is stored as the bytes it is.
+    if let ArrowDataType::FixedSizeBinary(width) = array.data_type() {
+        let width = *width;
+        let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
+        return variable_ascii_array(field, source.len(), exposure, budget, |index| match source
+            .is_valid(index)
+            .then(|| source.value(index))
+        {
+            Some(padded) => ascii_cell(field, index, width, padded).map(Some),
+            None => Ok(None),
+        });
     }
     let text = if array.data_type() == &ArrowDataType::Utf8 {
         Arc::clone(array)
@@ -318,6 +319,12 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
             }
             return Ok(Arc::clone(array));
         }
+        return padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
+            source.is_valid(index).then(|| source.value(index))
+        });
+    }
+    if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
+        let source = downcast::<BinaryArray>(bytes.as_ref())?;
         return padded_code_array::<WIDTH>(field, source.len(), exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });

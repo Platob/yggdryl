@@ -38,6 +38,9 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
+use crate::types::bytes::casts::bridges_through_binary;
+use crate::types::cast::text::{holds_text, ingest_text_values};
+use crate::types::decimal::casts::holds_decimal;
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::types::nested::casts::{
     cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct, default_array,
@@ -45,7 +48,7 @@ use crate::types::nested::casts::{
     is_reconcilable_nested, list_child, union_mode_matches,
 };
 use crate::types::temporal::casts::{
-    holds_temporal, holds_text, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
+    holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
 use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
 use crate::types::version::casts::{ingest_version_array, is_text_storage};
@@ -65,6 +68,7 @@ mod batch;
 mod kernel;
 mod options;
 mod plan;
+pub(crate) mod text;
 mod typed;
 
 pub use batch::{preflight_arrow_batch_cast, validate_arrow_batch};
@@ -229,7 +233,6 @@ struct PlanRules {
     deferred: Deferred,
     null_policy: NullPolicy,
     struct_policy: StructPolicy,
-    may_be_fully_hidden: bool,
 }
 
 impl PlanRules {
@@ -240,7 +243,6 @@ impl PlanRules {
             deferred,
             null_policy: NullPolicy::Field,
             struct_policy: StructPolicy::Normal,
-            may_be_fully_hidden: true,
         }
     }
 
@@ -291,6 +293,10 @@ enum ArrayCastKind {
     /// the value buffer and the null buffer are handed over unchanged and only
     /// the datatype that reads them differs.
     BitCast,
+    /// One byte layout read as another through Arrow's `Binary`: the two
+    /// framings hold the same payload, and `Binary` is the framing Arrow
+    /// converts both of them to, so the reading is two of its own casts.
+    ByteBridge,
     /// Bytes entering a geometry or geography: same bytes out, but every
     /// exposed value is validated as WKB on the way in. A non-Binary binary
     /// layout is first cast to the Binary storage through Arrow's kernel.
@@ -318,6 +324,10 @@ enum ArrayCastKind {
     UuidText,
     /// Text entering a version is parsed and rewritten to its canonical text.
     VersionIngest,
+    /// Text entering a decimal: every exposed value is read at the declared
+    /// scale, and a digit that scale cannot state stays refused rather than
+    /// rounded away - dropping a digit off a price is a value change.
+    DecimalIngest,
     /// Text entering a temporal: every exposed value is read through the
     /// crate's own spellings, which are wider than Arrow's. Arrow's kernel
     /// stays behind them for the spellings only it knows, so the reading is
@@ -348,6 +358,19 @@ enum ArrayCastKind {
     Dictionary {
         source_key: ArrowDataType,
         values: Box<ArrayCastPlan>,
+    },
+    /// A source that is not already this target's encoding: the values are
+    /// planned against it under the ordinary rules and the encoding is the
+    /// tail, because an encoding is a layout and not a reading.
+    Encoded {
+        values: Box<ArrayCastPlan>,
+    },
+    /// The mirror: an encoded source read by a target that is not that
+    /// encoding. The values are decoded first, so the cast sees the column the
+    /// encoding was hiding - its extension identity included.
+    Decoded {
+        decoded: ArrowDataType,
+        plan: Box<ArrayCastPlan>,
     },
     Union {
         fields: arrow_schema::UnionFields,
@@ -496,6 +519,7 @@ impl ArrayCastPlan {
             Self::nested_kind(
                 field,
                 source_type,
+                source_metadata,
                 source_extension.as_ref(),
                 &expected,
                 rules,
@@ -517,6 +541,7 @@ impl ArrayCastPlan {
     fn nested_kind(
         field: &Field,
         source_type: &ArrowDataType,
+        source_metadata: Option<&HashMap<String, String>>,
         source_extension: Option<&RecognizedExtension>,
         expected: &ArrowDataType,
         rules: PlanRules,
@@ -525,7 +550,6 @@ impl ArrayCastPlan {
         let PlanRules {
             options,
             struct_policy,
-            may_be_fully_hidden,
             ..
         } = rules;
         // Every wrapper below plans exactly one child under the ordinary
@@ -675,6 +699,12 @@ impl ArrayCastPlan {
             (target, source) if holds_temporal(target) && holds_text(source) => {
                 ArrayCastKind::TemporalIngest
             }
+            // A decimal reads text the same way and for the same reason: the
+            // spelling carries a precision the declared scale may not hold,
+            // and this crate refuses that where Arrow rounds it.
+            (target, source) if holds_decimal(target) && holds_text(source) => {
+                ArrayCastKind::DecimalIngest
+            }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
@@ -734,30 +764,37 @@ impl ArrayCastPlan {
                     columns,
                 }
             }
-            (DataType::List(child), ArrowDataType::List(source_child)) => ArrayCastKind::List {
-                field: list_child(expected)?,
-                child: Box::new(Self::new_nested_from_arrow_field(
-                    child,
-                    source_child,
-                    nested,
-                    item,
-                )?),
-                kind: ListPlanKind::List,
-            },
+            // Every list layout reads every other one. The child is planned
+            // against the source's own child field, so Struct children still
+            // reconcile by name, and the array is rebuilt in the source's
+            // layout; the layout itself is the tail cast, which Arrow's kernel
+            // performs over a child that already matches the target. Only two
+            // fixed sizes are a different row shape rather than a layout, and
+            // that pair is refused below by name.
             (
-                DataType::LargeList(child) | DataType::List(child),
-                ArrowDataType::LargeList(source_child),
-            ) => ArrayCastKind::List {
-                field: list_child(expected)?,
-                child: Box::new(Self::new_nested_from_arrow_field(
-                    child,
-                    source_child,
-                    nested,
-                    item,
-                )?),
-                kind: ListPlanKind::LargeList,
-            },
-            (DataType::LargeList(child), ArrowDataType::List(source_child)) => {
+                DataType::List(child)
+                | DataType::LargeList(child)
+                | DataType::ListView(child)
+                | DataType::LargeListView(child)
+                | DataType::FixedSizeList(child, _),
+                ArrowDataType::List(source_child)
+                | ArrowDataType::LargeList(source_child)
+                | ArrowDataType::ListView(source_child)
+                | ArrowDataType::LargeListView(source_child)
+                | ArrowDataType::FixedSizeList(source_child, _),
+            ) => {
+                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
+                    (dtype, source_type)
+                    && size != source
+                {
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "a fixed-size list of {source} items holds a different row than one \
+                             of {size} items, so it is a value change rather than a layout change"
+                        ),
+                    });
+                }
                 ArrayCastKind::List {
                     field: list_child(expected)?,
                     child: Box::new(Self::new_nested_from_arrow_field(
@@ -766,48 +803,9 @@ impl ArrayCastPlan {
                         nested,
                         item,
                     )?),
-                    kind: ListPlanKind::List,
+                    kind: source_list_kind(source_type)?,
                 }
             }
-            (
-                DataType::ListView(child) | DataType::LargeListView(child),
-                ArrowDataType::ListView(source_child),
-            ) => ArrayCastKind::List {
-                field: list_child(expected)?,
-                child: Box::new(Self::new_nested_from_arrow_field(
-                    child,
-                    source_child,
-                    nested,
-                    item,
-                )?),
-                kind: ListPlanKind::ListView,
-            },
-            (
-                DataType::LargeListView(child) | DataType::ListView(child),
-                ArrowDataType::LargeListView(source_child),
-            ) => ArrayCastKind::List {
-                field: list_child(expected)?,
-                child: Box::new(Self::new_nested_from_arrow_field(
-                    child,
-                    source_child,
-                    nested,
-                    item,
-                )?),
-                kind: ListPlanKind::LargeListView,
-            },
-            (
-                DataType::FixedSizeList(child, size),
-                ArrowDataType::FixedSizeList(source_child, source_size),
-            ) if size == source_size => ArrayCastKind::List {
-                field: list_child(expected)?,
-                child: Box::new(Self::new_nested_from_arrow_field(
-                    child,
-                    source_child,
-                    nested,
-                    item,
-                )?),
-                kind: ListPlanKind::FixedSize { size: *size },
-            },
             (DataType::Map(map), ArrowDataType::Map(source_entries, _)) => {
                 let ArrowDataType::Map(target_entries, ordered) = expected else {
                     return Err(internal_target_error("map"));
@@ -896,10 +894,49 @@ impl ArrayCastPlan {
                     )?),
                 }
             }
+            // An encoding is a layout, not a reading: a dictionary or a
+            // run-end column holds exactly what its value type holds. Planning
+            // the values against the source keeps every leaf rule - an ASCII
+            // width, a code, a UUID, a version, WKB - which handing the whole
+            // wrapper to Arrow's kernel silently skipped. The two arms above
+            // stay ahead of this one because a source already in this encoding
+            // is re-encoded rather than decoded and rebuilt.
+            (DataType::Dictionary(dictionary), _) => ArrayCastKind::Encoded {
+                values: Box::new(Self::new_nested_validated(
+                    &Field::new("values", dictionary.value().clone(), true),
+                    source_type,
+                    nested,
+                    dictionary_value,
+                )?),
+            },
+            (DataType::RunEndEncoded(encoded), _) => ArrayCastKind::Encoded {
+                values: Box::new(Self::new_nested_validated(
+                    encoded.values(),
+                    source_type,
+                    nested,
+                    run_end_values,
+                )?),
+            },
             _ if contains_struct(dtype) => {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
                     reason: "a wrapper/layout change around Struct values is not supported because positional Arrow casting would bypass case-insensitive name reconciliation".to_owned(),
+                });
+            }
+            // Two fixed byte widths are the same refusal a fixed-size list
+            // pair gets: the payload a row holds is not the payload the target
+            // declares, so it is a value change rather than a framing change,
+            // and Arrow's own message names neither datatype.
+            (DataType::FixedSizeBinary(width), ArrowDataType::FixedSizeBinary(source_width))
+                if width != source_width =>
+            {
+                return Err(Error::Unsupported {
+                    kind: dtype.name(),
+                    reason: format!(
+                        "a fixed binary of {source_width} bytes holds a different payload than \
+                         one of {width} bytes, so it is a value change rather than a framing \
+                         change"
+                    ),
                 });
             }
             // Anything Arrow's own kernel can cast, it casts - including the
@@ -910,21 +947,53 @@ impl ArrayCastPlan {
             // bypass name reconciliation, and the reservation walks nested
             // layouts, so the kernel's materialization stays budgeted.
             _ if can_cast_types(source_type, expected) => ArrayCastKind::Kernel,
-            _ if may_be_fully_hidden => ArrayCastKind::DeferredUnsupported {
+            // A fixed binary and text, or a binary view and a fixed binary,
+            // carry one payload under two framings that Arrow reads only
+            // through its `Binary`. Taking that route is the same reading, so
+            // the pair is supported rather than refused.
+            // The mirror of the two encoded-target arms: an encoding hides a
+            // column, and a target that is not that encoding reads the column
+            // rather than the index. Arrow's kernel takes the pairs it can, so
+            // only what it cannot reach - a recognized ASCII, code or UUID
+            // column under an index, rendering as text - decodes here.
+            (_, ArrowDataType::Dictionary(_, values)) => {
+                Self::decoded_kind(field, values, source_metadata, rules, path)?
+            }
+            (_, ArrowDataType::RunEndEncoded(_, values)) => {
+                Self::decoded_kind(field, values.data_type(), source_metadata, rules, path)?
+            }
+            _ if bridges_through_binary(source_type, expected) => ArrayCastKind::ByteBridge,
+            // A pair neither Arrow nor the byte bridge reads is refused when a
+            // value actually arrives under it. A wrapper can hide every row of
+            // a child, and a hidden child that no reader would have taken is
+            // not a failure, so the refusal waits for the first exposed value.
+            _ => ArrayCastKind::DeferredUnsupported {
                 reason: format!(
                     "Arrow cannot cast source datatype {source_type:?} to target datatype {expected:?}"
                 ),
             },
-            _ => {
-                return Err(Error::Unsupported {
-                    kind: dtype.name(),
-                    reason: format!(
-                        "Arrow cannot cast source datatype {source_type:?} to target datatype {expected:?}"
-                    ),
-                });
-            }
         };
         Ok(kind)
+    }
+
+    /// Plans the column an encoding was hiding, so the cast reads values.
+    fn decoded_kind(
+        field: &Field,
+        decoded: &ArrowDataType,
+        source_metadata: Option<&HashMap<String, String>>,
+        rules: PlanRules,
+        path: Path<'_>,
+    ) -> Result<ArrayCastKind> {
+        Ok(ArrayCastKind::Decoded {
+            plan: Box::new(Self::new_validated_with(
+                field,
+                decoded,
+                source_metadata,
+                rules,
+                path,
+            )?),
+            decoded: decoded.clone(),
+        })
     }
 
     fn cast(&self, array: ArrayRef, budget: &mut MaterializationBudget) -> Result<ArrayRef> {
@@ -961,6 +1030,24 @@ impl ArrayCastPlan {
                 &self.field,
                 budget,
             )?,
+            ArrayCastKind::ByteBridge => {
+                let bytes = arrow_cast_exposed(
+                    &array,
+                    &ArrowDataType::Binary,
+                    self.safe(),
+                    exposure,
+                    &self.field,
+                    budget,
+                )?;
+                arrow_cast_exposed(
+                    &bytes,
+                    &self.expected,
+                    self.safe(),
+                    exposure,
+                    &self.field,
+                    budget,
+                )?
+            }
             ArrayCastKind::GeospatialIngest => {
                 let binary = if array.data_type() == &ArrowDataType::Binary {
                     array
@@ -1047,6 +1134,15 @@ impl ArrayCastPlan {
             ArrayCastKind::TemporalText => {
                 render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }
+            ArrayCastKind::DecimalIngest => ingest_text_values(
+                &array,
+                &self.expected,
+                self.safe(),
+                &self.field,
+                exposure,
+                budget,
+                Scalar::from_decimal_text,
+            )?,
             ArrayCastKind::TemporalIngest => ingest_temporal_text(
                 &array,
                 &self.expected,
@@ -1083,6 +1179,37 @@ impl ArrayCastPlan {
             } => self.cast_map_array(array, source, field, *ordered, entries, exposure, budget)?,
             ArrayCastKind::Dictionary { source_key, values } => {
                 cast_dictionary_planned(source_key, self, array, values, exposure, budget)?
+            }
+            ArrayCastKind::Encoded { values } => {
+                let read = values.cast_exposed(array, exposure, budget)?;
+                let encoded = arrow_cast_exposed(
+                    &read,
+                    &self.expected,
+                    self.safe(),
+                    exposure,
+                    &self.field,
+                    budget,
+                )?;
+                // Arrow builds the encoding's own child fields, so a values
+                // field carrying an extension identity comes back bare. The
+                // buffers are the ones asked for either way, so they are read
+                // back under the declared fields rather than rebuilt.
+                if encoded.data_type() == &self.expected {
+                    encoded
+                } else {
+                    reinterpret(&encoded, &self.expected)?
+                }
+            }
+            ArrayCastKind::Decoded { decoded, plan } => {
+                let values = arrow_cast_exposed(
+                    &array,
+                    decoded,
+                    self.safe(),
+                    exposure,
+                    &self.field,
+                    budget,
+                )?;
+                plan.cast_exposed(values, exposure, budget)?
             }
             ArrayCastKind::Union { fields, children } => {
                 cast_union_planned(fields, array, children, exposure, budget)?
@@ -1308,6 +1435,18 @@ pub(crate) fn named_cell<T>(field: &Field, index: usize, read: crate::Result<T>)
 /// `None` is everything else - a bitmap, a variable-length payload, an
 /// encoding, or anything with children - because those have no single buffer
 /// two datatypes could share.
+/// The layout a list source is rebuilt in, before the target layout is read.
+fn source_list_kind(source_type: &ArrowDataType) -> Result<ListPlanKind> {
+    Ok(match source_type {
+        ArrowDataType::List(_) => ListPlanKind::List,
+        ArrowDataType::LargeList(_) => ListPlanKind::LargeList,
+        ArrowDataType::ListView(_) => ListPlanKind::ListView,
+        ArrowDataType::LargeListView(_) => ListPlanKind::LargeListView,
+        ArrowDataType::FixedSizeList(_, size) => ListPlanKind::FixedSize { size: *size },
+        _ => return Err(internal_target_error("list")),
+    })
+}
+
 fn bit_layout_width(dtype: &ArrowDataType) -> Option<usize> {
     match dtype {
         // Arrow answers the width for every fixed-width primitive, decimal and
@@ -1341,6 +1480,10 @@ fn reinterpret(array: &ArrayRef, expected: &ArrowDataType) -> Result<ArrayRef> {
         .len(data.len())
         .offset(data.offset())
         .buffers(data.buffers().to_vec())
+        // A fixed-width pair has no children; an encoding whose declared child
+        // fields differ only in their metadata carries the ones it was built
+        // with, which is what makes this one function serve both.
+        .child_data(data.child_data().to_vec())
         .nulls(data.nulls().cloned())
         .build()?;
     Ok(arrow_array::make_array(rebuilt))

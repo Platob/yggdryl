@@ -262,3 +262,157 @@ fn parser_recursion_limits_have_exact_public_boundaries() {
     let rejected_type = format!("array<{accepted_type}>");
     assert!(DataType::from_str(&rejected_type).is_err());
 }
+
+#[test]
+fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
+    // The grammar and the display are one contract, so a variant that prints
+    // something the grammar cannot read is a variant a caller cannot write.
+    // This list names every `DataTypeId`, so a new variant fails here until
+    // both halves know it.
+    let values = [
+        DataType::Null,
+        DataType::Boolean,
+        DataType::Int8,
+        DataType::Int16,
+        DataType::Int32,
+        DataType::Int64,
+        DataType::UInt8,
+        DataType::UInt16,
+        DataType::UInt32,
+        DataType::UInt64,
+        DataType::Float16,
+        DataType::Float32,
+        DataType::Float64,
+        DataType::Binary,
+        DataType::fixed_size_binary(16).unwrap(),
+        DataType::LargeBinary,
+        DataType::BinaryView,
+        DataType::Utf8,
+        DataType::LargeUtf8,
+        DataType::Utf8View,
+        DataType::Ascii,
+        DataType::ascii(4).unwrap(),
+        DataType::Country,
+        DataType::Currency,
+        DataType::Mic,
+        DataType::Cfi,
+        DataType::Uuid,
+        DataType::Version,
+        DataType::variant(),
+        DataType::Date32,
+        DataType::Date64,
+        DataType::time(TimeUnit::Second).unwrap(),
+        DataType::time(TimeUnit::Nanosecond).unwrap(),
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+        DataType::datetime64(TimeUnit::Microsecond, "UTC".parse::<Timezone>().unwrap()).unwrap(),
+        DataType::duration32(TimeUnit::Second).unwrap(),
+        DataType::duration64(TimeUnit::Nanosecond).unwrap(),
+        DataType::Interval(TimeUnit::YearMonth),
+        DataType::Interval(TimeUnit::DayTime),
+        DataType::Interval(TimeUnit::MonthDayNano),
+        DataType::decimal32(9, 2).unwrap(),
+        DataType::decimal64(18, 2).unwrap(),
+        DataType::decimal128(38, 2).unwrap(),
+        DataType::decimal256(76, 2).unwrap(),
+        DataType::list(DataType::Int32.nullable_field("item")),
+        DataType::large_list(DataType::Int32.nullable_field("item")),
+        DataType::list_view(DataType::Int32.nullable_field("item")),
+        DataType::large_list_view(DataType::Int32.nullable_field("item")),
+        DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap(),
+        DataType::from_fields([DataType::Int32.required_field("a")]).unwrap(),
+        DataType::map_of(DataType::Utf8, DataType::Int32, false).unwrap(),
+        DataType::map_of(DataType::Utf8, DataType::Int32, true).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::Utf8).unwrap(),
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::Utf8.nullable_field("values"),
+        )
+        .unwrap(),
+        DataType::dense_union([DataType::Int64.nullable_field("number")]).unwrap(),
+        DataType::geometry(None).unwrap(),
+        DataType::geography(None, None).unwrap(),
+    ];
+
+    let mut seen = std::collections::HashSet::<yggdryl::DataTypeId>::new();
+    for value in values {
+        seen.insert(value.id());
+        let printed = value.to_string();
+        let reparsed = printed
+            .parse::<DataType>()
+            .unwrap_or_else(|error| panic!("{printed} does not read back: {error}"));
+        assert_eq!(reparsed, value, "{printed}");
+        // The id's own name is a spelling too, wherever it takes no parameter.
+        let named = value.id().as_str();
+        if !printed.contains('(') && !printed.contains('<') {
+            assert_eq!(
+                named
+                    .parse::<DataType>()
+                    .unwrap_or_else(|error| panic!("{named}: {error}")),
+                value,
+                "{named}"
+            );
+        }
+    }
+    // Every parameterized id name is a grammar keyword too.
+    for (named, expected) in [
+        ("fixed_ascii(4)", DataType::ascii(4).unwrap()),
+        (
+            "fixed_size_binary(16)",
+            DataType::fixed_size_binary(16).unwrap(),
+        ),
+        ("fixed_size_list(int32, 4)", {
+            DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap()
+        }),
+    ] {
+        assert_eq!(named.parse::<DataType>().unwrap(), expected, "{named}");
+    }
+    assert!(
+        seen.len() >= 40,
+        "the list should name every variant, saw {}",
+        seen.len()
+    );
+}
+
+#[test]
+fn a_declared_sql_length_is_a_length() {
+    // The length says nothing this crate's variable storage stores, but a
+    // declaration no storage could have meant is malformed input.
+    for accepted in ["varchar(10)", "char(1)", "binary(16)", "varbinary(4)"] {
+        assert!(accepted.parse::<DataType>().is_ok(), "{accepted}");
+    }
+    for malformed in ["varchar(0)", "char(-1)", "binary(-1)", "varbinary(0)"] {
+        let refused = malformed.parse::<DataType>().unwrap_err().to_string();
+        assert!(refused.contains("positive number of bytes"), "{refused}");
+    }
+}
+
+#[test]
+fn one_arrow_field_form_answers_to_one_key_set() {
+    // arrow-rs prints `data_type`; this crate spells the same property
+    // `dtype`. Both readings of the form take both, so a Debug line and a
+    // canonical line describe the same field.
+    let expected = Field::new("a", DataType::Int32, true);
+    for spelling in [
+        "Field { name: \"a\", data_type: Int32, nullable: true }",
+        "Field { name: \"a\", dtype: Int32, nullable: true }",
+        "field{name: \"a\", data_type: int32, nullable: true}",
+        "field{name: \"a\", dtype: int32, is_nullable: true}",
+    ] {
+        let parsed =
+            Field::from_str(spelling).unwrap_or_else(|error| panic!("{spelling}: {error}"));
+        assert_eq!(parsed, expected, "{spelling}");
+    }
+}
+
+#[test]
+fn a_field_spelled_without_nullability_is_nullable_wherever_it_sits() {
+    let expected = DataType::list(Field::new("a", DataType::Int32, true));
+    assert_eq!(
+        "list(field(\"a\",int32))".parse::<DataType>().unwrap(),
+        expected
+    );
+    assert_eq!(
+        "field(\"a\",int32)".parse::<Field>().unwrap(),
+        Field::new("a", DataType::Int32, true)
+    );
+}

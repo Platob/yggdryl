@@ -1021,3 +1021,12 @@ macro_rules! float_operators {
 float_operators!(Float16, half::f16, as_f16, from_f16);
 float_operators!(Float32, f32, as_f32, from_f32);
 float_operators!(Float64, f64, as_f64, from_f64);
+
+/// Read a float out of its canonical spelling.
+///
+/// The reading is `f64`, which spells every finite value the three widths
+/// hold plus the infinities and NaN; the declared width then rounds it, as it
+/// does for a native `f64` a caller passes directly.
+pub(crate) fn float_from_text(text: &str) -> Option<Scalar> {
+    text.trim().parse::<f64>().ok().map(Scalar::from)
+}

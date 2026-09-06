@@ -1,46 +1,37 @@
-use std::str::FromStr;
-
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::Nested;
-use crate::{DataType, Error, Field, I256, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
 pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
-    let value = prepare(value, field)?;
-    // Row canonicalization is the single schema conversion implementation.
-    // A one-child root gives scalar and struct parses that same path.
-    let root = Field::new("$", DataType::from_fields([field.clone()])?, false);
-    let row = root.canonicalize_value(Scalar::from_sequence([value]))?;
-    root.validate_value(&row)?;
-    row.as_sequence()
-        .and_then(|values| values.first())
-        .cloned()
-        .ok_or_else(|| invalid(field, "canonical row is empty"))
+    // [`Field::scalar`] is the single schema conversion implementation, and it
+    // reads every spelling a document leaves behind; only the base64 a
+    // document spells bytes with is substituted before it.
+    field.scalar(prepare(value, field)?)
 }
 
+/// Substitute the one spelling a document has that a value does not.
+///
+/// JSON, YAML and TOML have no byte literal, so a document spells a payload in
+/// base64; every other reading a document needs - a number, a boolean, a
+/// temporal, an ordered struct, a record keyed by name - is the value contract
+/// [`Field::scalar`] already owns, and is left to it. The walk only descends to
+/// find the byte leaves.
 fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
-    if value.is_null() {
+    // A subtree with no byte leaf has nothing to substitute, so the document
+    // value goes to the contract as it is rather than being walked and rebuilt.
+    if value.is_null() || !holds_byte_leaf(field.dtype()) {
         return Ok(value);
     }
     match field.dtype() {
-        DataType::Decimal32 { scale, .. }
-        | DataType::Decimal64 { scale, .. }
-        | DataType::Decimal128 { scale, .. } => decimal(value, *scale, false, field),
-        DataType::Decimal256 { scale, .. } => decimal(value, *scale, true, field),
         DataType::Binary
         | DataType::FixedSizeBinary(_)
         | DataType::LargeBinary
-        | DataType::BinaryView => binary(value, field),
-        DataType::Geometry(_) | DataType::Geography(_) => geospatial(value, field),
-        DataType::Date32
-        | DataType::Date64
-        | DataType::Time32(_)
-        | DataType::Time64(_)
-        | DataType::DateTime64 { .. }
-        | DataType::Duration32(_)
-        | DataType::Duration64(_) => temporal(value, field),
+        | DataType::BinaryView
+        | DataType::Geometry(_)
+        | DataType::Geography(_) => base64_payload(value, field),
         DataType::List(child)
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
@@ -62,6 +53,7 @@ fn prepare_for_type(value: Scalar, dtype: &DataType, context: &Field) -> Result<
     )
 }
 
+/// Descend a document array without deciding anything about its items.
 fn sequence(
     value: Scalar,
     mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
@@ -78,6 +70,7 @@ fn sequence(
         .map(Scalar::from_sequence)
 }
 
+/// Descend a document object or ordered array under a struct's children.
 fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
     match value {
         Scalar::Nested(Nested::Record(entries)) => {
@@ -110,6 +103,7 @@ fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Sca
     }
 }
 
+/// Descend the branch a union's type ID selects.
 fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Scalar> {
     let Some(values) = value.as_sequence() else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
@@ -131,6 +125,7 @@ fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Sc
     ]))
 }
 
+/// Descend a document mapping or object under a map's key and value fields.
 fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar> {
     let fields = map.entries().fields();
     let [key_field, value_field] = fields else {
@@ -141,6 +136,8 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
     };
     let entries = match value {
         Scalar::Nested(Nested::Mapping(entries)) => entries.as_slice().to_vec(),
+        // A record is a map keyed by name, which the value contract reads too;
+        // the entries are shaped here so the walk reaches their byte leaves.
         Scalar::Nested(Nested::Record(entries)) => entries
             .as_map()
             .iter()
@@ -156,7 +153,33 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
     )
 }
 
-fn binary(value: Scalar, field: &Field) -> Result<Scalar> {
+/// Whether a subtree stores bytes anywhere a document would spell base64.
+fn holds_byte_leaf(dtype: &DataType) -> bool {
+    match dtype {
+        DataType::Binary
+        | DataType::FixedSizeBinary(_)
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::Geometry(_)
+        | DataType::Geography(_) => true,
+        DataType::List(child)
+        | DataType::ListView(child)
+        | DataType::FixedSizeList(child, _)
+        | DataType::LargeList(child)
+        | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
+        DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
+        DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
+        DataType::Union(fields, _) => {
+            fields.iter().any(|(_, field)| holds_byte_leaf(field.dtype()))
+        }
+        DataType::Dictionary(dictionary) => holds_byte_leaf(dictionary.value()),
+        DataType::Map(map) => holds_byte_leaf(map.entries().dtype()),
+        _ => false,
+    }
+}
+
+/// Decode the base64 a document spells a byte payload with.
+fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
         Scalar::Text(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_str().as_bytes())
@@ -166,141 +189,9 @@ fn binary(value: Scalar, field: &Field) -> Result<Scalar> {
     }
 }
 
-fn geospatial(value: Scalar, field: &Field) -> Result<Scalar> {
-    match value {
-        Scalar::Text(encoded) => base64::engine::general_purpose::STANDARD
-            .decode(encoded.as_str().as_bytes())
-            .map(Scalar::from)
-            .map_err(|_| invalid(field, "expected base64 WKB text")),
-        value => Ok(value),
-    }
-}
-
-fn decimal(value: Scalar, scale: i8, wide: bool, field: &Field) -> Result<Scalar> {
-    if value.is_decimal() {
-        return Ok(value);
-    }
-    let text = scalar_number_text(&value)
-        .ok_or_else(|| invalid(field, "expected decimal text or a number"))?;
-    let coefficient = decimal_coefficient(&text, scale).map_err(|reason| invalid(field, reason))?;
-    if wide {
-        Ok(Scalar::d256(coefficient, scale))
-    } else {
-        coefficient
-            .as_i128()
-            .map(|coefficient| Scalar::d128(coefficient, scale))
-            .ok_or_else(|| invalid(field, "decimal coefficient exceeds 128 bits"))
-    }
-}
-
-fn scalar_number_text(value: &Scalar) -> Option<String> {
-    match value {
-        Scalar::Text(value) => Some(value.to_string()),
-        Scalar::Integer(value) => Some(value.to_string()),
-        Scalar::Floating(value) if value.as_f64().is_finite() => Some(value.as_f64().to_string()),
-        _ => None,
-    }
-}
-
-fn decimal_coefficient(text: &str, target_scale: i8) -> std::result::Result<I256, &'static str> {
-    let text = text.trim();
-    let exponent_at = text.find(['e', 'E']);
-    let (mantissa, exponent) = exponent_at.map_or((text, 0_i32), |position| {
-        let exponent = text[position + 1..].parse::<i32>().unwrap_or(i32::MIN);
-        (&text[..position], exponent)
-    });
-    if exponent == i32::MIN
-        || exponent_at.is_some_and(|position| text[position + 1..].contains(['e', 'E']))
-    {
-        return Err("invalid decimal exponent");
-    }
-    let (sign, mantissa) = match mantissa.as_bytes().first() {
-        Some(b'-') => ("-", &mantissa[1..]),
-        Some(b'+') => ("", &mantissa[1..]),
-        _ => ("", mantissa),
-    };
-    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
-    if whole.contains('.')
-        || fraction.contains('.')
-        || (whole.is_empty() && fraction.is_empty())
-        || !whole
-            .bytes()
-            .chain(fraction.bytes())
-            .all(|byte| byte.is_ascii_digit())
-    {
-        return Err("invalid decimal digits");
-    }
-    let digits = format!("{sign}{whole}{fraction}");
-    let mut coefficient =
-        I256::from_str(&digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
-    if coefficient == I256::ZERO {
-        return Ok(coefficient);
-    }
-    let source_scale = i32::try_from(fraction.len())
-        .map_err(|_| "decimal scale is too large")?
-        .checked_sub(exponent)
-        .ok_or("decimal scale is too large")?;
-    let shift = i32::from(target_scale)
-        .checked_sub(source_scale)
-        .ok_or("decimal scale is too large")?;
-    if shift >= 0 {
-        for _ in 0..shift {
-            coefficient = coefficient
-                .checked_mul_ten()
-                .ok_or("decimal coefficient exceeds 256 bits")?;
-        }
-    } else {
-        for _ in 0..-shift {
-            coefficient = coefficient
-                .divided_by_ten()
-                .ok_or("decimal has more fractional digits than the field allows")?;
-        }
-    }
-    Ok(coefficient)
-}
-
-/// Read a temporal from its text spelling under the field's declared type.
-///
-/// The spelling, the exact restatement in the declared unit and the zone rule
-/// are [`Scalar::from_temporal_text`]; the field only names where the value
-/// sat, so the reason the reading gives survives into the record error.
-fn temporal(value: Scalar, field: &Field) -> Result<Scalar> {
-    let Scalar::Text(text) = value else {
-        return Ok(value);
-    };
-    Scalar::from_temporal_text(field.dtype(), text.as_str())
-        .map_err(|error| invalid(field, reason_of(&error)))
-}
-
-/// The reason one error carries, as a record error restates it.
-fn reason_of(error: &Error) -> SmolStr {
-    match error {
-        Error::Parse {
-            target,
-            position,
-            reason,
-        } => format_smolstr!("expected an ISO {target}: {reason} at byte {position}"),
-        Error::InvalidRecord { reason, .. } => reason.clone(),
-        other => SmolStr::new(other.to_string()),
-    }
-}
-
 fn invalid(field: &Field, reason: impl Into<SmolStr>) -> Error {
     Error::InvalidRecord {
         path: format_smolstr!("$.{}", field.name()),
         reason: reason.into(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::decimal_coefficient;
-    use crate::I256;
-
-    #[test]
-    fn decimals_are_restated_exactly_at_the_field_scale() {
-        assert_eq!(decimal_coefficient("10.50", 2).unwrap(), I256::from(1_050));
-        assert_eq!(decimal_coefficient("1.05e1", 2).unwrap(), I256::from(1_050));
-        assert!(decimal_coefficient("1.005", 2).is_err());
     }
 }
