@@ -4,6 +4,7 @@ from ._native import (
     IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
     __version__ as __version__,
     combined as combined,
+    refresh_logging as refresh_logging,
 )
 from .expression import (
     Bound as Bound,

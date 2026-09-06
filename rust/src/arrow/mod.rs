@@ -663,6 +663,22 @@ impl arrow_array::RecordBatchReader for Cast {
     }
 }
 
+/// Return whether two schemas name the same columns, in the same order.
+///
+/// This is the question a stream asks of a batch that is not the shape it
+/// expected: same columns is a batch that reconciles - differing only in a
+/// nullable flag, an extension entry, or a storage width - and different
+/// columns is different data, which no reconciliation should invent its way
+/// past. Names fold the way every other lookup in the crate folds them.
+pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Schema) -> bool {
+    left.fields().len() == right.fields().len()
+        && left
+            .fields()
+            .iter()
+            .zip(right.fields())
+            .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
+}
+
 /// Return `reader`'s batches cast to `field`, one batch at a time.
 ///
 /// This is the cast half of a schema-directed read: the encoding has already
@@ -897,10 +913,16 @@ pub struct StructScalar {
 impl StructScalar {
     /// Validates one non-null Arrow struct row against a canonical schema.
     ///
+    /// The pairing is exact rather than reconciled - this holds the array the
+    /// caller passed beside the field the caller passed, so the two have to
+    /// already agree, down to nullability and field metadata. A row that only
+    /// nearly agrees is reconciled by
+    /// [`ArrowCast::cast_arrow_array`](crate::ArrowCast::cast_arrow_array) first.
+    ///
     /// # Errors
     ///
-    /// Returns an error unless the array is exactly one present row with a
-    /// physical Struct layout compatible with `schema`.
+    /// Returns an error unless the array is exactly one present row whose
+    /// Arrow fields are exactly the ones `schema` projects.
     pub fn from_parts(schema: Field, array: StructArray) -> Result<Self> {
         if array.len() != 1 {
             return Err(Error::IncompatibleSchema(format!(
@@ -1258,7 +1280,10 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     Ok(field)
 }
 
-/// Check that a struct array carries exactly the columns a field declares.
+/// Check that a struct array carries exactly the fields a schema projects.
+///
+/// Exactly, including nullability and metadata: this is the pairing check of a
+/// validating constructor, not the reconciliation a read or a write performs.
 ///
 /// # Errors
 ///

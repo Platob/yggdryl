@@ -1,6 +1,7 @@
 //! Thin native Python views over Yggdryl core values.
 
 use std::cmp::Ordering;
+use std::sync::OnceLock;
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyValueError;
@@ -323,8 +324,43 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     Ok(listing.into())
 }
 
+/// The bridge that carries the core's `log` records into Python `logging`.
+///
+/// Held because `pyo3-log` caches each Python logger's effective level, and a
+/// caller that changes a level after import needs that cache dropped.
+static LOGGING: OnceLock<pyo3_log::ResetHandle> = OnceLock::new();
+
+/// Drop the cached Python log levels, so a level changed after import applies.
+///
+/// `logging.getLogger("yggdryl").setLevel(...)` before the first record needs
+/// nothing; changing a level once records have flowed needs this.
+#[pyfunction]
+fn refresh_logging() {
+    if let Some(handle) = LOGGING.get() {
+        handle.reset();
+    }
+}
+
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Records travel under the Rust module path, so a core record from
+    // `yggdryl::media::iceberg::table` reaches `logging` as
+    // `yggdryl.media.iceberg.table` and the package's own logger is its root.
+    //
+    // The bridge is global, so every crate in the build would otherwise reach
+    // Python: the Avro reader alone narrates a schema parse per manifest, and
+    // that is the flood a caller enabling debug does not want. Only this
+    // project's own targets pass below `warn`, so a dependency still surfaces
+    // what went wrong and never what it did. `install` rather than `init`
+    // because an embedder may have installed a logger already, and an
+    // extension has no business replacing it.
+    let bridge = pyo3_log::Logger::default()
+        .filter(log::LevelFilter::Warn)
+        .filter_target("yggdryl".to_owned(), log::LevelFilter::Trace)
+        .install();
+    if let Ok(handle) = bridge {
+        let _ = LOGGING.set(handle);
+    }
     register_classes(module)?;
     register_functions(module)?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -433,6 +469,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
 
 /// Register the native free functions.
 fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(refresh_logging, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zlib_loads, module)?)?;

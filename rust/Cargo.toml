@@ -59,6 +59,7 @@ hmac = { version = "0.13", optional = true }
 md-5 = { version = "0.11", optional = true }
 # Metadata-only boundary: official Arrow 58 types never enter public APIs.
 iceberg-official = { package = "iceberg", version = "=0.10.1", default-features = false, optional = true }
+log.workspace = true
 memmap2 = "0.9"
 # The full engine: literal prefilters and the lazy DFA are what let the line
 # projection outrun CPython's C `re` loop on the same corpus. `memchr` rides

@@ -66,6 +66,21 @@ impl DigestField<'_> {
         self.get(ALGORITHM).map(parse_digest_algorithm).transpose()
     }
 
+    /// Returns whether this root declares a holder a fill would write.
+    ///
+    /// The answer walks the declared Structs, which is exactly the reach
+    /// [`Self::apply_arrow_batch`] has, and reads no rows. A root that answers
+    /// `false` cannot be changed by a fill, so a caller applying by default
+    /// skips the work rather than casting a batch to prove nothing happens.
+    pub fn declares_holder(&self) -> bool {
+        fn any_holder(fields: &[Field]) -> bool {
+            fields.iter().any(|field| {
+                field.as_digest().is_holder() || (field.is_struct() && any_holder(field.fields()))
+            })
+        }
+        any_holder(self.as_field().fields())
+    }
+
     /// Parses the ordered sources this holder selects relative to its Struct.
     ///
     /// The list is answered as it is stored, `"*"` included: that spelling is

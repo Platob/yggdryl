@@ -666,7 +666,10 @@ pub(crate) fn row_digests<'py>(
 ///
 /// There is no row framing here, so a column digest is the value's own feed;
 /// a null feeds the null tag, which is what keeps a null and an empty string
-/// apart.
+/// apart. The array is reconciled to the field first, because the answer is
+/// the value model's rather than the layout's - an `int32` column read under
+/// an `int64` declaration is the same numbers - and strictly, so a value the
+/// declaration cannot hold is named rather than nulled into a digest.
 #[pyfunction]
 #[pyo3(name = "xxhash_column_digests", signature = (array, field, algorithm = "xxh3-64"))]
 pub(crate) fn column_digests<'py>(
@@ -677,12 +680,9 @@ pub(crate) fn column_digests<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let values = arrow_array_from_pyarrow(array)?;
     let field = core_field_from_value(field)?;
-    let digests = yggdryl::xxhash::arrow::column_digests(
-        values.as_ref(),
-        &field,
-        algorithm_from_str(algorithm)?,
-    )
-    .map_err(value_error)?;
+    let digests =
+        yggdryl::xxhash::arrow::column_digests(values, &field, algorithm_from_str(algorithm)?)
+            .map_err(value_error)?;
     arrow_array_to_pyarrow(py, &digests, None)
 }
 

@@ -160,6 +160,12 @@ impl<H: IOBase> Table<H> {
             options: None,
         };
         table.commit_metadata()?;
+        log::info!(
+            "created iceberg table at {} (format v{}, {} columns)",
+            table.metadata.location(),
+            format_version as u8,
+            table.schema().map_or(0, |schema| schema.fields().len()),
+        );
         Ok(table)
     }
 
@@ -174,16 +180,9 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when the folder holds no metadata document, or when
     /// the document is not table metadata.
     pub fn open(root: H) -> Result<Self> {
-        let metadata_dir = root.child_by_path(METADATA_DIR)?;
-        match find_metadata(&metadata_dir)? {
-            Some((version, metadata_file_name, document)) => Ok(Self {
-                root,
-                metadata: TableMetadata::from_json(&document)?,
-                version,
-                metadata_file_name,
-                options: None,
-            }),
-            None => Err(missing_metadata(&metadata_dir)),
+        match Self::locate_keeping(root)? {
+            Ok(table) => Ok(table),
+            Err(root) => Err(missing_metadata(&root.child_by_path(METADATA_DIR)?)),
         }
     }
 
@@ -216,9 +215,14 @@ impl<H: IOBase> Table<H> {
         let Some((version, metadata_file_name, document)) = find_metadata(&metadata_dir)? else {
             return Ok(Err(root));
         };
+        let metadata = TableMetadata::from_json(&document)?;
+        log::debug!(
+            "opened iceberg table {} at metadata version {version}",
+            metadata.location(),
+        );
         Ok(Ok(Self {
             root,
-            metadata: TableMetadata::from_json(&document)?,
+            metadata,
             version,
             metadata_file_name,
             options: None,
@@ -573,7 +577,12 @@ impl<H: IOBase> Table<H> {
         schema: &Field,
         for_read: bool,
     ) -> Result<ScanPlan> {
-        super::scan::plan(
+        let location = self.metadata.location();
+        log::debug!(
+            "planning iceberg scan of {location} over {} manifests",
+            manifests.len()
+        );
+        let plan = super::scan::plan(
             manifests,
             &|spec_id| {
                 self.metadata
@@ -589,7 +598,18 @@ impl<H: IOBase> Table<H> {
             conjuncts,
             schema,
             for_read,
-        )
+        )?;
+        // How much the filters removed is the read signal worth watching: a
+        // plan that opens every file is a plan whose predicate bought nothing.
+        log::info!(
+            "planned iceberg scan of {location}: {} data files to open, {} excluded by filters, \
+             {} manifests read and {} skipped on their summary",
+            plan.tasks.len(),
+            plan.excluded.len(),
+            plan.manifests_read,
+            plan.skipped.len(),
+        );
+        Ok(plan)
     }
 
     /// Return every live data file of the current snapshot, with its spec.
@@ -749,6 +769,11 @@ impl<H: IOBase> Table<H> {
                             Err(error) => return restore(self, error),
                         }
                     }
+                    log::debug!(
+                        "iceberg commit of {} found version {version} already published; \
+                         retry {beaten}, waiting {wait} ms",
+                        self.metadata.location(),
+                    );
                     if wait > 0 {
                         std::thread::sleep(std::time::Duration::from_millis(wait));
                     }
@@ -796,11 +821,25 @@ impl<H: IOBase> Table<H> {
                     self.version = version;
                     self.metadata_file_name = metadata_file_name;
                 }
+                log::debug!(
+                    "iceberg commit of {} was beaten to version {version} on write; \
+                     retry {beaten}, waiting {wait} ms",
+                    self.metadata.location(),
+                );
                 if wait > 0 {
                     std::thread::sleep(std::time::Duration::from_millis(wait));
                 }
                 continue;
             }
+            log::info!(
+                "committed iceberg metadata version {} of {}{}",
+                self.version,
+                self.metadata.location(),
+                match self.metadata.current_snapshot() {
+                    Some(snapshot) => format!(", snapshot {}", snapshot.snapshot_id),
+                    None => String::new(),
+                },
+            );
             return Ok(());
         }
     }
@@ -1196,6 +1235,10 @@ impl<H: IOBase> Table<H> {
         // Nothing qualifies, so nothing is committed: a snapshot that changes
         // no file would still cost a manifest, a list, and a document.
         if selected.is_empty() {
+            log::info!(
+                "compaction of {} found nothing to rewrite; no snapshot committed",
+                self.metadata.location(),
+            );
             return Ok(Compaction::default());
         }
 
@@ -1211,6 +1254,10 @@ impl<H: IOBase> Table<H> {
                 })
         })?;
 
+        log::debug!(
+            "compacting {}: rewriting {files_before} files of {bytes_rewritten} bytes",
+            self.metadata.location(),
+        );
         let schema = self.schema()?.clone();
         let rows = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
         let files_after = self.commit(
@@ -1221,6 +1268,10 @@ impl<H: IOBase> Table<H> {
                 entries: carried,
             },
         )?;
+        log::info!(
+            "compacted {}: {files_before} files of {bytes_rewritten} bytes rewritten as {files_after}",
+            self.metadata.location(),
+        );
         Ok(Compaction {
             files_before,
             files_after,
@@ -1247,6 +1298,10 @@ impl<H: IOBase> Table<H> {
             metadata.set_current_schema(schema_id)?;
             Ok(())
         })?;
+        log::info!(
+            "evolved iceberg schema of {} to id {schema_id}",
+            self.metadata.location(),
+        );
         Ok(schema_id)
     }
 
@@ -1361,6 +1416,11 @@ impl<H: IOBase> Table<H> {
             expired = metadata.expire_snapshots(older_than_ms, retain_last, snapshot_ids)?;
             Ok(())
         })?;
+        log::info!(
+            "expired {} iceberg snapshots of {}",
+            expired.len(),
+            self.metadata.location(),
+        );
         Ok(expired)
     }
 
@@ -1513,9 +1573,15 @@ impl<H: IOBase> Table<H> {
             spec: &spec,
             mime_type,
         };
+        log::debug!(
+            "writing an iceberg {operation} snapshot {snapshot_id} to {}",
+            self.metadata.location(),
+        );
         let mut written = Vec::new();
         for (values, group) in grouped_batches(batches, &schema, &spec, &partition)? {
             for file in rolled(group, target) {
+                // Deliberately no record per file: a commit is the unit worth
+                // watching, and a wide partition write is thousands of files.
                 written.push(self.write_data_file(&write, written.len(), &values, file)?);
             }
         }
@@ -1523,6 +1589,11 @@ impl<H: IOBase> Table<H> {
 
         let added_records = checked_file_sum(&written, |file| file.record_count, "record count")?;
         let added_size = checked_file_sum(&written, |file| file.file_size_in_bytes, "file size")?;
+        log::info!(
+            "wrote {added_records} rows as {files_written} iceberg data files \
+             ({added_size} bytes) for the {operation} snapshot {snapshot_id} of {}",
+            self.metadata.location(),
+        );
         let added_files = i32::try_from(written.len()).map_err(|_| {
             invalid(format_smolstr!(
                 "expected fewer than {} files in one commit, got {}",

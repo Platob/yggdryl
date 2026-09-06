@@ -538,9 +538,12 @@ impl Digester {
     ///
     /// This state is a configuration prototype: its algorithm, seed, and
     /// secret are used, but bytes already written to it are ignored and the
-    /// state remains unchanged. With `force` false, populated holder cells are
-    /// preserved and only canonical defaults are computed; with it true,
-    /// every visible holder is recomputed.
+    /// state remains unchanged. A holder whose storage this algorithm's width
+    /// does not fit resolves its own algorithm instead, and a fresh unseeded
+    /// state computes it - so the seed and the secret reach the holders that
+    /// share this state's width, and no others. With `force` false, populated
+    /// holder cells are preserved and only canonical defaults are computed;
+    /// with it true, every visible holder is recomputed.
     ///
     /// # Errors
     ///

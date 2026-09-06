@@ -251,9 +251,14 @@ impl<H: IOBase> Coding<H> {
         use crate::media::IORecordOptions;
 
         let reader = match options.field() {
-            Some(field) => crate::arrow::cast_reader(
+            // Applied, not cast, for the reason `leaf_reader` applies: a
+            // declared derived column arrives written from every read seam or
+            // from none of them.
+            Some(field) => field.apply_arrow_reader(
                 reader,
-                &field,
+                true,
+                true,
+                true,
                 crate::ArrowCastOptions::new().with_safe(options.safe()),
             )?,
             None => reader,

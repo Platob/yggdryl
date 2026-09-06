@@ -12,6 +12,10 @@ import pyarrow.fs  # type: ignore[import-untyped]
 _T = TypeVar("_T")
 
 __version__: str
+
+# Drops the cached Python log levels, so a level changed after import applies.
+def refresh_logging() -> None: ...
+
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
 Nullability = Literal["default", "strict"]
@@ -2900,10 +2904,10 @@ class RecordOptions:
     def key_value_metadata(
         self, metadata: Mapping[str, str] | Iterable[tuple[str, str]]
     ) -> None: ...
-    def cast_arrow_batch(
+    def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatch: ...
-    def cast_arrow_reader(
+    def apply_arrow_reader(
         self, reader: pyarrow.RecordBatchReader, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatchReader: ...
     def limit_arrow_reader(
@@ -3035,10 +3039,10 @@ class TextOptions:
     def timezone(self) -> Timezone | None: ...
     @timezone.setter
     def timezone(self, timezone: Timezone | str | Any | None) -> None: ...
-    def cast_arrow_batch(
+    def apply_arrow_batch(
         self, batch: pyarrow.RecordBatch, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatch: ...
-    def cast_arrow_reader(
+    def apply_arrow_reader(
         self, reader: pyarrow.RecordBatchReader, existing: FieldLike | None = None
     ) -> pyarrow.RecordBatchReader: ...
     def limit_arrow_reader(

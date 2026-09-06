@@ -1673,15 +1673,21 @@ impl PyRecordOptions {
             .map_err(value_error)
     }
 
-    /// Cast one `PyArrow` `RecordBatch` through these options.
+    /// Shape one `PyArrow` `RecordBatch` through these options.
     ///
     /// The three layers run in order: the declared field says what the rows
     /// are meant to be, `select_by_names` narrows and orders the columns, and
     /// `existing` - a stored root - completes the result against what the
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
+    ///
+    /// A field shapes rows by applying, not by casting: a declaration is a
+    /// cast *and* the `partition:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection in between only
+    /// narrows, because deriving there would restore what it was asked to
+    /// drop.
     #[pyo3(signature = (batch, existing = None))]
-    fn cast_arrow_batch<'py>(
+    fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         batch: &Bound<'py, PyAny>,
@@ -1691,16 +1697,16 @@ impl PyRecordOptions {
         let batch = RecordBatch::from_pyarrow_bound(batch)?;
         let cast = self
             .inner
-            .cast_arrow_batch(batch, existing.as_ref())
+            .apply_arrow_batch(batch, existing.as_ref())
             .map_err(value_error)?;
         cast.into_pyarrow(py)
     }
 
-    /// Cast a whole reader the way `cast_arrow_batch` casts one batch.
+    /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
     ///
-    /// Streamed: nothing is collected, and each batch is cast as it is pulled.
+    /// Streamed: nothing is collected, each batch is shaped as it is pulled.
     #[pyo3(signature = (reader, existing = None))]
-    fn cast_arrow_reader<'py>(
+    fn apply_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         reader: &Bound<'py, PyAny>,
@@ -1710,7 +1716,7 @@ impl PyRecordOptions {
         let reader = batch_reader_from_arrow_reader(reader)?;
         let cast = self
             .inner
-            .cast_arrow_reader(reader, existing.as_ref())
+            .apply_arrow_reader(reader, existing.as_ref())
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, cast)
     }
@@ -2188,15 +2194,21 @@ impl PyTextOptions {
         Ok(())
     }
 
-    /// Cast one `PyArrow` `RecordBatch` through these options.
+    /// Shape one `PyArrow` `RecordBatch` through these options.
     ///
     /// The three layers run in order: the declared field says what the rows
     /// are meant to be, `select_by_names` narrows and orders the columns, and
     /// `existing` - a stored root - completes the result against what the
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
+    ///
+    /// A field shapes rows by applying, not by casting: a declaration is a
+    /// cast *and* the `partition:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection in between only
+    /// narrows, because deriving there would restore what it was asked to
+    /// drop.
     #[pyo3(signature = (batch, existing = None))]
-    fn cast_arrow_batch<'py>(
+    fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         batch: &Bound<'py, PyAny>,
@@ -2206,16 +2218,16 @@ impl PyTextOptions {
         let batch = RecordBatch::from_pyarrow_bound(batch)?;
         let cast = self
             .inner
-            .cast_arrow_batch(batch, existing.as_ref())
+            .apply_arrow_batch(batch, existing.as_ref())
             .map_err(value_error)?;
         cast.into_pyarrow(py)
     }
 
-    /// Cast a whole reader the way `cast_arrow_batch` casts one batch.
+    /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
     ///
-    /// Streamed: nothing is collected, and each batch is cast as it is pulled.
+    /// Streamed: nothing is collected, each batch is shaped as it is pulled.
     #[pyo3(signature = (reader, existing = None))]
-    fn cast_arrow_reader<'py>(
+    fn apply_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         reader: &Bound<'py, PyAny>,
@@ -2225,7 +2237,7 @@ impl PyTextOptions {
         let reader = batch_reader_from_arrow_reader(reader)?;
         let cast = self
             .inner
-            .cast_arrow_reader(reader, existing.as_ref())
+            .apply_arrow_reader(reader, existing.as_ref())
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, cast)
     }

@@ -108,11 +108,11 @@ def test_options_shape_a_batch_and_a_reader_the_same_way() -> None:
     source = pa.record_batch(
         {"id": pa.array([1], pa.int32()), "year": pa.array([2024], pa.int32())}
     )
-    cast = options.cast_arrow_batch(source)
-    assert cast.schema.names == ["id"]
-    assert cast.schema.field("id").type == pa.int64()
+    shaped = options.apply_arrow_batch(source)
+    assert shaped.schema.names == ["id"]
+    assert shaped.schema.field("id").type == pa.int64()
 
-    reader = options.cast_arrow_reader(
+    reader = options.apply_arrow_reader(
         pa.RecordBatchReader.from_batches(source.schema, [source])
     )
     assert reader.schema.names == ["id"]

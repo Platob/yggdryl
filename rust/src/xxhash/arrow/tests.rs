@@ -3,14 +3,15 @@ use std::sync::Arc;
 use arrow_array::cast::AsArray as _;
 use arrow_array::types::{Int32Type, Int64Type, UInt32Type, UInt64Type};
 use arrow_array::{
-    Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray, StructArray,
-    UInt64Array,
+    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray,
+    StructArray, UInt64Array,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
 use super::{column_digests, row_digests};
+use crate::types::Temporal;
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{DataType, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -74,9 +75,14 @@ fn digests(array: &ArrayRef, algorithm: DigestAlgorithm) -> Vec<Digest> {
 /// One column per datatype family, each with the values that exercise it.
 ///
 /// Every family the core can read is here, because the contract is that the
-/// buffer path and the fallback answer the same thing on all of them.
+/// buffer path and the fallback answer the same thing on all of them, and each
+/// temporal resolution the buffer path downcasts for is its own column. The
+/// exception is `variant`, whose binary encoding lands with the Iceberg v3
+/// layer, so no array crosses the boundary yet and the refusal is pinned on
+/// its own.
 fn columns() -> Vec<(Field, Scalar)> {
     let utc = Timezone::UTC;
+    let offset = Timezone::from_offset(5 * 3_600 + 1_800).unwrap();
     vec![
         (
             Field::new("null", DataType::Null, true),
@@ -146,6 +152,18 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
+            Field::new("decimal32", DataType::decimal32(9, 2).unwrap(), true),
+            Scalar::from_sequence([Scalar::d128(18_723, 2), Scalar::d128(-100, 2), Scalar::Null]),
+        ),
+        (
+            Field::new("decimal64", DataType::decimal64(18, 4).unwrap(), true),
+            Scalar::from_sequence([
+                Scalar::d128(187_230_000, 4),
+                Scalar::d128(-1, 4),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("decimal128", DataType::decimal128(12, 2).unwrap(), true),
             Scalar::from_sequence([
                 Scalar::d128(18_723, 2),
@@ -182,6 +200,43 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new("ascii(4)", DataType::FixedAscii(4), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
+        ),
+        (
+            Field::new("ascii", DataType::Ascii, true),
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
+        ),
+        (
+            Field::new("country", DataType::Country, true),
+            Scalar::from_sequence([Scalar::from("US"), Scalar::Null]),
+        ),
+        (
+            Field::new("currency", DataType::Currency, true),
+            Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
+        ),
+        (
+            Field::new("mic", DataType::Mic, true),
+            Scalar::from_sequence([Scalar::from("XNYS"), Scalar::Null]),
+        ),
+        (
+            Field::new("cfi", DataType::Cfi, true),
+            Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
+        ),
+        (
+            Field::new("uuid", DataType::Uuid, true),
+            Scalar::from_sequence([
+                DataType::Uuid
+                    .scalar("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+                    .unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("version", DataType::Version, true),
+            Scalar::from_sequence([
+                DataType::Version.scalar("1.2.3").unwrap(),
+                DataType::Version.scalar("1.10.0-rc.1").unwrap(),
+                Scalar::Null,
+            ]),
         ),
         (
             Field::new("binary", DataType::Binary, true),
@@ -226,12 +281,34 @@ fn columns() -> Vec<(Field, Scalar)> {
         ),
         (
             Field::new(
+                "time32_millisecond",
+                DataType::time32(TimeUnit::Millisecond).unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::time32(3_600_001, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
                 "time64",
                 DataType::time64(TimeUnit::Nanosecond).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
                 Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "time64_microsecond",
+                DataType::time64(TimeUnit::Microsecond).unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::time64(1_000, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
             ]),
         ),
@@ -264,9 +341,120 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
+            Field::new(
+                "timestamp_second",
+                DataType::DateTime64 {
+                    unit: TimeUnit::Second,
+                    timezone: utc,
+                },
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::datetime64(1_700_000_000, TimeUnit::Second, utc).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "timestamp_millisecond_offset",
+                DataType::DateTime64 {
+                    unit: TimeUnit::Millisecond,
+                    timezone: offset,
+                },
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::datetime64(1_700_000_000_123, TimeUnit::Millisecond, offset).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("duration64", DataType::Duration64(TimeUnit::Second), true),
             Scalar::from_sequence([
                 Scalar::duration64_in(90, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "duration64_millisecond",
+                DataType::Duration64(TimeUnit::Millisecond),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::duration64(90_500, TimeUnit::Millisecond).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "duration64_microsecond",
+                DataType::Duration64(TimeUnit::Microsecond),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::duration64(-1, TimeUnit::Microsecond).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "duration64_nanosecond",
+                DataType::Duration64(TimeUnit::Nanosecond),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::duration64(i64::MAX, TimeUnit::Nanosecond).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "duration32",
+                DataType::duration32(TimeUnit::Millisecond).unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::duration32(-90, TimeUnit::Millisecond).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "interval_year_month",
+                DataType::Interval(TimeUnit::YearMonth),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::Temporal(Temporal::Interval(
+                    crate::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
+                )),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "interval_day_time",
+                DataType::Interval(TimeUnit::DayTime),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::Temporal(Temporal::Interval(
+                    crate::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
+                )),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "interval_month_day_nano",
+                DataType::Interval(TimeUnit::MonthDayNano),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::Temporal(Temporal::Interval(
+                    crate::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
+                )),
                 Scalar::Null,
             ]),
         ),
@@ -278,6 +466,54 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                Scalar::from_sequence([]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "list_view",
+                DataType::list_view(Field::new("item", DataType::Int64, true)),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                Scalar::from_sequence([]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "fixed_size_list",
+                DataType::fixed_size_list(Field::new("item", DataType::Int64, true), 2).unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]),
+                Scalar::from_sequence([Scalar::from(3), Scalar::Null]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "large_list",
+                DataType::large_list(Field::new("item", DataType::Utf8, true)),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
+                Scalar::from_sequence([]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "large_list_view",
+                DataType::large_list_view(Field::new("item", DataType::Utf8, true)),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL")]),
                 Scalar::from_sequence([]),
                 Scalar::Null,
             ]),
@@ -338,11 +574,42 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
+            Field::new(
+                "run_end_encoded",
+                DataType::run_end_encoded(
+                    Field::new("run_ends", DataType::Int32, false),
+                    Field::new("values", DataType::Utf8, true),
+                )
+                .unwrap(),
+                true,
+            ),
+            // A run-end encoding hides its validity in the values child, which
+            // is the other case the parent null shortcut has to skip.
+            Scalar::from_sequence([
+                Scalar::from("AAPL"),
+                Scalar::from("AAPL"),
+                Scalar::from("MSFT"),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("geometry", DataType::from_str("geometry").unwrap(), true),
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
                 Scalar::Geospatial(crate::types::Geospatial::Geometry(
                     crate::types::Geometry::new([
+                        1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    ])
+                    .unwrap(),
+                )),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("geography", DataType::from_str("geography").unwrap(), true),
+            Scalar::from_sequence([
+                Scalar::Geospatial(crate::types::Geospatial::Geography(
+                    crate::types::Geography::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -366,7 +633,7 @@ fn a_column_digest_equals_the_value_feed_on_every_datatype_family() {
         let stored = stored.as_sequence().expect("a sequence of values");
 
         for algorithm in DigestAlgorithm::ALL {
-            let column = column_digests(array.as_ref(), &field, algorithm)
+            let column = column_digests(Arc::clone(&array), &field, algorithm)
                 .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
             assert_eq!(column.len(), stored.len(), "{}", field.name());
             assert_eq!(
@@ -439,6 +706,153 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
             "{algorithm}"
         );
     }
+}
+
+#[test]
+fn the_corpus_names_every_datatype_a_column_can_hold() {
+    // The corpus is the contract the two tests above check, so it has to name
+    // every datatype rather than a selection of them: a family absent here is
+    // a family whose buffer arm and fallback were never compared.
+    let covered: std::collections::HashSet<DataTypeId> = columns()
+        .iter()
+        .map(|(field, _)| field.dtype().id())
+        .collect();
+    let missing: Vec<&str> = DataTypeId::ALL
+        .into_iter()
+        .filter(|id| {
+            !matches!(
+                *id,
+                // Two integer tags the value feed writes but no column spells,
+                // and the one datatype the Arrow value boundary still refuses.
+                DataTypeId::Int128 | DataTypeId::UInt128 | DataTypeId::Variant
+            )
+        })
+        .filter(|id| !covered.contains(id))
+        .map(DataTypeId::as_str)
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "datatypes missing from the digest corpus: {missing:?}"
+    );
+}
+
+#[test]
+fn a_variant_column_refuses_by_name_rather_than_hashing_its_storage() {
+    // A variant projects to Arrow, so it reaches the digest path like any
+    // other column; it answers the boundary's refusal rather than silently
+    // hashing the two binaries its storage happens to lay out.
+    let field = DataType::Variant.nullable_field("payload");
+    let arrow = field.clone().into_arrow().unwrap();
+    let ArrowDataType::Struct(children) = arrow.data_type().clone() else {
+        panic!("a variant lays out as the canonical metadata-and-value struct");
+    };
+    let array: ArrayRef = Arc::new(StructArray::new(
+        children,
+        vec![
+            Arc::new(BinaryArray::from(vec![Some(b"\x01".as_slice())])) as ArrayRef,
+            Arc::new(BinaryArray::from(vec![Some(b"\x00".as_slice())])) as ArrayRef,
+        ],
+        None,
+    ));
+
+    let error = column_digests(array, &field, DigestAlgorithm::Xxh3)
+        .expect_err("a variant column has no value the feed can read yet");
+    assert!(error.to_string().contains("variant"), "{error}");
+}
+
+#[test]
+fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
+    // `column_digests` takes the field and the array separately, so a caller
+    // can hand it a storage the declaration does not spell. The answer is the
+    // value model's rather than the layout's, so the same numbers under a
+    // narrower storage are the same value and answer the same digests.
+    let declared = Field::new("quantity", DataType::Int64, false);
+    let wide: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
+    let narrow: ArrayRef = Arc::new(arrow_array::Int32Array::from(vec![1, 2, 3]));
+    let expected = digests(
+        &column_digests(wide, &declared, DigestAlgorithm::Xxh3).unwrap(),
+        DigestAlgorithm::Xxh3,
+    );
+    assert_eq!(
+        digests(
+            &column_digests(narrow, &declared, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        ),
+        expected,
+    );
+
+    // The three text layouts are one value, and answer one digest.
+    let declared = Field::new("symbol", DataType::Utf8, true);
+    let expected = digests(
+        &column_digests(
+            Arc::new(StringArray::from(vec![Some("AAPL"), None])) as ArrayRef,
+            &declared,
+            DigestAlgorithm::Xxh3,
+        )
+        .unwrap(),
+        DigestAlgorithm::Xxh3,
+    );
+    let large: ArrayRef = Arc::new(arrow_array::LargeStringArray::from(vec![
+        Some("AAPL"),
+        None,
+    ]));
+    let view: ArrayRef = Arc::new(arrow_array::StringViewArray::from(vec![Some("AAPL"), None]));
+    for source in [large, view] {
+        assert_eq!(
+            digests(
+                &column_digests(source, &declared, DigestAlgorithm::Xxh3).unwrap(),
+                DigestAlgorithm::Xxh3,
+            ),
+            expected,
+        );
+    }
+
+    // A struct reconciles the same way: the declaration selects its children
+    // by name, so an order the stored columns do not share is not a refusal.
+    let pair: ArrayRef = Arc::new(StructArray::new(
+        arrow_schema::Fields::from(vec![
+            ArrowField::new("b", ArrowDataType::Int64, false),
+            ArrowField::new("a", ArrowDataType::Int64, false),
+        ]),
+        vec![
+            Arc::new(Int64Array::from(vec![2])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![1])) as ArrayRef,
+        ],
+        None,
+    ));
+    let declared = DataType::from_fields([
+        DataType::Int64.required_field("a"),
+        DataType::Int64.required_field("b"),
+    ])
+    .unwrap()
+    .required_field("pair");
+    assert_eq!(
+        digests(
+            &column_digests(pair, &declared, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        ),
+        vec![
+            Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]).digest(DigestAlgorithm::Xxh3)
+        ],
+    );
+}
+
+#[test]
+fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
+    // Reconciling is not guessing, and it is not the safe cast a stored shape
+    // completes with: a value the declaration cannot hold is named, because a
+    // null is a value here and two unconvertible cells must not become one.
+    let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
+    let field = Field::new("when", DataType::Date32, false);
+    let error =
+        column_digests(array, &field, DigestAlgorithm::Xxh3).expect_err("a symbol is not a date");
+    assert!(
+        matches!(
+            error,
+            crate::arrow::Error::IncompatibleSchema(_) | crate::arrow::Error::Core(_)
+        ),
+        "{error}"
+    );
 }
 
 #[test]
@@ -529,7 +943,7 @@ fn a_null_never_collides_with_an_empty_value() {
     let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
     let column = digests(
-        &column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3).unwrap(),
+        &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
         DigestAlgorithm::Xxh3,
     );
     assert_ne!(column[0], column[1]);
@@ -550,7 +964,7 @@ fn the_column_width_follows_the_algorithm() {
         (DigestAlgorithm::Xxh128, ArrowDataType::FixedSizeBinary(16)),
     ];
     for (algorithm, expected) in widths {
-        let column = column_digests(array.as_ref(), &field, algorithm).unwrap();
+        let column = column_digests(Arc::clone(&array), &field, algorithm).unwrap();
         assert_eq!(column.data_type(), &expected, "{algorithm}");
         assert_eq!(column.null_count(), 0, "a digest is never null");
     }
@@ -942,6 +1356,74 @@ fn every_concrete_state_and_the_dispatcher_expose_batch_fill() {
             .num_rows(),
         0
     );
+}
+
+#[test]
+fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
+    // A fill plan descends into Struct children, because those are the ones
+    // that are columns of their own. A holder under any other layout would be
+    // planned by nobody and left at its default, and a containing holder would
+    // then hash that default as though it were an answer - so the schema is
+    // refused where the declaration is.
+    let element = DataType::from_fields([
+        DataType::Int64.nullable_field("value"),
+        holder("inner_digest", DataType::UInt64),
+    ])
+    .unwrap();
+    let item = element.clone().required_field("item");
+
+    let layouts = [
+        DataType::list(item.clone()),
+        DataType::list_view(item.clone()),
+        DataType::large_list(item.clone()),
+        DataType::large_list_view(item.clone()),
+        DataType::fixed_size_list(item.clone(), 1).unwrap(),
+        DataType::map_of(DataType::Utf8, element.clone(), false).unwrap(),
+        DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
+            .unwrap(),
+        DataType::dictionary(DataType::Int32, element.clone()).unwrap(),
+        DataType::dense_union([item.clone()]).unwrap(),
+    ];
+
+    for layout in layouts {
+        let root = root([
+            layout.clone().nullable_field("events"),
+            holder("row_digest", DataType::UInt64),
+        ]);
+        let error = root
+            .as_digest()
+            .apply_arrow_batch(&empty_batch())
+            .expect_err("a holder no plan can reach is not a schema this fills");
+        let error = error.to_string();
+        assert!(error.contains("inner_digest"), "{layout}: {error}");
+        assert!(error.contains("events"), "{layout}: {error}");
+    }
+}
+
+#[test]
+fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
+    // The same reach decides the metadata-ownership rules: `digest:sources` on
+    // a field that is not a holder is refused at the top level, so it cannot
+    // be accepted one layout down.
+    let source = Field::from_parts(
+        "value",
+        DataType::Int64,
+        true,
+        [("digest:sources", "[\"other\"]")],
+    )
+    .unwrap();
+    let element = DataType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap();
+    let root = root([
+        DataType::list(element.required_field("item")).nullable_field("events"),
+        holder("row_digest", DataType::UInt64),
+    ]);
+
+    let error = root
+        .as_digest()
+        .apply_arrow_batch(&empty_batch())
+        .expect_err("digest metadata belongs to a holder, at any depth")
+        .to_string();
+    assert!(error.contains("events.item.value"), "{error}");
 }
 
 fn empty_batch() -> RecordBatch {
