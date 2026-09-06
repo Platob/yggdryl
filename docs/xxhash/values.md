@@ -268,7 +268,7 @@ assert_ne!(digests.value(0), digests.value(1));
 - Subtree past `DataType::PARSE_RECURSION_LIMIT` -> one reserved `0xff` replaces it; no allocation, no panic; values differing only below that depth collide.
 - Null cell in `column_digests` -> feeds the null tag, so it never collides with an empty string.
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
-- A `field` whose datatype does not describe the array given to `column_digests` -> `IncompatibleSchema`, never a panic.
+- A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
 - A `country`, `currency`, `mic`, `cfi`, `ascii(n)`, or `ascii` cell holding the same text -> one digest; the six compare equal and all feed the `ascii` tag.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.

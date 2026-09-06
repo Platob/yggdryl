@@ -490,22 +490,28 @@ impl ArrowWriteSession {
         if self.input_complete {
             return Ok(false);
         }
+        // The session's output shape is pinned by the first chunk and every
+        // batch is shaped onto it below, so a later chunk naming the same
+        // columns fits whatever its nullability, metadata, or storage widths
+        // say - comparing Arrow schemas would refuse all three. A chunk naming
+        // different columns is different data, and no shaping should invent
+        // its way past that.
         let input_schema = batches.schema();
-        if let Some(expected) = &self.input_schema {
-            if expected.as_ref() != input_schema.as_ref() {
+        match &self.input_schema {
+            Some(expected) if !crate::arrow::same_columns(expected, &input_schema) => {
                 let expected = format!("{expected:?}");
                 let got = format!("{input_schema:?}");
                 self.abort();
                 return Err(Error::InvalidRecord {
                     path: smol_str::SmolStr::new_static("$"),
                     reason: crate::text::expected_got(
-                        format_args!("the first asynchronous chunk schema {expected}"),
+                        format_args!("the columns of the first asynchronous chunk {expected}"),
                         format_args!("a later chunk schema {got}"),
                     ),
                 });
             }
-        } else {
-            self.input_schema = Some(std::sync::Arc::clone(&input_schema));
+            Some(_) => {}
+            None => self.input_schema = Some(std::sync::Arc::clone(&input_schema)),
         }
         if let Err(error) = self.ensure_shaped_schema(handle, input_schema) {
             self.abort();
@@ -948,7 +954,9 @@ pub(crate) fn select_reader(
 /// Decode one leaf, pushing the declared schema down and applying it to what
 /// returns.
 ///
-/// This is the only place a record read reaches an encoding.
+/// This is where a record read of a stored leaf reaches an encoding; a handle
+/// that owns its bytes decodes them in [`crate::coding`] and shapes the result
+/// the same way.
 #[cfg(feature = "arrow")]
 pub(crate) fn leaf_reader(
     handle: &(impl IOBase + ?Sized),

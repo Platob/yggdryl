@@ -633,7 +633,7 @@ fn a_column_digest_equals_the_value_feed_on_every_datatype_family() {
         let stored = stored.as_sequence().expect("a sequence of values");
 
         for algorithm in DigestAlgorithm::ALL {
-            let column = column_digests(array.as_ref(), &field, algorithm)
+            let column = column_digests(Arc::clone(&array), &field, algorithm)
                 .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
             assert_eq!(column.len(), stored.len(), "{}", field.name());
             assert_eq!(
@@ -755,64 +755,104 @@ fn a_variant_column_refuses_by_name_rather_than_hashing_its_storage() {
         None,
     ));
 
-    let error = column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3)
+    let error = column_digests(array, &field, DigestAlgorithm::Xxh3)
         .expect_err("a variant column has no value the feed can read yet");
     assert!(error.to_string().contains("variant"), "{error}");
 }
 
 #[test]
-fn a_column_digest_answers_an_error_when_the_field_does_not_describe_the_array() {
+fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
     // `column_digests` takes the field and the array separately, so a caller
-    // can disagree with itself. Every arm reads its buffer through the same
-    // fallible downcast, so the mismatch is the documented error rather than
-    // a panic from whichever family the datatype named.
-    // A struct is the case a downcast alone does not answer: the layout matches
-    // and the arity does not, and zipping the declaration against the columns
-    // would digest the shorter of the two rather than refuse.
+    // can hand it a storage the declaration does not spell. The answer is the
+    // value model's rather than the layout's, so the same numbers under a
+    // narrower storage are the same value and answer the same digests.
+    let declared = Field::new("quantity", DataType::Int64, false);
+    let wide: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
+    let narrow: ArrayRef = Arc::new(arrow_array::Int32Array::from(vec![1, 2, 3]));
+    let expected = digests(
+        &column_digests(wide, &declared, DigestAlgorithm::Xxh3).unwrap(),
+        DigestAlgorithm::Xxh3,
+    );
+    assert_eq!(
+        digests(
+            &column_digests(narrow, &declared, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        ),
+        expected,
+    );
+
+    // The three text layouts are one value, and answer one digest.
+    let declared = Field::new("symbol", DataType::Utf8, true);
+    let expected = digests(
+        &column_digests(
+            Arc::new(StringArray::from(vec![Some("AAPL"), None])) as ArrayRef,
+            &declared,
+            DigestAlgorithm::Xxh3,
+        )
+        .unwrap(),
+        DigestAlgorithm::Xxh3,
+    );
+    let large: ArrayRef = Arc::new(arrow_array::LargeStringArray::from(vec![
+        Some("AAPL"),
+        None,
+    ]));
+    let view: ArrayRef = Arc::new(arrow_array::StringViewArray::from(vec![Some("AAPL"), None]));
+    for source in [large, view] {
+        assert_eq!(
+            digests(
+                &column_digests(source, &declared, DigestAlgorithm::Xxh3).unwrap(),
+                DigestAlgorithm::Xxh3,
+            ),
+            expected,
+        );
+    }
+
+    // A struct reconciles the same way: the declaration selects its children
+    // by name, so an order the stored columns do not share is not a refusal.
     let pair: ArrayRef = Arc::new(StructArray::new(
         arrow_schema::Fields::from(vec![
-            ArrowField::new("a", ArrowDataType::Int64, false),
             ArrowField::new("b", ArrowDataType::Int64, false),
+            ArrowField::new("a", ArrowDataType::Int64, false),
         ]),
         vec![
-            Arc::new(Int64Array::from(vec![1])) as ArrayRef,
             Arc::new(Int64Array::from(vec![2])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![1])) as ArrayRef,
         ],
         None,
     ));
-    let narrowed = Field::new(
-        "pair",
-        DataType::from_fields([DataType::Int64.required_field("a")]).unwrap(),
-        false,
+    let declared = DataType::from_fields([
+        DataType::Int64.required_field("a"),
+        DataType::Int64.required_field("b"),
+    ])
+    .unwrap()
+    .required_field("pair");
+    assert_eq!(
+        digests(
+            &column_digests(pair, &declared, DigestAlgorithm::Xxh3).unwrap(),
+            DigestAlgorithm::Xxh3,
+        ),
+        vec![
+            Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]).digest(DigestAlgorithm::Xxh3)
+        ],
     );
-    let error = column_digests(pair.as_ref(), &narrowed, DigestAlgorithm::Xxh3)
-        .expect_err("a one-field struct does not describe a two-column struct array");
+}
+
+#[test]
+fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
+    // Reconciling is not guessing, and it is not the safe cast a stored shape
+    // completes with: a value the declaration cannot hold is named, because a
+    // null is a value here and two unconvertible cells must not become one.
+    let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
+    let field = Field::new("when", DataType::Date32, false);
+    let error =
+        column_digests(array, &field, DigestAlgorithm::Xxh3).expect_err("a symbol is not a date");
     assert!(
-        matches!(error, crate::arrow::Error::IncompatibleSchema(_)),
+        matches!(
+            error,
+            crate::arrow::Error::IncompatibleSchema(_) | crate::arrow::Error::Core(_)
+        ),
         "{error}"
     );
-
-    let array: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
-    for dtype in [
-        DataType::Int32,
-        DataType::Boolean,
-        DataType::Float64,
-        DataType::Utf8,
-        DataType::Date32,
-        DataType::DateTime64 {
-            unit: TimeUnit::Second,
-            timezone: Timezone::UTC,
-        },
-    ] {
-        let field = Field::new("quantity", dtype, false);
-        let error = column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3)
-            .expect_err("an int64 column does not answer another datatype");
-        assert!(
-            matches!(error, crate::arrow::Error::IncompatibleSchema(_)),
-            "{}: {error}",
-            field.dtype()
-        );
-    }
 }
 
 #[test]
@@ -903,7 +943,7 @@ fn a_null_never_collides_with_an_empty_value() {
     let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
     let column = digests(
-        &column_digests(array.as_ref(), &field, DigestAlgorithm::Xxh3).unwrap(),
+        &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
         DigestAlgorithm::Xxh3,
     );
     assert_ne!(column[0], column[1]);
@@ -924,7 +964,7 @@ fn the_column_width_follows_the_algorithm() {
         (DigestAlgorithm::Xxh128, ArrowDataType::FixedSizeBinary(16)),
     ];
     for (algorithm, expected) in widths {
-        let column = column_digests(array.as_ref(), &field, algorithm).unwrap();
+        let column = column_digests(Arc::clone(&array), &field, algorithm).unwrap();
         assert_eq!(column.data_type(), &expected, "{algorithm}");
         assert_eq!(column.null_count(), 0, "a digest is never null");
     }

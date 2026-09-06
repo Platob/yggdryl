@@ -625,6 +625,22 @@ impl arrow_array::RecordBatchReader for Cast {
     }
 }
 
+/// Return whether two schemas name the same columns, in the same order.
+///
+/// This is the question a stream asks of a batch that is not the shape it
+/// expected: same columns is a batch that reconciles - differing only in a
+/// nullable flag, an extension entry, or a storage width - and different
+/// columns is different data, which no reconciliation should invent its way
+/// past. Names fold the way every other lookup in the crate folds them.
+pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Schema) -> bool {
+    left.fields().len() == right.fields().len()
+        && left
+            .fields()
+            .iter()
+            .zip(right.fields())
+            .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
+}
+
 /// Return `reader`'s batches cast to `field`, one batch at a time.
 ///
 /// This is the cast half of a schema-directed read: the encoding has already

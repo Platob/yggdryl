@@ -740,15 +740,28 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
 /// around it. A null feeds the null tag, so a null and an empty string never
 /// collide.
 ///
+/// The array is reconciled to `field` first, because the answer is defined by
+/// the value model rather than by the layout: an `int32` column read under an
+/// `int64` declaration is the same numbers and must answer the same digests,
+/// and a struct whose children are stored in another order is the same row.
+/// Reconciling costs nothing when the array is already the declared shape.
+///
+/// The reconciliation is strict, unlike the one that completes a stored shape
+/// on a write: a value the declaration cannot hold is named rather than
+/// nulled, because a null is a value here and two different unconvertible
+/// cells would otherwise answer one digest.
+///
 /// # Errors
 ///
-/// Returns an error when `field` does not describe `array`, or a value cannot
-/// be represented.
+/// Returns an error when the array cannot be reconciled to `field`, or a value
+/// cannot be represented.
 pub fn column_digests(
-    array: &dyn Array,
+    array: ArrayRef,
     field: &Field,
     algorithm: DigestAlgorithm,
 ) -> Result<ArrayRef> {
+    let array = field.cast_arrow_array(array, false)?;
+    let array = array.as_ref();
     let mut digests = Vec::with_capacity(array.len());
     let mut digester = algorithm.digester();
     for index in 0..array.len() {

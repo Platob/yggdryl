@@ -180,16 +180,9 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when the folder holds no metadata document, or when
     /// the document is not table metadata.
     pub fn open(root: H) -> Result<Self> {
-        let metadata_dir = root.child_by_path(METADATA_DIR)?;
-        match find_metadata(&metadata_dir)? {
-            Some((version, metadata_file_name, document)) => Ok(Self {
-                root,
-                metadata: TableMetadata::from_json(&document)?,
-                version,
-                metadata_file_name,
-                options: None,
-            }),
-            None => Err(missing_metadata(&metadata_dir)),
+        match Self::locate_keeping(root)? {
+            Ok(table) => Ok(table),
+            Err(root) => Err(missing_metadata(&root.child_by_path(METADATA_DIR)?)),
         }
     }
 
@@ -1259,8 +1252,7 @@ impl<H: IOBase> Table<H> {
         })?;
 
         log::debug!(
-            "compacting {} of {}: rewriting {files_before} files of {bytes_rewritten} bytes",
-            files_before,
+            "compacting {}: rewriting {files_before} files of {bytes_rewritten} bytes",
             self.metadata.location(),
         );
         let schema = self.schema()?.clone();
