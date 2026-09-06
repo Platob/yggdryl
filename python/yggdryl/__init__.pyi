@@ -1,4 +1,8 @@
-from ._native import __version__ as __version__, combined as combined
+from ._native import (
+    ArrowValue as ArrowValue,
+    __version__ as __version__,
+    combined as combined,
+)
 from .expression import (
     Bound as Bound,
     BoundStatement as BoundStatement,

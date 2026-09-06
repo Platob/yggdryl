@@ -59,6 +59,8 @@ use crate::types::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
 
+use crate::arrow::columnar_reader;
+
 /// Read a core root Field out of anything Python describes rows with.
 ///
 /// A root is a non-null Struct Field, and Python spells one four ways: the
@@ -212,7 +214,7 @@ impl Frames {
     ///
     /// A `polars.LazyFrame` counts: it names rows this library can produce,
     /// and producing them is what a write asks it for.
-    fn holds(self, value: &Bound<'_, PyAny>) -> bool {
+    pub(crate) fn holds(self, value: &Bound<'_, PyAny>) -> bool {
         match self {
             Self::Pandas => declared_by(value, "pandas", "DataFrame"),
             Self::Polars => {
@@ -277,7 +279,7 @@ fn import_frames(py: Python<'_>, library: Frames) -> PyResult<Bound<'_, PyModule
 /// # Errors
 ///
 /// Returns whatever the library's own conversion raised.
-fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     if declared_by(frame, "polars", "LazyFrame") {
         // A lazy frame has not computed its rows yet, and polars offers no way
         // to hand them over a batch at a time, so collecting is what asking it
@@ -398,36 +400,6 @@ fn is_dataclass_instance(value: &Bound<'_, PyAny>) -> PyResult<bool> {
         .getattr("is_dataclass")?
         .call1((value,))?
         .extract::<bool>()
-}
-
-/// Read a batch reader out of a value that is already columnar, if it is one.
-///
-/// `None` means the value names rows some other way, which is what leaves the
-/// iterable paths to the caller. Nothing here consumes an iterator.
-///
-/// # Errors
-///
-/// Returns whatever an attribute lookup or a library conversion raised.
-fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
-    // A frame is recognized before the stream protocol so that the conversion
-    // is the library's own on every release of it, rather than the C stream on
-    // the releases that grew one.
-    if Frames::Pandas.holds(value) || Frames::Polars.holds(value) {
-        return batch_reader_from_value(&frame_to_arrow(value)?).map(Some);
-    }
-    if value.hasattr("__arrow_c_stream__")? {
-        return batch_reader_from_value(value).map(Some);
-    }
-    // A `Scanner` already describes one pass over rows, and a `Dataset` makes
-    // one on request. Both hand back a reader, so neither is materialized.
-    if value.hasattr("to_reader")? {
-        return batch_reader_from_value(&value.call_method0("to_reader")?).map(Some);
-    }
-    if value.hasattr("scanner")? {
-        let scanner = value.call_method0("scanner")?;
-        return batch_reader_from_value(&scanner.call_method0("to_reader")?).map(Some);
-    }
-    Ok(None)
 }
 
 /// Build a reader over an iterator whose items are readers or rows.

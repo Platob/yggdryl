@@ -21,6 +21,7 @@ use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::arrow::PyArrowValue;
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
@@ -1390,6 +1391,45 @@ impl PyIOBase {
             .read_scalar(field.as_ref())
             .map_err(crate::holder::fs::storage_error)?;
         decoded_into_py(py, value, field.as_ref(), native_scalar)
+    }
+
+    /// Read this resource's rows as one `ArrowValue`, whatever it holds.
+    ///
+    /// The Arrow-shaped sibling of `read_scalar`, and the one read that does
+    /// not need the caller to know first what the resource is: a record
+    /// encoding answers its batch stream and a structured text document
+    /// answers the batch its rows parse into.
+    #[pyo3(signature = (field = None))]
+    fn read_arrow_value(&self, field: Option<&Bound<'_, PyAny>>) -> PyResult<PyArrowValue> {
+        let field = field.map(core_field_from_value).transpose()?;
+        self.inner()?
+            .read_arrow_value(field.as_ref())
+            .map(PyArrowValue::from_inner)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Write any Arrow-convertible object as this resource's rows.
+    ///
+    /// The value crosses through `ArrowValue`, so a `pyarrow` container, a
+    /// pandas or polars frame, a `NumPy` array, and an Arrow C stream exporter
+    /// all reach the same publication path. A structured text document is one
+    /// frame around its rows, so only `overwrite` applies to one.
+    #[pyo3(signature = (value, mode = "overwrite", field = None))]
+    fn write_arrow_value(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        mode: &str,
+        field: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let value = crate::arrow::arrow_value_from_py(
+            value,
+            field,
+            yggdryl::ArrowCastOptions::new(),
+        )?;
+        let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
+        self.inner_mut()?
+            .write_arrow_value(value, mode)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Replace what is here with `data`, as `Path.write_bytes`.

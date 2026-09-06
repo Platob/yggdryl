@@ -48,13 +48,16 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
     let documents = crate::text::from_io_all(handle)?;
     let rows = rows_of(documents, format, name);
 
+    let rows = Scalar::from_sequence(rows);
     let root = match field {
         Some(field) => field.clone(),
-        None => Scalar::from_sequence(rows.clone()).inferred_struct_field()?,
+        None => rows.inferred_struct_field()?,
     };
     let canonical = rows
-        .into_iter()
-        .map(|row| root.from_natural_value(row))
+        .as_sequence()
+        .unwrap_or_default()
+        .iter()
+        .map(|row| root.from_natural_value(row.clone()))
         .collect::<Result<Vec<_>>>()?;
     Ok(ArrowValue::from_rows(
         &root,
