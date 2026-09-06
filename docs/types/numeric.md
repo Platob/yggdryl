@@ -135,6 +135,8 @@ Rust only. Each marker `M` has a `TypedField<M>` alias (`Int8Field`, `Decimal128
 - Python `DataType.decimal(True, 0)` -> `TypeError`; `DataType.decimal("18.0", 2)` -> `ValueError`; `DataType.decimal(256, 0)` -> `OverflowError`; `__index__` objects and base-10 strings are accepted.
 - `Timezone("")`, `Timezone("+25:00")` -> `ValueError` (JavaScript throws); `Timezone.fromOffset(25 * 3600)` throws; Python `Timezone(object())` -> `TypeError`.
 - `fixed_size_binary(-1)` -> refused; the binary widths live on [Text & bytes](text.md).
+- [Merged](field.md) widening -> the widest backing either side declared: `decimal128(10,2)` beside `int16` stays `decimal128(10,2)`. Narrowing takes the backing the merged precision needs.
+- A decimal beside a float -> refused; an exact number and an approximate one have no meeting point that is not a re-encoding.
 
 ## Commands
 
