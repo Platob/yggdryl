@@ -19,29 +19,65 @@
 //! messages equal. `("1", "23")` and `("12", "3")` are the shortest case and
 //! the test that pins it.
 //!
-//! # Two entries are excluded, and only two
+//! # The envelope is excluded, and only the envelope
 //!
-//! `BodyLength(9)` and `CheckSum(10)` are facts about the *frame*, not the
-//! message: both change when the same message is re-serialized with a
-//! different separator, and a digest that moved under re-serialization would
-//! not identify anything.
+//! This is a digest of what a message *says*, not of the frame it said it in.
+//! Everything the session layer writes around the message is left out:
+//! `BeginString`, `BodyLength` and `CheckSum` describe how it was written
+//! down; `SenderCompID`, `TargetCompID` and their sub- and location- variants
+//! describe who wrote it; `MsgSeqNum`, `SendingTime`, `OrigSendingTime`,
+//! `PossDupFlag` and `PossResend` describe *this* delivery of it. None of
+//! them is the message.
 //!
-//! `SendingTime` and `MsgSeqNum` stay in. Excluding them would read like
-//! deduplication but it is a judgement about which differences do not count,
-//! and it makes two genuinely distinct heartbeats one message. The frame
-//! fields are excluded on a different ground entirely: they are not the
-//! message, they are how it was written down.
+//! `MsgType` stays in, because a message type is what a message is rather
+//! than how it travelled.
+//!
+//! The consequence is the point and is worth stating: two identical orders
+//! sent a second apart hash equal, and so do the same order relayed through
+//! two sessions or replayed on a resend. That is what a *value* digest is
+//! for - it answers "the same message?" about content, which is what
+//! deduplicating a capture, joining a relayed message to its original, and
+//! recognising a redelivery all need. A consumer that wants to tell two
+//! deliveries apart reads the sequence number and the time, which are columns
+//! of their own beside it.
+//!
+//! This crate's own derived fields are excluded too, for the plainer reason
+//! that a value cannot cover itself: the digest is one of them.
 
 use crate::digest::DigestAlgorithm;
 
 use super::msg::FixMsg;
 
-/// The frame's own tags, which describe the writing rather than the message.
-const FRAME_TAGS: [i32; 2] = [9, 10];
+/// The tags the session layer writes around a message.
+///
+/// Written out rather than derived from the standard header, because the
+/// header also carries `MsgType`, which is the message. Three groups: how it
+/// was written down, who wrote it, and which delivery this was.
+const ENVELOPE_TAGS: [i32; 21] = [
+    // How it was written down.
+    8, 9, 10, 93, 89, 212, 213, //
+    // Who wrote it, and who relayed it.
+    49, 50, 142, 56, 57, 143, 115, 116, 144, 128, 129, 145, //
+    // Which delivery this was.
+    34, 52,
+];
 
-/// The crate's own tag for the digest, excluded because a value cannot cover
-/// itself.
-const DIGEST_TAG: i32 = super::MSGHASH_TAG;
+/// The delivery facts that are not addresses and not framing.
+///
+/// Separate from [`ENVELOPE_TAGS`] only so each listing reads as one idea.
+const DELIVERY_TAGS: [i32; 3] = [122, 43, 97];
+
+/// Whether one tag belongs to the envelope rather than the message.
+fn is_envelope(tag: i32) -> bool {
+    ENVELOPE_TAGS.contains(&tag)
+        || DELIVERY_TAGS.contains(&tag)
+        // A value cannot cover itself, and every derived field is computed
+        // from this one or beside it.
+        || super::fix_crate_fields()
+            .unwrap_or_default()
+            .iter()
+            .any(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+}
 
 impl FixMsg {
     /// This message's value digest.
@@ -95,7 +131,7 @@ impl FixMsg {
         let mut state = DigestAlgorithm::Xxh128.digester();
         for entry in self.entries() {
             let tag = entry.tag();
-            if FRAME_TAGS.contains(&tag) || tag == DIGEST_TAG {
+            if is_envelope(tag) {
                 continue;
             }
             state.write_bytes(&tag.to_be_bytes());

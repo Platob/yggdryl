@@ -46,7 +46,7 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
 use super::msg::FixMsg;
 use super::reader::FixReader;
-use super::{FixBranch, FixRegistry, fix_lifts};
+use super::{FixBranch, FixRegistry};
 
 /// The column a payload is read from when the options name none.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -262,52 +262,8 @@ impl FixOptions {
         if let Some(dtype) = &self.dtype {
             return Ok(dtype.clone().required_field(self.name.clone()));
         }
-        let mut fields = Vec::with_capacity(8 + 22);
-        fields.push(DataType::MsgType.nullable_field("msgtype"));
-        fields.push(DataType::Utf8.nullable_field("branch"));
-        fields.push(DataType::Utf8.nullable_field("version"));
-        for field in super::fix_crate_fields()? {
-            fields.push(field.clone());
-        }
-        for lift in fix_lifts() {
-            fields.push(self.facet_field(registry, lift));
-        }
-        fields.push(entries_field()?);
-        Ok(DataType::from_fields(fields)?.required_field(self.name.clone()))
+        super::fix_schema(registry, self.name.clone())
     }
-
-    /// One facet's column, typed as that facet's own field is typed.
-    ///
-    /// The first source the dictionary knows decides the type, because a facet
-    /// answers from its sources in order and the first is what it usually
-    /// answers from. A facet whose sources the dictionary has none of is a
-    /// text column: a facet is a best answer, not a schema, and a source that
-    /// resolves to nothing is skipped rather than refused.
-    fn facet_field(&self, registry: &FixRegistry, lift: &super::FixLift) -> Field {
-        let at = self.target_version.or(self.source_version);
-        for tag in lift.tags() {
-            let Some(field) = registry.get_field_by_tag(tag) else {
-                continue;
-            };
-            let dtype = at
-                .and_then(|at| field.as_fix().dtype_at(at).ok().flatten())
-                .unwrap_or_else(|| field.dtype().clone());
-            return dtype.nullable_field(lift.facet());
-        }
-        DataType::Utf8.nullable_field(lift.facet())
-    }
-}
-
-/// The arrival record's column: a list of what arrived, in arrival order.
-fn entries_field() -> Result<Field> {
-    let item = DataType::from_fields([
-        DataType::Int32.nullable_field("tag"),
-        DataType::Utf8.nullable_field("branch"),
-        DataType::Utf8.nullable_field("key"),
-        DataType::Utf8.nullable_field("value"),
-    ])?
-    .required_field("item");
-    Ok(DataType::list(item).nullable_field("entries"))
 }
 
 /// FIX rows as ordinary record batches.
@@ -422,16 +378,22 @@ impl FixBatchReader {
         I: Iterator<Item = Result<(FixMsg, Option<&'static str>)>> + Send + 'static,
     {
         let dedup = options.dedup;
+        // Resolved once for the whole capture: every row asks for the same
+        // columns in the same order, and asking the dictionary per row is the
+        // cost a fixed schema exists to remove.
+        let projection = super::FixProjection::from_field(field.clone());
         let mut last: Option<u128> = None;
         let rows = messages.filter_map(move |held| match held {
             Err(error) => Some(Err(error)),
             Ok((message, direction)) => {
-                let digest = message.digest();
-                if dedup && last == Some(digest) {
-                    return None;
+                if dedup {
+                    let digest = message.digest();
+                    if last == Some(digest) {
+                        return None;
+                    }
+                    last = Some(digest);
                 }
-                last = Some(digest);
-                Some(row_of(&message, digest, direction))
+                Some(row_of(&message, &projection, direction))
             }
         });
         Ok(crate::arrow::rows::result_reader(
@@ -445,67 +407,25 @@ impl FixBatchReader {
     }
 }
 
-/// One message as the row its columns are read from.
-///
-/// Built as the ordered sequence the root declares rather than as a named
-/// record. A record is the *input* shape a caller may hand in, and
-/// canonicalizing one costs a sort and then a lookup per column to produce
-/// exactly this order - which this already knows, because it is the order
-/// [`FixOptions::source_field`] declared two lines away. The columns and the
-/// row are written by one module and stay in step by construction.
-fn row_of(message: &FixMsg, digest: u128, direction: Option<&'static str>) -> Result<Scalar> {
-    let mut values: Vec<Scalar> = Vec::with_capacity(6 + 22);
-    values.push(text(message.as_field().name()));
-    values.push(text(message.branch().name()));
-    values.push(
-        message
-            .version()
-            .map_or(Scalar::Null, |held| Scalar::from(held.to_string())),
-    );
-    values.push(Scalar::from(digest.to_be_bytes().to_vec()));
-    values.push(direction.map_or(Scalar::Null, Scalar::from));
-    // The lift yields in the table's own order and only what it answers, so
-    // one walk of each fills the columns in step - rather than asking the
-    // table for every facet by name, which searches it once per column.
-    let mut answered = message.lift().peekable();
-    for lift in fix_lifts() {
-        let held = answered
-            .peek()
-            .filter(|(facet, _)| *facet == lift.facet())
-            .map(|(_, value)| (*value).clone());
-        if held.is_some() {
-            answered.next();
+/// One message as the fixed row its columns are read from.
+fn row_of(
+    message: &FixMsg,
+    projection: &super::FixProjection,
+    direction: Option<&'static str>,
+) -> Result<Scalar> {
+    let mut row = message.to_row(projection);
+    // The direction is the one column no message carries: it is read from the
+    // line in front of the frame, which is gone by the time a row is built.
+    if let Some(at) = projection.position_of(super::MSGDIRECTION_TAG) {
+        if let Some(values) = row.as_sequence() {
+            let mut held = values.to_vec();
+            if let Some(slot) = held.get_mut(at) {
+                *slot = direction.map_or(Scalar::Null, Scalar::from);
+            }
+            row = Scalar::from_sequence(held);
         }
-        values.push(held.unwrap_or(Scalar::Null));
     }
-    values.push(arrival(message));
-    Ok(Scalar::from_sequence(values))
-}
-
-/// The arrival record, as the list its column holds.
-fn arrival(message: &FixMsg) -> Scalar {
-    let held: Vec<Scalar> = message
-        .entries()
-        .iter()
-        .map(|entry| {
-            Scalar::from_sequence([
-                Scalar::from(entry.tag()),
-                entry.branch().map_or(Scalar::Null, Scalar::from),
-                text(entry.key()),
-                text(entry.value()),
-            ])
-        })
-        .collect();
-    Scalar::from_sequence(held)
-}
-
-/// One string as a value, empty being nothing rather than an empty string.
-fn text(value: &str) -> Scalar {
-    if value.is_empty() {
-        Scalar::Null
-    } else {
-        Scalar::from(value)
-    }
+    Ok(row)
 }
 
 /// A row nobody could read, which is still a row.

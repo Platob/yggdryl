@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::types::MsgDirection;
-use yggdryl::{DataType, FixDedup, FixId, FixReader, FixRegistry};
+use yggdryl::{DataType, FixDedup, FixId, FixReader, FixRegistry, Scalar};
 
 fn reader() -> FixReader {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -46,7 +46,7 @@ fn a_length_prefix_is_what_keeps_two_split_values_apart() {
 }
 
 #[test]
-fn the_frame_is_not_the_message() {
+fn the_envelope_is_not_the_message() {
     let reader = reader();
     let row = "8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|";
     let one = reader.text(row).unwrap();
@@ -63,15 +63,27 @@ fn the_frame_is_not_the_message() {
     let again = reader.fixtext(&soh, 0x01).unwrap();
     assert_eq!(one.digest(), again.digest());
 
-    // But the session fields stay in: two heartbeats a second apart are two
-    // messages, which is exactly what a monitor needs them to be.
-    let early = reader
-        .text("8=FIX.4.4|35=0|34=1|52=20240102-10:15:30.000|10=0|")
+    // The session layer is not the message either: the same order sent a
+    // second later, over another session, on a redelivery, is one message.
+    let relayed = reader
+        .text("8=FIX.4.4|35=D|34=91|49=DESK|56=VENUE|52=20240102-10:15:31.000|43=Y|11=A|55=AAPL|10=0|")
         .unwrap();
-    let later = reader
-        .text("8=FIX.4.4|35=0|34=2|52=20240102-10:15:31.000|10=0|")
+    let original = reader
+        .text(
+            "8=FIX.4.4|35=D|34=7|49=OTHER|56=ELSEWHERE|52=20240102-10:15:30.000|11=A|55=AAPL|10=0|",
+        )
         .unwrap();
-    assert_ne!(early.digest(), later.digest());
+    assert_eq!(relayed.digest(), original.digest());
+
+    // What the message says still separates it, and so does what it is.
+    let other = reader.text("8=FIX.4.4|35=D|11=A|55=MSFT|10=0|").unwrap();
+    assert_ne!(original.digest(), other.digest());
+    let typed = reader.text("8=FIX.4.4|35=F|11=A|55=AAPL|10=0|").unwrap();
+    assert_ne!(
+        original.digest(),
+        typed.digest(),
+        "a type is not an envelope"
+    );
 }
 
 #[test]
@@ -127,26 +139,33 @@ fn dedup_drops_the_adjacent_republication_and_counts_it() {
 }
 
 #[test]
-fn a_resend_survives_dedup_and_its_exact_republication_does_not() {
+fn a_redelivery_of_one_order_is_one_order() {
     let reader = reader();
-    let original = "8=FIX.4.4|35=D|34=7|52=20240102-10:15:30.000|11=A|10=0|";
-    // A replay carries a fresh `SendingTime`, so it is a different message -
-    // deliberately, because dropping it would remove exactly the recovery
-    // traffic a sequence-gap check reads.
-    let resend = "8=FIX.4.4|35=D|34=7|52=20240102-10:16:00.000|43=Y|11=A|10=0|";
+    let original = "8=FIX.4.4|35=D|34=7|52=20240102-10:15:30.000|11=A|55=AAPL|10=0|";
+    // A replay carries a fresh sequence number, a fresh time and the resend
+    // flag - all of them envelope - so it is the same order said twice.
+    let resend = "8=FIX.4.4|35=D|34=8|52=20240102-10:16:00.000|43=Y|11=A|55=AAPL|10=0|";
 
-    let replayed_twice = [original, resend, resend];
-    let mut dedup = FixDedup::new(replayed_twice.iter().map(|row| reader.text(row).unwrap()));
+    let replayed = [original, resend, resend];
+    let mut dedup = FixDedup::new(replayed.iter().map(|row| reader.text(row).unwrap()));
     assert_eq!(
         dedup.by_ref().count(),
-        2,
-        "the resend lives, its twin does not"
+        1,
+        "one order, however often it arrives"
     );
-    assert_eq!(dedup.dropped(), 1);
+    assert_eq!(dedup.dropped(), 2);
 
-    // The replay is caught by the facet that exists for it, not by the digest.
-    let replayed = reader.text(resend).unwrap();
-    assert!(replayed.lifted("resent").is_some());
+    // That a delivery *was* a replay is still readable, from the columns the
+    // digest declined to fold in.
+    let held = reader.text(resend).unwrap();
+    assert!(held.lifted("resent").is_some());
+    assert_eq!(held.lifted("seqnum"), Some(&Scalar::from(8_i32)));
+
+    // A genuinely different order is a different order.
+    let amended = reader
+        .text("8=FIX.4.4|35=D|34=7|52=20240102-10:15:30.000|11=A|55=AAPL|38=100|10=0|")
+        .unwrap();
+    assert_ne!(reader.text(original).unwrap().digest(), amended.digest());
 }
 
 #[test]
@@ -187,10 +206,21 @@ fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
 }
 
 #[test]
-fn the_crate_carries_two_fields_of_its_own_on_a_branch_of_its_own() {
+fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
-    assert_eq!(held[0].name(), "msghash");
-    assert_eq!(held[1].name(), "direction");
+    let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
+    assert_eq!(
+        names,
+        [
+            "msghash",
+            "version",
+            "symbolticker",
+            "timestamp",
+            "unixpartition",
+            "parentclordid",
+            "parentorderid",
+        ],
+    );
 
     // Sixteen bytes, big-endian, because a digest is compared and ordered as
     // bytes and must not become a string.
@@ -198,27 +228,25 @@ fn the_crate_carries_two_fields_of_its_own_on_a_branch_of_its_own() {
         held[0].dtype(),
         &DataType::fixed_size_binary(16).expect("a width")
     );
-    assert_eq!(held[1].dtype(), &DataType::MsgDirection);
 
-    // Same tags a venue's own could be, and different identities.
-    for (field, tag) in held
-        .iter()
-        .zip([yggdryl::MSGHASH_TAG, yggdryl::DIRECTION_TAG])
-    {
-        let id = field.as_fix().id().unwrap().expect("an identity");
-        assert_eq!(field.as_fix().tag().unwrap(), Some(tag));
+    // Every one carries a tag, on this crate's branch: same tags a venue's
+    // own could be, and different identities.
+    for field in held {
+        let view = field.as_fix();
+        let tag = view.tag().unwrap().expect("a tag");
+        let id = view.id().unwrap().expect("an identity");
         assert_ne!(id, FixId::standard(tag), "not the standard branch");
-        assert_eq!(
-            field.as_fix().branch().unwrap().name(),
-            yggdryl::CRATE_BRANCH
-        );
+        assert_eq!(view.branch().unwrap().name(), yggdryl::CRATE_BRANCH);
     }
 
-    // A dictionary that has them resolves them like any other field, and one
-    // that does not is unchanged.
+    // `MsgDirection` is FIX's own, so it is not invented here.
+    assert!(!names.contains(&"msgdirection"));
+    assert_eq!(yggdryl::MSGDIRECTION_TAG, 385);
+
+    // A dictionary that has them resolves them like any other field.
     let registry = FixRegistry::from_fields(held.iter().cloned())
         .expect("the crate's own fields make a dictionary")
         .with_crate_fields()
         .expect("adding what is already there is not a collision");
-    assert_eq!(registry.len(), 2);
+    assert_eq!(registry.len(), held.len());
 }

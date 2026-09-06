@@ -170,6 +170,7 @@ mod msg;
 mod project;
 mod reader;
 mod registry;
+mod schema;
 mod store;
 #[cfg(test)]
 mod tests;
@@ -179,7 +180,11 @@ pub use anomaly::{FixAnomalies, FixAnomaly};
 pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
-pub use crated::{CRATE_BRANCH, DIRECTION_TAG, MSGHASH_TAG, fix_crate_fields};
+pub use crated::{
+    CRATE_BRANCH, DEFAULT_PARTITION_SECONDS, MSGDIRECTION_TAG, MSGHASH_TAG, PARENTCLORDID_TAG,
+    PARENTORDERID_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG,
+    fix_crate_fields,
+};
 pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
@@ -189,6 +194,10 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
 pub use reader::{DEFAULT_NULL_VALUES, FixReader};
 pub use registry::{FixFieldIter, FixRegistry};
+pub use schema::{
+    BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
+    UNMAPPED_COLUMN, fix_schema, fix_schema_tags,
+};
 
 /// The absent branch occupies four zero bytes in every standard identifier.
 const STANDARD_BRANCH_DIGEST: u32 = 0;

@@ -67,21 +67,29 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         .map(|held| held.name().as_str())
         .collect();
 
-    // Identity, then one column per facet, then the arrival record.
-    assert_eq!(
-        &names[..5],
-        ["msgtype", "branch", "version", "msghash", "direction"],
-        "{names:?}"
-    );
-    assert_eq!(names.last(), Some(&"entries"));
-    for facet in ["id", "symbol", "side", "quantity", "seqnum"] {
-        assert!(names.contains(&facet), "{facet} missing from {names:?}");
+    // Columns are named by tag, because a tag is the one name a field has in
+    // every version and every dialect.
+    assert_eq!(&names[..5], ["8", "9", "35", "49", "56"], "{names:?}");
+    assert_eq!(&names[names.len() - 2..], ["entries", "unmapped"]);
+    // The standard header, the body a consumer queries, the groups worth
+    // keeping whole, the trailer, and this crate's own derived facts.
+    for tag in [
+        "55", "54", "44", "38", "60", // the trade
+        "132", "133", "134", "135", // the quote's lanes
+        "453", "454", "768", // the groups
+        "10",  // the trailer
+        "30001", "30004", "30005", // the digest, the clock, the partition
+        "385",   // which way the line moved
+    ] {
+        assert!(names.contains(&tag), "{tag} missing from {names:?}");
     }
-    // A wide column per tag is a projection a caller asks for, never a shape
-    // a parser imposes.
-    assert!(
-        !names.iter().any(|held| held.starts_with("tag")),
-        "{names:?}"
+
+    // Each column still carries the spelling it had, so a renderer can show
+    // `msgtype` over column `35`.
+    let msgtype = schema.field_with_name("35").expect("the msgtype column");
+    assert_eq!(
+        msgtype.metadata().get("display").map(String::as_str),
+        Some("MsgType"),
     );
 }
 
@@ -99,7 +107,7 @@ fn a_row_in_is_a_row_out() {
 
     // The rows that were not FIX are still rows, named `unknown`.
     let first = &batches[0];
-    let msgtype = column(first, "msgtype");
+    let msgtype = column(first, "35");
     assert!(msgtype.is_valid(0), "a framed row states its type");
 }
 
@@ -118,10 +126,10 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     assert_eq!(batch.num_rows(), 1);
 
     // The lifted facets answered.
-    let symbol = column(&batch, "symbol");
+    let symbol = column(&batch, "55");
     assert!(symbol.is_valid(0));
     // The digest is sixteen bytes, not a string.
-    let digest = column(&batch, "msghash");
+    let digest = column(&batch, "30001");
     assert_eq!(
         digest.data_type(),
         &arrow_schema::DataType::FixedSizeBinary(16)

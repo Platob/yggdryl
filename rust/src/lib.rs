@@ -59,11 +59,13 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
-    CRATE_BRANCH, DEFAULT_NULL_VALUES, DIRECTION_TAG, FixAliases, FixAnomalies, FixAnomaly,
-    FixBranch, FixCode, FixCodeValue, FixCodes, FixDedup, FixEntry, FixFieldIter, FixId, FixKey,
-    FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty, FixPedigree, FixReader, FixRegistry,
-    MSGHASH_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Words, fix_crate_fields, fix_lift,
-    fix_lifts,
+    CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, FixAliases, FixAnomalies,
+    FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodes, FixDedup, FixEntry, FixFieldIter,
+    FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty, FixPedigree,
+    FixProjection, FixReader, FixRegistry, MSGDIRECTION_TAG, MSGHASH_TAG, PARENTCLORDID_TAG,
+    PARENTORDERID_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, SYMBOLTICKER_TAG,
+    TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG, Words, fix_crate_fields, fix_lift, fix_lifts,
+    fix_schema, fix_schema_tags,
 };
 #[cfg(feature = "arrow")]
 pub use fix::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};

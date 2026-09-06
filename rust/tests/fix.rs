@@ -18,6 +18,8 @@ mod global_install;
 mod lift;
 #[path = "fix/reader.rs"]
 mod reader;
+#[path = "fix/schema.rs"]
+mod schema;
 #[path = "fix/store.rs"]
 mod store;
 
