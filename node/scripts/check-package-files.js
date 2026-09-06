@@ -37,6 +37,7 @@ for (const required of [
   'binding.js',
   'binding.d.ts',
   'defaults.js',
+  'fields.js',
   'index.d.ts',
   'index.js',
   'records.js',

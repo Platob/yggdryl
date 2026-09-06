@@ -9,7 +9,7 @@
 use yggdryl::TimeUnit;
 use yggdryl::holder::local::File;
 use yggdryl::media::avro;
-use yggdryl::{Scalar, Timezone};
+use yggdryl::{DataType, Scalar, Timezone};
 
 /// Where the exchange files live, shared with the Python driver.
 fn exchange_dir() -> std::path::PathBuf {
@@ -40,6 +40,21 @@ fn schema() -> Scalar {
     .expect("the exchange schema parses")
 }
 
+/// The `cost` column as the schema's own declaration holds it.
+///
+/// The exchange schema spells `decimal(precision: 10, scale: 2)`, and ten
+/// digits is a `Decimal64`, so that is the width the coefficient comes back
+/// in: reading restates every leaf through its declared `DataType`, the one
+/// value contract, rather than handing back whatever width happened to carry
+/// it on the wire. Asserting `d128` here would assert the reader forgets what
+/// the schema declared.
+fn declared_cost(unscaled: i128) -> Scalar {
+    DataType::decimal(10, 2)
+        .expect("a ten-digit decimal declaration")
+        .scalar(Scalar::d128(unscaled, 2))
+        .expect("a coefficient of at most ten digits")
+}
+
 /// The rows both sides assert, in file order.
 fn expected_rows() -> Vec<Scalar> {
     let row = |symbol: &str,
@@ -50,27 +65,26 @@ fn expected_rows() -> Vec<Scalar> {
                cost: i128,
                tags: &[&str],
                flag: bool| {
-        Scalar::from_mapping([
-            (Scalar::from("symbol"), Scalar::from(symbol)),
-            (Scalar::from("quantity"), Scalar::from(quantity)),
-            (Scalar::from("price"), price),
-            (Scalar::from("day"), Scalar::date32(day)),
+        Scalar::from_record([
+            ("symbol", Scalar::from(symbol)),
+            ("quantity", Scalar::from(quantity)),
+            ("price", price),
+            ("day", Scalar::date32(day)),
             (
-                Scalar::from("at"),
+                "at",
                 Scalar::datetime64(at, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
             ),
-            (Scalar::from("cost"), Scalar::d128(cost, 2)),
+            ("cost", declared_cost(cost)),
             (
-                Scalar::from("tags"),
+                "tags",
                 Scalar::from_sequence(tags.iter().map(|tag| Scalar::from(*tag))),
             ),
             (
-                Scalar::from("extra"),
-                Scalar::from_mapping([(Scalar::from("flag"), Scalar::from(flag))])
-                    .expect("unique keys"),
+                "extra",
+                Scalar::from_record([("flag", Scalar::from(flag))]).expect("unique field names"),
             ),
         ])
-        .expect("unique keys")
+        .expect("unique field names")
     };
     vec![
         row(

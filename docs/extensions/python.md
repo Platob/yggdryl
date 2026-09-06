@@ -1037,8 +1037,8 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | --- | --- |
 | keys | an `int` is a tag, a `str` a name or dotted path in the standard branch; a colon-bearing string is a name, never an identifier |
 | branches and identifiers | both cross as `str`, parsed once by the core; neither has a Python class |
-| `field.fix.branch`, `field.fix.id` | `"standard"` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `"standard"` removes the key, and assigning an id moves both halves at once |
-| lookups | `field_by_name` and `field_by_path` take the branch as their leading argument; `field_by_tag` means the standard branch |
+| `field.fix.branch`, `field.fix.id` | `""` when the key is absent, `None` exactly when `fix:tag` is absent; assigning `""` removes the key, and assigning a `"tag:branch"` id moves both halves at once |
+| lookups | `field_by_name` and `field_by_path` take the branch after the name it qualifies, defaulting to the standard one; `field_by_tag` means the standard branch |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a write creates `primitive/<branch>/` and `nested/<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
