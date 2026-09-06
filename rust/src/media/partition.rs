@@ -815,7 +815,17 @@ fn write_partition_columns(
                 .collect()
         })
         .unwrap_or_default();
-    if stored.is_empty() || declared.is_empty() || stored == declared {
+    // Order is the nesting order and stays exact - `year/venue` is a different
+    // tree from `venue/year` - but the spelling folds, because every name in
+    // the crate resolves that way and a declaration spelling `Year` over a
+    // tree storing `year` names the same column. The stored spelling wins,
+    // because it is the one the paths carry.
+    let same = stored.len() == declared.len()
+        && stored
+            .iter()
+            .zip(&declared)
+            .all(|(stored, declared)| stored.eq_ignore_ascii_case(declared));
+    if stored.is_empty() || declared.is_empty() || same {
         return Ok(if stored.is_empty() { declared } else { stored });
     }
     Err(Error::InvalidRecord {
@@ -838,7 +848,15 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
     let format = partition_format();
     let mut rendered: Vec<Vec<String>> = vec![Vec::with_capacity(columns.len()); batch.num_rows()];
     for column in columns {
-        let Ok(index) = batch.schema().index_of(column) else {
+        // Folded, like the layout comparison and the cast that shaped this
+        // batch: a tree storing `Year=2024` names the column its declaration
+        // spells `year`.
+        let found = batch
+            .schema()
+            .fields()
+            .iter()
+            .position(|field| field.name().eq_ignore_ascii_case(column));
+        let Some(index) = found else {
             return Err(Error::InvalidRecord {
                 path: smol_str::format_smolstr!("$.{column}"),
                 reason: crate::text::expected_got(
