@@ -343,6 +343,9 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyParameterIterator>()?;
     module.add_class::<types::timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
+    holder::handles::register(module)?;
+    coding::handles::register(module)?;
+    media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;

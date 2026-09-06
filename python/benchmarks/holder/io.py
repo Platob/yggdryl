@@ -1,4 +1,4 @@
-"""Python overhead for generic buffered and opened-media redirection.
+"""Python overhead for describing, buffering, and opening a handle.
 
 Run after ``maturin develop --release`` with::
 
@@ -18,6 +18,7 @@ from collections.abc import Callable
 import pyarrow as pa
 
 from yggdryl import IOBase
+from yggdryl.holder import Path
 
 
 PAYLOAD = bytes(range(256)) * 4096
@@ -31,6 +32,8 @@ ROOT = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-io-layers-"))
 MEDIA = IOBase(ROOT / "rows.arrows")
 MEDIA.overwrite_arrow_table(pa.table({"id": range(4096)}))
 MEDIA.open()
+# A compound name: three layers to compose and one class to answer with.
+COMPOSED = ROOT / "trades.txt.gz"
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -75,11 +78,29 @@ def main() -> None:
             lambda: APPEND.append("AAPL,1\n"),
             arguments.iterations,
         )
+        # What a described handle costs. The role-only spelling builds the
+        # same local location and skips the composition, so the delta is what
+        # reading the name and answering the class costs - and nothing here
+        # touches the store.
         _measure(
-            "buffered idempotent redirect",
-            lambda: BUFFERED.buffered(
-                page_size=64 * 1024, max_bytes=8 * 1024 * 1024, ttl=30.0
-            ),
+            "describe composed",
+            lambda: IOBase(COMPOSED),
+            arguments.iterations,
+        )
+        _measure(
+            "describe role only",
+            lambda: Path(COMPOSED),
+            arguments.iterations,
+        )
+        # Construction plus one descent, against construction alone above.
+        _measure(
+            "describe and descend",
+            lambda: IOBase(COMPOSED).into_handle(),
+            arguments.iterations,
+        )
+        _measure(
+            "buffered page cache",
+            lambda: BUFFERED.cached_pages,
             arguments.iterations,
         )
         _measure("opened media field", MEDIA.read_arrow_field, arguments.iterations)

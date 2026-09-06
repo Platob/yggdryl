@@ -184,6 +184,37 @@ impl Media {
         }
     }
 
+    /// Borrow the byte handle this media reads and writes through.
+    ///
+    /// The companion of [`crate::coding::Coded::handle`] and
+    /// [`crate::media::text::Text::handle`]: one accessor that answers what a
+    /// record encoding is layered over, whichever encoding it is.
+    pub const fn handle(&self) -> &Holder {
+        match self {
+            Self::Ipc(inner) => inner.handle(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(inner) => inner.handle(),
+            Self::Avro(inner) => inner.handle(),
+            Self::Text(inner) => inner.handle(),
+        }
+    }
+
+    /// Consume this media and return the byte handle it read and wrote
+    /// through.
+    ///
+    /// The companion of [`crate::media::text::Text::into_handle`], so a caller
+    /// can descend one composed layer whichever encoding is on top.
+    #[must_use]
+    pub fn into_handle(self) -> Holder {
+        match self {
+            Self::Ipc(inner) => inner.into_handle(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(inner) => inner.into_handle(),
+            Self::Avro(inner) => inner.into_handle(),
+            Self::Text(inner) => inner.into_handle(),
+        }
+    }
+
     /// Borrow the held implementation as a byte handle.
     pub fn as_io(&self) -> &dyn IOBase {
         match self {
@@ -386,6 +417,10 @@ impl IOBase for Media {
 
     fn url(&self) -> Option<&crate::Url> {
         self.as_io().url()
+    }
+
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.as_io().bound_location()
     }
 
     fn media_type(&self) -> &crate::MediaType {

@@ -590,3 +590,39 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
         nested
     );
 }
+
+/// An iterator that reports no children and yields two.
+///
+/// `Iterator::size_hint` is a hint, and a nested value is built from whatever
+/// a caller's iterator hands over, so the emptiness a bound claims is never
+/// what decides the children a value keeps.
+struct UnderReporting(std::vec::IntoIter<Scalar>);
+
+impl Iterator for UnderReporting {
+    type Item = Scalar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, Some(0))
+    }
+}
+
+#[test]
+fn nested_children_come_from_the_iterator_and_not_from_its_bound() {
+    let children = || UnderReporting(vec![Scalar::from("AAPL"), Scalar::from(12_i64)].into_iter());
+    assert_eq!(
+        Scalar::from_sequence(children()),
+        Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(12_i64)])
+    );
+
+    let entries = Scalar::from_mapping(children().map(|value| (value, Scalar::Null))).unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries.get_key_str("AAPL"), Some(&Scalar::Null));
+
+    // An empty run still answers with the one shared value.
+    assert!(Scalar::from_sequence([]).is_empty());
+    assert!(Scalar::from_mapping([]).unwrap().is_empty());
+}

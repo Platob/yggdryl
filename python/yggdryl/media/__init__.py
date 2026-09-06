@@ -1,12 +1,31 @@
-"""Record media, encoding options, and table formats."""
+"""Record media, encoding options, and table formats.
 
-from .._native import MediaType, MimeType, RecordOptions, TextOptions
+The capitalized handle classes are the record implementation a composed handle
+retains, so ``type(handle)`` names the encoding its rows are read through.
+"""
+
+from .._native import (
+    Avro,
+    Ipc,
+    Media,
+    MediaType,
+    MimeType,
+    Parquet,
+    RecordOptions,
+    Text,
+    TextOptions,
+)
 from . import avro, iceberg
 
 __all__ = [
+    "Avro",
+    "Ipc",
+    "Media",
     "MediaType",
     "MimeType",
+    "Parquet",
     "RecordOptions",
+    "Text",
     "TextOptions",
     "avro",
     "iceberg",

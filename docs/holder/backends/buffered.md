@@ -6,7 +6,7 @@ A page cache over any [`IOBase`](../iobase/bytes.md) handle, with the value's fi
 
 | | |
 | --- | --- |
-| Owns | Rust `Buffered<H>`; Python `buffered(page_size=, max_bytes=, ttl=)` and JavaScript `buffered({ pageSize, maxBytes, ttlMs })` return the same handle |
+| Owns | Rust `Buffered<H>`; Python `buffered(page_size=, max_bytes=, ttl=)` answers a `yggdryl.holder.Buffered` and spends the handle it took; JavaScript `buffered({ pageSize, maxBytes, ttlMs })` returns the same handle |
 | Mirrors | `size`, `url`, `media_type`, `kind`, `parent`, `child_by_path`, `ls` |
 | Lazy | Nothing cached at construction; a pinned page fills on the first read that wants it |
 | Page size | Default 64 KiB; rounded up to a power of two, clamped to `64 ..= 1 GiB` |
@@ -38,11 +38,17 @@ A page cache over any [`IOBase`](../iobase/bytes.md) handle, with the value's fi
 
     ```python
     from yggdryl import IOBase
+    from yggdryl.holder import Buffered
 
     handle = IOBase.from_bytes(b"symbol,price\nAAPL,1\n")
-    assert handle.buffered(page_size=64, max_bytes=256, ttl=30.0) is handle
-    assert handle.read_range_bytes(0, 6) == b"symbol"
-    assert handle.read_range_bytes(13, 4) == b"AAPL"
+
+    # A cache owns the handle it caches, so `handle` is spent from here and
+    # the one this answers with is the only usable one.
+    cached = handle.buffered(page_size=64, max_bytes=256, ttl=30.0)
+    assert type(cached) is Buffered
+    assert cached.read_range_bytes(0, 6) == b"symbol"
+    assert cached.read_range_bytes(13, 4) == b"AAPL"
+    assert cached.cached_pages == 1
     ```
 
 === "JavaScript"
@@ -133,32 +139,57 @@ assert_eq!(grown.max_bytes(), 16_384);
 
 Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IPC schema at the tail.
 
-```rust
-use yggdryl::holder::buffered::{Buffered, BufferedOptions};
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
+=== "Rust"
 
-// Sixteen pages of value, four pages of budget.
-let options = BufferedOptions::default()
-    .with_page_size(64)
-    .with_max_bytes(4 * 64);
-let handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 16 * 64]), options);
+    ```rust
+    use yggdryl::holder::buffered::{Buffered, BufferedOptions};
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
-// The footer first, then the header: the shape a container is opened with.
-handle.read_range_bytes(16 * 64 - 8, 8)?;
-handle.read_range_bytes(0, 8)?;
+    // Sixteen pages of value, four pages of budget.
+    let options = BufferedOptions::default()
+        .with_page_size(64)
+        .with_max_bytes(4 * 64);
+    let handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 16 * 64]), options);
 
-// Then a scan of the middle, four times what the budget can hold.
-for page in 1..15 {
-    handle.read_range_bytes(page * 64, 8)?;
-}
+    // The footer first, then the header: the shape a container is opened with.
+    handle.read_range_bytes(16 * 64 - 8, 8)?;
+    handle.read_range_bytes(0, 8)?;
 
-// The budget held throughout, the middle was evicted, and both ends stayed.
-assert!(handle.cached_bytes() <= handle.options().max_bytes());
-assert!(handle.has_cached_page(0));
-assert!(handle.has_cached_page(15));
-assert!(!handle.has_cached_page(7));
-```
+    // Then a scan of the middle, four times what the budget can hold.
+    for page in 1..15 {
+        handle.read_range_bytes(page * 64, 8)?;
+    }
+
+    // The budget held throughout, the middle was evicted, and both ends stayed.
+    assert!(handle.cached_bytes() <= handle.options().max_bytes());
+    assert!(handle.has_cached_page(0));
+    assert!(handle.has_cached_page(15));
+    assert!(!handle.has_cached_page(7));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    # Sixteen pages of value, four pages of budget.
+    handle = IOBase.from_bytes(bytes(16 * 64)).buffered(page_size=64, max_bytes=4 * 64)
+
+    # The footer first, then the header: the shape a container is opened with.
+    handle.read_range_bytes(16 * 64 - 8, 8)
+    handle.read_range_bytes(0, 8)
+
+    # Then a scan of the middle, four times what the budget can hold.
+    for page in range(1, 15):
+        handle.read_range_bytes(page * 64, 8)
+
+    # The budget held throughout, the middle was evicted, and both ends stayed.
+    assert handle.cached_bytes <= 4 * 64
+    assert handle.has_cached_page(0)
+    assert handle.has_cached_page(15)
+    assert not handle.has_cached_page(7)
+    ```
 
 Pinned pages count toward the budget, hence the two-page clamp. A moved end releases the old last page; the new one is pinned when next cached.
 
@@ -215,19 +246,36 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
 
 `clear` and `remove` drop the cache before delegating, so no page outlives a failed removal. `close` flushes, drops every page, and leaves a working handle.
 
-```rust
-use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
+=== "Rust"
 
-let mut handle = Buffer::from_bytes(vec![3_u8; 4_096]).buffered(BufferedOptions::default());
-assert_eq!(handle.read_all_bytes()?.len(), 4_096);
-assert_eq!(handle.cached_pages(), 1);
+    ```rust
+    use yggdryl::holder::buffered::BufferedOptions;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
-handle.close()?;
-assert_eq!(handle.cached_pages(), 0);
-assert_eq!(handle.read_range_bytes(0, 4)?, [3, 3, 3, 3]);
-```
+    let mut handle = Buffer::from_bytes(vec![3_u8; 4_096]).buffered(BufferedOptions::default());
+    assert_eq!(handle.read_all_bytes()?.len(), 4_096);
+    assert_eq!(handle.cached_pages(), 1);
+
+    handle.close()?;
+    assert_eq!(handle.cached_pages(), 0);
+    assert_eq!(handle.read_range_bytes(0, 4)?, [3, 3, 3, 3]);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+
+    handle = IOBase.from_bytes(bytes(4_096)).buffered()
+    assert len(handle.read_bytes()) == 4_096
+    assert handle.cached_pages == 1
+
+    # `clear_cache` drops every page and keeps the cache and its options.
+    handle.clear_cache()
+    assert handle.cached_pages == 0
+    assert handle.read_range_bytes(0, 4) == bytes(4)
+    ```
 
 ## Over a compressed handle
 
@@ -261,30 +309,53 @@ assert_eq!(handle.size(), payload.len() as u64);
 
 ## Wrapping twice wraps once
 
-```rust
-use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::holder::Holder;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
+=== "Rust"
 
-let once = Buffer::from_bytes(vec![5_u8; 128]).buffered(BufferedOptions::default());
+    ```rust
+    use yggdryl::holder::buffered::BufferedOptions;
+    use yggdryl::holder::Holder;
+    use yggdryl::IOBase;
+    use yggdryl::holder::Buffer;
 
-// `Buffered` has an inherent `buffered`, which wins method resolution, so
-// this re-wraps the handle it holds instead of stacking a second cache.
-let twice = once.buffered(BufferedOptions::default().with_page_size(512));
-assert_eq!(twice.options().page_size(), 512);
-assert_eq!(twice.read_range_bytes(0, 4)?, [5, 5, 5, 5]);
+    let once = Buffer::from_bytes(vec![5_u8; 128]).buffered(BufferedOptions::default());
 
-// A holder does the same, so a listing entry can be buffered without care.
-let held = Holder::buffer(Buffer::from_bytes(vec![5_u8; 128]))
-    .buffered(BufferedOptions::default())
-    .buffered(BufferedOptions::default());
-assert!(matches!(&held, Holder::Buffered(inner) if matches!(inner.handle(), Holder::Buffer(_))));
+    // `Buffered` has an inherent `buffered`, which wins method resolution, so
+    // this re-wraps the handle it holds instead of stacking a second cache.
+    let twice = once.buffered(BufferedOptions::default().with_page_size(512));
+    assert_eq!(twice.options().page_size(), 512);
+    assert_eq!(twice.read_range_bytes(0, 4)?, [5, 5, 5, 5]);
 
-// `into_handle` gives the wrapped handle back, cache dropped.
-let inner: Buffer = twice.into_handle();
-assert_eq!(inner.size(), 128);
-```
+    // A holder does the same, so a listing entry can be buffered without care.
+    let held = Holder::buffer(Buffer::from_bytes(vec![5_u8; 128]))
+        .buffered(BufferedOptions::default())
+        .buffered(BufferedOptions::default());
+    assert!(matches!(&held, Holder::Buffered(inner) if matches!(inner.handle(), Holder::Buffer(_))));
+
+    // `into_handle` gives the wrapped handle back, cache dropped.
+    let inner: Buffer = twice.into_handle();
+    assert_eq!(inner.size(), 128);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import IOBase
+    from yggdryl.holder import Buffer, Buffered
+
+    once = IOBase.from_bytes(bytes(128)).buffered(page_size=64)
+
+    # Re-wrapping reconfigures the one cache and spends `once`, as every
+    # conversion does.
+    twice = once.buffered(page_size=512)
+    assert type(twice) is Buffered
+    assert twice.read_range_bytes(0, 4) == bytes(4)
+
+    # `into_handle` descends one layer, cache dropped: the buffer is directly
+    # under the cache, never a second cache.
+    inner = twice.into_handle()
+    assert type(inner) is Buffer
+    assert inner.size == 128
+    ```
 
 ## Cursors ride the cache
 
@@ -348,7 +419,8 @@ let _ = std::fs::remove_file(&path);
 - A hit -> no call on the inner handle; the size is remembered and re-asked only when a read runs past it.
 - Bytes written behind the cache -> invisible; `handle_mut` and `clear_cache` drop every page first.
 - `Coded<Buffered<_>>` -> caches compressed bytes and still decodes on every read.
-- `cached_pages`, `cached_bytes`, `has_cached_page`, `options` -> Rust only; the bindings expose no page inspection.
+- `handle.buffered(...)` in Python -> answers the cache and spends `handle`; the spent handle raises `ValueError: this handle was consumed by a conversion; use the handle it returned instead`.
+- `options` -> Rust only. Python inspects the cache with `cached_bytes`, `cached_pages`, and `has_cached_page`; JavaScript has no page inspection.
 
 ## Commands
 

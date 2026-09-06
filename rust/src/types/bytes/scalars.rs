@@ -14,6 +14,12 @@ use crate::{DataType, DataTypeId, DataTypeKind, Result, ScalarFamily, ScalarValu
 pub trait BytesValue: crate::ScalarValue {
     /// Borrow the payload bytes.
     fn as_bytes(&self) -> &[u8];
+    /// Borrow the shared storage behind the payload.
+    ///
+    /// Every opaque-byte representation stores the same `Arc<[u8]>`, so one
+    /// representation adopts another's storage by cloning this handle rather
+    /// than copying the payload.
+    fn storage(&self) -> &Arc<[u8]>;
 }
 
 macro_rules! bytes_leaf {
@@ -35,6 +41,11 @@ macro_rules! bytes_leaf {
             /// Borrow the payload bytes.
             pub fn as_bytes(&self) -> &[u8] {
                 self.0.as_ref()
+            }
+
+            /// Borrow the shared storage without copying the payload.
+            pub fn storage(&self) -> &Arc<[u8]> {
+                &self.0
             }
 
             /// Consume this value and return its shared storage.
@@ -93,6 +104,19 @@ impl Bytes {
             Self::FixedSizeBinary(value) => value.as_bytes(),
             Self::LargeBinary(value) => value.as_bytes(),
             Self::BinaryView(value) => value.as_bytes(),
+        }
+    }
+
+    /// Borrow the shared storage independently of the layout.
+    ///
+    /// The layout is the Arrow offset width, not the payload, so rewriting a
+    /// value into another layout clones this handle instead of the bytes.
+    pub fn storage(&self) -> &Arc<[u8]> {
+        match self {
+            Self::Binary(value) => value.storage(),
+            Self::FixedSizeBinary(value) => value.storage(),
+            Self::LargeBinary(value) => value.storage(),
+            Self::BinaryView(value) => value.storage(),
         }
     }
 }
@@ -174,6 +198,10 @@ macro_rules! bytes_value {
             fn as_bytes(&self) -> &[u8] {
                 <$leaf>::as_bytes(self)
             }
+
+            fn storage(&self) -> &Arc<[u8]> {
+                <$leaf>::storage(self)
+            }
         }
     };
 }
@@ -231,6 +259,10 @@ impl ScalarValue for FixedSizeBinary {
 impl BytesValue for FixedSizeBinary {
     fn as_bytes(&self) -> &[u8] {
         Self::as_bytes(self)
+    }
+
+    fn storage(&self) -> &Arc<[u8]> {
+        Self::storage(self)
     }
 }
 

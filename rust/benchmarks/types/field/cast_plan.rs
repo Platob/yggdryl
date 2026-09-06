@@ -6,10 +6,12 @@
 //! wide enough to dominate the plan would hide it - so 1, 10, and 1,000 of
 //! them are measured, which is also the range a streamed read actually pulls.
 //!
-//! The last group is a gate rather than a measurement: it compares the two
+//! The last loop is a gate rather than a measurement: it compares the two
 //! warmed medians and refuses a build where reusing the plan is slower than
 //! rebuilding it, because that would mean the plan has started carrying
-//! per-batch work it has no business carrying.
+//! per-batch work it has no business carrying. It runs only in an optimized
+//! build - `cargo test --all-targets` runs this target once as a smoke test,
+//! and a debug timing on a shared runner measures the profile, not the plan.
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -139,17 +141,27 @@ pub fn benchmarks(criterion: &mut Criterion) {
     }
     group.finish();
 
-    // The gate. A compiled plan does strictly less work than planning per
-    // batch, so at every batch count it must not be slower; the margin absorbs
-    // the scheduler noise a single-batch run is dominated by.
-    for count in COUNTS {
+    gate(&root, &source);
+}
+
+/// Refuse a build where reusing one plan is slower than rebuilding it.
+///
+/// One batch is deliberately not gated: both arms compile exactly one plan
+/// there, so the two medians are the same measurement and any ordering between
+/// them is noise. Every count above it is a structural difference, and that is
+/// what this holds.
+fn gate(root: &Field, source: &SchemaRef) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    for count in COUNTS.into_iter().filter(|count| *count > 1) {
         let corpus = batches(count);
         let samples = if count > 100 { 15 } else { 50 };
         let reused = median(samples, || {
-            black_box(compiled(&root, &source, &corpus));
+            black_box(compiled(root, source, &corpus));
         });
         let rebuilt = median(samples, || {
-            black_box(per_batch(&root, &corpus));
+            black_box(per_batch(root, &corpus));
         });
         assert!(
             reused.as_secs_f64() <= rebuilt.as_secs_f64() * 1.25,

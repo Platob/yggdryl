@@ -463,6 +463,16 @@ impl<H: IOBase> IOBase for Coding<H> {
         self.handle.url()
     }
 
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.handle.bound_location()
+    }
+
+    /// The storage role is the wrapped handle's; a coding changes the bytes,
+    /// not where they live, so an absent location stays absent through it.
+    fn kind(&self) -> crate::IOKind {
+        self.handle.kind()
+    }
+
     fn media_type(&self) -> &MediaType {
         &self.media_type
     }

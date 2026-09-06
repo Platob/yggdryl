@@ -11,11 +11,11 @@
 | Merge | `merge_by_names` supplies identity only; the method name carries intent, never the key |
 | Schema | self-describing; `dtype` set skips the handle; root name defaults to `DEFAULT_ROOT_NAME` (`"row"`) |
 | Pushdown | `field`, a non-null struct root naming a subset, projects at decode; keeps stored order and types, never casts |
-| Coding | last content coding of the handle media type (`.gz`, `.zst`); `level` is the only compression setting |
+| Coding | the content coding the name declares (`.gz`, `.zst`); `level` is the only compression setting |
 | Cached | `open` caches schema and dimensions until `close`; writes and every `Ipc` builder drop the cache |
 | Format settings | none beyond the shared [`IORecordOptions`](options.md) fields |
 | Errors | bytes that are not a stream fail `read_field` and `read_batch_reader` at once |
-| Bindings | Rust: free functions and `Ipc<H>`; Python: `IOBase` with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../extensions/javascript.md) |
+| Bindings | Rust: free functions and `Ipc<H>`; Python: `yggdryl.media.Ipc`, the class an `.arrows` handle answers, with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../extensions/javascript.md) |
 
 ## Use
 
@@ -701,23 +701,27 @@ Arrow names the columns and not the record, so the root name is the one thing in
     import pyarrow as pa
 
     from yggdryl import IOBase
+    from yggdryl.holder import Path
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
     root = pathlib.Path(tempfile.mkdtemp())
 
-    written = []
+    stored = []
     for name in ("trades.arrows", "trades.arrows.gz", "trades.arrows.zst"):
         handle = IOBase(root / name)
         handle.overwrite_arrow_batch(pa.record_batch({"id": [1, 2]}, schema=schema))
 
         # Identical calls on both sides, whatever the coding is.
         assert handle.read_arrow_reader().read_all().num_rows == 2, name
-        written.append(handle.read_bytes())
+        # The handle presents the decoded stream, so its bytes are the stream.
+        assert handle.read_bytes()[:4] == bytes.fromhex("ffffffff"), name
+        # Path addresses the stored bytes instead, coding and all.
+        stored.append(Path(root / name).read_bytes())
 
     # The bytes underneath are framed by the coding the name declared.
-    assert written[1][:2] == bytes.fromhex("1f8b")
-    assert written[2][:4] == bytes.fromhex("28b52ffd")
-    assert written[0] != written[1]
+    assert stored[1][:2] == bytes.fromhex("1f8b")
+    assert stored[2][:4] == bytes.fromhex("28b52ffd")
+    assert stored[0] != stored[1]
     ```
 
 === "JavaScript"
@@ -751,7 +755,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
-`IOBase::codec` reads the last content coding out of the media type; the encoding applies it on write and strips it on read. `trades.arrows.gz` round-trips through [gzip](../coding/gzip.md), `trades.arrows.zst` through [zstd](../coding/zstd.md), with identical calls.
+`codec` names the content coding the stored bytes carry; the encoding applies it on write and strips it on read. `trades.arrows.gz` round-trips through [gzip](../coding/gzip.md), `trades.arrows.zst` through [zstd](../coding/zstd.md), with identical calls.
 
 === "Rust"
 
@@ -796,9 +800,11 @@ Arrow names the columns and not the record, so the root name is the one thing in
     import pyarrow as pa
 
     from yggdryl import IOBase
+    from yggdryl.holder import Path
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows.gz")
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = IOBase(root / "trades.arrows.gz")
 
     options = handle.record_options()
     options.level = 9
@@ -808,8 +814,9 @@ Arrow names the columns and not the record, so the root name is the one thing in
 
     assert handle.read_arrow_reader().read_all().num_rows == 512
     # Still a gzip member, and smaller than the stream it encodes.
-    assert handle.read_bytes()[:2] == bytes.fromhex("1f8b")
-    assert handle.size < 512 * 8
+    stored = Path(root / "trades.arrows.gz")
+    assert stored.read_bytes()[:2] == bytes.fromhex("1f8b")
+    assert stored.size < handle.size
     ```
 
 === "JavaScript"
@@ -1075,11 +1082,12 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../holde
 - `IpcOptions::dtype` set -> `read_field` builds the field without touching the handle.
 - `field` accessor -> built from `name`, `dtype`, and `metadata` by [`IORecordOptions`](options.md).
 - handle with no content coding -> `level` does nothing.
+- reading the bytes of a coded handle -> the decoded stream; `holder.Path` and `holder.File` address the stored, coded bytes.
 - missing resource -> zero batches, not a parse failure; the reader reports the declared schema, or an empty Arrow schema without one.
 - `open` on an absent stream -> succeeds and caches explicit zero dimensions.
 - zero batches written -> the schema is still written; the stream exists and answers its schema from the bytes.
 - bytes that are not a stream -> `read_field` and `read_batch_reader` error; Python raises `ValueError`, JavaScript throws matching `/Arrow/`.
-- closed handle -> every call reads fresh metadata; `open` retains the inferred IPC wrapper.
+- closed handle -> every call reads fresh metadata; construction already composed the wrapper, so `open` only caches.
 
 ## Commands
 

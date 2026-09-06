@@ -135,9 +135,13 @@ use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 /// ```
 #[macro_export]
 macro_rules! delegate_iobase {
-    // The whole contract, lifecycle included: the wrapper changes nothing.
+    // The whole contract, lifecycle included: the wrapper changes nothing. The
+    // two whole-value reads are in the list because leaving them out is not
+    // neutral - the trait's default answers them with `size` plus a positional
+    // read, which on a decoding handle is a second pass over the whole value.
     ($handle:ident) => {
-        $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
+        $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
+            pstream_bytes, pwrite, size, capacity, reserve,
             truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular, is_io);
     };
@@ -165,6 +169,18 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, pread) => {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> $crate::Result<usize> {
             $crate::IOBase::pread(&self.$handle, offset, buffer)
+        }
+    };
+
+    (@method $handle:ident, read_all_bytes) => {
+        fn read_all_bytes(&self) -> $crate::Result<Vec<u8>> {
+            $crate::IOBase::read_all_bytes(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, read_range_bytes) => {
+        fn read_range_bytes(&self, offset: u64, length: usize) -> $crate::Result<Vec<u8>> {
+            $crate::IOBase::read_range_bytes(&self.$handle, offset, length)
         }
     };
 
