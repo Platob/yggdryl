@@ -177,7 +177,9 @@ mod tests;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
 #[cfg(feature = "arrow")]
-pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
+pub use batch::{
+    DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
+};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{

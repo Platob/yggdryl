@@ -39,6 +39,9 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
+use arrow_array::{Array, ArrayRef, StringArray};
+
+use crate::MimeType;
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions;
 use crate::types::MsgDirection;
@@ -459,6 +462,90 @@ fn empty(reader: &FixReader) -> FixMsg {
     reader
         .pairs(std::iter::empty::<(&[u8], &[u8])>())
         .expect("an empty message builds")
+}
+
+/// What a whole payload column says about itself, without building a message.
+///
+/// Three `Utf8` arrays the length of the input: the media type each record
+/// infers, the raw `MsgType` its frame spells, and the direction it moved.
+/// This is the column form of the three readings the byte readers already
+/// make per line, for a stage that classifies a capture before deciding what
+/// to parse -- the same shallow scan and the same verbs, so the classifying
+/// stage and the parsing one can never disagree.
+///
+/// No message is built and nothing is resolved against a dictionary, which is
+/// what makes this cheap enough to run over every line of a capture.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] when the column holds neither bytes nor
+/// text.
+pub fn classify_arrow_array(
+    column: &ArrayRef,
+    default: Option<&'static str>,
+) -> Result<(ArrayRef, ArrayRef, ArrayRef)> {
+    let lines = payload_lines(column)?;
+    let inferred: Vec<MimeType> = lines
+        .iter()
+        .map(|line| MimeType::infer_bytes(line))
+        .collect();
+    let protocol: Vec<&str> = inferred.iter().map(MimeType::as_str).collect();
+    let msgtype: Vec<Option<&str>> = lines
+        .iter()
+        .map(|line| {
+            crate::mime_type::line::inspect(line)
+                .msgtype()
+                .and_then(|value| std::str::from_utf8(value).ok())
+        })
+        .collect();
+    let direction: Vec<Option<&str>> = lines
+        .iter()
+        .map(|line| direction_of(line, default))
+        .collect();
+    Ok((
+        Arc::new(StringArray::from(protocol)),
+        Arc::new(StringArray::from(msgtype)),
+        Arc::new(StringArray::from(direction)),
+    ))
+}
+
+/// One payload column's records as byte slices, whatever layout carries them.
+fn payload_lines(column: &ArrayRef) -> Result<Vec<&[u8]>> {
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::{GenericBinaryType, GenericStringType};
+
+    let rows = column.len();
+    let mut held: Vec<&[u8]> = Vec::with_capacity(rows);
+    macro_rules! bytes_of {
+        ($kind:ty, $text:expr) => {{
+            let array = column.as_bytes::<$kind>();
+            for row in 0..rows {
+                held.push(if array.is_null(row) {
+                    &[]
+                } else if $text {
+                    array.value(row).as_ref()
+                } else {
+                    array.value(row).as_ref()
+                });
+            }
+        }};
+    }
+    match column.data_type() {
+        arrow_schema::DataType::Binary => bytes_of!(GenericBinaryType<i32>, false),
+        arrow_schema::DataType::LargeBinary => bytes_of!(GenericBinaryType<i64>, false),
+        arrow_schema::DataType::Utf8 => bytes_of!(GenericStringType<i32>, true),
+        arrow_schema::DataType::LargeUtf8 => bytes_of!(GenericStringType<i64>, true),
+        other => {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static(""),
+                reason: crate::text::expected_got(
+                    format_args!("a binary or utf8 payload column"),
+                    format_args!("{other}"),
+                ),
+            });
+        }
+    }
+    Ok(held)
 }
 
 /// The direction a whole captured line moved.

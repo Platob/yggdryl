@@ -4338,6 +4338,26 @@ class FixProjection:
 
 def fix_schema(registry: FixRegistry | None = None, name: str = "fix") -> Field: ...
 def fix_schema_tags() -> list[int]: ...
+def fix_classify_arrow_array(
+    column: pyarrow.Array | pyarrow.ChunkedArray,
+    direction: str = "sent",
+) -> tuple[pyarrow.Array, pyarrow.Array, pyarrow.Array]: ...
+def fix_parse_arrow_reader(
+    source: IcebergRows,
+    registry: FixRegistry | None = None,
+    column: str = "body",
+    *,
+    name: str = "fix",
+    branch: str | None = None,
+    source_version: str | None = None,
+    target_version: str | None = None,
+    separator: int | None = None,
+    direction: str | None = None,
+    null_values: list[str] | None = None,
+    dedup: bool = False,
+    batch_row_size: int | None = None,
+    batch_byte_size: int | None = None,
+) -> pyarrow.RecordBatchReader: ...
 def fix_crate_fields() -> list[Field]: ...
 def global_registry() -> FixRegistry: ...
 def install_global_registry(registry: FixRegistry) -> None: ...

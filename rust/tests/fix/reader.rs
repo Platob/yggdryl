@@ -356,3 +356,84 @@ fn a_version_names_and_types_a_field_as_that_version_did() {
     assert!(at_new.get_by_name("lastqty").is_some());
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
 }
+
+/// A capture that cannot print `0x01` writes it, and the frame is the same.
+///
+/// Every escaped spelling a log uses reaches the same columns as the byte it
+/// stands for: the escape happened on the way into the log, not on the wire.
+#[test]
+fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
+    let reader = reader();
+    let wire = reader
+        .text("recv 8=FIX.4.4\u{1}9=61\u{1}35=0\u{1}49=XPAR\u{1}10=017\u{1}")
+        .expect("a numeric frame");
+    for spelling in ["^A", "\\x01", "<SOH>", "{SOH}"] {
+        let line = format!(
+            "recv 8=FIX.4.4{spelling}9=61{spelling}35=0{spelling}49=XPAR{spelling}10=017{spelling} on session 3"
+        );
+        let held = reader.text(&line).expect("the same frame, escaped");
+        assert_eq!(
+            held.get_by_tag(35).and_then(Scalar::as_str),
+            wire.get_by_tag(35).and_then(Scalar::as_str),
+            "{spelling} lost the message type",
+        );
+        assert_eq!(
+            held.get_by_tag(49).and_then(Scalar::as_str),
+            Some("XPAR"),
+            "{spelling} lost a body field",
+        );
+        // The prose after the checksum stays prose.
+        assert_eq!(held.get_by_tag(10).and_then(Scalar::as_str), Some("017"));
+    }
+}
+
+/// A bridge packs one group occurrence's members behind the FIX separator.
+///
+/// ULLINK writes EOT/ETX; a bridge relaying into a session writes SOH. Both
+/// split, because inside an occurrence neither can be part of a value.
+#[test]
+fn a_group_occurrence_splits_on_either_packed_spelling() {
+    let reader = reader();
+    for separator in ["\u{4}\u{3}", "\u{1}"] {
+        let line = format!(
+            "toBridge #SYMBOL=TTF|#NOPARTYIDS=2|\
+             #NOPARTYIDS[0]=PARTYID=BUYSIDE{separator}PARTYIDSOURCE=D{separator}PARTYROLE=1|\
+             #NOPARTYIDS[1]=PARTYID=XPAR{separator}PARTYIDSOURCE=G{separator}PARTYROLE=17"
+        );
+        let held = reader.text(&line).expect("a bridge row");
+        let parties = held
+            .get_by_tag(453)
+            .and_then(Scalar::as_sequence)
+            .expect("the group");
+        assert_eq!(parties.len(), 2);
+        let first = parties[0].as_sequence().expect("one occurrence");
+        // Three members, not one run under the first member's name.
+        assert_eq!(first.len(), 3, "the packed members did not split");
+        assert_eq!(first[0].as_str(), Some("BUYSIDE"));
+    }
+}
+
+/// A row's content can never fail the batch it arrives in.
+///
+/// A message states the members that occurrence carried; the fixed schema
+/// declares the dictionary's. Projecting places them by name and leaves the
+/// rest null, so an occurrence that stated one member is a row rather than a
+/// refusal.
+#[test]
+fn a_group_shorter_than_the_schema_declares_still_projects() {
+    use yggdryl::{FixProjection, fix_schema};
+
+    let registry = registry();
+    let reader = FixReader::new(Arc::clone(&registry));
+    let projection = FixProjection::new(&registry, "fix").expect("the fixed schema");
+    let held = reader
+        .text("toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE")
+        .expect("a bridge row");
+
+    let row = held.to_row(&projection);
+    let field = fix_schema(&registry, "fix").expect("the fixed root");
+    // The completion is what a batch does with the row; it must not refuse.
+    field
+        .canonicalize_value(row)
+        .expect("a short occurrence is nulls, never a refusal");
+}

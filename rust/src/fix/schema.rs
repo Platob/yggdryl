@@ -219,6 +219,28 @@ pub struct FixProjection {
     carried: Vec<usize>,
 }
 
+/// One clock source as the instant it states, whatever it is typed as.
+///
+/// A narrow dictionary types a clock field as text, and the derived clock
+/// column is declared as an instant however narrow the dictionary is. FIX's
+/// own spelling is read here, so a stated timestamp stays a timestamp instead
+/// of becoming a refusal the row cannot survive.
+fn as_instant(held: crate::Scalar) -> crate::Scalar {
+    let Some(text) = held.as_str() else {
+        return held;
+    };
+    super::build::wire_spelling(&CLOCK_DATATYPE, text).unwrap_or(crate::Scalar::Null)
+}
+
+/// The members one repeating-group field declares, or None for anything else.
+fn item_fields(field: &Field) -> Option<&[Field]> {
+    let item = match field.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => item.as_ref(),
+        _ => return None,
+    };
+    item.dtype().as_fields()
+}
+
 impl FixProjection {
     /// Resolves every schema column against one dictionary.
     ///
@@ -417,13 +439,62 @@ impl super::FixMsg {
         let tags = projection.tags();
         let carried = projection.value_columns();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(tags.len());
-        for tag in tags.iter().take(carried) {
-            values.push(self.column_value(*tag));
+        for (at, tag) in tags.iter().enumerate().take(carried) {
+            let held = self.column_value(*tag);
+            values.push(match projection.columns.get(at) {
+                Some(declared) => self.regrouped(*tag, declared, held),
+                None => held,
+            });
         }
         let (known, unknown) = self.divided();
         values.push(known);
         values.push(unknown);
         crate::Scalar::from_sequence(values)
+    }
+
+    /// One group's value, laid out the way the fixed column declares it.
+    ///
+    /// A message's own group holds the members that occurrence stated, in the
+    /// order it stated them; the fixed column declares the dictionary's
+    /// members. Placing them by name is what lets an occurrence a bridge
+    /// packed into one member land in the same column as one that spelled
+    /// every member out - and a member an occurrence never stated is null,
+    /// which is what keeps a row's content from failing its batch.
+    fn regrouped(&self, tag: i32, declared: &Field, held: crate::Scalar) -> crate::Scalar {
+        let Some(members) = item_fields(declared) else {
+            return held;
+        };
+        let Some(occurrences) = held.as_sequence() else {
+            return held;
+        };
+        // The message's own member names, in the order its values sit in.
+        let spelled: Vec<&str> = self
+            .index_of_tag(tag)
+            .and_then(|at| self.as_field().get_field_at(at))
+            .and_then(item_fields)
+            .map(|fields| fields.iter().map(Field::name).collect())
+            .unwrap_or_default();
+        let rows: Vec<crate::Scalar> = occurrences
+            .iter()
+            .map(|occurrence| {
+                let Some(stated) = occurrence.as_sequence() else {
+                    return occurrence.clone();
+                };
+                let row: Vec<crate::Scalar> = members
+                    .iter()
+                    .map(|member| {
+                        spelled
+                            .iter()
+                            .position(|name| name.eq_ignore_ascii_case(member.name()))
+                            .and_then(|at| stated.get(at))
+                            .cloned()
+                            .unwrap_or(crate::Scalar::Null)
+                    })
+                    .collect();
+                crate::Scalar::from_sequence(row)
+            })
+            .collect();
+        crate::Scalar::from_sequence(rows)
     }
 
     /// One column's value, derived where the message does not carry it.
@@ -534,6 +605,13 @@ const TICKER_SOURCES: [i32; 2] = [55, 48];
 /// in the row beside it.
 const CLOCK_SOURCES: [i32; 4] = [60, 769, 52, 122];
 
+/// What the derived clock column is declared as, and therefore what a clock
+/// read out of a text-typed field has to become.
+const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
+    unit: crate::TimeUnit::Nanosecond,
+    timezone: crate::Timezone::UTC,
+};
+
 impl super::FixMsg {
     /// One instrument symbol that is the same across venues.
     ///
@@ -595,11 +673,11 @@ impl super::FixMsg {
             }
             if let Some(occurrences) = held.as_sequence() {
                 if let Some(first) = occurrences.iter().find(|held| !held.is_null()) {
-                    return first.clone();
+                    return as_instant(first.clone());
                 }
                 continue;
             }
-            return held.clone();
+            return as_instant(held.clone());
         }
         crate::Scalar::Null
     }

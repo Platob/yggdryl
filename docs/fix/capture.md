@@ -174,6 +174,18 @@ Each is the core's own method under the same name in all three languages.
     assert.equal(held.party('1')[0].toJSON(), 'BUYSIDE')
     ```
 
+### A printed separator is still the separator
+
+A capture that cannot print `0x01` writes what it stands for: `^A`, `\x01`, `<SOH>` or `{SOH}`. The escape happened on the way into the log rather than on the wire, so a numeric frame spelling its separator that way is unescaped once, before it is split, and reaches the same columns the byte itself reaches.
+
+One vocabulary serves both readings, because the spelling a frame is *located* with and the one it is *split* on are the same fact: a capture that escapes its separator is recognized once rather than in each place that reads a frame. A frame carrying a real `0x01` is never scanned for the escapes, so the ordinary path allocates nothing.
+
+### A packed occurrence splits on either separator
+
+ULLINK packs one group occurrence's members behind EOT and ETX (`\x04\x03`); a bridge relaying into a FIX session packs them behind the protocol's own SOH. Both split an occurrence, because inside one neither byte can be part of a value.
+
+The first spelling an occurrence actually carries is the one that splits it, and only that one: reading both at once would let a value that legitimately holds the other byte break into fields nobody wrote.
+
 ### Edges
 
 - A line the reader refuses is not a line lost: it is a message with nothing in it, so the output row count still equals the input line count.
@@ -332,6 +344,12 @@ Every message in a capture asks for the same tags in the same order, and each as
 
 It is held beside a dictionary rather than inside one: a projection is a reader's concern, and a dictionary carrying one would have to invalidate it on every edit.
 
+### A group is laid out the way the column declares it
+
+A message's group holds the members that occurrence stated, in the order it stated them; the fixed column declares the dictionary's. `to_row` places them by name and leaves the rest null, so an occurrence a bridge packed into one member lands in the same columns as one that spelled every member out - and an occurrence shorter than the dictionary declares is a row rather than a refusal.
+
+That is the rule the whole row keeps: what a message said can never fail the batch it arrives in.
+
 ## A capture's own columns lead the row
 
 A line was read from somewhere, and where it was read from is what a monitor orders and joins on: the object's URL, the line number in it, the clock the line was stamped with, the thread that wrote it. None of that is FIX and all of it is the row, so it leads the row - and because a line in is a row out, carrying it is a slice rather than a join.
@@ -427,9 +445,10 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
 - A tag the dictionary does not have is skipped rather than invented: a column with no field behind it could not be typed.
 - A carried column carries no tag, so `to_row` answers null there; whoever read the capture fills it.
+- A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a timestamp is null rather than a refusal.
 - `position_of` on a tag the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
-- Switching deduplication on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
+- Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
 
 ## Commands
 

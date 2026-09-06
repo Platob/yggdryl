@@ -35,7 +35,11 @@ use super::project::Projections;
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
-const MEMBER_SEPARATOR: &[u8] = b"\x04\x03";
+///
+/// ULLINK writes EOT then ETX. A bridge relaying into a FIX session writes the
+/// protocol's own SOH instead, which is unambiguous inside an occurrence
+/// because no FIX value may contain one.
+const MEMBER_SEPARATORS: [&[u8]; 2] = [b"\x04\x03", b"\x01"];
 
 /// The spellings that mean "nothing was sent", by default.
 ///
@@ -166,10 +170,12 @@ impl FixReader {
         }
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
-        if numeric_frame(body) {
-            self.fixtext(body, separator_of(body))
-        } else {
-            self.ultext(body)
+        if !numeric_frame(body) {
+            return self.ultext(body);
+        }
+        match unescaped(body) {
+            Some(held) => self.fixtext(&held, 0x01),
+            None => self.fixtext(body, separator_of(body)),
         }
     }
 
@@ -389,6 +395,33 @@ fn numeric_frame(body: &[u8]) -> bool {
     end > 0 && body[..end].iter().all(u8::is_ascii_digit)
 }
 
+/// One body with a printed SOH spelling rewritten to the byte it stands for.
+///
+/// A capture that cannot print `0x01` writes `^A`, `\x01`, `<SOH>` or `{SOH}`
+/// instead. It is the same frame; only the separator was escaped on the way
+/// into the log, so it is unescaped once here rather than taught to every
+/// splitter. `None` where nothing was escaped, so the ordinary path allocates
+/// nothing.
+fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
+    if memchr::memchr(0x01, body).is_some() {
+        return None;
+    }
+    let marker = line::SOH_MARKERS
+        .into_iter()
+        .filter_map(|held| memchr::memmem::find(body, held).map(|at| (at, held)))
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, held)| held)?;
+    let mut held = Vec::with_capacity(body.len());
+    let mut start = 0;
+    while let Some(at) = memchr::memmem::find(&body[start..], marker) {
+        held.extend_from_slice(&body[start..start + at]);
+        held.push(0x01);
+        start += at + marker.len();
+    }
+    held.extend_from_slice(&body[start..]);
+    Some(held)
+}
+
 /// The separator a numeric frame uses: SOH when the body holds one, else `|`.
 fn separator_of(body: &[u8]) -> u8 {
     if memchr::memchr(0x01, body).is_some() {
@@ -438,12 +471,22 @@ fn members(value: &[u8]) -> Vec<(&[u8], &[u8])> {
 }
 
 /// One occurrence's value split on the bridge's member separator.
+///
+/// The first spelling the run actually carries wins, and only that one splits
+/// it: mixing them would let a value that legitimately holds the other byte
+/// break into fields nobody wrote.
 fn split_members(value: &[u8]) -> Vec<&[u8]> {
+    let Some(separator) = MEMBER_SEPARATORS
+        .into_iter()
+        .find(|held| memchr::memmem::find(value, held).is_some())
+    else {
+        return vec![value];
+    };
     let mut parts = Vec::new();
     let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&value[start..], MEMBER_SEPARATOR) {
+    while let Some(at) = memchr::memmem::find(&value[start..], separator) {
         parts.push(&value[start..start + at]);
-        start += at + MEMBER_SEPARATOR.len();
+        start += at + separator.len();
     }
     parts.push(&value[start..]);
     parts

@@ -70,7 +70,9 @@ pub use fix::{
     fix_schema, fix_schema_tags,
 };
 #[cfg(feature = "arrow")]
-pub use fix::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
+pub use fix::{
+    DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
+};
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
