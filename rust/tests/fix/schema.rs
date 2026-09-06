@@ -201,3 +201,49 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
         assert!(entries.contains(entry));
     }
 }
+
+/// The two documents a datatype writes name it the same way.
+///
+/// A datatype is written twice by this crate: as a `Scalar` record, which is
+/// what a `FixMsg` schema and a registry shard carry, and by the serde derive
+/// behind `into_json`. Whoever holds a table reads one with the other, so a
+/// type the two spell differently is a schema that crosses in only one
+/// direction. `MsgDirection` was that -- `msgdirection` as a record and
+/// `msg_direction` from the derive -- and no `fix_schema` carrying tag 385
+/// survived the crossing.
+#[test]
+fn a_datatype_is_named_the_same_by_both_documents() {
+    use yggdryl::{DataType, DataTypeId, Field, Scalar};
+
+    for id in DataTypeId::ALL {
+        // Only the parameterless ones are nameable without a shape; the
+        // parameterized families are covered by their own suites.
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue;
+        };
+        let record = dtype.clone().into_value();
+        let stated = record
+            .get_key_str("type")
+            .and_then(Scalar::as_utf8)
+            .map(str::to_owned);
+        let document = dtype
+            .clone()
+            .nullable_field("held")
+            .into_json()
+            .expect("a field renders");
+        let held: serde_json::Value =
+            serde_json::from_str(&document).expect("a field document is JSON");
+        assert_eq!(
+            held["dtype"]["type"].as_str(),
+            stated.as_deref(),
+            "{} is written under two spellings",
+            id.as_str()
+        );
+        let read = Field::from_json(&document)
+            .unwrap_or_else(|error| panic!("{} does not read back: {error}", id.as_str()));
+        assert_eq!(read.dtype().id(), id, "{} changed identity", id.as_str());
+    }
+}
