@@ -24,6 +24,7 @@ use crate::types::datatype::{
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
+use crate::types::scalar::PyScalar;
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, cast_options, compare, core_nullability, value_error};
 
@@ -433,14 +434,18 @@ impl PyField {
         default_arrow_scalar_to_pyarrow(py, &self.inner, &array)
     }
 
-    /// Returns the core-selected Field default in its cached Python type plan.
-    fn default_pyvalue<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.default_arrow_array().map_err(value_error)?;
-        let scalar = default_arrow_scalar_to_pyarrow(py, &self.inner, &array)?;
-        let field = Py::new(py, self.clone())?;
-        py.import("yggdryl.types._defaults")?
-            .getattr("_default_pyvalue_from_field")?
-            .call1((field, scalar))
+    /// Returns the core-selected Field default as one generic `Scalar`.
+    ///
+    /// A default is a value, and every value in this runtime is a `Scalar`:
+    /// the same one an array or a row is built from, the same one `as_py`
+    /// renders. So a default is answered as that, and what a caller does with
+    /// it - read it, materialize an array of it, feed it back into a cast - is
+    /// the one conversion vocabulary rather than a second per-default one.
+    fn default_scalar(&self) -> PyResult<PyScalar> {
+        self.inner
+            .default_value()
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
     }
 
     /// Returns a recursively normalized field for a named compatibility target.

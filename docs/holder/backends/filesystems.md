@@ -30,8 +30,10 @@ Pass the filesystem and its opaque path separately.
         File, FileSystem, MemoryFileSystem, OutputMetadata,
     };
 
-    # fn main() -> yggdryl::Result<()> {
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    // A memory filesystem starts with no directories, and a write creates the
+    // file rather than the tree above it.
+    filesystem.create_dir("bucket", true)?;
     let file = File::from_path(
         filesystem,
         "bucket/v=a%2Fb.bin",
@@ -43,8 +45,9 @@ Pass the filesystem and its opaque path separately.
     let mut output = file.open_output_stream(Some(&metadata))?;
     output.write(b"literal")?;
     output.close()?;
-    # Ok(())
-    # }
+
+    // The percent escape is part of the stored name, not a path separator.
+    assert_eq!(file.read_all_bytes()?, b"literal");
     ```
 
 === "Python"

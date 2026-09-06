@@ -9,6 +9,7 @@
 //! that work lifted out: compile once, apply per batch, and let only the
 //! masks, offsets, and dictionary reachability a batch actually carries vary.
 
+use std::fmt;
 use std::sync::Arc;
 
 use arrow_array::{RecordBatch, RecordBatchOptions, StructArray};
@@ -190,6 +191,23 @@ impl ArrowCastPlan {
     /// that is the whole point of asking.
     pub(crate) fn is_identity(&self) -> bool {
         !self.options.nullability().is_strict() && self.source.as_ref() == self.schema.as_ref()
+    }
+}
+
+/// The plan by what decided it, not by the tree that decision produced.
+///
+/// The recursive dispatch is an implementation detail whose rendering would
+/// bury the three things a reader of a failed plan needs: what it targets,
+/// what it accepts, and under which policy.
+impl fmt::Debug for ArrowCastPlan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ArrowCastPlan")
+            .field("field", &self.field)
+            .field("source", &self.source)
+            .field("schema", &self.schema)
+            .field("options", &self.options)
+            .finish()
     }
 }
 

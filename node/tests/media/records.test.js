@@ -592,6 +592,219 @@ test('a field casts whatever Arrow JS holds, batch by batch', () => {
   assert.equal(target.cast(source).numRows, 2)
 })
 
+test('a field casts one Arrow JS batch, and a whole stream one pull at a time', () => {
+  const target = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('symbol: utf8')],
+    { nullable: false },
+  )
+  const source = new arrow.Table({
+    id: arrow.vectorFromArray([1, 2], new arrow.Int32()),
+    symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+    venue: arrow.vectorFromArray(['XNAS', 'XNAS'], new arrow.Utf8()),
+  })
+
+  // One batch in, one batch out: the int32 widens onto the declared int64 and
+  // the column the target never declared is dropped.
+  const batch = target.castArrowBatch(source.batches[0])
+  assert.ok(batch instanceof arrow.RecordBatch)
+  assert.equal(batch.numRows, 2)
+  assert.deepEqual(
+    batch.schema.fields.map((field) => `${field.name}: ${field.type}`),
+    ['id: Int64', 'symbol: Utf8'],
+  )
+  assert.equal(batch.getChild('venue'), null)
+  assert.throws(() => target.castArrowBatch(source), TypeError)
+
+  // The lazy half: a stream is read once, so the source is consumed and the
+  // reader handed back is the one that still yields rows - unread, and already
+  // answering the field it casts onto.
+  const stream = BatchReader.from(source)
+  const reader = target.castArrowReader(stream)
+  assert.equal(stream.consumed, true)
+  assert.equal(reader.consumed, false)
+  assert.ok(reader.field.equals(target))
+  assert.equal(reader.intoTable().numRows, 2)
+  assert.equal(reader.consumed, true)
+
+  // The eager half: `castArrow` drains that same reader into a Table.
+  assert.ok(target.castArrow(source) instanceof arrow.Table)
+
+  // An exact cast changes nothing: the rows that come back are the rows that
+  // went in, under the field the source already declared.
+  const exact = new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
+  })
+  assert.ok(BatchReader.from(exact).field.equals(target))
+  const unchanged = target.castArrow(exact)
+  assert.deepEqual([...unchanged.getChild('id')], [1n, 2n])
+  assert.deepEqual([...unchanged.getChild('symbol')], ['AAPL', 'MSFT'])
+})
+
+test('a required column the source cannot fill is written, or refused by path', () => {
+  const target = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('symbol: utf8 not null')],
+    { nullable: false },
+  )
+  const identifiers = new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+  })
+
+  // The default policy repairs the hole with the target's canonical default.
+  assert.deepEqual([...target.castArrow(identifiers).getChild('symbol')], ['', ''])
+
+  // Strict refuses it from the two schemas alone, and names the whole path.
+  assert.throws(
+    () => target.castArrow(identifiers, { nullability: 'strict' }),
+    /required Arrow field \$\.symbol is missing from the source/,
+  )
+  // The policy is a name, and an unknown one is refused by its vocabulary.
+  assert.throws(
+    () => target.castArrow(identifiers, { nullability: 'lenient' }),
+    /expected one of default, strict/,
+  )
+
+  // A null the source does carry is that same absence, and it is counted.
+  const partial = new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64()),
+    symbol: arrow.vectorFromArray(['AAPL', null, null], new arrow.Utf8()),
+  })
+  assert.deepEqual(
+    [...target.castArrow(partial).getChild('symbol')],
+    ['AAPL', '', ''],
+  )
+  assert.throws(
+    () => target.castArrow(partial, { nullability: 'strict' }),
+    /required Arrow field \$\.symbol holds 2 null values/,
+  )
+
+  // Nothing is required of a nullable column, and nothing is asked of a column
+  // the target never declared, so neither policy has anything to say about
+  // either: the missing one stays null and the undeclared one stays dropped.
+  const nullable = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('symbol: utf8')],
+    { nullable: false },
+  )
+  const extra = new arrow.Table({
+    id: arrow.vectorFromArray([1n], new arrow.Int64()),
+    symbol: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
+    venue: arrow.vectorFromArray(['XNAS'], new arrow.Utf8()),
+  })
+  for (const nullability of ['default', 'strict']) {
+    const missing = nullable.castArrow(identifiers, { nullability }).getChild('symbol')
+    assert.deepEqual([...missing], [null, null])
+    assert.equal(missing.nullCount, 2)
+    assert.deepEqual(
+      target
+        .castArrow(extra, { nullability })
+        .schema.fields.map((field) => field.name),
+      ['id', 'symbol'],
+    )
+  }
+})
+
+test('a required field inside a struct is refused by its whole path', () => {
+  const target = Field.from(
+    'row: struct<account: struct<id: int64, zip: utf8 not null>> not null',
+  )
+  // Arrow JS builds a non-null child unless the field says otherwise, and a
+  // non-null child may not hold the null this is about.
+  const identifier = arrow.Field.new('id', new arrow.Int64(), true)
+  const postcode = arrow.Field.new('zip', new arrow.Utf8(), true)
+  const accounts = (values, children) =>
+    new arrow.Table({
+      account: arrow.vectorFromArray(values, new arrow.Struct(children)),
+    })
+
+  // The source carries no `zip` at all: refused where the two schemas meet.
+  const without = accounts([{ id: 1n }, { id: 2n }], [identifier])
+  assert.deepEqual(
+    [...target.castArrow(without).getChild('account')].map((row) => row.zip),
+    ['', ''],
+  )
+  assert.throws(
+    () => target.castArrow(without, { nullability: 'strict' }),
+    /required Arrow field \$\.account\.zip is missing from the source/,
+  )
+
+  // The source carries it and it holds a null: refused once the rows are read.
+  const withNull = accounts(
+    [{ id: 1n, zip: '75001' }, { id: 2n, zip: null }],
+    [identifier, postcode],
+  )
+  assert.throws(
+    () => target.castArrow(withNull, { nullability: 'strict' }),
+    /required Arrow field \$\.account\.zip holds 1 null values/,
+  )
+})
+
+test('safe and strictness are two independent answers', () => {
+  const target = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('quantity: int8 not null')],
+    { nullable: false },
+  )
+  const source = new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    quantity: arrow.vectorFromArray([7n, 130n], new arrow.Int64()),
+  })
+
+  // `safe` turns the value the target cannot hold into a null, which the
+  // default policy then repairs with the canonical default.
+  assert.deepEqual([...target.castArrow(source).getChild('quantity')], [7, 0])
+
+  // Strictness reads that same null as the absence it is, and refuses it.
+  assert.throws(
+    () => target.castArrow(source, { nullability: 'strict' }),
+    /required Arrow field \$\.quantity holds 1 null values/,
+  )
+
+  // `safe: false` refuses the conversion itself, before absence is a question
+  // anyone gets to ask, so both policies raise that same conversion error.
+  for (const nullability of ['default', 'strict']) {
+    assert.throws(
+      () => target.castArrow(source, { safe: false, nullability }),
+      /Can't cast value 130 to type Int8/,
+    )
+  }
+})
+
+test('a strict stream refuses at the pull, and a missing column at the build', () => {
+  const target = fields.struct(
+    'row',
+    [Field.from('id: int64'), Field.from('symbol: utf8 not null')],
+    { nullable: false },
+  )
+  const partial = new arrow.Table({
+    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+    symbol: arrow.vectorFromArray(['AAPL', null], new arrow.Utf8()),
+  })
+
+  // A null is a property of rows, so the reader is built and answers its field
+  // before anything refuses it.
+  const reader = target.castArrowReader(partial, { nullability: 'strict' })
+  assert.equal(reader.consumed, false)
+  assert.ok(reader.field.equals(target))
+  assert.throws(
+    () => reader.intoTable(),
+    /required Arrow field \$\.symbol holds 1 null values/,
+  )
+
+  // A missing column is a property of the schemas alone, so it is refused
+  // where they meet: building the reader, with no batch pulled.
+  assert.throws(
+    () =>
+      target.castArrowReader(
+        new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }),
+        { nullability: 'strict' },
+      ),
+    /required Arrow field \$\.symbol is missing from the source/,
+  )
+})
+
 test('an ASCII column pads on the way in and trims on the way out', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM

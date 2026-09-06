@@ -215,8 +215,8 @@ filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     source_batch,
     force=True,
 )
-default_dtype_value: object = DataType("int32").default_pyvalue()
-default_field_value: object = field.default_pyvalue()
+default_dtype_native_scalar: Scalar = DataType("int32").default_scalar()
+default_field_native_scalar: Scalar = field.default_scalar()
 default_dtype_hint: object = DataType("int32").default_pyhint()
 default_field_hint: object = field.default_pyhint()
 arrow_compatible: DataType = DataType("uint32").into_scheme_compat("arrow")
@@ -226,8 +226,8 @@ pandas_compatible: Field = field.into_scheme_compat("pandas")
 iceberg_compatible: Field = field.into_scheme_compat("iceberg")
 typed_id: Int32Field = types.int32("id", nullable=False)
 typed_id_kind: Literal["int32"] = typed_id.dtype.id
-typed_id_value: int | None = typed_id.default_pyvalue()
-typed_id_dtype_value: int = typed_id.dtype.default_pyvalue()
+typed_id_default_scalar: Scalar = typed_id.default_scalar()
+typed_id_dtype_default_scalar: Scalar = typed_id.dtype.default_scalar()
 typed_id_hint: object = typed_id.default_pyhint()
 typed_id_dtype_hint: object = typed_id.dtype.default_pyhint()
 typed_bit_cast_array: pa.Array = typed_id.cast_arrow_array_bits(
@@ -239,14 +239,10 @@ nullable_item: Int32Field = types.int32("item")
 typed_fixed: FixedSizeListField[int] = types.fixed_size_list(
     "fixed", nullable_item, 2, nullable=False
 )
-typed_fixed_value: list[int | None] | None = typed_fixed.default_pyvalue()
-typed_fixed_dtype_value: list[int | None] = (
-    typed_fixed.dtype.default_pyvalue()
-)
+typed_fixed_default_scalar: Scalar = typed_fixed.default_scalar()
+typed_fixed_dtype_default_scalar: Scalar = typed_fixed.dtype.default_scalar()
 typed_struct = types.struct("row", [typed_id], nullable=False)
-typed_struct_value: object | Mapping[str, object] | None = (
-    typed_struct.default_pyvalue()
-)
+typed_struct_default_scalar: Scalar = typed_struct.default_scalar()
 
 avro_schema: avro.Schema = avro.Schema(
     "long", max_depth=8, max_input_bytes=1_024, max_nodes=32
@@ -293,9 +289,7 @@ range_text: str = byte_handle.read_range(0, 6, cls=str)
 byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
-typed_struct_dtype_value: object | Mapping[str, object] = (
-    typed_struct.dtype.default_pyvalue()
-)
+typed_struct_dtype_default_scalar: Scalar = typed_struct.dtype.default_scalar()
 native_instant = Scalar.datetime(0, "us", "UTC")
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 native_enum = Scalar.from_enum("io_mode", "append")
@@ -324,7 +318,7 @@ typed_dense_union: DenseUnionField = types.dense_union(
     nullable=False,
 )
 typed_dense_union_kind: Literal["union"] = typed_dense_union.dtype.id
-typed_dense_union_value: object = typed_dense_union.default_pyvalue()
+typed_dense_union_default_scalar: Scalar = typed_dense_union.default_scalar()
 
 # The parenthesis disambiguates: a bare DataType.variant() is the Variant
 # datatype, and the three geospatial-era factories carry their own literals.
@@ -334,11 +328,11 @@ typed_variant_kind: Literal["variant"] = typed_variant.dtype.id
 geometry_dtype: DataType = DataType.geometry("EPSG:3857")
 typed_geometry: GeometryField = types.geometry("shape", nullable=False)
 typed_geometry_kind: Literal["geometry"] = typed_geometry.dtype.id
-typed_geometry_value: bytes = typed_geometry.dtype.default_pyvalue()
+typed_geometry_default_scalar: Scalar = typed_geometry.dtype.default_scalar()
 geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
 typed_geography: GeographyField = types.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
-typed_geography_value: bytes | None = typed_geography.default_pyvalue()
+typed_geography_default_scalar: Scalar = typed_geography.default_scalar()
 ascii_dtype: DataType = DataType.ascii(3)
 ascii_width: int | None = ascii_dtype.ascii_width
 currency_dtype: DataType = DataType.from_logical_name("currency")
@@ -360,10 +354,11 @@ typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
-typed_uuid_value: str = typed_uuid.dtype.default_pyvalue()
-typed_ascii_value: str = typed_ascii.dtype.default_pyvalue()
+typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
+typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
 typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
-typed_ascii_isin_value: str | None = typed_ascii_isin.default_pyvalue()
+# Reading one is the generic conversion, so it lands as ``object``.
+typed_ascii_isin_value: object = typed_ascii_isin.default_scalar().as_py()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 
@@ -414,22 +409,22 @@ cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_b
 )
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
-# becomes unused if a typed view regresses to ``Any`` or drops its nullable /
-# generated-dataclass branch.
-field_default_cannot_be_assumed_present: int = (
-    nullable_item.default_pyvalue()  # type: ignore[assignment]
+# becomes unused if a typed view regresses to ``Any`` or answers a default as
+# anything but the one ``Scalar`` every value crosses as.
+field_default_is_a_scalar_not_its_value: int = (
+    nullable_item.default_scalar()  # type: ignore[assignment]
 )
-fixed_children_cannot_be_assumed_present: list[int] = (
-    typed_fixed.dtype.default_pyvalue()  # type: ignore[assignment]
+nested_default_is_a_scalar_not_its_children: list[int] = (
+    typed_fixed.dtype.default_scalar()  # type: ignore[assignment]
 )
-struct_default_is_not_always_a_mapping: Mapping[str, object] = (
-    typed_struct.dtype.default_pyvalue()  # type: ignore[assignment]
+struct_default_is_not_a_mapping: Mapping[str, object] = (
+    typed_struct.dtype.default_scalar()  # type: ignore[assignment]
 )
 dynamic_default_needs_narrowing: int = (
-    DataType("int32").default_pyvalue()  # type: ignore[assignment]
+    DataType("int32").default_scalar().as_py()  # type: ignore[assignment]
 )
 dynamic_field_default_needs_narrowing: str = (
-    field.default_pyvalue()  # type: ignore[assignment]
+    field.default_scalar().as_py()  # type: ignore[assignment]
 )
 hint_is_a_runtime_typing_object: type[int] = (
     typed_id.default_pyhint()  # type: ignore[assignment]
@@ -559,8 +554,8 @@ assert dtype_scalar
 assert field_scalar
 assert default_dtype_scalar
 assert default_field_scalar
-assert default_dtype_value == 0
-assert default_field_value == ""
+assert default_dtype_native_scalar.as_py() == 0
+assert default_field_native_scalar.as_py() == ""
 assert default_dtype_hint
 assert default_field_hint
 assert arrow_compatible

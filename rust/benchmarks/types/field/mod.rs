@@ -1,6 +1,7 @@
 mod common;
 
 pub mod arrow;
+pub mod cast_plan;
 pub mod comparison;
 pub mod integer;
 pub mod parser;

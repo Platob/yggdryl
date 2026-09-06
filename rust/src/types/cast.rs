@@ -1176,12 +1176,15 @@ pub(crate) fn cast_field_array(
     options: ArrowCastOptions,
 ) -> Result<ArrayRef> {
     field.validate_bounded()?;
+    // A bare array *is* the field, so the field names the root rather than
+    // hanging off one: a refusal reads `$.id`, not a bare `$`.
+    let root = Path::root();
     let plan = ArrayCastPlan::new_validated_with(
         field,
         array.data_type(),
         source_metadata,
         PlanRules::nested(options, Deferred::default()),
-        Path::root(),
+        root.field(field.name()),
     )?;
     let mut budget = MaterializationBudget::default();
     plan.cast(array, &mut budget)

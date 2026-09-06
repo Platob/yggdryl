@@ -19,7 +19,7 @@ use yggdryl::{
 };
 
 use crate::types::field::PyField;
-use crate::types::scalar::{arrow_scalar_into_array, from_py};
+use crate::types::scalar::{PyScalar, arrow_scalar_into_array, from_py};
 use crate::{
     FieldKey, PyDifferenceIterator, cast_options, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
@@ -814,15 +814,15 @@ impl PyDataType {
         default_arrow_scalar_to_pyarrow(py, &field, &array)
     }
 
-    /// Returns the native canonical default in its cached Python type plan.
-    fn default_pyvalue<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let array = self.inner.default_arrow_array().map_err(value_error)?;
-        let field = yggdryl::Field::new("value", self.inner.clone(), false);
-        let scalar = default_arrow_scalar_to_pyarrow(py, &field, &array)?;
-        let dtype = Py::new(py, self.clone())?;
-        py.import("yggdryl.types._defaults")?
-            .getattr("_default_pyvalue_from_datatype")?
-            .call1((dtype, scalar))
+    /// Returns the native canonical default as one generic `Scalar`.
+    ///
+    /// [`Field.default_scalar`](crate::types::field::PyField::default_scalar)
+    /// carries the reason: a default is a value, and a value is a `Scalar`.
+    fn default_scalar(&self) -> PyResult<PyScalar> {
+        self.inner
+            .default_value()
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
     }
 
     /// Returns a recursively normalized datatype for a named compatibility target.

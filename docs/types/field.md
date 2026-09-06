@@ -495,7 +495,14 @@ canonical default alone, so applying twice writes nothing the first pass already
 The declarations name every column they add, so the applied shape is a property of two schemas
 and never of the data: `apply_arrow_schema` answers it without reading a row, and
 `apply_arrow_reader` uses that to report the shape a stream will have before its first batch is
-pulled - which is what lets a partitioned read be handed straight to a write.
+pulled - which is what lets a partitioned read be handed straight to a write. The whole applied
+plan is compiled from those two schemas once, so a stream pays for it once.
+
+`nullability` is the [cast policy](cast.md#strict-nullability) the first step runs under, and
+under `strict` it also holds after the protocols have run. A field an enabled protocol
+materializes may arrive absent or holding its canonical default - closing that hole is the
+protocol's job, and it has not run yet - but the applied batch is checked again once every
+protocol is done, so a required column its protocol did not write is still refused by path.
 
 === "Rust"
 
@@ -503,8 +510,8 @@ pulled - which is what lets a partitioned read be handed straight to a write.
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
-    use yggdryl::DataType;
     use yggdryl::expression::Function;
+    use yggdryl::{DataType, Nullability};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
@@ -523,16 +530,20 @@ pulled - which is what lets a partitioned read be handed straight to a write.
         Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     )])?;
 
-    let applied = root.apply_arrow_batch(&batch, true, true, true)?;
+    let applied = root.apply_arrow_batch(&batch, true, true, true, Nullability::Default)?;
 
     assert_eq!(applied.num_columns(), 3);
     // The digest saw the derived column, because the partition step ran first.
     assert_eq!(applied.column(2).null_count(), 0);
     // Applying again writes nothing: every column now holds a written value.
-    assert_eq!(root.apply_arrow_batch(&applied, true, true, true)?, applied);
+    assert_eq!(
+        root.apply_arrow_batch(&applied, true, true, true, Nullability::Default)?,
+        applied,
+    );
 
     // The same shape, with no rows read and no batch pulled.
-    let shape = root.apply_arrow_schema(batch.schema(), true, true, true)?;
+    let shape =
+        root.apply_arrow_schema(batch.schema(), true, true, true, Nullability::Default)?;
     assert_eq!(shape, applied.schema());
 
     let mut stream = root.apply_arrow_reader(
@@ -540,6 +551,7 @@ pulled - which is what lets a partitioned read be handed straight to a write.
         true,
         true,
         true,
+        Nullability::Default,
     )?;
     assert_eq!(arrow_array::RecordBatchReader::schema(&stream), shape);
     assert_eq!(stream.next().expect("one batch")?.num_columns(), 3);
@@ -576,6 +588,14 @@ pulled - which is what lets a partitioned read be handed straight to a write.
     # Each step is separately switchable; a cast alone materializes and writes nothing.
     cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
     assert cast_only.column("year").to_pylist() == [None]
+
+    # A declared non-null column its protocol did not write is refused by path.
+    try:
+        root.apply_arrow_batch(batch, partition=False, nullability="strict")
+    except ValueError as error:
+        assert "$.year" in str(error), error
+    else:
+        raise AssertionError("a strict apply must refuse the unwritten column")
 
     # The same shape, with no rows read and no batch pulled.
     assert root.apply_arrow_schema(batch.schema) == applied.schema
@@ -793,6 +813,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `apply_arrow_batch(digest=True, cast=False)` -> the digest step reconciles to the root for itself, because a holder is addressed by position.
 - a column holding anything but its canonical default -> left alone by every step, so applying twice changes nothing.
 - `apply_arrow_schema` -> the empty batch through the same steps; a declaration that cannot be satisfied fails here, not on the first batch.
+- `nullability="strict"` -> a field an enabled protocol materializes may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
 - `apply_arrow_reader` with all three off -> the reader itself, unwrapped; otherwise the applied schema is derived once and reported before the first pull.
 - a batch that fails inside `apply_arrow_reader` -> that batch's `Err`; the reader is not fused after it.
 

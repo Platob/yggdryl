@@ -618,3 +618,131 @@ fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
         1
     );
 }
+
+/// A root whose derived and held columns are declared non-null.
+///
+/// This is the shape strictness has to reason about: `year` and `row_digest`
+/// are absent from the source and required in the schema, and the only reason
+/// that is not a contradiction is that the two protocols write them.
+fn required_applied_root() -> Field {
+    let mut year = DataType::Int32.required_field("year");
+    year.as_partition_mut().set_sources(["event"]).unwrap();
+    year.as_partition_mut()
+        .set_transform(yggdryl::expression::Function::Year)
+        .unwrap();
+    let mut row_digest = DataType::UInt64.required_field("row_digest");
+    row_digest.as_digest_mut().set_holder().unwrap();
+    DataType::from_fields([
+        DataType::Date32.required_field("event"),
+        year,
+        row_digest,
+    ])
+    .unwrap()
+    .required_field("row")
+}
+
+fn dates() -> arrow_array::RecordBatch {
+    arrow_array::RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(arrow_array::Date32Array::from(vec![19_723, 20_089]))
+            as arrow_array::ArrayRef,
+    )])
+    .unwrap()
+}
+
+#[test]
+fn a_strict_apply_lets_an_enabled_protocol_fill_its_own_required_column() {
+    let root = required_applied_root();
+
+    let applied = root
+        .apply_arrow_batch(&dates(), true, true, true, Nullability::Strict)
+        .unwrap();
+
+    // Both columns were absent from the source and are declared non-null; the
+    // cast let them through because their protocols were about to write them,
+    // and the re-check over the finished batch found them written.
+    assert_eq!(applied.num_columns(), 3);
+    assert_eq!(applied.column(1).null_count(), 0);
+    assert_eq!(applied.column(2).null_count(), 0);
+}
+
+#[test]
+fn a_strict_apply_refuses_the_column_whose_protocol_is_switched_off() {
+    let root = required_applied_root();
+
+    // The partition step is what would have written `year`, so with it off the
+    // finished batch leaves a declared non-null column holding its default.
+    let message = root
+        .apply_arrow_batch(&dates(), true, false, true, Nullability::Strict)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.year"), "{message}");
+
+    // The default policy still fills it, unchanged.
+    let filled = root
+        .apply_arrow_batch(&dates(), true, false, true, Nullability::Default)
+        .unwrap();
+    assert_eq!(filled.num_columns(), 3);
+}
+
+#[test]
+fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
+    let root = Field::new(
+        "row",
+        DataType::from_fields([
+            DataType::Date32.required_field("event"),
+            DataType::Utf8.required_field("venue"),
+        ])
+        .unwrap(),
+        false,
+    );
+
+    // No protocol declares `venue`, so nothing is going to write it: the cast
+    // refuses it where it stands rather than defaulting it and re-checking.
+    let message = root
+        .apply_arrow_batch(&dates(), true, true, true, Nullability::Strict)
+        .unwrap_err()
+        .to_string();
+    // The applied verbs answer a core error, so the runtime refusal travels
+    // inside one rather than replacing it.
+    assert!(
+        message.contains("required Arrow field $.venue is missing from the source"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_strict_applied_schema_is_still_derived_without_reading_a_row() {
+    let root = required_applied_root();
+    let stored = dates().schema();
+
+    let applied = root
+        .apply_arrow_schema(Arc::clone(&stored), true, true, true, Nullability::Strict)
+        .unwrap();
+
+    assert_eq!(applied.fields().len(), 3);
+    assert_eq!(applied.field(1).name(), "year");
+    assert_eq!(applied.field(2).name(), "row_digest");
+}
+
+#[test]
+fn a_strict_applied_reader_answers_its_schema_and_applies_every_batch() {
+    let root = required_applied_root();
+    let stored = dates().schema();
+    let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [dates(), dates()]);
+
+    let mut applied = root
+        .apply_arrow_reader(reader, true, true, true, Nullability::Strict)
+        .unwrap();
+
+    assert_eq!(
+        arrow_array::RecordBatchReader::schema(&applied).fields().len(),
+        3
+    );
+    for _ in 0..2 {
+        let batch = applied.next().expect("a batch").unwrap();
+        assert_eq!(batch.num_columns(), 3);
+        assert_eq!(batch.column(2).null_count(), 0);
+    }
+    assert!(applied.next().is_none());
+}
