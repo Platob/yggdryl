@@ -1,0 +1,447 @@
+[
+  {
+    "name": "individualallocsubqtytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndividualAllocSubQtyType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"TradeType\",\"ep\":285,\"sort\":1,\"doc\":\"Trade type\"},{\"value\":\"2\",\"name\":\"TradePublicationIndicator\",\"ep\":285,\"sort\":2,\"doc\":\"Trade publication indicator\"},{\"value\":\"3\",\"name\":\"OrderHandlingInstruction\",\"ep\":285,\"sort\":3,\"doc\":\"Order handling instruction\"}]}",
+      "fix:description": "Type of trade attribute defining a subgroup in an allocation group.",
+      "fix:tag": "3100"
+    }
+  },
+  {
+    "name": "individualallocsubqtyvalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndividualAllocSubQtyValue",
+      "fix:description": "Value of the trade attribute defining a subgroup in an allocation group.",
+      "fix:tag": "3101"
+    }
+  },
+  {
+    "name": "mostliquidmarketid",
+    "dtype": {
+      "type": "mic"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MostLiquidMarketID",
+      "fix:description": "Identifies the most liquid market for a given instrument.",
+      "fix:tag": "3102"
+    }
+  },
+  {
+    "name": "mostliquidmarketindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MostLiquidMarketIndicator",
+      "fix:description": "Identifies whether a given market is the most liquid for a given instrument.",
+      "fix:tag": "3103"
+    }
+  },
+  {
+    "name": "numberoftrades",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NumberOfTrades",
+      "fix:description": "Number of trades or transactions included in an aggregated trade or transaction.",
+      "fix:tag": "3104"
+    }
+  },
+  {
+    "name": "mdqualityindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDQualityIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoQualityIssue\",\"ep\":300,\"doc\":\"No data quality issue\"},{\"value\":\"1\",\"name\":\"QualityIssue\",\"ep\":300,\"doc\":\"Data quality issue\"}]}",
+      "fix:description": "Indicates the quality of the market data being provided.",
+      "fix:tag": "3105"
+    }
+  },
+  {
+    "name": "mdentrystatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDEntryStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"ep\":300,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithErrors\",\"ep\":300,\"sort\":1,\"doc\":\"Accepted with errors\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":300,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:description": "Indicates the acceptance status of a market data entry.",
+      "fix:tag": "3106"
+    }
+  },
+  {
+    "name": "mdentrystatustext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDEntryStatusText",
+      "fix:description": "Free form text to specify information related to the status provided with MDEntryStatus(3106).",
+      "fix:tag": "3107"
+    }
+  },
+  {
+    "name": "encodedmdentrystatustextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedMDEntryStatusTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedMDEntryStatusText(3109) field.",
+      "fix:tag": "3108"
+    }
+  },
+  {
+    "name": "encodedmdentrystatustext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedMDEntryStatusText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the MDEntryStatusText(3107) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the MDEntryStatusText(3107) field. Data length controlled by field EncodedMDEntryStatusTextLen(3108).",
+      "fix:tag": "3109"
+    }
+  },
+  {
+    "name": "mdmsgid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDMsgID",
+      "fix:description": "Unique message identifier for MarketDataSnapshotFullRefresh(35=W) or MarketDataIncrementalRefresh(35=X) message.",
+      "fix:tag": "3110"
+    }
+  },
+  {
+    "name": "securitystatusreportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecurityStatusReportID",
+      "fix:description": "Unique identifier for a SecurityStatus(35=f) message.",
+      "fix:tag": "3111"
+    }
+  },
+  {
+    "name": "tradingsessionstatusreportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingSessionStatusReportID",
+      "fix:description": "Unique identifier for a TradingSessionStatus(35=h) message.",
+      "fix:tag": "3112"
+    }
+  },
+  {
+    "name": "reportstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ReportStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ReceivedNotYetProcessed\",\"ep\":300,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":300,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":300,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"AcceptedWithErrors\",\"ep\":300,\"sort\":3,\"doc\":\"Accepted with errors\"}]}",
+      "fix:description": "Indicates the status of a report.",
+      "fix:tag": "3113"
+    }
+  },
+  {
+    "name": "marginprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarginPrice",
+      "fix:description": "Specifies margined price of a security.",
+      "fix:tag": "3114"
+    }
+  },
+  {
+    "name": "dividendpayoutratio",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPayoutRatio",
+      "fix:description": "Specifies the dividend payout ratio associated with an equity or a bond security.",
+      "fix:tag": "3115"
+    }
+  },
+  {
+    "name": "legratesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegRateSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Identifies the source of rate information. For FX, the reference source to be used for the FX spot rate.",
+      "fix:tag": "3117"
+    }
+  },
+  {
+    "name": "legratesourcetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegRateSourceType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Primary\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Primary\"},{\"value\":\"1\",\"name\":\"Secondary\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Secondary\"}]}",
+      "fix:description": "Indicates whether the rate source specified is a primary or secondary source.",
+      "fix:tag": "3118"
+    }
+  },
+  {
+    "name": "legreferencepage",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegReferencePage",
+      "fix:description": "Identifies the reference \"page\" from the rate source.",
+      "fix:tag": "3119"
+    }
+  },
+  {
+    "name": "legratesourcereferencepageheading",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegRateSourceReferencePageHeading",
+      "fix:description": "Identifies the page heading from the rate source.",
+      "fix:tag": "3120"
+    }
+  },
+  {
+    "name": "legratesourcesymbol",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegRateSourceSymbol",
+      "fix:description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
+      "fix:tag": "3121"
+    }
+  },
+  {
+    "name": "legfxbenchmark",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFXBenchmark",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Bloomberg\",\"ep\":293,\"sort\":1,\"doc\":\"Bloomberg\"},{\"value\":\"2\",\"name\":\"CentralBank\",\"ep\":293,\"sort\":2,\"doc\":\"Central Bank\"},{\"value\":\"3\",\"name\":\"WMR\",\"ep\":293,\"sort\":3,\"doc\":\"WMR\"},{\"value\":\"4\",\"name\":\"MitsubishiUFJ\",\"ep\":293,\"sort\":4,\"doc\":\"Mitsubishi-UFJ\"},{\"value\":\"5\",\"name\":\"LondonBullionMarketAssociation\",\"ep\":293,\"sort\":5,\"doc\":\"London Bullion Market Association\"},{\"value\":\"6\",\"name\":\"LondonMetalExchange\",\"ep\":293,\"sort\":6,\"doc\":\"London Metal Exchange\"},{\"value\":\"99\",\"name\":\"Other\",\"ep\":293,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
+      "fix:tag": "3122"
+    }
+  },
+  {
+    "name": "legfxbenchmarkdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFXBenchmarkDate",
+      "fix:description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in LegFXBenchmarkTime(3124).",
+      "fix:tag": "3123"
+    }
+  },
+  {
+    "name": "legfxbenchmarktime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFXBenchmarkTime",
+      "fix:description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in LegFXBenchmarkDate(3123).",
+      "fix:tag": "3124"
+    }
+  },
+  {
+    "name": "legfxbenchmarkbusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFXBenchmarkBusinessCenter",
+      "fix:description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
+      "fix:tag": "3125"
+    }
+  },
+  {
+    "name": "testsuiteparametername",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestSuiteParameterName",
+      "fix:description": "Name of the test suite parameter.",
+      "fix:tag": "3127"
+    }
+  },
+  {
+    "name": "testsuiteparametertype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestSuiteParameterType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Int\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Int\"},{\"value\":\"10\",\"name\":\"Amt\",\"since\":\"4.4\",\"ep\":-1,\"sort\":10,\"doc\":\"Amt\"},{\"value\":\"11\",\"name\":\"Percentage\",\"since\":\"4.4\",\"ep\":-1,\"sort\":11,\"doc\":\"Percentage\"},{\"value\":\"12\",\"name\":\"Char\",\"since\":\"4.4\",\"ep\":-1,\"sort\":12,\"doc\":\"Char\"},{\"value\":\"13\",\"name\":\"Boolean\",\"since\":\"4.4\",\"ep\":-1,\"sort\":13,\"doc\":\"Boolean\"},{\"value\":\"14\",\"name\":\"String\",\"since\":\"4.4\",\"ep\":-1,\"sort\":14,\"doc\":\"String\"},{\"value\":\"15\",\"name\":\"MultipleCharValue\",\"since\":\"4.4\",\"ep\":-1,\"sort\":15,\"doc\":\"MultipleCharValue\"},{\"value\":\"16\",\"name\":\"Currency\",\"since\":\"4.4\",\"ep\":-1,\"sort\":16,\"doc\":\"Currency\"},{\"value\":\"17\",\"name\":\"Exchange\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"doc\":\"Exchange\"},{\"value\":\"18\",\"name\":\"MonthYear\",\"since\":\"4.4\",\"ep\":-1,\"sort\":18,\"doc\":\"MonthYear\"},{\"value\":\"19\",\"name\":\"UTCTimestamp\",\"since\":\"4.4\",\"ep\":-1,\"sort\":19,\"doc\":\"UTCTimestamp\"},{\"value\":\"2\",\"name\":\"Length\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Length\"},{\"value\":\"20\",\"name\":\"UTCTimeOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":20,\"doc\":\"UTCTimeOnly\"},{\"value\":\"21\",\"name\":\"LocalMktDate\",\"since\":\"4.4\",\"ep\":-1,\"sort\":21,\"doc\":\"LocalMktDate\"},{\"value\":\"22\",\"name\":\"UTCDateOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":22,\"doc\":\"UTCDateOnly\"},{\"value\":\"23\",\"name\":\"Data\",\"since\":\"4.4\",\"ep\":-1,\"sort\":23,\"doc\":\"data\"},{\"value\":\"24\",\"name\":\"MultipleStringValue\",\"since\":\"4.4\",\"ep\":34,\"sort\":24,\"doc\":\"MultipleStringValue\"},{\"value\":\"25\",\"name\":\"Country\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":25,\"doc\":\"Country\"},{\"value\":\"26\",\"name\":\"Language\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":26,\"doc\":\"Language\"},{\"value\":\"27\",\"name\":\"TZTimeOnly\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":27,\"doc\":\"TZTimeOnly\"},{\"value\":\"28\",\"name\":\"TZTimestamp\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":28,\"doc\":\"TZTimestamp\"},{\"value\":\"29\",\"name\":\"Tenor\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":29,\"doc\":\"Tenor\"},{\"value\":\"3\",\"name\":\"NumInGroup\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"NumInGroup\"},{\"value\":\"4\",\"name\":\"SeqNum\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"SeqNum\"},{\"value\":\"5\",\"name\":\"TagNum\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"TagNum\"},{\"value\":\"6\",\"name\":\"Float\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"float\"},{\"value\":\"7\",\"name\":\"Qty\",\"since\":\"4.4\",\"ep\":-1,\"sort\":7,\"doc\":\"Qty\"},{\"value\":\"8\",\"name\":\"Price\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"doc\":\"Price\"},{\"value\":\"9\",\"name\":\"PriceOffset\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"doc\":\"PriceOffset\"}]}",
+      "fix:description": "Datatype of the test suite parameter.",
+      "fix:tag": "3128"
+    }
+  },
+  {
+    "name": "testsuiteparametervalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestSuiteParameterValue",
+      "fix:description": "Value of the test scenario parameter.",
+      "fix:tag": "3129"
+    }
+  },
+  {
+    "name": "testscenarioparametername",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestScenarioParameterName",
+      "fix:description": "Name of the test scenario parameter.",
+      "fix:tag": "3131"
+    }
+  },
+  {
+    "name": "testscenarioparametertype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestScenarioParameterType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Int\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Int\"},{\"value\":\"10\",\"name\":\"Amt\",\"since\":\"4.4\",\"ep\":-1,\"sort\":10,\"doc\":\"Amt\"},{\"value\":\"11\",\"name\":\"Percentage\",\"since\":\"4.4\",\"ep\":-1,\"sort\":11,\"doc\":\"Percentage\"},{\"value\":\"12\",\"name\":\"Char\",\"since\":\"4.4\",\"ep\":-1,\"sort\":12,\"doc\":\"Char\"},{\"value\":\"13\",\"name\":\"Boolean\",\"since\":\"4.4\",\"ep\":-1,\"sort\":13,\"doc\":\"Boolean\"},{\"value\":\"14\",\"name\":\"String\",\"since\":\"4.4\",\"ep\":-1,\"sort\":14,\"doc\":\"String\"},{\"value\":\"15\",\"name\":\"MultipleCharValue\",\"since\":\"4.4\",\"ep\":-1,\"sort\":15,\"doc\":\"MultipleCharValue\"},{\"value\":\"16\",\"name\":\"Currency\",\"since\":\"4.4\",\"ep\":-1,\"sort\":16,\"doc\":\"Currency\"},{\"value\":\"17\",\"name\":\"Exchange\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"doc\":\"Exchange\"},{\"value\":\"18\",\"name\":\"MonthYear\",\"since\":\"4.4\",\"ep\":-1,\"sort\":18,\"doc\":\"MonthYear\"},{\"value\":\"19\",\"name\":\"UTCTimestamp\",\"since\":\"4.4\",\"ep\":-1,\"sort\":19,\"doc\":\"UTCTimestamp\"},{\"value\":\"2\",\"name\":\"Length\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Length\"},{\"value\":\"20\",\"name\":\"UTCTimeOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":20,\"doc\":\"UTCTimeOnly\"},{\"value\":\"21\",\"name\":\"LocalMktDate\",\"since\":\"4.4\",\"ep\":-1,\"sort\":21,\"doc\":\"LocalMktDate\"},{\"value\":\"22\",\"name\":\"UTCDateOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":22,\"doc\":\"UTCDateOnly\"},{\"value\":\"23\",\"name\":\"Data\",\"since\":\"4.4\",\"ep\":-1,\"sort\":23,\"doc\":\"data\"},{\"value\":\"24\",\"name\":\"MultipleStringValue\",\"since\":\"4.4\",\"ep\":34,\"sort\":24,\"doc\":\"MultipleStringValue\"},{\"value\":\"25\",\"name\":\"Country\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":25,\"doc\":\"Country\"},{\"value\":\"26\",\"name\":\"Language\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":26,\"doc\":\"Language\"},{\"value\":\"27\",\"name\":\"TZTimeOnly\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":27,\"doc\":\"TZTimeOnly\"},{\"value\":\"28\",\"name\":\"TZTimestamp\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":28,\"doc\":\"TZTimestamp\"},{\"value\":\"29\",\"name\":\"Tenor\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":29,\"doc\":\"Tenor\"},{\"value\":\"3\",\"name\":\"NumInGroup\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"NumInGroup\"},{\"value\":\"4\",\"name\":\"SeqNum\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"SeqNum\"},{\"value\":\"5\",\"name\":\"TagNum\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"TagNum\"},{\"value\":\"6\",\"name\":\"Float\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"float\"},{\"value\":\"7\",\"name\":\"Qty\",\"since\":\"4.4\",\"ep\":-1,\"sort\":7,\"doc\":\"Qty\"},{\"value\":\"8\",\"name\":\"Price\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"doc\":\"Price\"},{\"value\":\"9\",\"name\":\"PriceOffset\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"doc\":\"PriceOffset\"}]}",
+      "fix:description": "Datatype of the test scenario parameter.",
+      "fix:tag": "3132"
+    }
+  },
+  {
+    "name": "testscenarioparametervalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TestScenarioParameterValue",
+      "fix:description": "Value of the test scenario parameter.",
+      "fix:tag": "3133"
+    }
+  },
+  {
+    "name": "tradingservicetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingServiceType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unknown\",\"ep\":305,\"doc\":\"Unknown\"},{\"value\":\"1\",\"name\":\"Trading\",\"ep\":305,\"sort\":1,\"doc\":\"Trading\"},{\"value\":\"2\",\"name\":\"MarketData\",\"ep\":305,\"sort\":2,\"doc\":\"Market data\"},{\"value\":\"3\",\"name\":\"ReferenceData\",\"ep\":305,\"sort\":3,\"doc\":\"Reference data\"},{\"value\":\"4\",\"name\":\"PostTrade\",\"ep\":305,\"sort\":4,\"doc\":\"Post-Trade\"},{\"value\":\"5\",\"name\":\"GUI\",\"ep\":305,\"sort\":5,\"doc\":\"GUI\"},{\"value\":\"6\",\"name\":\"TradeReporting\",\"ep\":305,\"sort\":6,\"doc\":\"Trade reporting\"},{\"value\":\"7\",\"name\":\"ReportDistribution\",\"ep\":305,\"sort\":7,\"doc\":\"Report distribution\"},{\"value\":\"99\",\"name\":\"Other\",\"ep\":305,\"sort\":8,\"doc\":\"Other\"}]}",
+      "fix:description": "Identifies a type of service offered as part of a trading session.",
+      "fix:tag": "3135"
+    }
+  },
+  {
+    "name": "tradingservicedesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingServiceDesc",
+      "fix:description": "Description of a trading service.",
+      "fix:tag": "3136"
+    }
+  },
+  {
+    "name": "outagereason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OutageReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unknown\",\"ep\":305,\"doc\":\"Unknown\"},{\"value\":\"1\",\"name\":\"PowerOutage\",\"ep\":305,\"sort\":1,\"doc\":\"Power outage\"},{\"value\":\"2\",\"name\":\"HardwareError\",\"ep\":305,\"sort\":2,\"doc\":\"Hardware error\"},{\"value\":\"3\",\"name\":\"SoftwareError\",\"ep\":305,\"sort\":3,\"doc\":\"Software error\"},{\"value\":\"4\",\"name\":\"NetworkError\",\"ep\":305,\"sort\":4,\"doc\":\"Network error\"},{\"value\":\"5\",\"name\":\"ThirdPartyIssue\",\"ep\":305,\"sort\":5,\"doc\":\"Third-Party issue\"},{\"value\":\"99\",\"name\":\"Other\",\"ep\":305,\"sort\":6,\"doc\":\"Other\"}]}",
+      "fix:description": "Denotes the reason for an outage.",
+      "fix:tag": "3137"
+    }
+  },
+  {
+    "name": "haltactiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "HaltActionType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OrderQuoteCancellation\",\"ep\":305,\"doc\":\"Order/quote cancellation\"},{\"value\":\"1\",\"name\":\"OrderQuoteSuspension\",\"ep\":305,\"sort\":1,\"doc\":\"Order/quote suspension\"},{\"value\":\"2\",\"name\":\"ExecutionHalted\",\"ep\":305,\"sort\":2,\"doc\":\"Execution halted\"}]}",
+      "fix:description": "Specifies the type of action to be taken when trading is halted.",
+      "fix:tag": "3138"
+    }
+  },
+  {
+    "name": "tradingsessionenvironment",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingSessionEnvironment",
+      "fix:description": "Identification of a specific trading environment.",
+      "fix:tag": "3139"
+    }
+  }
+]

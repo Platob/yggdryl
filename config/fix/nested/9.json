@@ -1,0 +1,383 @@
+[
+  {
+    "name": "nocompids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "refcompid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "930"
+              }
+            },
+            {
+              "name": "refsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "931"
+              }
+            },
+            {
+              "name": "locationid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "283"
+              }
+            },
+            {
+              "name": "deskid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "284"
+              }
+            },
+            {
+              "name": "statusvalue",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "928"
+              }
+            },
+            {
+              "name": "statustext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "929"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoCompIDs",
+      "fix:description": "Number of CompID entries in a repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocompids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "936"
+    }
+  },
+  {
+    "name": "nocollinquiryqualifier",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "collinquiryqualifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "896"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoCollInquiryQualifier",
+      "fix:description": "Number of CollInquiryQualifier entries in a repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocollinquiryqualifier\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "938"
+    }
+  },
+  {
+    "name": "nonested3partyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nested3partyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "949"
+              }
+            },
+            {
+              "name": "nested3partyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "950"
+              }
+            },
+            {
+              "name": "nested3partyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "951"
+              }
+            },
+            {
+              "name": "nested3partyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2382"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNested3PartyIDs",
+      "fix:description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "948"
+    }
+  },
+  {
+    "name": "nonested3partysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nested3partysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "953"
+              }
+            },
+            {
+              "name": "nested3partysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "954"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNested3PartySubIDs",
+      "fix:description": "Number of Nested3PartySubIDs (953) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "952"
+    }
+  },
+  {
+    "name": "nostrategyparameters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "strategyparametername",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "958"
+              }
+            },
+            {
+              "name": "strategyparametertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "959"
+              }
+            },
+            {
+              "name": "strategyparametervalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "960"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStrategyParameters",
+      "fix:description": "Indicates number of strategy parameters",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nostrategyparameters\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "957"
+    }
+  },
+  {
+    "name": "noexpiration",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "expirationqtytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "982"
+              }
+            },
+            {
+              "name": "expqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "983"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoExpiration",
+      "fix:description": "Number of Expiration Qty entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noexpiration\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "981"
+    }
+  },
+  {
+    "name": "nounderlyingamounts",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpayamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "985"
+              }
+            },
+            {
+              "name": "underlyingcollectamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "986"
+              }
+            },
+            {
+              "name": "underlyingsettlementdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "987"
+              }
+            },
+            {
+              "name": "underlyingsettlementstatus",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "988"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingAmounts",
+      "fix:description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingamounts\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "984"
+    }
+  }
+]

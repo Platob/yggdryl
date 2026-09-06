@@ -1,0 +1,548 @@
+[
+  {
+    "name": "nosettlpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "settlpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "785"
+              }
+            },
+            {
+              "name": "settlpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "786"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoSettlPartySubIDs",
+      "fix:description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "801"
+    }
+  },
+  {
+    "name": "nopartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "partysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "523"
+              }
+            },
+            {
+              "name": "partysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "803"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPartySubIDs",
+      "fix:description": "Number of PartySubID (523)and PartySubIDType (803) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "802"
+    }
+  },
+  {
+    "name": "nonestedpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nestedpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "545"
+              }
+            },
+            {
+              "name": "nestedpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "805"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNestedPartySubIDs",
+      "fix:description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonestedpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "804"
+    }
+  },
+  {
+    "name": "nonested2partysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nested2partysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "760"
+              }
+            },
+            {
+              "name": "nested2partysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "807"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNested2PartySubIDs",
+      "fix:description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "806"
+    }
+  },
+  {
+    "name": "nousernames",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "username",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "553"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUsernames",
+      "fix:description": "Number of Usernames to which this this response is directed",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nousernames\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "809"
+    }
+  },
+  {
+    "name": "noaltmdsource",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "altmdsourceid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "817"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoAltMDSource",
+      "fix:description": "Number of alternative market data sources",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noaltmdsource\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "816"
+    }
+  },
+  {
+    "name": "nocapacities",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "ordercapacity",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "528"
+              }
+            },
+            {
+              "name": "orderrestrictions",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "529"
+              }
+            },
+            {
+              "name": "ordercapacityqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "863"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoCapacities",
+      "fix:description": "Number of repeating OrderCapacity entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocapacities\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "862"
+    }
+  },
+  {
+    "name": "noevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "eventtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "865"
+              }
+            },
+            {
+              "name": "eventdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "866"
+              }
+            },
+            {
+              "name": "eventtime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1145"
+              }
+            },
+            {
+              "name": "eventtimeunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1827"
+              }
+            },
+            {
+              "name": "eventtimeperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1826"
+              }
+            },
+            {
+              "name": "eventmonthyear",
+              "dtype": {
+                "type": "fixed_ascii",
+                "width": 8
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2340"
+              }
+            },
+            {
+              "name": "eventpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "867"
+              }
+            },
+            {
+              "name": "eventtext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "868"
+              }
+            },
+            {
+              "name": "encodedeventtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1578"
+              }
+            },
+            {
+              "name": "encodedeventtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1579"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoEvents",
+      "fix:description": "Number of repeating EventType entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noevents\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "864"
+    }
+  },
+  {
+    "name": "noinstrattrib",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "instrattribtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "871"
+              }
+            },
+            {
+              "name": "instrattribvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "872"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoInstrAttrib",
+      "fix:description": "Number of repeating InstrAttribType entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrattrib\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "870"
+    }
+  },
+  {
+    "name": "nounderlyingstips",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstiptype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "888"
+              }
+            },
+            {
+              "name": "underlyingstipvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "889"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStips",
+      "fix:description": "Number of underlying stipulation entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingstips\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "887"
+    }
+  },
+  {
+    "name": "notrades",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradereportid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "571"
+              }
+            },
+            {
+              "name": "secondarytradereportid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "818"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTrades",
+      "fix:description": "Number of trades in repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrades\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "897"
+    }
+  }
+]

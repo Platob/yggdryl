@@ -1,0 +1,1216 @@
+[
+  {
+    "name": "effectivebusinessdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EffectiveBusinessDate",
+      "fix:description": "Specifies an explicit business date for associated reference data or transaction. Used when an implicit date is not sufficiently specific.",
+      "fix:tag": "2400"
+    }
+  },
+  {
+    "name": "listmanualorderindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ListManualOrderIndicator",
+      "fix:description": "Indicates if the list of orders was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
+      "fix:tag": "2401"
+    }
+  },
+  {
+    "name": "entitlementsubtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EntitlementSubType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderEntry\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":1,\"doc\":\"Order entry\"},{\"value\":\"2\",\"name\":\"HItLift\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":2,\"doc\":\"Hit/Lift\"},{\"value\":\"3\",\"name\":\"ViewIndicativePx\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":3,\"doc\":\"View indicative prices\"},{\"value\":\"4\",\"name\":\"ViewExecutablePx\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":4,\"doc\":\"View executable prices\"},{\"value\":\"5\",\"name\":\"SingleQuote\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":5,\"doc\":\"Single quote\"},{\"value\":\"6\",\"name\":\"StreamingQuotes\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":6,\"doc\":\"Streaming quotes\"},{\"value\":\"7\",\"name\":\"SingleBroker\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":7,\"doc\":\"Single broker\"},{\"value\":\"8\",\"name\":\"MultiBrokers\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":8,\"doc\":\"Multi brokers\"}]}",
+      "fix:description": "Subtype of an entitlement specified in EntitlementType(1775).",
+      "fix:tag": "2402"
+    }
+  },
+  {
+    "name": "quotemodeltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "QuoteModelType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"QuoteEntry\",\"since\":\"5.0SP2\",\"ep\":184,\"sort\":1,\"doc\":\"Quote entry\"},{\"value\":\"2\",\"name\":\"QuoteModification\",\"since\":\"5.0SP2\",\"ep\":184,\"sort\":2,\"doc\":\"Quote modification\"}]}",
+      "fix:description": "Quote model type",
+      "fix:tag": "2403"
+    }
+  },
+  {
+    "name": "compliancetext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplianceText",
+      "fix:description": "Free text for compliance information required for regulatory reporting.",
+      "fix:tag": "2404"
+    }
+  },
+  {
+    "name": "execmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExecMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unspecified\",\"since\":\"5.0SP2\",\"ep\":186,\"doc\":\"Undefined/unspecified - (default when not specified)\"},{\"value\":\"1\",\"name\":\"Manual\",\"since\":\"5.0SP2\",\"ep\":186,\"sort\":1,\"doc\":\"Manual\"},{\"value\":\"2\",\"name\":\"Automated\",\"since\":\"5.0SP2\",\"ep\":186,\"sort\":2,\"doc\":\"Automated\"},{\"value\":\"3\",\"name\":\"VoiceBrokered\",\"since\":\"5.0SP2\",\"ep\":201,\"sort\":3,\"doc\":\"Voice brokered\"}]}",
+      "fix:description": "Specifies how the transaction was executed, e.g. via an automated execution platform or other method.",
+      "fix:tag": "2405"
+    }
+  },
+  {
+    "name": "allocregulatorylegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryLegRefID",
+      "fix:description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "fix:tag": "2406"
+    }
+  },
+  {
+    "name": "complexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplexEventSpotRate",
+      "fix:description": "FX spot rate.",
+      "fix:tag": "2407"
+    }
+  },
+  {
+    "name": "complexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplexEventForwardPoints",
+      "fix:description": "FX forward points added to spot rate. May be a negative value.",
+      "fix:tag": "2408"
+    }
+  },
+  {
+    "name": "legcomplexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventSpotRate",
+      "fix:description": "FX spot rate.",
+      "fix:tag": "2409"
+    }
+  },
+  {
+    "name": "legcomplexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventForwardPoints",
+      "fix:description": "FX forward points added to spot rate. May be a negative value.",
+      "fix:tag": "2410"
+    }
+  },
+  {
+    "name": "regulatorylegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryLegRefID",
+      "fix:description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "fix:tag": "2411"
+    }
+  },
+  {
+    "name": "ratesourcereferencepageheading",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RateSourceReferencePageHeading",
+      "fix:aliases": "ratesourcereferemcepageheading",
+      "fix:description": "Identifies the page heading from the rate source.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"ratesourcereferemcepageheading\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"ratesourcereferencepageheading\",\"type\":\"String\"}]}",
+      "fix:tag": "2412"
+    }
+  },
+  {
+    "name": "relatedtosecurityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedToSecurityID",
+      "fix:description": "The security identifier of the instrument, instrument leg or underlying instrument with which the related instrument has correlation.",
+      "fix:tag": "2413"
+    }
+  },
+  {
+    "name": "relatedtosecurityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedToSecurityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies class or source of the RelatedToSecurityID(2413) value.",
+      "fix:tag": "2414"
+    }
+  },
+  {
+    "name": "relatedtostreamxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedToStreamXIDRef",
+      "fix:description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtostreamxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"relatedtostreamxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "2415"
+    }
+  },
+  {
+    "name": "sideregulatorylegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryLegRefID",
+      "fix:description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
+      "fix:tag": "2416"
+    }
+  },
+  {
+    "name": "relatedtodividendperiodxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedToDividendPeriodXIDRef",
+      "fix:description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtodividendperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"relatedtodividendperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "2417"
+    }
+  },
+  {
+    "name": "firmtradeeventid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FirmTradeEventID",
+      "fix:description": "An identifier created by the trading party for the life cycle event associated with this report.",
+      "fix:tag": "2418"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventSpotRate",
+      "fix:description": "FX spot rate.",
+      "fix:tag": "2419"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventForwardPoints",
+      "fix:description": "FX forward points added to spot rate. May be a negative value.",
+      "fix:tag": "2420"
+    }
+  },
+  {
+    "name": "fillrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FillRefID",
+      "fix:description": "A reference to either the value of the FillExecID(1363) or an implicit position of a fills instance in the FillsGrp component.",
+      "fix:tag": "2421"
+    }
+  },
+  {
+    "name": "orderrequestid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderRequestID",
+      "fix:description": "Unique message identifier for an order request as assigned by the submitter of the request.",
+      "fix:tag": "2422"
+    }
+  },
+  {
+    "name": "massorderrequestid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MassOrderRequestID",
+      "fix:description": "Unique message identifier for a mass order request as assigned by the submitter of the orders.",
+      "fix:tag": "2423"
+    }
+  },
+  {
+    "name": "massorderreportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MassOrderReportID",
+      "fix:description": "Unique message identifier for the response to a mass order request as assigned by the receiver of the orders.",
+      "fix:tag": "2424"
+    }
+  },
+  {
+    "name": "massorderrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MassOrderRequestStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"AcceptedWithAdditionalEvents\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":2,\"doc\":\"Accepted with additional events\"},{\"value\":\"3\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Rejected\"}]}",
+      "fix:description": "Status of mass order request.",
+      "fix:tag": "2425"
+    }
+  },
+  {
+    "name": "massorderrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MassOrderRequestResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":188,\"doc\":\"Successful\"},{\"value\":\"1\",\"name\":\"ResponseLevelNotSupported\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":1,\"doc\":\"Response level not supported\"},{\"value\":\"2\",\"name\":\"InvalidMarket\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":2,\"doc\":\"Invalid market\"},{\"value\":\"3\",\"name\":\"InvalidMarketSegment\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Invalid market segment\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Request result of mass order request.",
+      "fix:tag": "2426"
+    }
+  },
+  {
+    "name": "orderresponselevel",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderResponseLevel",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoAck\",\"since\":\"5.0SP2\",\"ep\":188,\"doc\":\"No acknowledgement\"},{\"value\":\"1\",\"name\":\"MinimumAck\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":1,\"doc\":\"Minimum acknowledgement\"},{\"value\":\"2\",\"name\":\"AckEach\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":2,\"doc\":\"Acknowledge each order\"},{\"value\":\"3\",\"name\":\"SummaryAck\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Summary acknowledgement\"}]}",
+      "fix:description": "The level of response requested from receiver of mass order messages. A default value should be bilaterally agreed.",
+      "fix:tag": "2427"
+    }
+  },
+  {
+    "name": "orderentryaction",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderEntryAction",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Add\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":1,\"doc\":\"Add\"},{\"value\":\"2\",\"name\":\"Modify\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":2,\"doc\":\"Modify\"},{\"value\":\"3\",\"name\":\"Delete\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Delete / Cancel\"},{\"value\":\"4\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":4,\"doc\":\"Suspend\"},{\"value\":\"5\",\"name\":\"Release\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":5,\"doc\":\"Release\"}]}",
+      "fix:description": "Specifies the action to be taken for the given order.",
+      "fix:tag": "2429"
+    }
+  },
+  {
+    "name": "orderentryid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderEntryID",
+      "fix:description": "Unique identifier for an order within a single MassOrder(35=DJ) message that can be used as a reference in the MassOrderAck(35=DK) message.",
+      "fix:tag": "2430"
+    }
+  },
+  {
+    "name": "exectypereason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExecTypeReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrdAddedOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":1,\"doc\":\"Order added upon request\"},{\"value\":\"10\",\"name\":\"OrdCxlPending\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":10,\"doc\":\"Order cancellation pending\"},{\"value\":\"11\",\"name\":\"PendingCxlExecuted\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":11,\"doc\":\"Pending cancellation executed\"},{\"value\":\"12\",\"name\":\"RestingOrdTriggered\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":12,\"doc\":\"Resting order triggered\"},{\"value\":\"13\",\"name\":\"SuspendedOrdActivated\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":13,\"doc\":\"Suspended order activated\"},{\"value\":\"14\",\"name\":\"ActiveOrdSuspended\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":14,\"doc\":\"Active order suspended\"},{\"value\":\"15\",\"name\":\"OrdExpired\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":15,\"doc\":\"Order expired\"},{\"value\":\"2\",\"name\":\"OrdReplacedOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":2,\"doc\":\"Order replaced upon request\"},{\"value\":\"3\",\"name\":\"OrdCxldOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Order cancelled upon request\"},{\"value\":\"4\",\"name\":\"UnsolicitedOrdCxl\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":4,\"doc\":\"Unsolicited order cancellation\"},{\"value\":\"5\",\"name\":\"NonRestingOrdAddedOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":5,\"doc\":\"Non-resting order added upon request\"},{\"value\":\"6\",\"name\":\"OrdReplacedWithNonRestingOrdOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":6,\"doc\":\"Order replaced with non-resting order upon request\"},{\"value\":\"7\",\"name\":\"TriggerOrdReplacedOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":7,\"doc\":\"Trigger order replaced upon request\"},{\"value\":\"8\",\"name\":\"SuspendedOrdReplacedOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":8,\"doc\":\"Suspended order replaced upon request\"},{\"value\":\"9\",\"name\":\"SuspendedOrdCxldOnRequest\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":9,\"doc\":\"Suspended order canceled upon request\"}]}",
+      "fix:description": "The initiating event when an ExecutionReport(35=8) is sent.",
+      "fix:tag": "2431"
+    }
+  },
+  {
+    "name": "totnoorderentries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoOrderEntries",
+      "fix:description": "Totals number of orders for a mass order or its acknowledgment being fragmented across multiple messages.",
+      "fix:tag": "2432"
+    }
+  },
+  {
+    "name": "targetpartysubid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TargetPartySubID",
+      "fix:description": "Party sub-identifier value within a target party repeating group.",
+      "fix:tag": "2434"
+    }
+  },
+  {
+    "name": "targetpartysubidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TargetPartySubIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Firm\",\"since\":\"4.4\",\"doc\":\"Firm\"},{\"value\":\"10\",\"name\":\"SecuritiesAccountNumber\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Securities account number (for settlement instructions)\"},{\"value\":\"11\",\"name\":\"RegistrationNumber\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Registration number (for settlement instructions and confirmations)\"},{\"value\":\"12\",\"name\":\"RegisteredAddressForConfirmation\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Registered address (for confirmation purposes)\"},{\"value\":\"13\",\"name\":\"RegulatoryStatus\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Regulatory status (for confirmation purposes)\"},{\"value\":\"14\",\"name\":\"RegistrationName\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Registration name (for settlement instructions)\"},{\"value\":\"15\",\"name\":\"CashAccountNumber\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Cash account number (for settlement instructions)\"},{\"value\":\"16\",\"name\":\"BIC\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"BIC\"},{\"value\":\"17\",\"name\":\"CSDParticipantMemberCode\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"CSD participant member code\"},{\"value\":\"18\",\"name\":\"RegisteredAddress\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Registered address\"},{\"value\":\"19\",\"name\":\"FundAccountName\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"Fund account name\"},{\"value\":\"2\",\"name\":\"Person\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Person\"},{\"value\":\"20\",\"name\":\"TelexNumber\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Telex number\"},{\"value\":\"21\",\"name\":\"FaxNumber\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Fax number\"},{\"value\":\"22\",\"name\":\"SecuritiesAccountName\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Securities account name\"},{\"value\":\"23\",\"name\":\"CashAccountName\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Cash account name\"},{\"value\":\"24\",\"name\":\"Department\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Department\"},{\"value\":\"25\",\"name\":\"LocationDesk\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Location desk\"},{\"value\":\"26\",\"name\":\"PositionAccountType\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Position account type\"},{\"value\":\"27\",\"name\":\"SecurityLocateID\",\"since\":\"4.4\",\"ep\":1,\"sort\":26,\"doc\":\"Security locate ID\"},{\"value\":\"28\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"doc\":\"Market maker\"},{\"value\":\"29\",\"name\":\"EligibleCounterparty\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"doc\":\"Eligible counterparty\"},{\"value\":\"3\",\"name\":\"System\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"System\"},{\"value\":\"30\",\"name\":\"ProfessionalClient\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"doc\":\"Professional client\"},{\"value\":\"31\",\"name\":\"Location\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"doc\":\"Location\"},{\"value\":\"32\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"doc\":\"Execution venue\"},{\"value\":\"33\",\"name\":\"CurrencyDeliveryIdentifier\",\"since\":\"5.0\",\"ep\":44,\"sort\":32,\"doc\":\"Currency delivery identifier\"},{\"value\":\"34\",\"name\":\"AddressCity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":33,\"doc\":\"Address City\"},{\"value\":\"35\",\"name\":\"AddressStateOrProvince\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":34,\"doc\":\"Address State/Province\"},{\"value\":\"36\",\"name\":\"AddressPostalCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":35,\"doc\":\"Address Postal Code\"},{\"value\":\"37\",\"name\":\"AddressStreet\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":36,\"doc\":\"Address Street\"},{\"value\":\"38\",\"name\":\"AddressISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":37,\"doc\":\"Address Country (ISO country code)\"},{\"value\":\"39\",\"name\":\"ISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":38,\"doc\":\"ISO country code\"},{\"value\":\"4\",\"name\":\"Application\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Application\"},{\"value\":\"40\",\"name\":\"MarketSegment\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":39,\"doc\":\"Market segment\"},{\"value\":\"41\",\"name\":\"CustomerAccountType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":40,\"doc\":\"Customer account type\"},{\"value\":\"42\",\"name\":\"OmnibusAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":41,\"doc\":\"Omnibus account\"},{\"value\":\"43\",\"name\":\"FundsSegregationType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":42,\"doc\":\"Funds segregation type\"},{\"value\":\"44\",\"name\":\"GuaranteeFund\",\"since\":\"5.0SP2\",\"ep\":157,\"sort\":43,\"doc\":\"Guarantee fund\"},{\"value\":\"45\",\"name\":\"SwapDealer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Swap dealer\"},{\"value\":\"46\",\"name\":\"MajorParticipant\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Major participant\"},{\"value\":\"47\",\"name\":\"FinancialEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Financial entity\"},{\"value\":\"48\",\"name\":\"USPerson\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":47,\"doc\":\"U.S. person\"},{\"value\":\"49\",\"name\":\"ReportingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":48,\"doc\":\"Reporting entity indicator\"},{\"value\":\"5\",\"name\":\"FullLegalNameOfFirm\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Full legal name of firm\"},{\"value\":\"50\",\"name\":\"ElectedClearingRequirementException\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":49,\"doc\":\"Elected clearing requirement exception\"},{\"value\":\"51\",\"name\":\"BusinessCenter\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":50,\"doc\":\"Business center\"},{\"value\":\"52\",\"name\":\"ReferenceText\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":51,\"doc\":\"Reference text\"},{\"value\":\"53\",\"name\":\"ShortMarkingExemptAccount\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":52,\"doc\":\"Short-marking exempt account\"},{\"value\":\"54\",\"name\":\"ParentFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":53,\"doc\":\"Parent firm identifier\"},{\"value\":\"55\",\"name\":\"ParentFirmName\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":54,\"doc\":\"Parent firm name\"},{\"value\":\"56\",\"name\":\"DealIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":55,\"doc\":\"Deal identifier\"},{\"value\":\"57\",\"name\":\"SystemTradeID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":56,\"doc\":\"System trade identifier\"},{\"value\":\"58\",\"name\":\"SystemTradeSubID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":57,\"doc\":\"System trade sub-identifier\"},{\"value\":\"59\",\"name\":\"FCMCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":58,\"doc\":\"Futures Commission Merchant (FCM) code\"},{\"value\":\"6\",\"name\":\"PostalAddress\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Postal address\"},{\"value\":\"60\",\"name\":\"DlvryTrmlCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":59,\"doc\":\"Delivery terminal customer account/code\"},{\"value\":\"61\",\"name\":\"VolntyRptEntity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":60,\"doc\":\"Voluntary reporting entity\"},{\"value\":\"62\",\"name\":\"RptObligJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":61,\"doc\":\"Reporting obligation jurisdiction\"},{\"value\":\"63\",\"name\":\"VolntyRptJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":62,\"doc\":\"Voluntary reporting jurisdiction\"},{\"value\":\"64\",\"name\":\"CompanyActivities\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":63,\"doc\":\"Company activities\"},{\"value\":\"65\",\"name\":\"EEAreaDomiciled\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":64,\"doc\":\"European Economic Area domiciled\"},{\"value\":\"66\",\"name\":\"ContractLinked\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":65,\"doc\":\"Contract linked to commercial or treasury financing for this counterparty\"},{\"value\":\"67\",\"name\":\"ContractAbove\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":66,\"doc\":\"Contract above clearing threshold for this counterparty\"},{\"value\":\"68\",\"name\":\"VolntyRptPty\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":67,\"doc\":\"Voluntary reporting party\"},{\"value\":\"69\",\"name\":\"EndUser\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":68,\"doc\":\"End user\"},{\"value\":\"7\",\"name\":\"PhoneNumber\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Phone number\"},{\"value\":\"70\",\"name\":\"LocationOrJurisdiction\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":69,\"doc\":\"Location or jurisdiction\"},{\"value\":\"71\",\"name\":\"DerivativesDealer\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":70,\"doc\":\"Derivatives dealer\"},{\"value\":\"72\",\"name\":\"Domicile\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":71,\"doc\":\"Domicile\"},{\"value\":\"73\",\"name\":\"ExemptFromRecognition\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":72,\"doc\":\"Exempt from recognition\"},{\"value\":\"74\",\"name\":\"Payer\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":73,\"doc\":\"Payer\"},{\"value\":\"75\",\"name\":\"Receiver\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":74,\"doc\":\"Receiver\"},{\"value\":\"76\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":75,\"doc\":\"Systematic Internaliser (SI)\"},{\"value\":\"77\",\"name\":\"PublishingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":76,\"doc\":\"Publishing entity indicator\"},{\"value\":\"78\",\"name\":\"FirstName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":77,\"doc\":\"First name\"},{\"value\":\"79\",\"name\":\"Surname\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":78,\"doc\":\"Surname\"},{\"value\":\"8\",\"name\":\"EmailAddress\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Email address\"},{\"value\":\"80\",\"name\":\"DateOfBirth\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":79,\"doc\":\"Date of birth\"},{\"value\":\"81\",\"name\":\"OrderTransmittingFirm\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":80,\"doc\":\"Order transmitting firm\"},{\"value\":\"82\",\"name\":\"OrderTransmittingFirmBuyer\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":81,\"doc\":\"Order transmitting firm for buyer\"},{\"value\":\"83\",\"name\":\"OrderTransmitterSeller\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":82,\"doc\":\"Order transmitter for seller\"},{\"value\":\"84\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":83,\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"85\",\"name\":\"SubSectorClassification\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":84,\"doc\":\"Sub-sector classification\"},{\"value\":\"86\",\"name\":\"PartySide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":85,\"doc\":\"Party side\"},{\"value\":\"87\",\"name\":\"LegalRegistrationCountry\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":86,\"doc\":\"Legal registration country\"},{\"value\":\"88\",\"name\":\"AlgorithmVersion\",\"ep\":303,\"sort\":87,\"doc\":\"Algorithm version\"},{\"value\":\"89\",\"name\":\"CertificateRegistrationStatus\",\"ep\":303,\"sort\":88,\"doc\":\"Certificate registration status\"},{\"value\":\"9\",\"name\":\"ContactName\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Contact name\"}]}",
+      "fix:description": "Type of TargetPartySubID(2434) value.",
+      "fix:tag": "2435"
+    }
+  },
+  {
+    "name": "transferinstructionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferInstructionID",
+      "fix:description": "Unique identifier for the transfer instruction assigned by the submitter.",
+      "fix:tag": "2436"
+    }
+  },
+  {
+    "name": "transferid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferID",
+      "fix:description": "The unique identifier assigned to the transfer entity once it is received, for example, by the CCP or the party governing the transfer process. Generally this same identifier for the transfer is used by all parties involved.",
+      "fix:tag": "2437"
+    }
+  },
+  {
+    "name": "transferreportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferReportID",
+      "fix:description": "Unique identifier for the transfer report message.",
+      "fix:tag": "2438"
+    }
+  },
+  {
+    "name": "transfertranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferTransType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Replace\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Replace\"},{\"value\":\"2\",\"name\":\"Cancel\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Cancel\"}]}",
+      "fix:description": "Indicates the type of transfer transaction.",
+      "fix:tag": "2439"
+    }
+  },
+  {
+    "name": "transfertype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RequestTransfer\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"Request transfer\"},{\"value\":\"1\",\"name\":\"AcceptTransfer\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Accept transfer\"},{\"value\":\"2\",\"name\":\"DeclineTransfer\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Decline transfer\"}]}",
+      "fix:description": "Indicates the type of transfer request.",
+      "fix:tag": "2440"
+    }
+  },
+  {
+    "name": "transferscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"InterFirmTransfer\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"Inter-firm transfer\"},{\"value\":\"1\",\"name\":\"IntraFirmTransfer\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Intra-firm transfer\"},{\"value\":\"2\",\"name\":\"CMTA\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Clearing Member Trade Assignment\"}]}",
+      "fix:description": "Indicates the type of transfer.",
+      "fix:tag": "2441"
+    }
+  },
+  {
+    "name": "transferstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"Received\"},{\"value\":\"1\",\"name\":\"RejectedByIntermediary\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Rejected by intermediary\"},{\"value\":\"2\",\"name\":\"AcceptPending\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Accept pending\"},{\"value\":\"3\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":3,\"doc\":\"Accepted\"},{\"value\":\"4\",\"name\":\"Declined\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":4,\"doc\":\"Declined\"},{\"value\":\"5\",\"name\":\"Cancelled\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":5,\"doc\":\"Cancelled\"}]}",
+      "fix:description": "Status of the transfer.",
+      "fix:tag": "2442"
+    }
+  },
+  {
+    "name": "transferrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferRejectReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Success\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"Success\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Invalid party\"},{\"value\":\"2\",\"name\":\"UnknownInstrument\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Unknown instrument\"},{\"value\":\"3\",\"name\":\"UnauthorizedToSubmitXfer\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":3,\"doc\":\"Not authorized to submit transfers\"},{\"value\":\"4\",\"name\":\"UnknownPosition\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":4,\"doc\":\"Unknown position\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Reason the transfer instruction was rejected.",
+      "fix:tag": "2443"
+    }
+  },
+  {
+    "name": "transferreporttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransferReportType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Submit\",\"since\":\"5.0SP2\",\"ep\":189,\"doc\":\"Submit\"},{\"value\":\"1\",\"name\":\"Alleged\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":1,\"doc\":\"Alleged\"}]}",
+      "fix:description": "Indicates the type of transfer report.",
+      "fix:tag": "2444"
+    }
+  },
+  {
+    "name": "aggressortime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AggressorTime",
+      "fix:description": "Timestamp of aggressive order or quote resulting in match event.",
+      "fix:tag": "2445"
+    }
+  },
+  {
+    "name": "aggressorside",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AggressorSide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Sell\"},{\"value\":\"3\",\"name\":\"BuyMinus\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Buy minus\"},{\"value\":\"4\",\"name\":\"SellPlus\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Sell plus\"},{\"value\":\"5\",\"name\":\"SellShort\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Sell short\"},{\"value\":\"6\",\"name\":\"SellShortExempt\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Sell short exempt\"},{\"value\":\"7\",\"name\":\"Undisclosed\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"Undisclosed\"},{\"value\":\"8\",\"name\":\"Cross\",\"since\":\"4.1\",\"sort\":8,\"doc\":\"Cross (orders where counterparty is an exchange, valid for all messages except IOIs)\"},{\"value\":\"9\",\"name\":\"CrossShort\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Cross short\"},{\"value\":\"A\",\"name\":\"CrossShortExempt\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Cross short exempt\"},{\"value\":\"B\",\"name\":\"AsDefined\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"\\\"As Defined\\\" (for use with multileg instruments)\"},{\"value\":\"C\",\"name\":\"Opposite\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"\\\"Opposite\\\" (for use with multileg instruments)\"},{\"value\":\"D\",\"name\":\"Subscribe\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Subscribe (e.g. CIV)\"},{\"value\":\"E\",\"name\":\"Redeem\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Redeem (e.g. CIV)\"},{\"value\":\"F\",\"name\":\"Lend\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"Lend (FINANCING - identifies direction of collateral)\"},{\"value\":\"G\",\"name\":\"Borrow\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"Borrow (FINANCING - identifies direction of collateral)\"},{\"value\":\"H\",\"name\":\"SellUndisclosed\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":17,\"doc\":\"Sell undisclosed\"}]}",
+      "fix:description": "Side of aggressive order or quote resulting in match event.",
+      "fix:tag": "2446"
+    }
+  },
+  {
+    "name": "fastmarketindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FastMarketIndicator",
+      "fix:description": "Indicates if the instrument is in \"fast market\" state.",
+      "fix:tag": "2447"
+    }
+  },
+  {
+    "name": "linkagehandlingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LinkageHandlingIndicator",
+      "fix:description": "Indicate whether linkage handling is in effect for an instrument or not.",
+      "fix:tag": "2448"
+    }
+  },
+  {
+    "name": "numberofbuyorders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NumberOfBuyOrders",
+      "fix:description": "Number of buy orders involved in a trade.",
+      "fix:tag": "2449"
+    }
+  },
+  {
+    "name": "numberofsellorders",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NumberOfSellOrders",
+      "fix:description": "Number of sell orders involved in a trade.",
+      "fix:tag": "2450"
+    }
+  },
+  {
+    "name": "settlpricedeterminationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlPriceDeterminationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unknown\",\"ep\":282,\"doc\":\"Unknown\"},{\"value\":\"1\",\"name\":\"LastTradePrice\",\"ep\":282,\"sort\":1,\"doc\":\"Last trade price\"},{\"value\":\"2\",\"name\":\"LastBidPrice\",\"ep\":282,\"sort\":2,\"doc\":\"Last bid price\"},{\"value\":\"3\",\"name\":\"LastOfferPrice\",\"ep\":282,\"sort\":3,\"doc\":\"Last offer price\"},{\"value\":\"4\",\"name\":\"MidPrice\",\"ep\":282,\"sort\":4,\"doc\":\"Mid price\"},{\"value\":\"5\",\"name\":\"AverageLastTradePrice\",\"ep\":282,\"sort\":5,\"doc\":\"Average last trade price\"},{\"value\":\"6\",\"name\":\"AverageLastTradePeriod\",\"ep\":282,\"sort\":6,\"doc\":\"Average last trade period\"},{\"value\":\"7\",\"name\":\"UnderlyingPrice\",\"ep\":282,\"sort\":7,\"doc\":\"Underlying price\"},{\"value\":\"8\",\"name\":\"CalculatedPrice\",\"ep\":282,\"sort\":8,\"doc\":\"Calculated price\"},{\"value\":\"9\",\"name\":\"ManualPrice\",\"ep\":282,\"sort\":9,\"doc\":\"Manual price\"}]}",
+      "fix:description": "Calculation method used to determine settlement price.",
+      "fix:tag": "2451"
+    }
+  },
+  {
+    "name": "mdstatisticreqid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticReqID",
+      "fix:description": "Message identifier for a statistics request.",
+      "fix:tag": "2452"
+    }
+  },
+  {
+    "name": "mdstatisticrptid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticRptID",
+      "fix:description": "Message identifier for a statistics report.",
+      "fix:tag": "2453"
+    }
+  },
+  {
+    "name": "mdstatisticname",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticName",
+      "fix:description": "The short name or acronym for a set of statistic parameters.",
+      "fix:tag": "2454"
+    }
+  },
+  {
+    "name": "mdstatisticdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticDesc",
+      "fix:description": "Can be used to provide an optional textual description for a statistic.",
+      "fix:tag": "2455"
+    }
+  },
+  {
+    "name": "mdstatistictype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Count\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Count\"},{\"value\":\"10\",\"name\":\"Tick\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":10,\"doc\":\"Tick\"},{\"value\":\"11\",\"name\":\"AverageValue\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":11,\"doc\":\"Average value\"},{\"value\":\"12\",\"name\":\"TotalValue\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":12,\"doc\":\"Total value\"},{\"value\":\"13\",\"name\":\"High\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":13,\"doc\":\"High\"},{\"value\":\"14\",\"name\":\"Low\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":14,\"doc\":\"Low\"},{\"value\":\"15\",\"name\":\"Midpoint\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":15,\"doc\":\"Midpoint\"},{\"value\":\"16\",\"name\":\"First\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":16,\"doc\":\"First\"},{\"value\":\"17\",\"name\":\"Last\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":17,\"doc\":\"Last\"},{\"value\":\"18\",\"name\":\"Final\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":18,\"doc\":\"Final\"},{\"value\":\"19\",\"name\":\"ExchangeBest\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":19,\"doc\":\"Exchange best\"},{\"value\":\"2\",\"name\":\"AverageVolume\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Average volume\"},{\"value\":\"20\",\"name\":\"ExchangeBestWithVolume\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":20,\"doc\":\"Exchange best with volume\"},{\"value\":\"21\",\"name\":\"ConsolidatedBest\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":21,\"doc\":\"Consolidated best\"},{\"value\":\"22\",\"name\":\"ConsolidatedBestWithVolume\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":22,\"doc\":\"Consolidated best with volume\"},{\"value\":\"23\",\"name\":\"TWAP\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":23,\"doc\":\"Time weighted average price (TWAP)\"},{\"value\":\"24\",\"name\":\"AverageDuration\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":24,\"doc\":\"Average duration\"},{\"value\":\"25\",\"name\":\"AveragePrice\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":25,\"doc\":\"Average price\"},{\"value\":\"26\",\"name\":\"TotalFees\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":26,\"doc\":\"Total fees\"},{\"value\":\"27\",\"name\":\"TotalBenefits\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":27,\"doc\":\"Total benefits\"},{\"value\":\"28\",\"name\":\"MedianValue\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":28,\"doc\":\"Median value\"},{\"value\":\"29\",\"name\":\"AverageLiquidity\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":29,\"doc\":\"Average liquidity\"},{\"value\":\"3\",\"name\":\"TotalVolume\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Total volume\"},{\"value\":\"30\",\"name\":\"MedianDuration\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":30,\"doc\":\"Median duration\"},{\"value\":\"4\",\"name\":\"Distribution\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Distribution\"},{\"value\":\"5\",\"name\":\"Ratio\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Ratio\"},{\"value\":\"6\",\"name\":\"Liquidity\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Liquidity\"},{\"value\":\"7\",\"name\":\"VWAP\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Volume weighted average price (VWAP)\"},{\"value\":\"8\",\"name\":\"Volatility\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":8,\"doc\":\"Volatility\"},{\"value\":\"9\",\"name\":\"Duration\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":9,\"doc\":\"Duration\"}]}",
+      "fix:description": "Type of statistic value.",
+      "fix:tag": "2456"
+    }
+  },
+  {
+    "name": "mdstatisticscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"BidPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Bid prices\"},{\"value\":\"10\",\"name\":\"AuctionPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":10,\"doc\":\"Auction prices\"},{\"value\":\"11\",\"name\":\"OpeningPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":11,\"doc\":\"Opening prices\"},{\"value\":\"12\",\"name\":\"ClosingPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":12,\"doc\":\"Closing prices\"},{\"value\":\"13\",\"name\":\"SettlementPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":13,\"doc\":\"Settlement prices\"},{\"value\":\"14\",\"name\":\"UnderlyingPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":14,\"doc\":\"Underlying prices\"},{\"value\":\"15\",\"name\":\"OpenInterest\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":15,\"doc\":\"Open interest\"},{\"value\":\"16\",\"name\":\"IndexValues\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":16,\"doc\":\"Index values\"},{\"value\":\"17\",\"name\":\"MarginRates\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":17,\"doc\":\"Margin rates\"},{\"value\":\"18\",\"name\":\"Outages\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":18,\"doc\":\"Outages\"},{\"value\":\"19\",\"name\":\"ScheduledAuctions\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":18,\"doc\":\"Scheduled auctions\"},{\"value\":\"2\",\"name\":\"OfferPrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Offer prices\"},{\"value\":\"20\",\"name\":\"ReferencePrices\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":20,\"doc\":\"Reference prices\"},{\"value\":\"21\",\"name\":\"TradeValue\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":21,\"doc\":\"Trade value\"},{\"value\":\"22\",\"name\":\"MarketDataFeeItems\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":22,\"doc\":\"Market data fee items\"},{\"value\":\"23\",\"name\":\"Rebates\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":23,\"doc\":\"Rebates\"},{\"value\":\"24\",\"name\":\"Discounts\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":24,\"doc\":\"Discounts\"},{\"value\":\"25\",\"name\":\"Payments\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":25,\"doc\":\"Payments\"},{\"value\":\"26\",\"name\":\"Taxes\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":26,\"doc\":\"Taxes\"},{\"value\":\"27\",\"name\":\"Levies\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":27,\"doc\":\"Levies\"},{\"value\":\"28\",\"name\":\"Benefits\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":28,\"doc\":\"Benefits\"},{\"value\":\"29\",\"name\":\"Fees\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":29,\"doc\":\"Fees\"},{\"value\":\"3\",\"name\":\"BidDepth\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Bid depth\"},{\"value\":\"30\",\"name\":\"OrdersRFQs\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":30,\"doc\":\"Orders and RFQs (Request for quotes)\"},{\"value\":\"31\",\"name\":\"MarketMakers\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":31,\"doc\":\"Market makers\"},{\"value\":\"32\",\"name\":\"TradingInterruptions\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":32,\"doc\":\"Trading interruptions\"},{\"value\":\"33\",\"name\":\"TradingSuspensions\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":33,\"doc\":\"Trading suspensions\"},{\"value\":\"34\",\"name\":\"NoQuotes\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":34,\"doc\":\"No quotes\"},{\"value\":\"35\",\"name\":\"RequestForQuotes\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":35,\"doc\":\"Request for quotes\"},{\"value\":\"36\",\"name\":\"TradeVolume\",\"since\":\"5.0SP2\",\"ep\":236,\"sort\":36,\"doc\":\"Trade volume\"},{\"value\":\"4\",\"name\":\"OfferDepth\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Offer depth\"},{\"value\":\"5\",\"name\":\"Orders\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Orders\"},{\"value\":\"6\",\"name\":\"Quotes\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Quotes\"},{\"value\":\"7\",\"name\":\"OrdersAndQuotes\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Orders and Quotes\"},{\"value\":\"8\",\"name\":\"Trades\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":8,\"doc\":\"Trades\"},{\"value\":\"9\",\"name\":\"TradePrices\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":9,\"doc\":\"Trade prices\"}]}",
+      "fix:description": "Entities used as basis for the statistics.",
+      "fix:tag": "2457"
+    }
+  },
+  {
+    "name": "mdstatisticsubscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticSubScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Visible\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Visible\"},{\"value\":\"10\",\"name\":\"NetworkError\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":10,\"doc\":\"Network error\"},{\"value\":\"11\",\"name\":\"Failed\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":11,\"doc\":\"Failed\"},{\"value\":\"12\",\"name\":\"Executed\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":12,\"doc\":\"Executed\"},{\"value\":\"13\",\"name\":\"Entered\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":13,\"doc\":\"Entered\"},{\"value\":\"14\",\"name\":\"Modified\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":14,\"doc\":\"Modified\"},{\"value\":\"15\",\"name\":\"Cancelled\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":15,\"doc\":\"Cancelled\"},{\"value\":\"16\",\"name\":\"MarketDataAccess\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":16,\"doc\":\"Market data access\"},{\"value\":\"17\",\"name\":\"TerminalAccess\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":17,\"doc\":\"Terminal access\"},{\"value\":\"18\",\"name\":\"Volume\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":18,\"doc\":\"Volume\"},{\"value\":\"19\",\"name\":\"Cleared\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":19,\"doc\":\"Cleared\"},{\"value\":\"2\",\"name\":\"Hidden\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Hidden\"},{\"value\":\"20\",\"name\":\"Settled\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":20,\"doc\":\"Settled\"},{\"value\":\"21\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":21,\"doc\":\"Other\"},{\"value\":\"22\",\"name\":\"Monetary\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":22,\"doc\":\"Monetary\"},{\"value\":\"23\",\"name\":\"NonMonetary\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":23,\"doc\":\"Non-monetary\"},{\"value\":\"24\",\"name\":\"Gross\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":24,\"doc\":\"Gross\"},{\"value\":\"25\",\"name\":\"LargeInScale\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":25,\"doc\":\"Large in scale\"},{\"value\":\"26\",\"name\":\"NeitherHiddenNorLargeInScale\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":26,\"doc\":\"Neither hidden nor large in scale\"},{\"value\":\"27\",\"name\":\"CorporateAction\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":27,\"doc\":\"Corporate action\"},{\"value\":\"28\",\"name\":\"VenueDecision\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":28,\"doc\":\"Venue decision\"},{\"value\":\"29\",\"name\":\"MinimumTimePeriod\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":29,\"doc\":\"Minimum time period\"},{\"value\":\"3\",\"name\":\"Indicative\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Indicative\"},{\"value\":\"30\",\"name\":\"Open\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":30,\"doc\":\"Open\"},{\"value\":\"31\",\"name\":\"NotExecuted\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":31,\"doc\":\"Not executed\"},{\"value\":\"32\",\"name\":\"Aggressive\",\"since\":\"5.0SP2\",\"ep\":236,\"sort\":32,\"doc\":\"Aggressive\"},{\"value\":\"33\",\"name\":\"Directed\",\"since\":\"5.0SP2\",\"ep\":236,\"sort\":33,\"doc\":\"Directed\"},{\"value\":\"4\",\"name\":\"Tradeable\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Tradeable\"},{\"value\":\"5\",\"name\":\"Passive\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Passive\"},{\"value\":\"6\",\"name\":\"MarketConsensus\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Market consensus\"},{\"value\":\"7\",\"name\":\"Power\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":7,\"doc\":\"Power\"},{\"value\":\"8\",\"name\":\"HardwareError\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":8,\"doc\":\"Hardware error\"},{\"value\":\"9\",\"name\":\"SoftwareError\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":9,\"doc\":\"Software error\"}]}",
+      "fix:description": "Sub-scope of the statistics to further reduce the entities used as basis for the statistics.",
+      "fix:tag": "2458"
+    }
+  },
+  {
+    "name": "mdstatisticscopetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticScopeType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"EntryRate\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Entry rate\"},{\"value\":\"2\",\"name\":\"ModificationRate\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Modification rate\"},{\"value\":\"3\",\"name\":\"CancelRate\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Cancel rate\"},{\"value\":\"4\",\"name\":\"DownwardMove\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Downward move\"},{\"value\":\"5\",\"name\":\"UpwardMove\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Upward move\"}]}",
+      "fix:description": "Scope details of the statistics to reduce the number of events being used as basis for the statistics.",
+      "fix:tag": "2459"
+    }
+  },
+  {
+    "name": "mdstatisticfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticFrequencyPeriod",
+      "fix:description": "Dissemination frequency of statistics.",
+      "fix:tag": "2460"
+    }
+  },
+  {
+    "name": "mdstatisticfrequencyunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "Time unit for MDStatisticFrequencyPeriod(2460).",
+      "fix:tag": "2461"
+    }
+  },
+  {
+    "name": "mdstatisticdelayperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticDelayPeriod",
+      "fix:description": "Number of time units between the calculation of the statistic and its dissemination. Can be used to defer or delay publication.",
+      "fix:tag": "2462"
+    }
+  },
+  {
+    "name": "mdstatisticdelayunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticDelayUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "Time unit for MDStatisticDelayPeriod(2462).",
+      "fix:tag": "2463"
+    }
+  },
+  {
+    "name": "mdstatisticintervaltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticIntervalType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SlidingWindow\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Sliding window\"},{\"value\":\"2\",\"name\":\"SlidingWindowPeak\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Sliding window peak\"},{\"value\":\"3\",\"name\":\"FixedDateRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Fixed date range\"},{\"value\":\"4\",\"name\":\"FixedTimeRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Fixed time range\"},{\"value\":\"5\",\"name\":\"CurrentTimeUnit\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Current time unit\"},{\"value\":\"6\",\"name\":\"PreviousTimeUnit\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Previous time unit\"},{\"value\":\"7\",\"name\":\"MaximumRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Maximum range\"},{\"value\":\"8\",\"name\":\"MaximumRangeUpToPreviousTimeUnit\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":8,\"doc\":\"Maximum range up to previous time unit\"}]}",
+      "fix:description": "Type of interval over which statistic is calculated.",
+      "fix:tag": "2464"
+    }
+  },
+  {
+    "name": "mdstatisticintervaltypeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticIntervalTypeUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit for MDStatisticIntervalType(2464).",
+      "fix:tag": "2465"
+    }
+  },
+  {
+    "name": "mdstatisticintervalperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticIntervalPeriod",
+      "fix:description": "Length of time over which the statistic is calculated. Special meaning for a value of zero to express that there is no aggregation over time. Can be used with other interval types expressing relative date and time ranges to combine them with sliding window peaks, e.g. highest volume across 1 minute intervals of the previous day.",
+      "fix:tag": "2466"
+    }
+  },
+  {
+    "name": "mdstatisticintervalunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticIntervalUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "Time unit for MDStatisticIntervalPeriod(2466).",
+      "fix:tag": "2467"
+    }
+  },
+  {
+    "name": "mdstatisticstartdate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticStartDate",
+      "fix:description": "First day of range for which statistical data is collected.",
+      "fix:tag": "2468"
+    }
+  },
+  {
+    "name": "mdstatisticenddate",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticEndDate",
+      "fix:description": "Last day of range for which statistical data is collected.",
+      "fix:tag": "2469"
+    }
+  },
+  {
+    "name": "mdstatisticstarttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticStartTime",
+      "fix:description": "Start time of the time range for which statistical data is collected.",
+      "fix:tag": "2470"
+    }
+  },
+  {
+    "name": "mdstatisticendtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticEndTime",
+      "fix:description": "End time of the time range for which statistical data is collected.",
+      "fix:tag": "2471"
+    }
+  },
+  {
+    "name": "mdstatisticratiotype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticRatioType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"BuyersToSellers\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Buyers to sellers\"},{\"value\":\"10\",\"name\":\"FeesToTotalTradedValue\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":10,\"doc\":\"Fees to total traded value\"},{\"value\":\"11\",\"name\":\"TradeVolumeToTotalTradedVolume\",\"since\":\"5.0SP2\",\"ep\":236,\"sort\":11,\"doc\":\"Trade volume to total traded volume\"},{\"value\":\"12\",\"name\":\"OrdersToTotalNumberOrders\",\"since\":\"5.0SP2\",\"ep\":236,\"sort\":12,\"doc\":\"Orders to total number of orders\"},{\"value\":\"2\",\"name\":\"UpticksToDownticks\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Upticks to downticks\"},{\"value\":\"3\",\"name\":\"MarketMakerToNonMarketMaker\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Market maker to non-market maker\"},{\"value\":\"4\",\"name\":\"AutomatedToNonAutomated\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Automated to non-automated\"},{\"value\":\"5\",\"name\":\"OrdersToTrades\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Orders to trades\"},{\"value\":\"6\",\"name\":\"QuotesToTrades\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Quotes to trades\"},{\"value\":\"7\",\"name\":\"OrdersAndQuotesToTrades\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Orders and quotes to trades\"},{\"value\":\"8\",\"name\":\"FailedToTotalTradedValue\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":8,\"doc\":\"Failed to total traded value\"},{\"value\":\"9\",\"name\":\"BenefitsToTotalTradedValue\",\"since\":\"5.0SP2\",\"ep\":231,\"sort\":9,\"doc\":\"Benefits to total traded value\"}]}",
+      "fix:description": "Ratios between various entities.",
+      "fix:tag": "2472"
+    }
+  },
+  {
+    "name": "mdstatisticrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticRequestResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":191,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidOrUnknownMarket\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Invalid or unknown market\"},{\"value\":\"10\",\"name\":\"MarketDepthNotSupported\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":10,\"doc\":\"Market depth not supported\"},{\"value\":\"11\",\"name\":\"FrequencyNotSupported\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":11,\"doc\":\"Frequency not supported\"},{\"value\":\"12\",\"name\":\"UnsupportedStatisticInterval\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":12,\"doc\":\"Statistic interval not supported\"},{\"value\":\"13\",\"name\":\"UnsupportedStatisticDateRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":13,\"doc\":\"Statistic date range not supported\"},{\"value\":\"14\",\"name\":\"UnsupportedStatisticTimeRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":14,\"doc\":\"Statistic time range not supported\"},{\"value\":\"15\",\"name\":\"UnsupportedRatioType\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":15,\"doc\":\"Ratio type not supported\"},{\"value\":\"16\",\"name\":\"InvalidOrUnknownTradeInputSource\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":16,\"doc\":\"Invalid or unknown trade input source\"},{\"value\":\"17\",\"name\":\"InvalidOrUnknownTradingSession\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":17,\"doc\":\"Invalid or unknown trading session\"},{\"value\":\"18\",\"name\":\"UnauthorizedForStatisticRequest\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":18,\"doc\":\"Unauthorized for statistic request\"},{\"value\":\"2\",\"name\":\"InvalidOrUnknownMarketSegment\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Invalid or unknown market segment\"},{\"value\":\"3\",\"name\":\"InvalidOrUnknownSecurityList\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":3,\"doc\":\"Invalid or unknown security list\"},{\"value\":\"4\",\"name\":\"InvalidOrUnknownInstruments\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":4,\"doc\":\"Invalid or unknown instrument(s)\"},{\"value\":\"5\",\"name\":\"InvalidParties\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":5,\"doc\":\"Invalid parties\"},{\"value\":\"6\",\"name\":\"TradeDateOutOfSupportedRange\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":6,\"doc\":\"Trade date out of supported range\"},{\"value\":\"7\",\"name\":\"UnsupportedStatisticType\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Statistic type not supported\"},{\"value\":\"8\",\"name\":\"UnsupportedScopeOrSubScope\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":8,\"doc\":\"Scope or sub-scope not supported\"},{\"value\":\"9\",\"name\":\"UnsupportedScopeType\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":9,\"doc\":\"Scope type not supported\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":99,\"doc\":\"Other (further information in Text (58) field)\"}]}",
+      "fix:description": "Result returned in response to MarketDataStatisticsRequest (35=DO).",
+      "fix:tag": "2473"
+    }
+  },
+  {
+    "name": "mdstatisticid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticID",
+      "fix:description": "Unique identifier for a statistic.",
+      "fix:tag": "2475"
+    }
+  },
+  {
+    "name": "mdstatistictime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticTime",
+      "fix:description": "Time of calculation of a statistic.",
+      "fix:tag": "2476"
+    }
+  },
+  {
+    "name": "mdstatisticstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Active\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Active (default)\"},{\"value\":\"2\",\"name\":\"Inactive\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Inactive (not disseminated)\"}]}",
+      "fix:description": "Status for a statistic to indicate its availability.",
+      "fix:tag": "2477"
+    }
+  },
+  {
+    "name": "mdstatisticvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticValue",
+      "fix:description": "Statistical value.",
+      "fix:tag": "2478"
+    }
+  },
+  {
+    "name": "mdstatisticvaluetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticValueType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Absolute\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":1,\"doc\":\"Absolute\"},{\"value\":\"2\",\"name\":\"Percentage\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":2,\"doc\":\"Percentage\"}]}",
+      "fix:description": "Type of statistical value.",
+      "fix:tag": "2479"
+    }
+  },
+  {
+    "name": "mdstatisticvalueunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDStatisticValueUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "Unit of time for statistical value.",
+      "fix:tag": "2480"
+    }
+  },
+  {
+    "name": "encodedmdstatisticdesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedMDStatisticDescLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedMDStatisticDesc(2482) field.",
+      "fix:tag": "2481"
+    }
+  },
+  {
+    "name": "encodedmdstatisticdesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedMDStatisticDesc",
+      "fix:description": "Encoded (non-ASCII characters) representation of the MDStatisticDesc(2455) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MDStatisticDesc(2455) field.",
+      "fix:tag": "2482"
+    }
+  },
+  {
+    "name": "allocrisklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRiskLimitCheckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":172,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":1,\"doc\":\"Rejected\"},{\"value\":\"10\",\"name\":\"AcceptedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":10,\"doc\":\"Accepted by credit hub\"},{\"value\":\"11\",\"name\":\"RejectedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":11,\"doc\":\"Rejected by credit hub\"},{\"value\":\"12\",\"name\":\"PendingCreditHubCheck\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":12,\"doc\":\"Pending credit hub check\"},{\"value\":\"13\",\"name\":\"AcceptedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":13,\"doc\":\"Accepted by execution venue\"},{\"value\":\"14\",\"name\":\"RejectedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":14,\"doc\":\"Rejected by execution venue\"},{\"value\":\"2\",\"name\":\"ClaimRequired\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":2,\"doc\":\"Claim required\"},{\"value\":\"3\",\"name\":\"PreDefinedLimitCheckSucceeded\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":3,\"doc\":\"Pre-defined limit check succeeded\"},{\"value\":\"4\",\"name\":\"PreDefinedLimitCheckFailed\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":4,\"doc\":\"Pre-defined limit check failed\"},{\"value\":\"5\",\"name\":\"PreDefinedAutoAcceptRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":5,\"doc\":\"Pre-defined auto-accept rule invoked\"},{\"value\":\"6\",\"name\":\"PreDefinedAutoRejectRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":6,\"doc\":\"Pre-defined auto-reject rule invoked\"},{\"value\":\"7\",\"name\":\"AcceptedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":7,\"doc\":\"Accepted by clearing firm\"},{\"value\":\"8\",\"name\":\"RejectedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":8,\"doc\":\"Rejected by clearing firm\"},{\"value\":\"9\",\"name\":\"Pending\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":9,\"doc\":\"Pending\"}]}",
+      "fix:description": "Indicates the status of the risk limit check performed on a trade for this allocation instance.",
+      "fix:tag": "2483"
+    }
+  },
+  {
+    "name": "firmtransactionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FirmTransactionID",
+      "fix:description": "The unique transaction entity identifier assigned by the firm.",
+      "fix:tag": "2484"
+    }
+  },
+  {
+    "name": "transactionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransactionID",
+      "fix:description": "The unique transaction entity identifier.",
+      "fix:tag": "2485"
+    }
+  },
+  {
+    "name": "wirereference",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "WireReference",
+      "fix:description": "The reference to a wire transfer associated with the transaction. Wire references done via wire services such as Fedwire Output Message Accountabilitty Data \"OMAD\" or SWIFT Output Sequence Number \"OSN\".",
+      "fix:tag": "2486"
+    }
+  },
+  {
+    "name": "collrptrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollRptRejectReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"UnknownTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"doc\":\"Unknown trade or transaction\"},{\"value\":\"1\",\"name\":\"UnknownInstrument\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":1,\"doc\":\"Unknown or invalid instrument\"},{\"value\":\"2\",\"name\":\"UnknownCounterparty\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":2,\"doc\":\"Unknown or invalid counterparty\"},{\"value\":\"3\",\"name\":\"UnknownPosition\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":3,\"doc\":\"Unknown or invalid position\"},{\"value\":\"4\",\"name\":\"UnacceptableCollateral\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":4,\"doc\":\"Unacceptable or invalid type of collateral\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Reject reason code for rejecting the collateral report.",
+      "fix:tag": "2487"
+    }
+  },
+  {
+    "name": "collrptstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollRptStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":192,\"doc\":\"Accepted (successfully processed)\"},{\"value\":\"1\",\"name\":\"Received\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":1,\"doc\":\"Received (not yet processed)\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:description": "The status of the collateral report.",
+      "fix:tag": "2488"
+    }
+  },
+  {
+    "name": "packageid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PackageID",
+      "fix:description": "Identifier assigned to a collection of trades so that they can be analyzed as one atomic unit for risk assessment and clearing.",
+      "fix:tag": "2489"
+    }
+  },
+  {
+    "name": "tradenumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeNumber",
+      "fix:description": "Ordinal number of the trade within a series of related trades.",
+      "fix:tag": "2490"
+    }
+  },
+  {
+    "name": "underlyingassetgroup",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetGroup",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Financials\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":1,\"doc\":\"Financials\"},{\"value\":\"2\",\"name\":\"Commodities\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":2,\"doc\":\"Commodities\"},{\"value\":\"3\",\"name\":\"AlternativeInvestments\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":3,\"doc\":\"Alternative investments\"}]}",
+      "fix:description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
+      "fix:tag": "2491"
+    }
+  },
+  {
+    "name": "legdifferentialprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegDifferentialPrice",
+      "fix:description": "Used in pricing a group of individual Trade at Settlement (TAS) and Trade At Marker (TAM) contracts as an atomic unit. The value is the negotiated currency offset either at settlement (TAS) or at the time specified in the product definition (TAM). The final contract price is reported in LegLastPx(637).",
+      "fix:tag": "2492"
+    }
+  },
+  {
+    "name": "encodedlegdocumentationtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegDocumentationText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the LegDocumentationText(2505) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the LegDocumentationText(2505) field.",
+      "fix:tag": "2493"
+    }
+  },
+  {
+    "name": "encodedlegdocumentationtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegDocumentationTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedLegDocumentationText(2493) field.",
+      "fix:tag": "2494"
+    }
+  },
+  {
+    "name": "legagreementcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAgreementCurrency",
+      "fix:description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
+      "fix:tag": "2495"
+    }
+  },
+  {
+    "name": "legagreementdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAgreementDate",
+      "fix:description": "A reference to the date the underlying agreement specified by LegAgreementID(2498) and LegAgreementDesc(2497) was executed.",
+      "fix:tag": "2496"
+    }
+  },
+  {
+    "name": "legagreementdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAgreementDesc",
+      "fix:description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
+      "fix:tag": "2497"
+    }
+  },
+  {
+    "name": "legagreementid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAgreementID",
+      "fix:description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
+      "fix:tag": "2498"
+    }
+  },
+  {
+    "name": "legagreementversion",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAgreementVersion",
+      "fix:description": "The version of the master agreement.",
+      "fix:tag": "2499"
+    }
+  }
+]

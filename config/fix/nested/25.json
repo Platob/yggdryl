@@ -1,0 +1,550 @@
+[
+  {
+    "name": "norelativevalues",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relativevaluetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2530"
+              }
+            },
+            {
+              "name": "relativevalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2531"
+              }
+            },
+            {
+              "name": "relativevalueside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2532"
+              }
+            },
+            {
+              "name": "relativevaluetimestamp",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3004"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoRelativeValues",
+      "fix:description": "Number of relative value metrics entries in the repeating group.",
+      "fix:tag": "2529"
+    }
+  },
+  {
+    "name": "norelatedmarketsegments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedmarketsegmentid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2546"
+              }
+            },
+            {
+              "name": "marketsegmentrelationship",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2547"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoRelatedMarketSegments",
+      "fix:description": "Number of related market segments.",
+      "fix:tag": "2545"
+    }
+  },
+  {
+    "name": "noauctiontyperules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "auctiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1803"
+              }
+            },
+            {
+              "name": "auctiontypeproductcomplex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2549"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoAuctionTypeRules",
+      "fix:description": "Number of auction order types.",
+      "fix:tag": "2548"
+    }
+  },
+  {
+    "name": "nopricerangerules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "startpricerange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2551"
+              }
+            },
+            {
+              "name": "endpricerange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2552"
+              }
+            },
+            {
+              "name": "pricerangevalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2553"
+              }
+            },
+            {
+              "name": "pricerangepercentage",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2554"
+              }
+            },
+            {
+              "name": "pricerangeruleid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2556"
+              }
+            },
+            {
+              "name": "pricerangeproductcomplex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2555"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPriceRangeRules",
+      "fix:description": "Number of rules related to price ranges.",
+      "fix:tag": "2550"
+    }
+  },
+  {
+    "name": "noquotesizerules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "minbidsize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "647"
+              }
+            },
+            {
+              "name": "minoffersize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "648"
+              }
+            },
+            {
+              "name": "fastmarketindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2447"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoQuoteSizeRules",
+      "fix:description": "Number of rules related to quote sizes.",
+      "fix:tag": "2558"
+    }
+  },
+  {
+    "name": "noflexproducteligibilities",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "flexproducteligibilityindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1242"
+              }
+            },
+            {
+              "name": "flexproducteligibilitycomplex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2561"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoFlexProductEligibilities",
+      "fix:description": "Number of eligibility indicators for the creation of flexible securities.",
+      "fix:tag": "2560"
+    }
+  },
+  {
+    "name": "noclearingpriceparameters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "businessdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2581"
+              }
+            },
+            {
+              "name": "clearingpriceoffset",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2582"
+              }
+            },
+            {
+              "name": "vegamultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2583"
+              }
+            },
+            {
+              "name": "annualtradingbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2584"
+              }
+            },
+            {
+              "name": "totaltradingbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2585"
+              }
+            },
+            {
+              "name": "tradingbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2586"
+              }
+            },
+            {
+              "name": "standardvariance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2588"
+              }
+            },
+            {
+              "name": "realizedvariance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2587"
+              }
+            },
+            {
+              "name": "relatedcloseprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2589"
+              }
+            },
+            {
+              "name": "riskfreerate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1190"
+              }
+            },
+            {
+              "name": "overnightinterestrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2590"
+              }
+            },
+            {
+              "name": "accumulatedreturnmodifiedvariationmargin",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2591"
+              }
+            },
+            {
+              "name": "discountfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1592"
+              }
+            },
+            {
+              "name": "volatility",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1188"
+              }
+            },
+            {
+              "name": "clearingsettlprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2528"
+              }
+            },
+            {
+              "name": "calculationmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2592"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoClearingPriceParameters",
+      "fix:description": "Number of parameter sets for clearing prices.",
+      "fix:tag": "2580"
+    }
+  },
+  {
+    "name": "noorderattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "orderattributetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2594"
+              }
+            },
+            {
+              "name": "orderattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2595"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoOrderAttributes",
+      "fix:description": "Number of order attribute entries.",
+      "fix:tag": "2593"
+    }
+  }
+]

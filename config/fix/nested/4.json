@@ -1,6 +1,6 @@
 [
   {
-    "name": "NoPartyIDs",
+    "name": "nobidcomponents",
     "dtype": {
       "type": "list",
       "field": {
@@ -9,39 +9,163 @@
           "type": "struct",
           "fields": [
             {
-              "name": "PartyID",
+              "name": "listid",
               "dtype": {
                 "type": "utf8"
               },
               "nullable": true,
               "metadata": {
-                "display": "Party ID",
-                "fix:description": "Party identifier or identity value, as specified by PartyIDSource.",
-                "fix:tag": "448"
+                "fix:tag": "66"
               }
             },
             {
-              "name": "PartyIDSource",
+              "name": "side",
+              "dtype": {
+                "type": "side"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "54"
+              }
+            },
+            {
+              "name": "tradingsessionid",
               "dtype": {
                 "type": "utf8"
               },
               "nullable": true,
               "metadata": {
-                "display": "Party ID source",
-                "fix:description": "Identifies the class or source of the PartyID value.",
-                "fix:tag": "447"
+                "fix:tag": "336"
               }
             },
             {
-              "name": "PartyRole",
+              "name": "tradingsessionsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "625"
+              }
+            },
+            {
+              "name": "netgrossind",
               "dtype": {
                 "type": "int32"
               },
               "nullable": true,
               "metadata": {
-                "display": "Party role",
-                "fix:description": "Identifies the type or role of the PartyID specified.",
-                "fix:tag": "452"
+                "fix:tag": "430"
+              }
+            },
+            {
+              "name": "settltype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "63"
+              }
+            },
+            {
+              "name": "settldate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "64"
+              }
+            },
+            {
+              "name": "account",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1"
+              }
+            },
+            {
+              "name": "acctidsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "660"
+              }
+            },
+            {
+              "name": "country",
+              "dtype": {
+                "type": "country"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "421"
+              }
+            },
+            {
+              "name": "price",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "44"
+              }
+            },
+            {
+              "name": "pricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "423"
+              }
+            },
+            {
+              "name": "fairvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "406"
+              }
+            },
+            {
+              "name": "text",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "58"
+              }
+            },
+            {
+              "name": "encodedtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "354"
+              }
+            },
+            {
+              "name": "encodedtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "355"
               }
             }
           ]
@@ -52,9 +176,395 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "Parties",
-      "fix:description": "Number of party identifier entries in the repeating group; each entry carries PartyID, PartyIDSource and PartyRole under their own tags.",
+      "display": "NoBidComponents",
+      "fix:description": "Indicates the number of list entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobidcomponents\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nobidcomponents\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "420"
+    }
+  },
+  {
+    "name": "nostrikes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "prevclosepx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "140"
+              }
+            },
+            {
+              "name": "clordid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "11"
+              }
+            },
+            {
+              "name": "secondaryclordid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "526"
+              }
+            },
+            {
+              "name": "side",
+              "dtype": {
+                "type": "side"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "54"
+              }
+            },
+            {
+              "name": "price",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "44"
+              }
+            },
+            {
+              "name": "currency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "15"
+              }
+            },
+            {
+              "name": "currencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2897"
+              }
+            },
+            {
+              "name": "text",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "58"
+              }
+            },
+            {
+              "name": "encodedtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "354"
+              }
+            },
+            {
+              "name": "encodedtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "355"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStrikes",
+      "fix:description": "Number of list strike price entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostrikes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nostrikes\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "428"
+    }
+  },
+  {
+    "name": "nopartyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "partyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "448"
+              }
+            },
+            {
+              "name": "partyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "447"
+              }
+            },
+            {
+              "name": "partyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "452"
+              }
+            },
+            {
+              "name": "partyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2376"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPartyIDs",
+      "fix:description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nopartyids\",\"type\":\"NumInGroup\"}]}",
       "fix:tag": "453"
+    }
+  },
+  {
+    "name": "nosecurityaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "securityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "455"
+              }
+            },
+            {
+              "name": "securityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "456"
+              }
+            },
+            {
+              "name": "symbolpositionnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2957"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoSecurityAltID",
+      "fix:description": "Number of SecurityAltID (455) entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "454"
+    }
+  },
+  {
+    "name": "nounderlyingsecurityaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingsecurityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "458"
+              }
+            },
+            {
+              "name": "underlyingsecurityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "459"
+              }
+            },
+            {
+              "name": "underlyingsymbolpositionnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2959"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingSecurityAltID",
+      "fix:description": "Number of UnderlyingSecurityAltID (458) entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nounderlyingsecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "457"
+    }
+  },
+  {
+    "name": "noregistdtls",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "registdtls",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "509"
+              }
+            },
+            {
+              "name": "registemail",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "511"
+              }
+            },
+            {
+              "name": "mailingdtls",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "474"
+              }
+            },
+            {
+              "name": "mailinginst",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "482"
+              }
+            },
+            {
+              "name": "ownertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "522"
+              }
+            },
+            {
+              "name": "dateofbirth",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "486"
+              }
+            },
+            {
+              "name": "investorcountryofresidence",
+              "dtype": {
+                "type": "country"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "475"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoRegistDtls",
+      "fix:description": "The number of registration details on a Registration Instructions message",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noregistdtls\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "473"
     }
   }
 ]

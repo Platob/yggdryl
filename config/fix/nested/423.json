@@ -1,0 +1,384 @@
+[
+  {
+    "name": "nolegcashsettldatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcashsettldatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42307"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegCashSettlDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "42306"
+    }
+  },
+  {
+    "name": "nolegdividendaccrualpaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdividendaccrualpaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42311"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDividendAccrualPaymentDateBusinessCenters",
+      "fix:description": "Number of entries in the LegDividendAccrualPaymentDateBusinessCenterGrp.",
+      "fix:tag": "42310"
+    }
+  },
+  {
+    "name": "nolegdividendfxtriggerdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdividendfxtriggerdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42365"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDividendFXTriggerDateBusinessCenters",
+      "fix:description": "Number of entries in the LegDividendFXTriggerDateBusinessCenterGrp.",
+      "fix:tag": "42364"
+    }
+  },
+  {
+    "name": "nolegdividendperiods",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdividendperiodsequence",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42367"
+              }
+            },
+            {
+              "name": "legdividendperiodstartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42368"
+              }
+            },
+            {
+              "name": "legdividendperiodenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42369"
+              }
+            },
+            {
+              "name": "legdividendperiodunderlierrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42370"
+              }
+            },
+            {
+              "name": "legdividendperiodstrikeprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42371"
+              }
+            },
+            {
+              "name": "legdividendperiodbusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42372"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42373"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42374"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42375"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42376"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42377"
+              }
+            },
+            {
+              "name": "legdividendperiodvaluationdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42378"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42379"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42380"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42381"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42382"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42383"
+              }
+            },
+            {
+              "name": "legdividendperiodpaymentdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42384"
+              }
+            },
+            {
+              "name": "legdividendperiodxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42385"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDividendPeriods",
+      "fix:description": "Number of entries in the LegDividendPeriodGrp component.",
+      "fix:tag": "42366"
+    }
+  },
+  {
+    "name": "nolegdividendperiodbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdividendperiodbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42387"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDividendPeriodBusinessCenters",
+      "fix:description": "The number of entries in the LegDividendPeriodBusinessCentersGrp component.",
+      "fix:tag": "42386"
+    }
+  },
+  {
+    "name": "nolegextraordinaryevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legextraordinaryeventtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42389"
+              }
+            },
+            {
+              "name": "legextraordinaryeventvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42390"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegExtraordinaryEvents",
+      "fix:description": "Number of extraordinary events in the repeating group.",
+      "fix:tag": "42388"
+    }
+  }
+]

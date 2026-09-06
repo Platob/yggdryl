@@ -1,0 +1,684 @@
+[
+  {
+    "name": "nolegcomplexeventschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventschedulestartdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41401"
+              }
+            },
+            {
+              "name": "legcomplexeventscheduleenddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41402"
+              }
+            },
+            {
+              "name": "legcomplexeventschedulefrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41403"
+              }
+            },
+            {
+              "name": "legcomplexeventschedulefrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41404"
+              }
+            },
+            {
+              "name": "legcomplexeventschedulerollconvention",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41405"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventSchedules",
+      "fix:description": "Number of schedules in the repeating group.",
+      "fix:tag": "41400"
+    }
+  },
+  {
+    "name": "nolegdeliveryschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdeliveryscheduletype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41409"
+              }
+            },
+            {
+              "name": "legdeliveryschedulexid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41410"
+              }
+            },
+            {
+              "name": "legdeliveryschedulenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41411"
+              }
+            },
+            {
+              "name": "legdeliveryschedulenotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41412"
+              }
+            },
+            {
+              "name": "legdeliveryschedulenotionalcommodityfrequency",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41413"
+              }
+            },
+            {
+              "name": "legdeliveryschedulenegativetolerance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41414"
+              }
+            },
+            {
+              "name": "legdeliveryschedulepositivetolerance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41415"
+              }
+            },
+            {
+              "name": "legdeliveryscheduletoleranceunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41416"
+              }
+            },
+            {
+              "name": "legdeliveryscheduletolerancetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41417"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettlcountry",
+              "dtype": {
+                "type": "country"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41418"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettltimezone",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41419"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettlflowtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41420"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettlholidaysprocessinginstruction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41421"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDeliverySchedules",
+      "fix:description": "Number of delivery schedules in the repeating group.",
+      "fix:tag": "41408"
+    }
+  },
+  {
+    "name": "nolegdeliveryschedulesettldays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdeliveryschedulesettlday",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41423"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettltotalhours",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41424"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDeliveryScheduleSettlDays",
+      "fix:description": "Number of delivery schedules in the repeating group.",
+      "fix:tag": "41422"
+    }
+  },
+  {
+    "name": "nolegdeliveryschedulesettltimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdeliveryschedulesettlstart",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41426"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettlend",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41427"
+              }
+            },
+            {
+              "name": "legdeliveryschedulesettltimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41428"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDeliveryScheduleSettlTimes",
+      "fix:description": "Number of hour ranges in the repeating group.",
+      "fix:tag": "41425"
+    }
+  },
+  {
+    "name": "nolegstreamassetattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreamassetattributetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41453"
+              }
+            },
+            {
+              "name": "legstreamassetattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41454"
+              }
+            },
+            {
+              "name": "legstreamassetattributelimit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41455"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreamAssetAttributes",
+      "fix:description": "Number of asset attribute entries in the group.",
+      "fix:tag": "41452"
+    }
+  },
+  {
+    "name": "nolegdeliverystreamcycles",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdeliverystreamcycledesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41457"
+              }
+            },
+            {
+              "name": "encodedlegdeliverystreamcycledesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41458"
+              }
+            },
+            {
+              "name": "encodedlegdeliverystreamcycledesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41459"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDeliveryStreamCycles",
+      "fix:description": "Number of commodity sources in the repeating group.",
+      "fix:tag": "41456"
+    }
+  },
+  {
+    "name": "nolegdeliverystreamcommoditysources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legdeliverystreamcommoditysource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41461"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegDeliveryStreamCommoditySources",
+      "fix:description": "Number of commodity sources in the repeating group.",
+      "fix:tag": "41460"
+    }
+  },
+  {
+    "name": "nolegmarketdisruptionevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legmarketdisruptionevent",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41468"
+              }
+            },
+            {
+              "name": "legmarketdisruptionvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40223"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegMarketDisruptionEvents",
+      "fix:description": "Number of disruption events in the repeating group.",
+      "fix:tag": "41467"
+    }
+  },
+  {
+    "name": "nolegmarketdisruptionfallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legmarketdisruptionfallbacktype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41470"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40990"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegMarketDisruptionFallbacks",
+      "fix:description": "Number of fallbacks in the repeating group.",
+      "fix:tag": "41469"
+    }
+  },
+  {
+    "name": "nolegmarketdisruptionfallbackreferenceprices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legmarketdisruptionfallbackunderliertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41472"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackunderliersecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41473"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackunderliersecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41474"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41475"
+              }
+            },
+            {
+              "name": "encodedlegmarketdisruptionfallbackunderliersecuritydesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41476"
+              }
+            },
+            {
+              "name": "encodedlegmarketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41477"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackopenunits",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41478"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackbasketcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41479"
+              }
+            },
+            {
+              "name": "legmarketdisruptionfallbackbasketdivisor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41480"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegMarketDisruptionFallbackReferencePrices",
+      "fix:description": "Number of fallback reference securities in the repeating group.",
+      "fix:tag": "41471"
+    }
+  },
+  {
+    "name": "nolegoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legoptionexercisebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41492"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegOptionExerciseBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41491"
+    }
+  }
+]

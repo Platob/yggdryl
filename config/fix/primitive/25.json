@@ -1,0 +1,1126 @@
+[
+  {
+    "name": "legbrokerconfirmationdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegBrokerConfirmationDesc",
+      "fix:description": "Describes the type of broker confirmation executed between the parties. Can be used as an alternative to MasterConfirmationDesc(1962). See https://fpml.org/coding-scheme/broker-confirmation-type for values.",
+      "fix:tag": "2500"
+    }
+  },
+  {
+    "name": "legcreditsupportagreementdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCreditSupportAgreementDate",
+      "fix:description": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties.",
+      "fix:tag": "2501"
+    }
+  },
+  {
+    "name": "legcreditsupportagreementdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCreditSupportAgreementDesc",
+      "fix:description": "The type of ISDA Credit Support Agreement. See https://fpml.org/coding-scheme/credit-support-agreement-type for values.",
+      "fix:tag": "2502"
+    }
+  },
+  {
+    "name": "legcreditsupportagreementid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCreditSupportAgreementID",
+      "fix:description": "A common reference or unique identifier to identify the ISDA Credit Support Agreement executed between the parties.",
+      "fix:tag": "2503"
+    }
+  },
+  {
+    "name": "legdeliverytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegDeliveryType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"VersusPayment\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"\\\"Versus Payment\\\": Deliver (if sell) or Receive (if buy) vs. (against) Payment\"},{\"value\":\"1\",\"name\":\"Free\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"\\\"Free\\\": Deliver (if sell) or Receive (if buy) Free\"},{\"value\":\"2\",\"name\":\"TriParty\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Tri-Party\"},{\"value\":\"3\",\"name\":\"HoldInCustody\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Hold In Custody\"},{\"value\":\"4\",\"name\":\"DeliverByValue\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":5,\"doc\":\"Deliver-by-Value\"}]}",
+      "fix:description": "Identifies type of settlement.",
+      "fix:tag": "2504"
+    }
+  },
+  {
+    "name": "legdocumentationtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegDocumentationText",
+      "fix:description": "A sentence or phrase pertinent to the trade, not a reference to an external document. E.g. \"To be registered with the U.S. Environmental Protection Agency, Acid Rain Division, SO2 Allowance Tracking System\".",
+      "fix:tag": "2505"
+    }
+  },
+  {
+    "name": "legenddate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEndDate",
+      "fix:description": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral.",
+      "fix:tag": "2506"
+    }
+  },
+  {
+    "name": "leggoverninglaw",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegGoverningLaw",
+      "fix:description": "Identification of the law governing the transaction. See https://fpml.org/coding-scheme/governing-law for values.",
+      "fix:tag": "2507"
+    }
+  },
+  {
+    "name": "legmarginratio",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMarginRatio",
+      "fix:description": "The fraction of the cash consideration that must be collateralized, expressed as a percent. A MarginRatio of 2% indicates that the value of the collateral (after deducting for \"haircut\") must exceed the cash consideration by 2%.",
+      "fix:tag": "2508"
+    }
+  },
+  {
+    "name": "legmasterconfirmationannexdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMasterConfirmationAnnexDate",
+      "fix:description": "The date that an annexation to the master confirmation was executed between the parties.",
+      "fix:tag": "2509"
+    }
+  },
+  {
+    "name": "legmasterconfirmationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMasterConfirmationDate",
+      "fix:description": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties.",
+      "fix:tag": "2510"
+    }
+  },
+  {
+    "name": "legmasterconfirmationdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMasterConfirmationDesc",
+      "fix:description": "The type of master confirmation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-type for values.",
+      "fix:tag": "2511"
+    }
+  },
+  {
+    "name": "legmasterconfirmationannexdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMasterConfirmationAnnexDesc",
+      "fix:description": "The type of master confirmation annexation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-annex-type for values.",
+      "fix:tag": "2512"
+    }
+  },
+  {
+    "name": "legstartdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegStartDate",
+      "fix:description": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral.",
+      "fix:tag": "2513"
+    }
+  },
+  {
+    "name": "legterminationtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTerminationType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Overnight\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Overnight\"},{\"value\":\"2\",\"name\":\"Term\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Term\"},{\"value\":\"3\",\"name\":\"Flexible\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Flexible\"},{\"value\":\"4\",\"name\":\"Open\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Open\"}]}",
+      "fix:description": "Type of financing termination.",
+      "fix:tag": "2514"
+    }
+  },
+  {
+    "name": "alloccalculatedccyqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocCalculatedCcyQty",
+      "fix:description": "Used for the calculated quantity of the other side of the currency trade applicable to the allocation instance.",
+      "fix:tag": "2515"
+    }
+  },
+  {
+    "name": "collateralrequestinstruction",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralRequestInstruction",
+      "fix:description": "An encoded collateral request processing instruction to the receiver.",
+      "fix:tag": "2516"
+    }
+  },
+  {
+    "name": "collateralrequestlinkid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralRequestLinkID",
+      "fix:description": "A unique identifier to link together a set or group of requests.",
+      "fix:tag": "2517"
+    }
+  },
+  {
+    "name": "collateralrequestnumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralRequestNumber",
+      "fix:description": "Ordinal number of the request within a set or group of requests.",
+      "fix:tag": "2518"
+    }
+  },
+  {
+    "name": "totnumcollateralrequests",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNumCollateralRequests",
+      "fix:description": "Total number of request messages within a set or group of requests.",
+      "fix:tag": "2519"
+    }
+  },
+  {
+    "name": "warningtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "WarningText",
+      "fix:description": "Communicates the underlying condition when the request response indicates \"warning\".",
+      "fix:tag": "2520"
+    }
+  },
+  {
+    "name": "encodedwarningtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedWarningText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the WarningText(2520) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the WarningText(2520) field.",
+      "fix:tag": "2521"
+    }
+  },
+  {
+    "name": "encodedwarningtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedWarningTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedWarningtText(2521) field.",
+      "fix:tag": "2522"
+    }
+  },
+  {
+    "name": "crossedindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CrossedIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoCross\",\"since\":\"5.0SP2\",\"ep\":218,\"doc\":\"No cross\"},{\"value\":\"1\",\"name\":\"CrossRejected\",\"since\":\"5.0SP2\",\"ep\":218,\"sort\":1,\"doc\":\"Cross rejected\"},{\"value\":\"2\",\"name\":\"CrossAccepted\",\"since\":\"5.0SP2\",\"ep\":218,\"sort\":2,\"doc\":\"Cross accepted\"}]}",
+      "fix:description": "Indicates whether the order or quote was crossed with another order or quote having the same context, e.g. having accounts with a common ownership.",
+      "fix:tag": "2523"
+    }
+  },
+  {
+    "name": "tradereportingindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeReportingIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotReported\",\"since\":\"5.0SP2\",\"ep\":222,\"doc\":\"Trade has not (yet) been reported\"},{\"value\":\"1\",\"name\":\"OnBook\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":1,\"doc\":\"Trade has been or will be reported by a trading venue as an \\\"on-book\\\" trade\"},{\"value\":\"2\",\"name\":\"SISeller\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":2,\"doc\":\"Trade has or will be reported as a seller trade by the authorised reporter\"},{\"value\":\"3\",\"name\":\"SIBuyer\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":3,\"doc\":\"Trade has or will be reported as a buyer trade by the authorised reporter\"},{\"value\":\"4\",\"name\":\"NonSISeller\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":4,\"doc\":\"Trade has or will be reported as a seller trade by an entity other than the authorised reporter\"},{\"value\":\"5\",\"name\":\"SubDelegationByFirm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Trade has been or will be reported under a sub-delegation arrangement by an investment firm to a reporting facility (e.g. APA) on behalf of another investment firm\"},{\"value\":\"6\",\"name\":\"Reportable\",\"since\":\"5.0SP2\",\"ep\":237,\"sort\":6,\"doc\":\"Trade has been or will be reported\"},{\"value\":\"7\",\"name\":\"NonSIBuyer\",\"since\":\"5.0SP2\",\"ep\":237,\"sort\":7,\"doc\":\"Trade has been or will be reported as a buyer trade by an entity other than the authorised reporter\"},{\"value\":\"8\",\"name\":\"OffBook\",\"since\":\"5.0SP2\",\"ep\":237,\"sort\":8,\"doc\":\"Trade has been or will be reported by a trading venue as an \\\"off-book\\\" trade\"},{\"value\":\"9\",\"name\":\"NotReportable\",\"since\":\"5.0SP2\",\"ep\":237,\"sort\":9,\"doc\":\"Trade is not reportable\"}]}",
+      "fix:description": "Used between parties to convey trade reporting status.",
+      "fix:tag": "2524"
+    }
+  },
+  {
+    "name": "affiliatedfirmstradeindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AffiliatedFirmsTradeIndicator",
+      "fix:description": "Indicates whether the transaction or position was entered into between two affiliated firms. I.e. one counterparty has an ownership interest in the other counterparty but less than the majority interest.",
+      "fix:tag": "2525"
+    }
+  },
+  {
+    "name": "internationalswapindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InternationalSwapIndicator",
+      "fix:description": "Identifies the swap trade as an \"international\" transaction.",
+      "fix:tag": "2526"
+    }
+  },
+  {
+    "name": "multiassetswapindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MultiAssetSwapIndicator",
+      "fix:description": "Indicates a swap that does not have one easily identifiable primary underlying asset, but instead involves multiple underlying assets within one trade repository's jurisdiction that belong to different asset classes.",
+      "fix:tag": "2527"
+    }
+  },
+  {
+    "name": "clearingsettlprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingSettlPrice",
+      "fix:description": "Clearing settlement price.",
+      "fix:tag": "2528"
+    }
+  },
+  {
+    "name": "relativevaluetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelativeValueType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ASWSpread\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":1,\"doc\":\"Asset Swap Spread\"},{\"value\":\"10\",\"name\":\"DV01\",\"ep\":272,\"sort\":10,\"doc\":\"DV01\"},{\"value\":\"11\",\"name\":\"PV01\",\"ep\":272,\"sort\":11,\"doc\":\"PV01\"},{\"value\":\"12\",\"name\":\"CS01\",\"ep\":272,\"sort\":12,\"doc\":\"CS01\"},{\"value\":\"2\",\"name\":\"OIS\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":2,\"doc\":\"Overnight Indexed Swap Spread\"},{\"value\":\"3\",\"name\":\"ZSpread\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":3,\"doc\":\"Zero Volatility Spread\"},{\"value\":\"4\",\"name\":\"DiscountMargin\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":4,\"doc\":\"Discount Margin\"},{\"value\":\"5\",\"name\":\"ISpread\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":5,\"doc\":\"Interpolated Spread\"},{\"value\":\"6\",\"name\":\"OAS\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":6,\"doc\":\"Option Adjusted Spread\"},{\"value\":\"7\",\"name\":\"GSpread\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":7,\"doc\":\"G-Spread\"},{\"value\":\"8\",\"name\":\"CDSBasis\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":8,\"doc\":\"CDS Basis\"},{\"value\":\"9\",\"name\":\"CDSInterpolatedBasis\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":9,\"doc\":\"CDS Interpolated Basis\"}]}",
+      "fix:description": "Indicates the type of relative value measurement being specified.",
+      "fix:tag": "2530"
+    }
+  },
+  {
+    "name": "relativevalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelativeValue",
+      "fix:description": "The valuation of an instrument relative to a base measurement specified in RelativeValueType(2530). This value can be negative.",
+      "fix:tag": "2531"
+    }
+  },
+  {
+    "name": "relativevalueside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelativeValueSide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Bid\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":1,\"doc\":\"Bid\"},{\"value\":\"2\",\"name\":\"Mid\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":2,\"doc\":\"Mid\"},{\"value\":\"3\",\"name\":\"Offer\",\"since\":\"5.0SP2\",\"ep\":194,\"sort\":3,\"doc\":\"Offer\"}]}",
+      "fix:description": "Specifies the side of the relative value.",
+      "fix:tag": "2532"
+    }
+  },
+  {
+    "name": "bidspread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BidSpread",
+      "fix:description": "Basis points relative to a benchmark curve on the bid side, such as LIBOR, or a known security, such as 10Y US Treasury bond. The benchmark security or curve name is specified in the SpreadOrBenchmarkCurveData component.",
+      "fix:tag": "2533"
+    }
+  },
+  {
+    "name": "offerspread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OfferSpread",
+      "fix:description": "Basis points relative to a benchmark curve on the offer side, such as LIBOR, or a known security, such as 10Y US Treasury bond. The benchmark security or curve name is specified in the SpreadOrBenchmarkCurveData component.",
+      "fix:tag": "2534"
+    }
+  },
+  {
+    "name": "mdreportevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDReportEvent",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"StartInstrumentRefData\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Start of instrument reference data\"},{\"value\":\"10\",\"name\":\"EndSettlementPrices\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":10,\"doc\":\"End of settlement prices\"},{\"value\":\"11\",\"name\":\"StartStatsRefData\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":11,\"doc\":\"Start of statistics reference data\"},{\"value\":\"12\",\"name\":\"EndStatsRefData\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":12,\"doc\":\"End of statistics reference data\"},{\"value\":\"13\",\"name\":\"StartStatistics\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":13,\"doc\":\"Start of statistics\"},{\"value\":\"14\",\"name\":\"EndStatistics\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":14,\"doc\":\"End of statistics\"},{\"value\":\"2\",\"name\":\"EndInstrumentRefData\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":2,\"doc\":\"End of instrument reference data\"},{\"value\":\"3\",\"name\":\"StartOffMarketTrades\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Start of off-market trades\"},{\"value\":\"4\",\"name\":\"EndOffMarketTrades\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":4,\"doc\":\"End of off-market trades\"},{\"value\":\"5\",\"name\":\"StartOrderBookTrades\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":5,\"doc\":\"Start of order book trades\"},{\"value\":\"6\",\"name\":\"EndOrderBookTrades\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":6,\"doc\":\"End of order book trades\"},{\"value\":\"7\",\"name\":\"StartOpenInterest\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":7,\"doc\":\"Start of open interest\"},{\"value\":\"8\",\"name\":\"EndOpenInterest\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":8,\"doc\":\"End of open interest\"},{\"value\":\"9\",\"name\":\"StartSettlementPrices\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":9,\"doc\":\"Start of settlement prices\"}]}",
+      "fix:description": "Technical event within market data feed.",
+      "fix:tag": "2535"
+    }
+  },
+  {
+    "name": "mdreportcount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDReportCount",
+      "fix:description": "Number of reference and market data messages in-between two MarketDataReport(35=DR) messages.",
+      "fix:tag": "2536"
+    }
+  },
+  {
+    "name": "totnomarketsegmentreports",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoMarketSegmentReports",
+      "fix:description": "Total number of reports related to market segments.",
+      "fix:tag": "2537"
+    }
+  },
+  {
+    "name": "totnoinstrumentreports",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoInstrumentReports",
+      "fix:description": "Total number of reports related to instruments.",
+      "fix:tag": "2538"
+    }
+  },
+  {
+    "name": "totnopartydetailreports",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoPartyDetailReports",
+      "fix:description": "Total number of reports related to party detail information.",
+      "fix:tag": "2539"
+    }
+  },
+  {
+    "name": "totnoentitlementreports",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoEntitlementReports",
+      "fix:description": "Total number of reports related to party entitlement information.",
+      "fix:tag": "2540"
+    }
+  },
+  {
+    "name": "totnorisklimitreports",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotNoRiskLimitReports",
+      "fix:description": "Total number of reports related to party risk limit information.",
+      "fix:tag": "2541"
+    }
+  },
+  {
+    "name": "marketsegmentstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketSegmentStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Active\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Active\"},{\"value\":\"2\",\"name\":\"Inactive\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":2,\"doc\":\"Inactive\"},{\"value\":\"3\",\"name\":\"Published\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Published\"}]}",
+      "fix:description": "Status of market segment.",
+      "fix:tag": "2542"
+    }
+  },
+  {
+    "name": "marketsegmenttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketSegmentType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Pool\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Pool\"},{\"value\":\"2\",\"name\":\"Retail\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":2,\"doc\":\"Retail\"},{\"value\":\"3\",\"name\":\"Wholesale\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Wholesale\"}]}",
+      "fix:description": "Used to classify the type of market segment.",
+      "fix:tag": "2543"
+    }
+  },
+  {
+    "name": "marketsegmentsubtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketSegmentSubType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterProductSpread\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Inter-product spread\"}]}",
+      "fix:description": "Used to further categorize market segments within a MarketSegmentType(2543).",
+      "fix:tag": "2544"
+    }
+  },
+  {
+    "name": "relatedmarketsegmentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedMarketSegmentID",
+      "fix:description": "Identifies a related market segment.",
+      "fix:tag": "2546"
+    }
+  },
+  {
+    "name": "marketsegmentrelationship",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketSegmentRelationship",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"MarketSegmentPoolMember\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Market segment pool member\"},{\"value\":\"2\",\"name\":\"RetailSegment\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":2,\"doc\":\"Retail segment\"},{\"value\":\"3\",\"name\":\"WholesaleSegment\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Wholesale segment\"}]}",
+      "fix:description": "Type of relationship between two or more market segments.",
+      "fix:tag": "2547"
+    }
+  },
+  {
+    "name": "auctiontypeproductcomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AuctionTypeProductComplex",
+      "fix:description": "Identifies an entire suite of products for which the auction order type rule applies.",
+      "fix:tag": "2549"
+    }
+  },
+  {
+    "name": "startpricerange",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StartPriceRange",
+      "fix:description": "Lower boundary for price range.",
+      "fix:tag": "2551"
+    }
+  },
+  {
+    "name": "endpricerange",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EndPriceRange",
+      "fix:description": "Upper boundary for price range.",
+      "fix:tag": "2552"
+    }
+  },
+  {
+    "name": "pricerangevalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceRangeValue",
+      "fix:description": "Maximum range expressed as absolute value.",
+      "fix:tag": "2553"
+    }
+  },
+  {
+    "name": "pricerangepercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceRangePercentage",
+      "fix:description": "Maximum range expressed as percentage.",
+      "fix:tag": "2554"
+    }
+  },
+  {
+    "name": "pricerangeproductcomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceRangeProductComplex",
+      "fix:description": "Identifies an entire suite of products in the context of trading rules related to price ranges.",
+      "fix:tag": "2555"
+    }
+  },
+  {
+    "name": "pricerangeruleid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceRangeRuleID",
+      "fix:description": "Identifier for a price range rule.",
+      "fix:tag": "2556"
+    }
+  },
+  {
+    "name": "fastmarketpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FastMarketPercentage",
+      "fix:description": "The percentage factor to be applied to trading rule parameters (e.g. price ranges, size ranges, etc.) when fast market conditions are applicable.",
+      "fix:tag": "2557"
+    }
+  },
+  {
+    "name": "quotesideindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "QuoteSideIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"No\",\"since\":\"5.0SP2\",\"ep\":195,\"doc\":\"Single sided quotes are not allowed\"},{\"value\":\"Y\",\"name\":\"Yes\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Single sided quotes are allowed\"}]}",
+      "fix:description": "Indicates whether single sided quotes are allowed.",
+      "fix:tag": "2559"
+    }
+  },
+  {
+    "name": "flexproducteligibilitycomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FlexProductEligibilityComplex",
+      "fix:description": "Identifies an entire suite of products which are eligible for the creation of flexible securities.",
+      "fix:tag": "2561"
+    }
+  },
+  {
+    "name": "numofcomplexinstruments",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NumOfComplexInstruments",
+      "fix:description": "Represents the total number of multileg securities or user defined securities that make up the security.",
+      "fix:tag": "2562"
+    }
+  },
+  {
+    "name": "marketdepthtimeinterval",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketDepthTimeInterval",
+      "fix:description": "Specifies the time interval used for netting market data in a price depth feed.",
+      "fix:tag": "2563"
+    }
+  },
+  {
+    "name": "marketdepthtimeintervalunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarketDepthTimeIntervalUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "The time unit associated with the time interval of the netting of market data in a price depth feed.",
+      "fix:tag": "2564"
+    }
+  },
+  {
+    "name": "mdrecoverytimeinterval",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDRecoveryTimeInterval",
+      "fix:description": "Specifies the time interval between two repetitions of the same market data for cyclic recovery feeds.",
+      "fix:tag": "2565"
+    }
+  },
+  {
+    "name": "mdrecoverytimeintervalunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDRecoveryTimeIntervalUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "The time unit associated with the time interval between two cycles of the same market data in cyclic data recovery feeds.",
+      "fix:tag": "2566"
+    }
+  },
+  {
+    "name": "primaryservicelocationid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PrimaryServiceLocationID",
+      "fix:description": "Primary service location identifier.",
+      "fix:tag": "2567"
+    }
+  },
+  {
+    "name": "secondaryservicelocationid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryServiceLocationID",
+      "fix:description": "Secondary or alternate service location identifier.",
+      "fix:tag": "2568"
+    }
+  },
+  {
+    "name": "matchruleproductcomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MatchRuleProductComplex",
+      "fix:description": "Identifies an entire suite of products for which the matching rule applies.",
+      "fix:tag": "2569"
+    }
+  },
+  {
+    "name": "customerpriority",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CustomerPriority",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoPriority\",\"since\":\"5.0SP2\",\"ep\":195,\"doc\":\"No priority\"},{\"value\":\"1\",\"name\":\"UnconditionalPriority\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Unconditional priority\"}]}",
+      "fix:description": "Specifies the kind of priority given to customers.",
+      "fix:tag": "2570"
+    }
+  },
+  {
+    "name": "tickruleproductcomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TickRuleProductComplex",
+      "fix:description": "Identifies an entire suite of products for which the price tick rule applies.",
+      "fix:tag": "2571"
+    }
+  },
+  {
+    "name": "previousadjustedopeninterest",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PreviousAdjustedOpenInterest",
+      "fix:description": "Previous day's adjusted open interest.",
+      "fix:tag": "2572"
+    }
+  },
+  {
+    "name": "previousunadjustedopeninterest",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PreviousUnadjustedOpenInterest",
+      "fix:description": "Previous day's unadjusted open interest.",
+      "fix:tag": "2573"
+    }
+  },
+  {
+    "name": "lowexercisepriceoptionindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LowExercisePriceOptionIndicator",
+      "fix:description": "Indicates if a given option instrument permits low exercise prices (LEPO).",
+      "fix:tag": "2574"
+    }
+  },
+  {
+    "name": "blocktradeeligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BlockTradeEligibilityIndicator",
+      "fix:description": "Indicates if a given instrument is eligible for block trading.",
+      "fix:tag": "2575"
+    }
+  },
+  {
+    "name": "instrumentpriceprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPricePrecision",
+      "fix:description": "Specifies the number of decimal places for instrument prices.",
+      "fix:tag": "2576"
+    }
+  },
+  {
+    "name": "strikepriceprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StrikePricePrecision",
+      "fix:description": "Specifies the number of decimal places for exercise price.",
+      "fix:tag": "2577"
+    }
+  },
+  {
+    "name": "origstrikeprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrigStrikePrice",
+      "fix:description": "Original exercise price, e.g. after corporate action requiring changes.",
+      "fix:tag": "2578"
+    }
+  },
+  {
+    "name": "settlsubmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlSubMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Shares\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Shares\"},{\"value\":\"2\",\"name\":\"Derivatives\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":2,\"doc\":\"Derivatives\"},{\"value\":\"3\",\"name\":\"PaymentVsPayment\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Payment vs payment\"},{\"value\":\"4\",\"name\":\"Notional\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":4,\"doc\":\"Notional\"},{\"value\":\"5\",\"name\":\"Cascade\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":5,\"doc\":\"Cascade\"},{\"value\":\"6\",\"name\":\"Repurchase\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":6,\"doc\":\"Repurchase\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Specifies a suitable settlement sub-method for a given settlement method.",
+      "fix:tag": "2579"
+    }
+  },
+  {
+    "name": "businessdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BusinessDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "Relative identification of a business day.",
+      "fix:tag": "2581"
+    }
+  },
+  {
+    "name": "clearingpriceoffset",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingPriceOffset",
+      "fix:description": "Constant value required for the calculation of the clearing price, e.g. for variance futures.",
+      "fix:tag": "2582"
+    }
+  },
+  {
+    "name": "vegamultiplier",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "VegaMultiplier",
+      "fix:description": "Constant value required for the calculation of the clearing quantity, e.g. for variance futures.",
+      "fix:tag": "2583"
+    }
+  },
+  {
+    "name": "annualtradingbusinessdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AnnualTradingBusinessDays",
+      "fix:description": "Number of trading business days in a year.",
+      "fix:tag": "2584"
+    }
+  },
+  {
+    "name": "totaltradingbusinessdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalTradingBusinessDays",
+      "fix:description": "Number of trading business days over the lifetime of an instrument.",
+      "fix:tag": "2585"
+    }
+  },
+  {
+    "name": "tradingbusinessdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingBusinessDays",
+      "fix:description": "Number of actual trading business days of an instrument.",
+      "fix:tag": "2586"
+    }
+  },
+  {
+    "name": "realizedvariance",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RealizedVariance",
+      "fix:description": "Actual or realized variance of an instrument used to calculate settlement prices, e.g. for variance futures.",
+      "fix:tag": "2587"
+    }
+  },
+  {
+    "name": "standardvariance",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StandardVariance",
+      "fix:description": "Standard variance (over the lifetime of an instrument) or initial variance used to calculate settlement prices, e.g. for variance futures.",
+      "fix:tag": "2588"
+    }
+  },
+  {
+    "name": "relatedcloseprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedClosePrice",
+      "fix:description": "Closing price of the underlying required to calculate the RealizedVariance(2587).",
+      "fix:tag": "2589"
+    }
+  },
+  {
+    "name": "overnightinterestrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OvernightInterestRate",
+      "fix:description": "Overnight interest rate.",
+      "fix:tag": "2590"
+    }
+  },
+  {
+    "name": "accumulatedreturnmodifiedvariationmargin",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AccumulatedReturnModifiedVariationMargin",
+      "fix:description": "The economic cost of the variation margin from one trading day to the next.",
+      "fix:tag": "2591"
+    }
+  },
+  {
+    "name": "calculationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CalculationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Automatic\",\"since\":\"5.0SP2\",\"ep\":195,\"doc\":\"Automatic (default)\"},{\"value\":\"1\",\"name\":\"Manual\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":1,\"doc\":\"Manual\"}]}",
+      "fix:description": "Specifies how the calculation will be made.",
+      "fix:tag": "2592"
+    }
+  },
+  {
+    "name": "orderattributetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderAttributeType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AggregatedOrder\",\"since\":\"5.0SP2\",\"ep\":222,\"doc\":\"Aggregated order\"},{\"value\":\"1\",\"name\":\"PendingAllocation\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":1,\"doc\":\"Order pending allocation\"},{\"value\":\"10\",\"name\":\"SubjectToEUSTO\",\"since\":\"5.0SP2\",\"ep\":250,\"sort\":10,\"doc\":\"Subject to EU share trading obligation (STO)\"},{\"value\":\"11\",\"name\":\"SubjectToUKSTO\",\"since\":\"5.0SP2\",\"ep\":250,\"sort\":11,\"doc\":\"Subject to UK share trading obligation (STO)\"},{\"value\":\"12\",\"name\":\"RepresentativeOrder\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":12,\"doc\":\"Representative order\"},{\"value\":\"13\",\"name\":\"LinkageType\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":13,\"doc\":\"Linkage type\"},{\"value\":\"14\",\"name\":\"ExemptFromSTO\",\"since\":\"5.0SP2\",\"ep\":255,\"sort\":14,\"doc\":\"Exempt from share trading obligation (STO)\"},{\"value\":\"2\",\"name\":\"LiquidityProvisionActivityOrder\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":2,\"doc\":\"Liquidity provision activity order\"},{\"value\":\"3\",\"name\":\"RiskReductionOrder\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":3,\"doc\":\"Risk reduction order\"},{\"value\":\"4\",\"name\":\"AlgorithmicOrder\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":4,\"doc\":\"Algorithmic order\"},{\"value\":\"5\",\"name\":\"SystematicInternaliserOrder\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Authorised reporter order\"},{\"value\":\"6\",\"name\":\"AllExecutionsSubmittedToAPA\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":6,\"doc\":\"All executions for the order are to be submitted to an APA\"},{\"value\":\"7\",\"name\":\"OrderExecutionInstructedByClient\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":7,\"doc\":\"Order execution instructed by client\"},{\"value\":\"8\",\"name\":\"LargeInScale\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":8,\"doc\":\"Large in scale order\"},{\"value\":\"9\",\"name\":\"Hidden\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":9,\"doc\":\"Hidden order\"}]}",
+      "fix:description": "The type of order attribute.",
+      "fix:tag": "2594"
+    }
+  },
+  {
+    "name": "orderattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderAttributeValue",
+      "fix:description": "The value associated with the order attribute type specified in OrderAttributeType(2594).",
+      "fix:tag": "2595"
+    }
+  },
+  {
+    "name": "deltacrossed",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DeltaCrossed",
+      "fix:description": "Indicates that the party has taken a position on both a put and a call on the same underlying asset.",
+      "fix:tag": "2596"
+    }
+  },
+  {
+    "name": "complexeventfuturespricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplexEventFuturesPriceValuation",
+      "fix:description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
+      "fix:tag": "2597"
+    }
+  },
+  {
+    "name": "complexeventoptionspricevaluation",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplexEventOptionsPriceValuation",
+      "fix:description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
+      "fix:tag": "2598"
+    }
+  },
+  {
+    "name": "complexeventpvfinalpriceelectionfallback",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ComplexEventPVFinalPriceElectionFallback",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"HedgeElection\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge election\"}]}",
+      "fix:description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price.",
+      "fix:tag": "2599"
+    }
+  }
+]

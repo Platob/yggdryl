@@ -1,0 +1,1166 @@
+[
+  {
+    "name": "sideexecrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideExecRefID",
+      "fix:description": "Used to reference the value from SideExecID(1427).",
+      "fix:tag": "1900"
+    }
+  },
+  {
+    "name": "legexecrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegExecRefID",
+      "fix:description": "Used to reference the value from LegExecID(1893).",
+      "fix:tag": "1901"
+    }
+  },
+  {
+    "name": "haircutindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "HaircutIndicator",
+      "fix:description": "Indicates, if \"Y\", that a stated valuation includes a haircut, e.g. that the stated value reflects the subtraction of the haircut. Note that a value of \"N\" does not imply a haircut is not applicable, only that the haircut (if any) is not reflected in the stated valuation.",
+      "fix:tag": "1902"
+    }
+  },
+  {
+    "name": "regulatorytradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTradeID",
+      "fix:description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "fix:tag": "1903"
+    }
+  },
+  {
+    "name": "regulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTradeIDEvent",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"InitialBlockTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial block trade\"},{\"value\":\"1\",\"name\":\"Allocation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Allocation\"},{\"value\":\"2\",\"name\":\"Clearing\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Clearing\"},{\"value\":\"3\",\"name\":\"Compression\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Compression\"},{\"value\":\"4\",\"name\":\"Novation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Novation\"},{\"value\":\"5\",\"name\":\"Termination\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Termination\"},{\"value\":\"6\",\"name\":\"PostTrdVal\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Post-trade valuation\"}]}",
+      "fix:description": "Identifies the event which caused origination of the identifier in RegulatoryTradeID(1903). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
+      "fix:tag": "1904"
+    }
+  },
+  {
+    "name": "regulatorytradeidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTradeIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"UniqueTransactionIdentifier\",\"ep\":275,\"sort\":1,\"doc\":\"Unique Transaction Identifier (ISO 23897)\"}]}",
+      "fix:description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "fix:tag": "1905"
+    }
+  },
+  {
+    "name": "regulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTradeIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Current\"},{\"value\":\"1\",\"name\":\"Previous\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Previous\"},{\"value\":\"2\",\"name\":\"Block\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Block\"},{\"value\":\"3\",\"name\":\"Related\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Related\"},{\"value\":\"4\",\"name\":\"ClearedBlockTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":4,\"doc\":\"Cleared block trade\"},{\"value\":\"5\",\"name\":\"TradingVenueTransactionIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Trading venue transaction identifier\"},{\"value\":\"6\",\"name\":\"ReportTrackingNumber\",\"ep\":284,\"sort\":6,\"doc\":\"Report tracking number\"}]}",
+      "fix:description": "Specifies the type of trade identifier provided in RegulatoryTradeID(1903).",
+      "fix:tag": "1906"
+    }
+  },
+  {
+    "name": "allocregulatorytradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryTradeID",
+      "fix:description": "Trade identifier required by government regulators or other regulatory organizations for regulatory reporting purposes. For example, unique swap identifer (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "fix:tag": "1909"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryTradeIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"UniqueTransactionIdentifier\",\"ep\":275,\"sort\":1,\"doc\":\"Unique Transaction Identifier (ISO 23897)\"}]}",
+      "fix:description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "fix:tag": "1910"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryTradeIDEvent",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"InitialBlockTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial block trade\"},{\"value\":\"1\",\"name\":\"Allocation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Allocation\"},{\"value\":\"2\",\"name\":\"Clearing\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Clearing\"},{\"value\":\"3\",\"name\":\"Compression\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Compression\"},{\"value\":\"4\",\"name\":\"Novation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Novation\"},{\"value\":\"5\",\"name\":\"Termination\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Termination\"},{\"value\":\"6\",\"name\":\"PostTrdVal\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Post-trade valuation\"}]}",
+      "fix:description": "Identifies the event which caused the origination of the identifier in AllocRegulatoryTradeID(1909). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2(Clearing).",
+      "fix:tag": "1911"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryTradeIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Current\"},{\"value\":\"1\",\"name\":\"Previous\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Previous\"},{\"value\":\"2\",\"name\":\"Block\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Block\"},{\"value\":\"3\",\"name\":\"Related\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Related\"},{\"value\":\"4\",\"name\":\"ClearedBlockTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":4,\"doc\":\"Cleared block trade\"},{\"value\":\"5\",\"name\":\"TradingVenueTransactionIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Trading venue transaction identifier\"},{\"value\":\"6\",\"name\":\"ReportTrackingNumber\",\"ep\":284,\"sort\":6,\"doc\":\"Report tracking number\"}]}",
+      "fix:description": "Specifies the type of trade identifier provided in AllocRegulatoryTradeID(1909), within the context of the hierarchy of trade events.",
+      "fix:tag": "1912"
+    }
+  },
+  {
+    "name": "numofcompetitors",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NumOfCompetitors",
+      "fix:description": "The number of competing Respondents (e.g. dealers) to receive a quote request (either via the QuoteRequest(35=R) or via other means).",
+      "fix:tag": "1913"
+    }
+  },
+  {
+    "name": "responsetime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ResponseTime",
+      "fix:description": "The time by which a meaningful response should arrive back (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\").",
+      "fix:tag": "1914"
+    }
+  },
+  {
+    "name": "quotedisplaytime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "QuoteDisplayTime",
+      "fix:description": "Time by which the quote will be displayed.",
+      "fix:tag": "1915"
+    }
+  },
+  {
+    "name": "exposuredurationunit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExposureDurationUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Seconds\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Seconds (default if not specified)\"},{\"value\":\"1\",\"name\":\"TenthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Tenths of a second\"},{\"value\":\"10\",\"name\":\"Minutes\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":10,\"doc\":\"minutes\"},{\"value\":\"11\",\"name\":\"Hours\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":11,\"doc\":\"hours\"},{\"value\":\"12\",\"name\":\"Days\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":12,\"doc\":\"days\"},{\"value\":\"13\",\"name\":\"Weeks\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":13,\"doc\":\"weeks\"},{\"value\":\"14\",\"name\":\"Months\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":14,\"doc\":\"months\"},{\"value\":\"15\",\"name\":\"Years\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":15,\"doc\":\"years\"},{\"value\":\"2\",\"name\":\"HundredthsOfASecond\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Hundredths of a second\"},{\"value\":\"3\",\"name\":\"Milliseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":3,\"doc\":\"milliseconds\"},{\"value\":\"4\",\"name\":\"Microseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"microseconds\"},{\"value\":\"5\",\"name\":\"Nanoseconds\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":5,\"doc\":\"nanoseconds\"}]}",
+      "fix:description": "Time unit in which the ExposureDuration(1629) is expressed.",
+      "fix:tag": "1916"
+    }
+  },
+  {
+    "name": "coverprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CoverPrice",
+      "fix:description": "The best quoted price received among those not traded.",
+      "fix:tag": "1917"
+    }
+  },
+  {
+    "name": "nopricemovements",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPriceMovements",
+      "fix:description": "Number of price movement entries.",
+      "fix:tag": "1919"
+    }
+  },
+  {
+    "name": "pricemovementvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceMovementValue",
+      "fix:description": "Value at specific price movement point.",
+      "fix:tag": "1921"
+    }
+  },
+  {
+    "name": "pricemovementpoint",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceMovementPoint",
+      "fix:description": "Price movement point up (positive integer) or down (negative integer) relative to the underlying price of the instrument.",
+      "fix:tag": "1922"
+    }
+  },
+  {
+    "name": "pricemovementtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceMovementType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Amount\",\"since\":\"5.0SP2\",\"ep\":160,\"doc\":\"Amount\"},{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"5.0SP2\",\"ep\":160,\"doc\":\"Percentage\"}]}",
+      "fix:description": "Describes the format of the PriceMovementValue(1921).",
+      "fix:tag": "1923"
+    }
+  },
+  {
+    "name": "clearingintention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingIntention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"DoNotIntendToClear\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Do not intend to clear\"},{\"value\":\"1\",\"name\":\"IntendToClear\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Intend to clear\"}]}",
+      "fix:description": "Specifies the party's or parties' intention to clear the trade.",
+      "fix:tag": "1924"
+    }
+  },
+  {
+    "name": "tradeclearinginstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeClearingInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ProcessNormally\",\"since\":\"4.3\",\"doc\":\"Process normally\"},{\"value\":\"1\",\"name\":\"ExcludeFromAllNetting\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Exclude from all netting\"},{\"value\":\"10\",\"name\":\"AutomaticGiveUpMode\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Automatic give-up mode (trade give-up to the give-up destination number specified)\"},{\"value\":\"11\",\"name\":\"QualifiedServiceRepresentativeQSR\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Qualified Service Representative QSR\"},{\"value\":\"12\",\"name\":\"CustomerTrade\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Customer trade\"},{\"value\":\"13\",\"name\":\"SelfClearing\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Self clearing\"},{\"value\":\"14\",\"name\":\"BuyIn\",\"since\":\"5.0SP2\",\"ep\":136,\"sort\":14,\"doc\":\"Buy-in\"},{\"value\":\"2\",\"name\":\"BilateralNettingOnly\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Bilateral netting only\"},{\"value\":\"3\",\"name\":\"ExClearing\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Ex clearing\"},{\"value\":\"4\",\"name\":\"SpecialTrade\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Special trade\"},{\"value\":\"5\",\"name\":\"MultilateralNetting\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Multilateral netting\"},{\"value\":\"6\",\"name\":\"ClearAgainstCentralCounterparty\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Clear against central counterparty\"},{\"value\":\"7\",\"name\":\"ExcludeFromCentralCounterparty\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Exclude from central counterparty\"},{\"value\":\"8\",\"name\":\"ManualMode\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Manual mode (pre-posting and/or pre-giveup)\"},{\"value\":\"9\",\"name\":\"AutomaticPostingMode\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Automatic posting mode (trade posting to the position account number specified)\"}]}",
+      "fix:description": "Specifies the eligibility of this trade for clearing and central counterparty processing.",
+      "fix:tag": "1925"
+    }
+  },
+  {
+    "name": "backloadedtradeindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BackloadedTradeIndicator",
+      "fix:description": "Indicates that the trade being reported occurred in the past and is still in effect or active.",
+      "fix:tag": "1926"
+    }
+  },
+  {
+    "name": "confirmationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ConfirmationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NonElectronic\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Non-electronic\"},{\"value\":\"1\",\"name\":\"Electronic\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Electronic\"},{\"value\":\"2\",\"name\":\"Unconfirmed\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":2,\"doc\":\"Unconfirmed\"}]}",
+      "fix:description": "Specifies how a trade was confirmed.",
+      "fix:tag": "1927"
+    }
+  },
+  {
+    "name": "mandatoryclearingindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MandatoryClearingIndicator",
+      "fix:description": "An indication that the trade is flagged for mandatory clearing.",
+      "fix:tag": "1928"
+    }
+  },
+  {
+    "name": "mixedswapindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MixedSwapIndicator",
+      "fix:description": "An indication that the trade is a mixed swap.",
+      "fix:tag": "1929"
+    }
+  },
+  {
+    "name": "offmarketpriceindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OffMarketPriceIndicator",
+      "fix:description": "An indication that the price is off-market.",
+      "fix:tag": "1930"
+    }
+  },
+  {
+    "name": "verificationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "VerificationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NonElectronic\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Non-electronic\"},{\"value\":\"1\",\"name\":\"Electronic\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Electronic\"}]}",
+      "fix:description": "Indication of how a trade was verified.",
+      "fix:tag": "1931"
+    }
+  },
+  {
+    "name": "clearingrequirementexception",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingRequirementException",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoException\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"No exception\"},{\"value\":\"1\",\"name\":\"Exception\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Exception\"},{\"value\":\"2\",\"name\":\"EndUserException\",\"since\":\"5.0SP2\",\"ep\":177,\"sort\":2,\"doc\":\"End-user exception\"},{\"value\":\"3\",\"name\":\"InterAffiliateException\",\"since\":\"5.0SP2\",\"ep\":177,\"sort\":3,\"doc\":\"Inter-affiliate exception\"},{\"value\":\"4\",\"name\":\"TreasuryAffiliateException\",\"since\":\"5.0SP2\",\"ep\":177,\"sort\":4,\"doc\":\"Treasury affiliate exception\"},{\"value\":\"5\",\"name\":\"CooperativeException\",\"since\":\"5.0SP2\",\"ep\":177,\"sort\":5,\"doc\":\"Cooperative exception\"}]}",
+      "fix:description": "Specifies whether a party to a swap is using an exception to a clearing requirement. In the US, one such clearing requirement is CFTC's rule pursuant to CEA Section 2(h)(1).",
+      "fix:tag": "1932"
+    }
+  },
+  {
+    "name": "irsdirection",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IRSDirection",
+      "fix:codes": "{\"codes\":[{\"value\":\"NA\",\"name\":\"NA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Swap is float/float or fixed/fixed\"},{\"value\":\"PAY\",\"name\":\"Pay\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Principal is paying fixed rate\"},{\"value\":\"RCV\",\"name\":\"Rcv\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Principal is receiving fixed rate\"}]}",
+      "fix:description": "Used to specify whether the principal is paying or receiving the fixed rate in an interest rate swap.",
+      "fix:tag": "1933"
+    }
+  },
+  {
+    "name": "regulatoryreporttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryReportType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RT\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Real-time (RT)\"},{\"value\":\"1\",\"name\":\"PET\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Primary economic terms (PET)\"},{\"value\":\"10\",\"name\":\"PstTrdEvntRTReportable\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":10,\"doc\":\"Post trade event RT reportable\"},{\"value\":\"11\",\"name\":\"LimitedDetailsTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":11,\"doc\":\"Limited Details Trade\"},{\"value\":\"12\",\"name\":\"DailyAggregatedTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":12,\"doc\":\"Daily Aggregated Trade\"},{\"value\":\"13\",\"name\":\"VolumeOmissionTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":13,\"doc\":\"Volume Omission Trade\"},{\"value\":\"14\",\"name\":\"FourWeeksAggregationTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":14,\"doc\":\"Four Weeks Aggregation Trade\"},{\"value\":\"15\",\"name\":\"IndefiniteAggregationTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":15,\"doc\":\"Indefinite Aggregation Trade\"},{\"value\":\"16\",\"name\":\"VolumeOmissionTradeEnrichment\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":16,\"doc\":\"Volume Omission Trade Eligible for Subsequent Aggregated Enrichment\"},{\"value\":\"17\",\"name\":\"FullDetailsLimitedDetailsTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":17,\"doc\":\"Full Details of \\\"Limited Details Trade\\\"\"},{\"value\":\"18\",\"name\":\"FullDetailsDailyAggregatedTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":18,\"doc\":\"Full Details of \\\"Daily Aggregated Trade\\\"\"},{\"value\":\"19\",\"name\":\"FullDetailsVolumeOmissionTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":19,\"doc\":\"Full Details of \\\"Volume Omission Trade\\\"\"},{\"value\":\"2\",\"name\":\"Snapshot\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Snapshot\"},{\"value\":\"20\",\"name\":\"FullDetailsFourWeeksAggregationTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":20,\"doc\":\"Full Details of \\\"Four Weeks Aggregation Trade\\\"\"},{\"value\":\"21\",\"name\":\"FullDetailsVolumeOmissionTradeEnrichment\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":21,\"doc\":\"Full Details in Aggregated Form of \\\"Volume Omission Trade Eligible for Subsequent Aggregated Enrichment\\\"\"},{\"value\":\"22\",\"name\":\"Order\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":22,\"doc\":\"Order\"},{\"value\":\"23\",\"name\":\"ChildOrder\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":23,\"doc\":\"Child order\"},{\"value\":\"24\",\"name\":\"OrderRoute\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":24,\"doc\":\"Order route\"},{\"value\":\"25\",\"name\":\"Trade\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":25,\"doc\":\"Trade\"},{\"value\":\"26\",\"name\":\"Quote\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":26,\"doc\":\"Quote\"},{\"value\":\"27\",\"name\":\"Supplement\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":27,\"doc\":\"Supplement\"},{\"value\":\"28\",\"name\":\"NewTransaction\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"doc\":\"New transaction\"},{\"value\":\"29\",\"name\":\"TransactionCorrection\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"doc\":\"Transaction correction\"},{\"value\":\"3\",\"name\":\"Confirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Confirmation\"},{\"value\":\"30\",\"name\":\"TransactionModification\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":30,\"doc\":\"Transaction modification\"},{\"value\":\"31\",\"name\":\"CollateralUpdate\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":31,\"doc\":\"Collateral update\"},{\"value\":\"32\",\"name\":\"MarginUpdate\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":32,\"doc\":\"Margin update\"},{\"value\":\"33\",\"name\":\"TransactionReportedInError\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":33,\"doc\":\"Transaction reported in error\"},{\"value\":\"34\",\"name\":\"TerminationEarlyTermination\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":34,\"doc\":\"Termination / Early termination\"},{\"value\":\"4\",\"name\":\"RTPET\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Combination of RT and PET\"},{\"value\":\"5\",\"name\":\"PETConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Combination of PET and confirmation\"},{\"value\":\"6\",\"name\":\"RTPETConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Combination of RT, PET and confirmation\"},{\"value\":\"7\",\"name\":\"PostTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Post-trade valuation\"},{\"value\":\"8\",\"name\":\"Verification\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Verification\"},{\"value\":\"9\",\"name\":\"PstTrdEvnt\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":9,\"doc\":\"Post-trade event\"}]}",
+      "fix:description": "Type of regulatory report.",
+      "fix:tag": "1934"
+    }
+  },
+  {
+    "name": "voluntaryregulatoryreport",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "VoluntaryRegulatoryReport",
+      "fix:description": "Used in conjunction with RegulatoryReportType(1934) to indicate whether the trade report is a voluntary regulatory report. If not specified, the default for a regulatory report is \"N\".",
+      "fix:tag": "1935"
+    }
+  },
+  {
+    "name": "tradecollateralization",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeCollateralization",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Uncollateralized\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Uncollateralized\"},{\"value\":\"1\",\"name\":\"PartiallyCollateralized\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Partially collateralized\"},{\"value\":\"2\",\"name\":\"OneWayCollaterallization\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"One-way collaterallization\"},{\"value\":\"3\",\"name\":\"FullyCollateralized\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Fully collateralized\"},{\"value\":\"4\",\"name\":\"NetExposure\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":4,\"doc\":\"Net exposure\"}]}",
+      "fix:description": "Specifies how the trade is collateralized.",
+      "fix:tag": "1936"
+    }
+  },
+  {
+    "name": "tradecontinuation",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeContinuation",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Novation\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Novation\"},{\"value\":\"1\",\"name\":\"PartialNovation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Partial novation\"},{\"value\":\"10\",\"name\":\"CreditEvent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Credit event\"},{\"value\":\"11\",\"name\":\"StrategicRestructuring\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Strategic restructuring\"},{\"value\":\"12\",\"name\":\"SuccessionEventReorganization\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"Succession event reorganization\"},{\"value\":\"13\",\"name\":\"SuccessionEventRenaming\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"Succession event renaming\"},{\"value\":\"14\",\"name\":\"Porting\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Porting\"},{\"value\":\"15\",\"name\":\"Withdrawl\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"Withdrawal\"},{\"value\":\"16\",\"name\":\"Void\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"Void\"},{\"value\":\"17\",\"name\":\"AccountTransfer\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":17,\"doc\":\"Account transfer\"},{\"value\":\"18\",\"name\":\"GiveUp\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":18,\"doc\":\"Give up\"},{\"value\":\"19\",\"name\":\"TakeUp\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":19,\"doc\":\"TakeUp\"},{\"value\":\"2\",\"name\":\"TradeUnwind\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Trade unwind\"},{\"value\":\"20\",\"name\":\"AveragePricing\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":20,\"doc\":\"Average pricing\"},{\"value\":\"21\",\"name\":\"Reversal\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":21,\"doc\":\"Reversal\"},{\"value\":\"22\",\"name\":\"AllocTrdPosting\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":22,\"doc\":\"Allocation/Trade posting\"},{\"value\":\"23\",\"name\":\"Cascade\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":23,\"doc\":\"Cascade\"},{\"value\":\"24\",\"name\":\"Delivery\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":24,\"doc\":\"Delivery\"},{\"value\":\"25\",\"name\":\"OptionAsgn\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":25,\"doc\":\"Option assignment\"},{\"value\":\"26\",\"name\":\"Expiration\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":26,\"doc\":\"Expiration\"},{\"value\":\"27\",\"name\":\"Maturity\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":27,\"doc\":\"Maturity\"},{\"value\":\"28\",\"name\":\"EqualPosAdj\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":28,\"doc\":\"Equal position adjustment\"},{\"value\":\"29\",\"name\":\"UnequalPosAdj\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":29,\"doc\":\"Unequal position adjustment\"},{\"value\":\"3\",\"name\":\"PartialTradeUnwind\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Partial trade unwind\"},{\"value\":\"30\",\"name\":\"Correction\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":30,\"doc\":\"Correction\"},{\"value\":\"31\",\"name\":\"EarlyTermination\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":31,\"doc\":\"Early termination\"},{\"value\":\"32\",\"name\":\"Rerate\",\"since\":\"5.0SP2\",\"ep\":258,\"sort\":32,\"doc\":\"Rerate\"},{\"value\":\"4\",\"name\":\"Exercise\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exercise\"},{\"value\":\"5\",\"name\":\"Netting\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Compression/Netting\"},{\"value\":\"6\",\"name\":\"FullNetting\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Full netting\"},{\"value\":\"7\",\"name\":\"PartialNetting\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Partial netting\"},{\"value\":\"8\",\"name\":\"Amendment\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Amendment\"},{\"value\":\"9\",\"name\":\"Increase\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Increase\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":99,\"doc\":\"Other price-forming continuation data\"}]}",
+      "fix:description": "Specifies the post-execution trade continuation or lifecycle event. Additional values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "1937"
+    }
+  },
+  {
+    "name": "assetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure.",
+      "fix:tag": "1938"
+    }
+  },
+  {
+    "name": "assetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "The subcategory description of the asset class.",
+      "fix:tag": "1939"
+    }
+  },
+  {
+    "name": "assettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in AssetSubClass(1939). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "1940"
+    }
+  },
+  {
+    "name": "swapclass",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SwapClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"BB\",\"name\":\"BroadBasedSecuritySwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Broad-based security swap\"},{\"value\":\"BS\",\"name\":\"BasisSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Basis swap\"},{\"value\":\"IX\",\"name\":\"IndexSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Index swap\"},{\"value\":\"SK\",\"name\":\"BasketSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Basket swap\"}]}",
+      "fix:description": "The classification or type of swap. Additional values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "1941"
+    }
+  },
+  {
+    "name": "nthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NthToDefault",
+      "fix:description": "The Nth reference obligation to default in a CDS reference basket. If specified without MthToDefault(1943) the default will trigger a CDS payout. If MthToDefault(1943) is also present then payout occurs between the Nth and Mth obligations to default.",
+      "fix:tag": "1942"
+    }
+  },
+  {
+    "name": "mthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MthToDefault",
+      "fix:description": "The Mth reference obligation to default in a CDS reference basket. When NthToDefault(1942) and MthToDefault(1943) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
+      "fix:tag": "1943"
+    }
+  },
+  {
+    "name": "settledentitymatrixsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettledEntityMatrixSource",
+      "fix:description": "Relevant settled entity matrix source.",
+      "fix:tag": "1944"
+    }
+  },
+  {
+    "name": "settledentitymatrixpublicationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettledEntityMatrixPublicationDate",
+      "fix:description": "The publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
+      "fix:tag": "1945"
+    }
+  },
+  {
+    "name": "coupontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CouponType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Zero\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero\"},{\"value\":\"1\",\"name\":\"FixedRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Fixed rate\"},{\"value\":\"2\",\"name\":\"FloatingRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Floating rate\"},{\"value\":\"3\",\"name\":\"Structured\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Structured\"}]}",
+      "fix:description": "Coupon type of the bond.",
+      "fix:tag": "1946"
+    }
+  },
+  {
+    "name": "totalissuedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalIssuedAmount",
+      "fix:description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued securities.",
+      "fix:tag": "1947"
+    }
+  },
+  {
+    "name": "couponfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CouponFrequencyPeriod",
+      "fix:description": "Time unit multiplier for the frequency of the bond's coupon payment.",
+      "fix:tag": "1948"
+    }
+  },
+  {
+    "name": "couponfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CouponFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "fix:tag": "1949"
+    }
+  },
+  {
+    "name": "coupondaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CouponDayCount",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "The day count convention used in interest calculations for a bond or an interest bearing security. Absence of this field for a bond or an interest bearing security transaction implies a \"flat\" trade, i.e. no accrued interest determined at time of the transaction.",
+      "fix:tag": "1950"
+    }
+  },
+  {
+    "name": "convertiblebondequityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ConvertibleBondEquityID",
+      "fix:description": "Identifies the equity in which a convertible bond can be converted to.",
+      "fix:tag": "1951"
+    }
+  },
+  {
+    "name": "convertiblebondequityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ConvertibleBondEquityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies class or source of the ConvertibleBondEquityID(1951) value.",
+      "fix:tag": "1952"
+    }
+  },
+  {
+    "name": "contractpricerefmonth",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ContractPriceRefMonth",
+      "fix:description": "Reference month if there is no applicable MaturityMonthYear(200) value for the contract or security.",
+      "fix:tag": "1953"
+    }
+  },
+  {
+    "name": "lienseniority",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LienSeniority",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unknown\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unknown\"},{\"value\":\"1\",\"name\":\"FirstLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"First lien\"},{\"value\":\"2\",\"name\":\"SecondLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Second lien\"},{\"value\":\"3\",\"name\":\"ThirdLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Third lien\"}]}",
+      "fix:description": "Indicates the seniority level of the lien in a loan.",
+      "fix:tag": "1954"
+    }
+  },
+  {
+    "name": "loanfacility",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LoanFacility",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bridge loan\"},{\"value\":\"1\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Letter of credit\"},{\"value\":\"2\",\"name\":\"RevolvingLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Revolving loan\"},{\"value\":\"3\",\"name\":\"SwinglineFunding\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Swingline funding\"},{\"value\":\"4\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Term loan\"},{\"value\":\"5\",\"name\":\"TradeClaim\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Trade claim\"}]}",
+      "fix:description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
+      "fix:tag": "1955"
+    }
+  },
+  {
+    "name": "referenceentitytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ReferenceEntityType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Asian\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Asian\"},{\"value\":\"10\",\"name\":\"WesternEuropeanInsurance\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Western European insurance\"},{\"value\":\"2\",\"name\":\"AustralianNewZealand\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Australian and New Zealand\"},{\"value\":\"3\",\"name\":\"EuropeanEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"European emerging markets\"},{\"value\":\"4\",\"name\":\"Japanese\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Japanese\"},{\"value\":\"5\",\"name\":\"NorthAmericanHighYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"North American high yield\"},{\"value\":\"6\",\"name\":\"NorthAmericanInsurance\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"North American insurance\"},{\"value\":\"7\",\"name\":\"NorthAmericanInvestmentGrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"North American investment grade\"},{\"value\":\"8\",\"name\":\"Singaporean\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Singaporean\"},{\"value\":\"9\",\"name\":\"WesternEuropean\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Western European\"}]}",
+      "fix:description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
+      "fix:tag": "1956"
+    }
+  },
+  {
+    "name": "indexseries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndexSeries",
+      "fix:description": "The series identifier of a credit default swap index.",
+      "fix:tag": "1957"
+    }
+  },
+  {
+    "name": "indexannexversion",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndexAnnexVersion",
+      "fix:description": "The version of a credit default swap index annex.",
+      "fix:tag": "1958"
+    }
+  },
+  {
+    "name": "indexannexdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndexAnnexDate",
+      "fix:description": "The date of a credit default swap index series annex.",
+      "fix:tag": "1959"
+    }
+  },
+  {
+    "name": "indexannexsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IndexAnnexSource",
+      "fix:description": "The source of a credit default swap series annex.",
+      "fix:tag": "1960"
+    }
+  },
+  {
+    "name": "agreementversion",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AgreementVersion",
+      "fix:description": "The version of the master agreement",
+      "fix:tag": "1961"
+    }
+  },
+  {
+    "name": "masterconfirmationdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MasterConfirmationDesc",
+      "fix:description": "The type of master confirmation executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-type for values.",
+      "fix:tag": "1962"
+    }
+  },
+  {
+    "name": "masterconfirmationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MasterConfirmationDate",
+      "fix:description": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties.",
+      "fix:tag": "1963"
+    }
+  },
+  {
+    "name": "masterconfirmationannexdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MasterConfirmationAnnexDesc",
+      "fix:description": "The type of master confirmation annex executed between the parties. See https://fpml.org/coding-scheme/master-confirmation-annex-type for values.",
+      "fix:tag": "1964"
+    }
+  },
+  {
+    "name": "masterconfirmationannexdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MasterConfirmationAnnexDate",
+      "fix:description": "The date that an annex to the master confirmation was executed between the parties.",
+      "fix:tag": "1965"
+    }
+  },
+  {
+    "name": "brokerconfirmationdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BrokerConfirmationDesc",
+      "fix:description": "Describes the type of broker confirmation executed between the parites. Can be used as an alterative to MasterConfirmationDesc(1962). See https://fpml.org/coding-scheme/broker-confirmation-type for values.",
+      "fix:tag": "1966"
+    }
+  },
+  {
+    "name": "creditsupportagreementdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CreditSupportAgreementDesc",
+      "fix:description": "The type of ISDA Credit Support Agreement. See https://fpml.org/coding-scheme/credit-support-agreement-type for values.",
+      "fix:tag": "1967"
+    }
+  },
+  {
+    "name": "creditsupportagreementdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CreditSupportAgreementDate",
+      "fix:description": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties.",
+      "fix:tag": "1968"
+    }
+  },
+  {
+    "name": "creditsupportagreementid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CreditSupportAgreementID",
+      "fix:description": "A common reference or unique identifier to identify the ISDA Credit Support Agreement executed between the parties.",
+      "fix:tag": "1969"
+    }
+  },
+  {
+    "name": "governinglaw",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "GoverningLaw",
+      "fix:description": "Identification of the law governing the transaction. See https://fpml.org/coding-scheme/governing-law for values.",
+      "fix:tag": "1970"
+    }
+  },
+  {
+    "name": "sideregulatorytradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryTradeID",
+      "fix:description": "Trade identifier required by government regulators or other regulatory organziations for regulatory reporting purposes. For example, unique swap identifier (USI) as required by the U.S. Commodity Futures Trading Commission.",
+      "fix:tag": "1972"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryTradeIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"UniqueTransactionIdentifier\",\"ep\":275,\"sort\":1,\"doc\":\"Unique Transaction Identifier (ISO 23897)\"}]}",
+      "fix:description": "Identifies the reporting entity that originated the value in RegulatoryTradeID(1903). The reporting entity identifier may be assigned by a regulator or from a supported standard identifier source scheme.",
+      "fix:tag": "1973"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryTradeIDEvent",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"InitialBlockTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Initial block trade\"},{\"value\":\"1\",\"name\":\"Allocation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Allocation\"},{\"value\":\"2\",\"name\":\"Clearing\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Clearing\"},{\"value\":\"3\",\"name\":\"Compression\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Compression\"},{\"value\":\"4\",\"name\":\"Novation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Novation\"},{\"value\":\"5\",\"name\":\"Termination\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Termination\"},{\"value\":\"6\",\"name\":\"PostTrdVal\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Post-trade valuation\"}]}",
+      "fix:description": "Identifies the event which caused origination of the identifier in SideRegulatoryTradeID(1972). When more than one event is the cause, use the higher enumeration value. For example, if the identifier is originated due to an allocated trade which was cleared and reported, use the enumeration value 2 (Clearing).",
+      "fix:tag": "1974"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryTradeIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Current\"},{\"value\":\"1\",\"name\":\"Previous\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Previous\"},{\"value\":\"2\",\"name\":\"Block\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Block\"},{\"value\":\"3\",\"name\":\"Related\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Related\"},{\"value\":\"4\",\"name\":\"ClearedBlockTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":4,\"doc\":\"Cleared block trade\"},{\"value\":\"5\",\"name\":\"TradingVenueTransactionIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Trading venue transaction identifier\"},{\"value\":\"6\",\"name\":\"ReportTrackingNumber\",\"ep\":284,\"sort\":6,\"doc\":\"Report tracking number\"}]}",
+      "fix:description": "Specifies the type of trade identifier provided in SideRegulatoryTradeID(1972), within the context of the hierarchy of trade events.",
+      "fix:tag": "1975"
+    }
+  },
+  {
+    "name": "secondaryassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryAssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "fix:tag": "1977"
+    }
+  },
+  {
+    "name": "secondaryassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryAssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "An indication of the general description of the asset class.",
+      "fix:tag": "1978"
+    }
+  },
+  {
+    "name": "secondaryassettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryAssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in SecondaryAssetSubClass(1978). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "1979"
+    }
+  },
+  {
+    "name": "blocktrdallocindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BlockTrdAllocIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BlockToBeAllocated\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Block to be allocated\"},{\"value\":\"1\",\"name\":\"BlockNotToBeAllocated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Block not to be allocated\"},{\"value\":\"2\",\"name\":\"AllocatedTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Allocated trade\"}]}",
+      "fix:description": "Indication that a block trade will be allocated.",
+      "fix:tag": "1980"
+    }
+  },
+  {
+    "name": "underlyingeventtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Put\",\"since\":\"4.4\",\"doc\":\"Put\"},{\"value\":\"10\",\"name\":\"SwapRollDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":9,\"doc\":\"Swap roll date\"},{\"value\":\"11\",\"name\":\"SwapNextStartDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":10,\"doc\":\"Swap next start date\"},{\"value\":\"12\",\"name\":\"SwapNextRollDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":11,\"doc\":\"Swap next roll date\"},{\"value\":\"13\",\"name\":\"FirstDeliveryDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":12,\"doc\":\"First delivery date\"},{\"value\":\"14\",\"name\":\"LastDeliveryDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":13,\"doc\":\"Last delivery date\"},{\"value\":\"15\",\"name\":\"InitialInventoryDueDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":14,\"doc\":\"Initial inventory due date\"},{\"value\":\"16\",\"name\":\"FinalInventoryDueDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":15,\"doc\":\"Final inventory due date\"},{\"value\":\"17\",\"name\":\"FirstIntentDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":16,\"doc\":\"First intent date\"},{\"value\":\"18\",\"name\":\"LastIntentDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":17,\"doc\":\"Last intent date\"},{\"value\":\"19\",\"name\":\"PositionRemovalDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":18,\"doc\":\"Position removal date\"},{\"value\":\"2\",\"name\":\"Call\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Call\"},{\"value\":\"20\",\"name\":\"MinimumNotice\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":19,\"doc\":\"Minimum notice\"},{\"value\":\"21\",\"name\":\"DeliveryStartTime\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":20,\"doc\":\"Delivery start time\"},{\"value\":\"22\",\"name\":\"DeliveryEndTime\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":21,\"doc\":\"Delivery end time\"},{\"value\":\"23\",\"name\":\"FirstNoticeDate\",\"since\":\"5.0SP2\",\"ep\":138,\"sort\":22,\"doc\":\"First notice date\"},{\"value\":\"24\",\"name\":\"LastNoticeDate\",\"since\":\"5.0SP2\",\"ep\":138,\"sort\":23,\"doc\":\"Last notice date\"},{\"value\":\"25\",\"name\":\"FirstExerciseDate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"First exercise date\"},{\"value\":\"26\",\"name\":\"RedemptionDate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"Redemption date\"},{\"value\":\"27\",\"name\":\"TrdCntntnEfctvDt\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":26,\"doc\":\"Trade continuation effective date\"},{\"value\":\"28\",\"name\":\"FrontMonth\",\"ep\":308,\"sort\":27,\"doc\":\"Front month\"},{\"value\":\"29\",\"name\":\"LeadMonth\",\"ep\":308,\"sort\":28,\"doc\":\"Lead month\"},{\"value\":\"3\",\"name\":\"Tender\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Tender\"},{\"value\":\"4\",\"name\":\"SinkingFundCall\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Sinking fund call\"},{\"value\":\"5\",\"name\":\"Activation\",\"since\":\"4.4\",\"ep\":8,\"sort\":4,\"doc\":\"Activation\"},{\"value\":\"6\",\"name\":\"Inactiviation\",\"since\":\"4.4\",\"ep\":8,\"sort\":5,\"doc\":\"Inactivation\"},{\"value\":\"7\",\"name\":\"LastEligibleTradeDate\",\"since\":\"5.0\",\"ep\":42,\"sort\":6,\"doc\":\"Last eligible trade date\"},{\"value\":\"8\",\"name\":\"SwapStartDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":7,\"doc\":\"Swap start date\"},{\"value\":\"9\",\"name\":\"SwapEndDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":8,\"doc\":\"Swap end date\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Other\"}]}",
+      "fix:description": "Code to represent the type of event.",
+      "fix:tag": "1982"
+    }
+  },
+  {
+    "name": "underlyingeventdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventDate",
+      "fix:description": "The date of the event.",
+      "fix:tag": "1983"
+    }
+  },
+  {
+    "name": "underlyingeventtime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventTime",
+      "fix:description": "The time of the event. To be used in combination with UnderlyingEventDate(1983).",
+      "fix:tag": "1984"
+    }
+  },
+  {
+    "name": "underlyingeventtimeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventTimeUnit",
+      "fix:description": "Time unit associated with the event.",
+      "fix:tag": "1985"
+    }
+  },
+  {
+    "name": "underlyingeventtimeperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventTimePeriod",
+      "fix:description": "Time unit multiplier for the event.",
+      "fix:tag": "1986"
+    }
+  },
+  {
+    "name": "underlyingeventpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventPx",
+      "fix:description": "Predetermined price of issue at event, if applicable.",
+      "fix:tag": "1987"
+    }
+  },
+  {
+    "name": "underlyingconstituentweight",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingConstituentWeight",
+      "fix:description": "For a basket, or pool, describes the weight of each of the constituents within the basket. If not provided, it is assumed to be equal weighted.",
+      "fix:tag": "1988"
+    }
+  },
+  {
+    "name": "underlyingcoupontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCouponType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Zero\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero\"},{\"value\":\"1\",\"name\":\"FixedRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Fixed rate\"},{\"value\":\"2\",\"name\":\"FloatingRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Floating rate\"},{\"value\":\"3\",\"name\":\"Structured\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Structured\"}]}",
+      "fix:description": "Specifies the coupon type of the underlying bond.",
+      "fix:tag": "1989"
+    }
+  },
+  {
+    "name": "underlyingtotalissuedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingTotalIssuedAmount",
+      "fix:description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued security.",
+      "fix:tag": "1990"
+    }
+  },
+  {
+    "name": "underlyingcouponfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCouponFrequencyPeriod",
+      "fix:description": "Time unit multiplier for the frequency of the bond's coupon payment.",
+      "fix:tag": "1991"
+    }
+  },
+  {
+    "name": "underlyingcouponfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCouponFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "fix:tag": "1992"
+    }
+  },
+  {
+    "name": "underlyingcoupondaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCouponDayCount",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "fix:tag": "1993"
+    }
+  },
+  {
+    "name": "underlyingobligationid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingObligationID",
+      "fix:description": "For a CDS basket or pool identifies the reference obligation.",
+      "fix:tag": "1994"
+    }
+  },
+  {
+    "name": "underlyingobligationidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingObligationIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies the source scheme of the UnderlyingObligationID(1994).",
+      "fix:tag": "1995"
+    }
+  },
+  {
+    "name": "underlyingequityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEquityID",
+      "fix:description": "Specifies the equity in which a convertible bond can be converted.",
+      "fix:tag": "1996"
+    }
+  },
+  {
+    "name": "underlyingequityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEquityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies the source of the UnderlyingEquityID(1996).",
+      "fix:tag": "1997"
+    }
+  },
+  {
+    "name": "underlyinglienseniority",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingLienSeniority",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unknown\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unknown\"},{\"value\":\"1\",\"name\":\"FirstLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"First lien\"},{\"value\":\"2\",\"name\":\"SecondLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Second lien\"},{\"value\":\"3\",\"name\":\"ThirdLien\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Third lien\"}]}",
+      "fix:description": "Indicates the seniority level of the lien in a loan.",
+      "fix:tag": "1998"
+    }
+  },
+  {
+    "name": "underlyingloanfacility",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingLoanFacility",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bridge loan\"},{\"value\":\"1\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Letter of credit\"},{\"value\":\"2\",\"name\":\"RevolvingLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Revolving loan\"},{\"value\":\"3\",\"name\":\"SwinglineFunding\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Swingline funding\"},{\"value\":\"4\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Term loan\"},{\"value\":\"5\",\"name\":\"TradeClaim\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Trade claim\"}]}",
+      "fix:description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
+      "fix:tag": "1999"
+    }
+  }
+]

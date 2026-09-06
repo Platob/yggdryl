@@ -1,0 +1,202 @@
+[
+  {
+    "name": "nolegpaymentstreamcompoundingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamcompoundingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42406"
+              }
+            },
+            {
+              "name": "legpaymentstreamcompoundingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42407"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamCompoundingDates",
+      "fix:description": "Number of dates in the repeating group.",
+      "fix:tag": "42405"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamcompoundingdatesbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamcompoundingdatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42420"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamCompoundingDatesBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "42419"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamfixingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamfixingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42460"
+              }
+            },
+            {
+              "name": "legpaymentstreamfixingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42461"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamFixingDates",
+      "fix:description": "Number of fixing dates in the repeating group.",
+      "fix:tag": "42459"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamformulas",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamformulalength",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43110"
+              }
+            },
+            {
+              "name": "legpaymentstreamformula",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42486"
+              }
+            },
+            {
+              "name": "legpaymentstreamformuladesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42487"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamFormulas",
+      "fix:description": "Number of formulas in the repeating group.",
+      "fix:tag": "42485"
+    }
+  },
+  {
+    "name": "nolegpaymentstubenddatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstubenddatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42496"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStubEndDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "42495"
+    }
+  }
+]

@@ -1,0 +1,1168 @@
+[
+  {
+    "name": "underlyingreferenceentitytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingReferenceEntityType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Asian\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Asian\"},{\"value\":\"10\",\"name\":\"WesternEuropeanInsurance\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Western European insurance\"},{\"value\":\"2\",\"name\":\"AustralianNewZealand\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Australian and New Zealand\"},{\"value\":\"3\",\"name\":\"EuropeanEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"European emerging markets\"},{\"value\":\"4\",\"name\":\"Japanese\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Japanese\"},{\"value\":\"5\",\"name\":\"NorthAmericanHighYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"North American high yield\"},{\"value\":\"6\",\"name\":\"NorthAmericanInsurance\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"North American insurance\"},{\"value\":\"7\",\"name\":\"NorthAmericanInvestmentGrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"North American investment grade\"},{\"value\":\"8\",\"name\":\"Singaporean\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Singaporean\"},{\"value\":\"9\",\"name\":\"WesternEuropean\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Western European\"}]}",
+      "fix:description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
+      "fix:tag": "2000"
+    }
+  },
+  {
+    "name": "strikeindexspread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StrikeIndexSpread",
+      "fix:description": "Specifies the strike price offset from the named index.",
+      "fix:tag": "2001"
+    }
+  },
+  {
+    "name": "valuationsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ValuationSource",
+      "fix:description": "Specifies the source of trade valuation data.",
+      "fix:tag": "2002"
+    }
+  },
+  {
+    "name": "underlyingindexseries",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingIndexSeries",
+      "fix:description": "The series identifier of a credit default swap index.",
+      "fix:tag": "2003"
+    }
+  },
+  {
+    "name": "underlyingindexannexversion",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingIndexAnnexVersion",
+      "fix:description": "The version identifier of a credit default swap index annex.",
+      "fix:tag": "2004"
+    }
+  },
+  {
+    "name": "underlyingindexannexdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingIndexAnnexDate",
+      "fix:description": "The date of a credit default swap index series annex.",
+      "fix:tag": "2005"
+    }
+  },
+  {
+    "name": "underlyingindexannexsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingIndexAnnexSource",
+      "fix:description": "The source of a credit default swap index series annex.",
+      "fix:tag": "2006"
+    }
+  },
+  {
+    "name": "underlyingproductcomplex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingProductComplex",
+      "fix:description": "Identifies an entire suite of products for a given market. In Futures this may be \"interest rates\", \"agricultural\", \"equity indexes\", etc",
+      "fix:tag": "2007"
+    }
+  },
+  {
+    "name": "underlyingsecuritygroup",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSecurityGroup",
+      "fix:description": "An exchange specific name assigned to a group of related securities which may be concurrently affected by market events and actions.",
+      "fix:tag": "2008"
+    }
+  },
+  {
+    "name": "underlyingsettleonopenflag",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSettleOnOpenFlag",
+      "fix:description": "Indicator to determine if Instrument is Settle on Open.",
+      "fix:tag": "2009"
+    }
+  },
+  {
+    "name": "underlyingassignmentmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssignmentMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"P\",\"name\":\"ProRata\",\"since\":\"4.4\",\"ep\":4,\"sort\":1,\"doc\":\"Pro rata\"},{\"value\":\"R\",\"name\":\"Random\",\"since\":\"4.4\",\"ep\":4,\"sort\":2,\"doc\":\"Random\"}]}",
+      "fix:description": "Method under which assignment was conducted",
+      "fix:tag": "2010"
+    }
+  },
+  {
+    "name": "underlyingsecuritystatus",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSecurityStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Active\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Active\"},{\"value\":\"10\",\"name\":\"Published\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":10,\"doc\":\"Published\"},{\"value\":\"11\",\"name\":\"PendingDeletion\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":11,\"doc\":\"Pending Deletion\"},{\"value\":\"2\",\"name\":\"Inactive\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Inactive\"},{\"value\":\"3\",\"name\":\"ActiveClosingOrdersOnly\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":3,\"doc\":\"Active, closing orders only\"},{\"value\":\"4\",\"name\":\"Expired\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":4,\"doc\":\"Expired\"},{\"value\":\"5\",\"name\":\"Delisted\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":5,\"doc\":\"Delisted\"},{\"value\":\"6\",\"name\":\"KnockedOut\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":6,\"doc\":\"Knocked-out\"},{\"value\":\"7\",\"name\":\"KnockOutRevoked\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":7,\"doc\":\"Knock-out revoked\"},{\"value\":\"8\",\"name\":\"PendingExpiry\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":8,\"doc\":\"Pending Expiry\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"5.0SP2\",\"ep\":195,\"sort\":9,\"doc\":\"Suspended\"}]}",
+      "fix:description": "Indicates the current state of the underlying instrument.",
+      "fix:tag": "2011"
+    }
+  },
+  {
+    "name": "underlyingobligationtype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingObligationType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bond\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond\"},{\"value\":\"1\",\"name\":\"ConvertibleBond\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Convertible bond\"},{\"value\":\"2\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Mortgage\"},{\"value\":\"3\",\"name\":\"Loan\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Loan\"}]}",
+      "fix:description": "Type of reference obligation for credit derivatives contracts.",
+      "fix:tag": "2012"
+    }
+  },
+  {
+    "name": "underlyingassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure.",
+      "fix:tag": "2013"
+    }
+  },
+  {
+    "name": "underlyingassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "An indication of the general description of the asset class.",
+      "fix:tag": "2014"
+    }
+  },
+  {
+    "name": "underlyingassettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in UnderlyingAssetSubClass(2082). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "2015"
+    }
+  },
+  {
+    "name": "underlyingswapclass",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSwapClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"BB\",\"name\":\"BroadBasedSecuritySwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Broad-based security swap\"},{\"value\":\"BS\",\"name\":\"BasisSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Basis swap\"},{\"value\":\"IX\",\"name\":\"IndexSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Index swap\"},{\"value\":\"SK\",\"name\":\"BasketSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Basket swap\"}]}",
+      "fix:description": "The type or classification of swap. Additional values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "2016"
+    }
+  },
+  {
+    "name": "underlyingnthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingNthToDefault",
+      "fix:description": "The Nth reference obligation to default in a CDS reference basket. If specified without UnderlyingMthToDefault(2018) the default will trigger a CDS payout. If UnderlyingMthToDefault(2018) is also present then payout occurs between the Nth and Mth obligations to default.",
+      "fix:tag": "2017"
+    }
+  },
+  {
+    "name": "underlyingmthtodefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingMthToDefault",
+      "fix:description": "The Mth reference obligation to default in a CDS reference basket. When UnderlyingNthToDefault(2017) and UnderlyingMthToDefault(2018) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
+      "fix:tag": "2018"
+    }
+  },
+  {
+    "name": "underlyingsettledentitymatrixsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSettledEntityMatrixSource",
+      "fix:description": "Relevant settled entity matrix source.",
+      "fix:tag": "2019"
+    }
+  },
+  {
+    "name": "underlyingsettledentitymatrixpublicationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSettledEntityMatrixPublicationDate",
+      "fix:description": "Specifies the publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
+      "fix:tag": "2020"
+    }
+  },
+  {
+    "name": "underlyingstrikemultiplier",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingStrikeMultiplier",
+      "fix:description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
+      "fix:tag": "2021"
+    }
+  },
+  {
+    "name": "underlyingstrikevalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingStrikeValue",
+      "fix:description": "Used for derivatives. The number of shares/units for the financial instrument involved in the option trade.",
+      "fix:tag": "2022"
+    }
+  },
+  {
+    "name": "underlyingstrikepricedeterminationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingStrikePriceDeterminationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FixedStrike\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Fixed strike (default if not specified)\"},{\"value\":\"2\",\"name\":\"StrikeSetAtExpiration\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Strike set at expiration to underlying or other value (lookback floating)\"},{\"value\":\"3\",\"name\":\"StrikeSetToAverageAcrossLife\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Strike set to average of underlying settlement price across the life of the option\"},{\"value\":\"4\",\"name\":\"StrikeSetToOptimalValue\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":4,\"doc\":\"Strike set to optimal value\"}]}",
+      "fix:description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
+      "fix:tag": "2023"
+    }
+  },
+  {
+    "name": "underlyingstrikepriceboundarymethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingStrikePriceBoundaryMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LessThan\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Less than underlying price is in-the-money (ITM)\"},{\"value\":\"2\",\"name\":\"LessThanOrEqual\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Less than or equal to the underlying price is in-the-money(ITM)\"},{\"value\":\"3\",\"name\":\"Equal\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Equal to the underlying price is in-the-money(ITM)\"},{\"value\":\"4\",\"name\":\"GreaterThanOrEqual\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":4,\"doc\":\"Greater than or equal to underlying price is in-the-money(ITM)\"},{\"value\":\"5\",\"name\":\"GreaterThan\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":5,\"doc\":\"Greater than underlying is in-the-money(ITM)\"}]}",
+      "fix:description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
+      "fix:tag": "2024"
+    }
+  },
+  {
+    "name": "underlyingstrikepriceboundaryprecision",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingStrikePriceBoundaryPrecision",
+      "fix:description": "Used in combination with StrikePriceBoundaryMethod(1479) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
+      "fix:tag": "2025"
+    }
+  },
+  {
+    "name": "underlyingminpriceincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingMinPriceIncrement",
+      "fix:description": "Minimum price increment for the instrument. Could also be used to represent tick value.",
+      "fix:tag": "2026"
+    }
+  },
+  {
+    "name": "underlyingminpriceincrementamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingMinPriceIncrementAmount",
+      "fix:description": "Minimum price increment amount associated with the UnderlyingMinPriceIncrement(2026). For listed derivatives, the value can be calculated by multiplying UnderlyingMinPriceIncrement(2026) by UnderlyingContractMultiplier(436).",
+      "fix:tag": "2027"
+    }
+  },
+  {
+    "name": "underlyingoptpayouttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingOptPayoutType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Vanilla\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Vanilla\"},{\"value\":\"2\",\"name\":\"Capped\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Capped\"},{\"value\":\"3\",\"name\":\"Binary\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Digital (Binary)\"},{\"value\":\"4\",\"name\":\"Asian\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":4,\"doc\":\"Asian\"},{\"value\":\"5\",\"name\":\"Barrier\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":5,\"doc\":\"Barrier\"},{\"value\":\"6\",\"name\":\"DigitalBarrier\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":6,\"doc\":\"Digital Barrier\"},{\"value\":\"7\",\"name\":\"Lookback\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":7,\"doc\":\"Lookback\"},{\"value\":\"8\",\"name\":\"OtherPathDependent\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":8,\"doc\":\"Other path dependent\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":238,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Indicates the type of valuation method or payout trigger for an in-the-money option.",
+      "fix:tag": "2028"
+    }
+  },
+  {
+    "name": "underlyingoptpayoutamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingOptPayoutAmount",
+      "fix:description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
+      "fix:tag": "2029"
+    }
+  },
+  {
+    "name": "underlyingpricequotemethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingPriceQuoteMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"INT\",\"name\":\"InterestRateIndex\",\"since\":\"5.0\",\"ep\":52,\"sort\":3,\"doc\":\"Interest rate Index\"},{\"value\":\"INX\",\"name\":\"Index\",\"since\":\"5.0\",\"ep\":52,\"sort\":2,\"doc\":\"Index\"},{\"value\":\"PCTPAR\",\"name\":\"PercentOfPar\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":4,\"doc\":\"Percent of Par\"},{\"value\":\"STD\",\"name\":\"Standard\",\"since\":\"5.0\",\"ep\":52,\"sort\":1,\"doc\":\"Standard, money per unit of a physical\"}]}",
+      "fix:description": "Method for price quotation.",
+      "fix:tag": "2030"
+    }
+  },
+  {
+    "name": "underlyingvaluationmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingValuationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"CDS\",\"name\":\"CDSStyleCollateralization\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":4,\"doc\":\"CDS style collateralization of market to market and coupon\"},{\"value\":\"CDSD\",\"name\":\"CDSInDeliveryUseRecoveryRateToCalculate\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":5,\"doc\":\"CDS in delivery - use recovery rate to calculate obligation\"},{\"value\":\"EQTY\",\"name\":\"PremiumStyle\",\"since\":\"5.0\",\"ep\":52,\"sort\":1,\"doc\":\"premium style\"},{\"value\":\"FUT\",\"name\":\"FuturesStyleMarkToMarket\",\"since\":\"5.0\",\"ep\":52,\"sort\":2,\"doc\":\"futures style mark-to-market\"},{\"value\":\"FUTDA\",\"name\":\"FuturesStyleWithAnAttachedCashAdjustment\",\"since\":\"5.0\",\"ep\":52,\"sort\":3,\"doc\":\"futures style with an attached cash adjustment\"}]}",
+      "fix:description": "Indicates type of valuation method used.",
+      "fix:tag": "2031"
+    }
+  },
+  {
+    "name": "underlyinglistmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingListMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PreListedOnly\",\"since\":\"5.0\",\"ep\":52,\"sort\":1,\"doc\":\"pre-listed only\"},{\"value\":\"1\",\"name\":\"UserRequested\",\"since\":\"5.0\",\"ep\":52,\"sort\":2,\"doc\":\"user requested\"}]}",
+      "fix:description": "Indicates whether the instruments are pre-listed only or can also be defined via user request.",
+      "fix:tag": "2032"
+    }
+  },
+  {
+    "name": "underlyingcapprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCapPrice",
+      "fix:description": "Used to express the ceiling price of a capped call.",
+      "fix:tag": "2033"
+    }
+  },
+  {
+    "name": "underlyingfloorprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingFloorPrice",
+      "fix:description": "Used to express the floor price of a capped put.",
+      "fix:tag": "2034"
+    }
+  },
+  {
+    "name": "underlyingflexibleindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingFlexibleIndicator",
+      "fix:description": "Used to indicate if a security has been defined as flexible according to \"non-standard\" means. Analog to CFICode Standard/Non-standard indicator.",
+      "fix:tag": "2035"
+    }
+  },
+  {
+    "name": "underlyingflexproducteligibilityindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingFlexProductEligibilityIndicator",
+      "fix:description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
+      "fix:tag": "2036"
+    }
+  },
+  {
+    "name": "underlyingpositionlimit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingPositionLimit",
+      "fix:description": "Position limit for the instrument.",
+      "fix:tag": "2037"
+    }
+  },
+  {
+    "name": "underlyingntpositionlimit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingNTPositionLimit",
+      "fix:description": "Position Limit in the near-term contract for a given exchange-traded product.",
+      "fix:tag": "2038"
+    }
+  },
+  {
+    "name": "underlyingpool",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingPool",
+      "fix:description": "Identifies the mortgage backed security (MBS) / asset backed security (ABS) pool.",
+      "fix:tag": "2039"
+    }
+  },
+  {
+    "name": "underlyingcontractsettlmonth",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingContractSettlMonth",
+      "fix:description": "Specifies when the contract (i.e. MBS/TBA) will settle. Must be present for MBS/TBA.",
+      "fix:tag": "2040"
+    }
+  },
+  {
+    "name": "underlyingdateddate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingDatedDate",
+      "fix:description": "If different from IssueDate()",
+      "fix:tag": "2041"
+    }
+  },
+  {
+    "name": "underlyinginterestaccrualdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInterestAccrualDate",
+      "fix:description": "If different from IssueDate and DatedDate",
+      "fix:tag": "2042"
+    }
+  },
+  {
+    "name": "underlyingshortsalerestriction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingShortSaleRestriction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRestrictions\",\"since\":\"5.0SP2\",\"ep\":120,\"doc\":\"No restrictions\"},{\"value\":\"1\",\"name\":\"SecurityNotShortable\",\"since\":\"5.0SP2\",\"ep\":120,\"sort\":1,\"doc\":\"Security is not shortable\"},{\"value\":\"2\",\"name\":\"SecurityNotShortableAtOrBelowBestBid\",\"since\":\"5.0SP2\",\"ep\":120,\"sort\":2,\"doc\":\"Security not shortable at or below the best bid\"},{\"value\":\"3\",\"name\":\"SecurityNotShortableWithoutPreBorrow\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":3,\"doc\":\"Security is not shortable without pre-borrow\"}]}",
+      "fix:description": "Indicates whether a restriction applies to short selling a security.",
+      "fix:tag": "2043"
+    }
+  },
+  {
+    "name": "underlyingrefticktableid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingRefTickTableID",
+      "fix:description": "Spread table code referred by the security or symbol.",
+      "fix:tag": "2044"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Capped\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Capped\"},{\"value\":\"10\",\"name\":\"OneTouch\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":10,\"doc\":\"One-touch\"},{\"value\":\"11\",\"name\":\"NoTouch\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":11,\"doc\":\"No-touch\"},{\"value\":\"12\",\"name\":\"DblOneTouch\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":12,\"doc\":\"Double one-touch\"},{\"value\":\"13\",\"name\":\"DblNoTouch\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"doc\":\"Double no-touch\"},{\"value\":\"14\",\"name\":\"FXComposite\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":14,\"doc\":\"Foreign exchange composite\"},{\"value\":\"15\",\"name\":\"FXQuanto\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":15,\"doc\":\"Foreign exchange Quanto\"},{\"value\":\"16\",\"name\":\"FXCrssCcy\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":16,\"doc\":\"Foreign exchange cross currency\"},{\"value\":\"17\",\"name\":\"StrkSpread\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":17,\"doc\":\"Strike spread\"},{\"value\":\"18\",\"name\":\"ClndrSpread\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":18,\"doc\":\"Calendar spread\"},{\"value\":\"19\",\"name\":\"PxObsvtn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"doc\":\"Price observation (Asian or Lookback)\"},{\"value\":\"2\",\"name\":\"Trigger\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Trigger\"},{\"value\":\"20\",\"name\":\"PassThrough\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":20,\"doc\":\"Pass-through\"},{\"value\":\"21\",\"name\":\"StrkSched\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":21,\"doc\":\"Strike schedule\"},{\"value\":\"22\",\"name\":\"EquityValuation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":22,\"doc\":\"Equity valuation\"},{\"value\":\"23\",\"name\":\"DividendValuation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":23,\"doc\":\"Dividend valuation\"},{\"value\":\"3\",\"name\":\"KnockInUp\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Knock-in up\"},{\"value\":\"4\",\"name\":\"KnockInDown\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":4,\"doc\":\"Knock-in down\"},{\"value\":\"5\",\"name\":\"KnockOutUp\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":5,\"doc\":\"Knock-out up\"},{\"value\":\"6\",\"name\":\"KnockOutDown\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":6,\"doc\":\"Knock-out down\"},{\"value\":\"7\",\"name\":\"Underlying\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":7,\"doc\":\"Underlying\"},{\"value\":\"8\",\"name\":\"ResetBarrier\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":8,\"doc\":\"Reset Barrier\"},{\"value\":\"9\",\"name\":\"RollingBarrier\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":9,\"doc\":\"Rolling Barrier\"}]}",
+      "fix:description": "Identifies the type of complex event.",
+      "fix:tag": "2046"
+    }
+  },
+  {
+    "name": "underlyingcomplexoptpayoutamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexOptPayoutAmount",
+      "fix:description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
+      "fix:tag": "2047"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventPrice",
+      "fix:description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the UnderlyingComplexEventType(2046).",
+      "fix:tag": "2048"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventpriceboundarymethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventPriceBoundaryMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LessThanComplexEventPrice\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Less than ComplexEventPrice(1486)\"},{\"value\":\"2\",\"name\":\"LessThanOrEqualToComplexEventPrice\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Less than or equal to ComplexEventPrice(1486)\"},{\"value\":\"3\",\"name\":\"EqualToComplexEventPrice\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Equal to ComplexEventPrice(1486)\"},{\"value\":\"4\",\"name\":\"GreaterThanOrEqualToComplexEventPrice\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":4,\"doc\":\"Greater than or equal to ComplexEventPrice(1486)\"},{\"value\":\"5\",\"name\":\"GreaterThanComplexEventPrice\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":5,\"doc\":\"Greater than ComplexEventPrice(1486)\"}]}",
+      "fix:description": "Specifies the boundary condition to be used for the event price relative to the UnderlyingComplexEventPrice(2048) at the point the complex event outcome takes effect as determined by the UnderlyingComplexEventPriceTimeType(2051).",
+      "fix:tag": "2049"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventpriceboundaryprecision",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventPriceBoundaryPrecision",
+      "fix:description": "Used in combination with UnderlyingComplexEventPriceBoundaryMethod(2049) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
+      "fix:tag": "2050"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventpricetimetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventPriceTimeType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Expiration\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"Expiration\"},{\"value\":\"2\",\"name\":\"Immediate\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Immediate (At Any Time)\"},{\"value\":\"3\",\"name\":\"SpecifiedDate\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":3,\"doc\":\"Specified Date/Time\"},{\"value\":\"4\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":4,\"doc\":\"Close\"},{\"value\":\"5\",\"name\":\"Open\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":5,\"doc\":\"Open\"},{\"value\":\"6\",\"name\":\"OfficialSettlPrice\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":6,\"doc\":\"Official settlement price\"},{\"value\":\"7\",\"name\":\"DerivativesClose\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":7,\"doc\":\"Derivatives close\"},{\"value\":\"8\",\"name\":\"AsSpecifiedMasterConfirmation\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":8,\"doc\":\"As specified in Master Confirmation\"}]}",
+      "fix:description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the UnderlyingComplexEventType(2046).",
+      "fix:tag": "2051"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventcondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"And\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":1,\"doc\":\"And\"},{\"value\":\"2\",\"name\":\"Or\",\"since\":\"5.0SP1\",\"ep\":92,\"sort\":2,\"doc\":\"Or\"}]}",
+      "fix:description": "Specifies the condition between complex events when more than one event is specified.",
+      "fix:tag": "2052"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventstartdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventStartDate",
+      "fix:description": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
+      "fix:tag": "2054"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventenddate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventEndDate",
+      "fix:description": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
+      "fix:tag": "2055"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventstarttime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventStartTime",
+      "fix:description": "The start time of the time range on which a complex event date is effective.",
+      "fix:tag": "2057"
+    }
+  },
+  {
+    "name": "underlyingcomplexeventendtime",
+    "dtype": {
+      "type": "time64",
+      "unit": "nanosecond"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingComplexEventEndTime",
+      "fix:description": "The end time of the time range on which a complex event date is effective.",
+      "fix:tag": "2058"
+    }
+  },
+  {
+    "name": "legeventtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Put\",\"since\":\"4.4\",\"doc\":\"Put\"},{\"value\":\"10\",\"name\":\"SwapRollDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":9,\"doc\":\"Swap roll date\"},{\"value\":\"11\",\"name\":\"SwapNextStartDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":10,\"doc\":\"Swap next start date\"},{\"value\":\"12\",\"name\":\"SwapNextRollDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":11,\"doc\":\"Swap next roll date\"},{\"value\":\"13\",\"name\":\"FirstDeliveryDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":12,\"doc\":\"First delivery date\"},{\"value\":\"14\",\"name\":\"LastDeliveryDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":13,\"doc\":\"Last delivery date\"},{\"value\":\"15\",\"name\":\"InitialInventoryDueDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":14,\"doc\":\"Initial inventory due date\"},{\"value\":\"16\",\"name\":\"FinalInventoryDueDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":15,\"doc\":\"Final inventory due date\"},{\"value\":\"17\",\"name\":\"FirstIntentDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":16,\"doc\":\"First intent date\"},{\"value\":\"18\",\"name\":\"LastIntentDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":17,\"doc\":\"Last intent date\"},{\"value\":\"19\",\"name\":\"PositionRemovalDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":18,\"doc\":\"Position removal date\"},{\"value\":\"2\",\"name\":\"Call\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Call\"},{\"value\":\"20\",\"name\":\"MinimumNotice\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":19,\"doc\":\"Minimum notice\"},{\"value\":\"21\",\"name\":\"DeliveryStartTime\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":20,\"doc\":\"Delivery start time\"},{\"value\":\"22\",\"name\":\"DeliveryEndTime\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":21,\"doc\":\"Delivery end time\"},{\"value\":\"23\",\"name\":\"FirstNoticeDate\",\"since\":\"5.0SP2\",\"ep\":138,\"sort\":22,\"doc\":\"First notice date\"},{\"value\":\"24\",\"name\":\"LastNoticeDate\",\"since\":\"5.0SP2\",\"ep\":138,\"sort\":23,\"doc\":\"Last notice date\"},{\"value\":\"25\",\"name\":\"FirstExerciseDate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"First exercise date\"},{\"value\":\"26\",\"name\":\"RedemptionDate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"Redemption date\"},{\"value\":\"27\",\"name\":\"TrdCntntnEfctvDt\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":26,\"doc\":\"Trade continuation effective date\"},{\"value\":\"28\",\"name\":\"FrontMonth\",\"ep\":308,\"sort\":27,\"doc\":\"Front month\"},{\"value\":\"29\",\"name\":\"LeadMonth\",\"ep\":308,\"sort\":28,\"doc\":\"Lead month\"},{\"value\":\"3\",\"name\":\"Tender\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Tender\"},{\"value\":\"4\",\"name\":\"SinkingFundCall\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Sinking fund call\"},{\"value\":\"5\",\"name\":\"Activation\",\"since\":\"4.4\",\"ep\":8,\"sort\":4,\"doc\":\"Activation\"},{\"value\":\"6\",\"name\":\"Inactiviation\",\"since\":\"4.4\",\"ep\":8,\"sort\":5,\"doc\":\"Inactivation\"},{\"value\":\"7\",\"name\":\"LastEligibleTradeDate\",\"since\":\"5.0\",\"ep\":42,\"sort\":6,\"doc\":\"Last eligible trade date\"},{\"value\":\"8\",\"name\":\"SwapStartDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":7,\"doc\":\"Swap start date\"},{\"value\":\"9\",\"name\":\"SwapEndDate\",\"since\":\"5.0\",\"ep\":52,\"sort\":8,\"doc\":\"Swap end date\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Other\"}]}",
+      "fix:description": "Code to represent the type of event.",
+      "fix:tag": "2060"
+    }
+  },
+  {
+    "name": "legeventdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventDate",
+      "fix:description": "The date of the event.",
+      "fix:tag": "2061"
+    }
+  },
+  {
+    "name": "legeventtime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventTime",
+      "fix:description": "Specific time of event. To be used in combination with LegEventDate(2061).",
+      "fix:tag": "2062"
+    }
+  },
+  {
+    "name": "legeventtimeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventTimeUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":132,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the event.",
+      "fix:tag": "2063"
+    }
+  },
+  {
+    "name": "legeventtimeperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventTimePeriod",
+      "fix:description": "Time unit multiplier for the event.",
+      "fix:tag": "2064"
+    }
+  },
+  {
+    "name": "legeventpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventPx",
+      "fix:description": "Predetermined price of issue at event, if applicable.",
+      "fix:tag": "2065"
+    }
+  },
+  {
+    "name": "legeventtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventText",
+      "fix:description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
+      "fix:tag": "2066"
+    }
+  },
+  {
+    "name": "legassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure.",
+      "fix:tag": "2067"
+    }
+  },
+  {
+    "name": "legassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "The general subcategory description of the asset class.",
+      "fix:tag": "2068"
+    }
+  },
+  {
+    "name": "legassettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in LegAssetSubClass(2068). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "2069"
+    }
+  },
+  {
+    "name": "legswapclass",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegSwapClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"BB\",\"name\":\"BroadBasedSecuritySwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Broad-based security swap\"},{\"value\":\"BS\",\"name\":\"BasisSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Basis swap\"},{\"value\":\"IX\",\"name\":\"IndexSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Index swap\"},{\"value\":\"SK\",\"name\":\"BasketSwap\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Basket swap\"}]}",
+      "fix:description": "Swap type.",
+      "fix:tag": "2070"
+    }
+  },
+  {
+    "name": "underlyingeventtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventText",
+      "fix:description": "Free form text to specify comments related to the event.",
+      "fix:tag": "2071"
+    }
+  },
+  {
+    "name": "encodedunderlyingeventtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedUnderlyingEventTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingEventText(2073) field.",
+      "fix:tag": "2072"
+    }
+  },
+  {
+    "name": "encodedunderlyingeventtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedUnderlyingEventText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the UnderlyingEventText(2071) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingEventText(2071) field.",
+      "fix:tag": "2073"
+    }
+  },
+  {
+    "name": "encodedlegeventtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegEventTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedLegEventText(2075) field.",
+      "fix:tag": "2074"
+    }
+  },
+  {
+    "name": "encodedlegeventtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegEventText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the LegEventText(2066) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegEventText(2066) field.",
+      "fix:tag": "2075"
+    }
+  },
+  {
+    "name": "legsecondaryassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegSecondaryAssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "fix:tag": "2077"
+    }
+  },
+  {
+    "name": "legsecondaryassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegSecondaryAssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "An indication of the general description of the asset class.",
+      "fix:tag": "2078"
+    }
+  },
+  {
+    "name": "legsecondaryassettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegSecondaryAssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in LegSecondaryAssetSubClass(2078). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "2079"
+    }
+  },
+  {
+    "name": "underlyingsecondaryassetclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSecondaryAssetClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Interest rate\"},{\"value\":\"10\",\"name\":\"LoanFacility\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":10,\"doc\":\"Loan facility\"},{\"value\":\"11\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":11,\"doc\":\"Index\"},{\"value\":\"2\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Currency\"},{\"value\":\"3\",\"name\":\"Credit\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Credit\"},{\"value\":\"4\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Equity\"},{\"value\":\"5\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Commodity\"},{\"value\":\"6\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":6,\"doc\":\"Other\"},{\"value\":\"7\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":7,\"doc\":\"Cash\"},{\"value\":\"8\",\"name\":\"Debt\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":8,\"doc\":\"Debt\"},{\"value\":\"9\",\"name\":\"Fund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":9,\"doc\":\"Fund\"}]}",
+      "fix:description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "fix:tag": "2081"
+    }
+  },
+  {
+    "name": "underlyingsecondaryassetsubclass",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSecondaryAssetSubClass",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"SingleCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"group\":\"Interest Rate\",\"doc\":\"Single currency\"},{\"value\":\"10\",\"name\":\"Preferred\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"group\":\"Equity\",\"doc\":\"Preferred\"},{\"value\":\"11\",\"name\":\"EquityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"group\":\"Equity\",\"doc\":\"Equity index\"},{\"value\":\"12\",\"name\":\"EquityBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"group\":\"Equity\",\"doc\":\"Equity basket\"},{\"value\":\"13\",\"name\":\"Metals\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"group\":\"Commodity\",\"doc\":\"Metals\"},{\"value\":\"14\",\"name\":\"Bullion\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"group\":\"Commodity\",\"doc\":\"Bullion\"},{\"value\":\"15\",\"name\":\"Energy\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"group\":\"Commodity\",\"doc\":\"Energy\"},{\"value\":\"16\",\"name\":\"CommodityIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"group\":\"Commodity\",\"doc\":\"Commodity index\"},{\"value\":\"17\",\"name\":\"Agricultural\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"group\":\"Commodity\",\"doc\":\"Agricultural\"},{\"value\":\"18\",\"name\":\"Environmental\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"group\":\"Commodity\",\"doc\":\"Environmental\"},{\"value\":\"19\",\"name\":\"Freight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"group\":\"Commodity\",\"doc\":\"Freight\"},{\"value\":\"2\",\"name\":\"CrossCurrency\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"group\":\"Interest Rate\",\"doc\":\"Cross currency\"},{\"value\":\"20\",\"name\":\"Government\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":20,\"group\":\"Debt\",\"doc\":\"Government\"},{\"value\":\"21\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":21,\"group\":\"Debt\",\"doc\":\"Agency\"},{\"value\":\"22\",\"name\":\"Corporate\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":22,\"group\":\"Debt\",\"doc\":\"Corporate\"},{\"value\":\"23\",\"name\":\"Financing\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":23,\"group\":\"Debt\",\"doc\":\"Financing\"},{\"value\":\"24\",\"name\":\"MoneyMarket\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":24,\"group\":\"Debt\",\"doc\":\"Money market\"},{\"value\":\"25\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"group\":\"Debt\",\"doc\":\"Mortgage\"},{\"value\":\"26\",\"name\":\"Municipal\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":26,\"group\":\"Debt\",\"doc\":\"Municipal\"},{\"value\":\"27\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":27,\"group\":\"Fund\",\"doc\":\"Mutual fund\"},{\"value\":\"28\",\"name\":\"CollectiveInvestmentVehicle\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":28,\"group\":\"Fund\",\"doc\":\"Collective investment vehicle\"},{\"value\":\"29\",\"name\":\"InvestmentProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":29,\"group\":\"Fund\",\"doc\":\"Investment program\"},{\"value\":\"3\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"group\":\"Currency\",\"doc\":\"Basket [for multi-currency]\"},{\"value\":\"30\",\"name\":\"SpecializedAccountProgram\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":30,\"group\":\"Fund\",\"doc\":\"Specialized account program\"},{\"value\":\"31\",\"name\":\"TermLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"group\":\"Loan Facility\",\"doc\":\"Term loan\"},{\"value\":\"32\",\"name\":\"BridgeLoan\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":32,\"group\":\"Loan Facility\",\"doc\":\"Bridge loan\"},{\"value\":\"33\",\"name\":\"LetterOfCredit\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":33,\"group\":\"Loan Facility\",\"doc\":\"Letter of credit\"},{\"value\":\"34\",\"name\":\"DividendIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":34,\"group\":\"Equity\",\"doc\":\"Dividend index\"},{\"value\":\"35\",\"name\":\"StockDividend\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":35,\"group\":\"Equity\",\"doc\":\"Stock dividend\"},{\"value\":\"36\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":36,\"group\":\"Equity\",\"doc\":\"Exchange traded fund\"},{\"value\":\"37\",\"name\":\"VolatilityIndex\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":37,\"group\":\"Equity\",\"doc\":\"Volatility index\"},{\"value\":\"38\",\"name\":\"FXCrossRates\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":38,\"group\":\"Currency\",\"doc\":\"FX cross rates\"},{\"value\":\"39\",\"name\":\"FXEmergingMarkets\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":39,\"group\":\"Currency\",\"doc\":\"FX emerging markets\"},{\"value\":\"4\",\"name\":\"SingleName\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"group\":\"Credit\",\"doc\":\"Single name\"},{\"value\":\"40\",\"name\":\"FXMajors\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":40,\"group\":\"Currency\",\"doc\":\"FX Majors\"},{\"value\":\"41\",\"name\":\"Fertilizer\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":41,\"group\":\"Commodity\",\"doc\":\"Fertilizer\"},{\"value\":\"42\",\"name\":\"IndustrialProduct\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":42,\"group\":\"Commodity\",\"doc\":\"Industrial product\"},{\"value\":\"43\",\"name\":\"Inflation\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":43,\"group\":\"Commodity\",\"doc\":\"Inflation\"},{\"value\":\"44\",\"name\":\"Paper\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":44,\"group\":\"Commodity\",\"doc\":\"Paper\"},{\"value\":\"45\",\"name\":\"Polypropylene\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":45,\"group\":\"Commodity\",\"doc\":\"Polypropylene\"},{\"value\":\"46\",\"name\":\"OfficialEconomicStatistics\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":46,\"group\":\"Commodity\",\"doc\":\"Official economic statistics\"},{\"value\":\"47\",\"name\":\"OtherC10\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":47,\"group\":\"Other\",\"doc\":\"Other C10\"},{\"value\":\"48\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":48,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"5\",\"name\":\"CreditIndex\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"group\":\"Credit\",\"doc\":\"Credit index\"},{\"value\":\"6\",\"name\":\"IndexTranche\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"group\":\"Credit\",\"doc\":\"Index tranche\"},{\"value\":\"7\",\"name\":\"CreditBasket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"Credit\",\"doc\":\"Credit basket\"},{\"value\":\"8\",\"name\":\"Exotic\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exotic\"},{\"value\":\"9\",\"name\":\"Common\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"group\":\"Equity\",\"doc\":\"Common\"}]}",
+      "fix:description": "An indication of the general description of the asset class.",
+      "fix:tag": "2082"
+    }
+  },
+  {
+    "name": "underlyingsecondaryassettype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSecondaryAssetType",
+      "fix:description": "Used to provide more specific description of the asset specified in UnderlyingSecondaryAssetSubClass(2082). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
+      "fix:tag": "2083"
+    }
+  },
+  {
+    "name": "previousclearingbusinessdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PreviousClearingBusinessDate",
+      "fix:description": "The date of the previous clearing business day.",
+      "fix:tag": "2084"
+    }
+  },
+  {
+    "name": "valuationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ValuationDate",
+      "fix:description": "The valuation date of the trade.",
+      "fix:tag": "2085"
+    }
+  },
+  {
+    "name": "valuationtime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ValuationTime",
+      "fix:description": "The valuation time of the trade.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"valuationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":162,\"name\":\"valuationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "2086"
+    }
+  },
+  {
+    "name": "valuationbusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ValuationBusinessCenter",
+      "fix:description": "Identifies the business center whose calendar is used for valuation, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "2087"
+    }
+  },
+  {
+    "name": "marginamtfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarginAmtFXRate",
+      "fix:description": "Foreign exchange rate used to compute the MarginAmt(1645) from the MarginAmtCcy(1646) and the Currency(15).",
+      "fix:tag": "2088"
+    }
+  },
+  {
+    "name": "marginamtfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarginAmtFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether or not MarginAmtFXRate(2088) should be multipled or divided.",
+      "fix:tag": "2089"
+    }
+  },
+  {
+    "name": "collateralfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralFXRate",
+      "fix:description": "Foreign exchange rate used to compute the CurrentCollateralAmount(1704) from the CollateralCurrency(1646) and the Currency(15).",
+      "fix:tag": "2090"
+    }
+  },
+  {
+    "name": "collateralfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether or not CollateralFXRate(2090) should be multipled or divided.",
+      "fix:tag": "2091"
+    }
+  },
+  {
+    "name": "collateralamountmarketsegmentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralAmountMarketSegmentID",
+      "fix:description": "Market segment associated with the collateral amount.",
+      "fix:tag": "2092"
+    }
+  },
+  {
+    "name": "collateralamountmarketid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralAmountMarketID",
+      "fix:description": "Market associated with the collateral amount.",
+      "fix:tag": "2093"
+    }
+  },
+  {
+    "name": "paycollectfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayCollectFXRate",
+      "fix:description": "Foreign exchange rate used to compute the PayAmount(1710) or CollectAmount(1711) from the PayCollectCurrency(1709) and the Currency(15).",
+      "fix:tag": "2094"
+    }
+  },
+  {
+    "name": "paycollectfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayCollectFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether or not PayCollectFXRate(2094) should be multipled or divided.",
+      "fix:tag": "2095"
+    }
+  },
+  {
+    "name": "posamtstreamdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PosAmtStreamDesc",
+      "fix:description": "Corresponds to the value in StreamDesc(40051) in the StreamGrp component.",
+      "fix:tag": "2096"
+    }
+  },
+  {
+    "name": "positionfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PositionFXRate",
+      "fix:description": "Foreign exchange rate used to compute the PosAmt(708) from the PositionCurrency(1055) and the Currency (15).",
+      "fix:tag": "2097"
+    }
+  },
+  {
+    "name": "positionfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PositionFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether or not PositionFXRate(2097) should be multipled or divided.",
+      "fix:tag": "2098"
+    }
+  },
+  {
+    "name": "posamtmarketsegmentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PosAmtMarketSegmentID",
+      "fix:description": "Market segment associated with the position amount.",
+      "fix:tag": "2099"
+    }
+  }
+]

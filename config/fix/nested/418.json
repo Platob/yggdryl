@@ -1,0 +1,524 @@
+[
+  {
+    "name": "nounderlyingstreamassetattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamassetattributetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41801"
+              }
+            },
+            {
+              "name": "underlyingstreamassetattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41802"
+              }
+            },
+            {
+              "name": "underlyingstreamassetattributelimit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41803"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreamAssetAttributes",
+      "fix:description": "Number of asset attribute entries in the group.",
+      "fix:tag": "41800"
+    }
+  },
+  {
+    "name": "nounderlyingdeliverystreamcycles",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdeliverystreamcycledesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41805"
+              }
+            },
+            {
+              "name": "encodedunderlyingdeliverystreamcycledesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41806"
+              }
+            },
+            {
+              "name": "encodedunderlyingdeliverystreamcycledesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41807"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingDeliveryStreamCycles",
+      "fix:description": "Number of delivery cycles in the repeating group.",
+      "fix:tag": "41804"
+    }
+  },
+  {
+    "name": "nounderlyingdeliverystreamcommoditysources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdeliverystreamcommoditysource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41809"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingDeliveryStreamCommoditySources",
+      "fix:description": "Number of commodity sources in the repeating group.",
+      "fix:tag": "41808"
+    }
+  },
+  {
+    "name": "nounderlyingoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingoptionexercisebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41821"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingOptionExerciseBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41820"
+    }
+  },
+  {
+    "name": "nounderlyingoptionexercisedates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingoptionexercisedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41842"
+              }
+            },
+            {
+              "name": "underlyingoptionexercisedatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41843"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingOptionExerciseDates",
+      "fix:description": "Number of dates in the repeating group.",
+      "fix:tag": "41841"
+    }
+  },
+  {
+    "name": "nounderlyingoptionexerciseexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingoptionexerciseexpirationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41845"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingOptionExerciseExpirationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41844"
+    }
+  },
+  {
+    "name": "nounderlyingoptionexerciseexpirationdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingoptionexerciseexpirationdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41857"
+              }
+            },
+            {
+              "name": "underlyingoptionexerciseexpirationdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41858"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingOptionExerciseExpirationDates",
+      "fix:description": "Number of fixed exercise expiration dates in the repeating group.",
+      "fix:tag": "41856"
+    }
+  },
+  {
+    "name": "nounderlyingmarketdisruptionevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingmarketdisruptionevent",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41865"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41338"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingMarketDisruptionEvents",
+      "fix:description": "Number of disruption events in the repeating group.",
+      "fix:tag": "41864"
+    }
+  },
+  {
+    "name": "nounderlyingmarketdisruptionfallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingmarketdisruptionfallbacktype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41867"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41339"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingMarketDisruptionFallbacks",
+      "fix:description": "Number of fallbacks in the repeating group.",
+      "fix:tag": "41866"
+    }
+  },
+  {
+    "name": "nounderlyingmarketdisruptionfallbackreferenceprices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingmarketdisruptionfallbackunderliertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41869"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackunderliersecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41870"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41871"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41872"
+              }
+            },
+            {
+              "name": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41873"
+              }
+            },
+            {
+              "name": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41874"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackopenunits",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41875"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackbasketcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41876"
+              }
+            },
+            {
+              "name": "underlyingmarketdisruptionfallbackbasketdivisor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41877"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingMarketDisruptionFallbackReferencePrices",
+      "fix:description": "Number of fallback reference securities in the repeating group.",
+      "fix:tag": "41868"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentschedulefixingdays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentschedulefixingdayofweek",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41879"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdaynumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41880"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentScheduleFixingDays",
+      "fix:description": "Number of fixing days in the repeating group.",
+      "fix:tag": "41878"
+    }
+  }
+]

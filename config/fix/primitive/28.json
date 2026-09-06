@@ -1,0 +1,1043 @@
+[
+  {
+    "name": "paydisputereason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayDisputeReason",
+      "fix:description": "Used to provide the reason for disputing a request or report.",
+      "fix:tag": "2800"
+    }
+  },
+  {
+    "name": "encodedreplacetext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedReplaceText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the ReplaceText(2805) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the ReplaceText(2805) field.",
+      "fix:tag": "2801"
+    }
+  },
+  {
+    "name": "encodedreplacetextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedReplaceTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedReplaceText(2801) field.",
+      "fix:tag": "2802"
+    }
+  },
+  {
+    "name": "payreportrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayReportRefID",
+      "fix:description": "Reference identifier of the PayManagementReport(35=EA). To be used with PayReportTransType(2804)=1 (Replace).",
+      "fix:tag": "2803"
+    }
+  },
+  {
+    "name": "payreporttranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayReportTransType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Replace\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Replace\"},{\"value\":\"2\",\"name\":\"Status\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":2,\"doc\":\"Status\"}]}",
+      "fix:description": "Identifies the message transaction type.",
+      "fix:tag": "2804"
+    }
+  },
+  {
+    "name": "replacetext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ReplaceText",
+      "fix:description": "Identifies the reason for amendment.",
+      "fix:tag": "2805"
+    }
+  },
+  {
+    "name": "payreportstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayReportStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"Disputed\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":3,\"doc\":\"Disputed\"}]}",
+      "fix:description": "Identifies status of the payment report.",
+      "fix:tag": "2806"
+    }
+  },
+  {
+    "name": "canceltext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CancelText",
+      "fix:description": "Identifies the reason for cancelation.",
+      "fix:tag": "2807"
+    }
+  },
+  {
+    "name": "encodedcanceltext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedCancelText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the CancelText(2807) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the CancelText(2807) field.",
+      "fix:tag": "2808"
+    }
+  },
+  {
+    "name": "encodedcanceltextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedCancelTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedCancelText(2808) field.",
+      "fix:tag": "2809"
+    }
+  },
+  {
+    "name": "payrequestrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayRequestRefID",
+      "fix:description": "Reference identifier of the PayManagementRequest(35=DY). To be used with PayRequestTransType(2811)=1 (Cancel).",
+      "fix:tag": "2810"
+    }
+  },
+  {
+    "name": "payrequesttranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayRequestTransType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Cancel\"}]}",
+      "fix:description": "Identifies the message transaction type.",
+      "fix:tag": "2811"
+    }
+  },
+  {
+    "name": "payrequestid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayRequestID",
+      "fix:description": "Unique ID of the PayManagementRequest(35=DY) message.",
+      "fix:tag": "2812"
+    }
+  },
+  {
+    "name": "payrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PayRequestStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"Disputed\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":3,\"doc\":\"Disputed\"}]}",
+      "fix:description": "Identifies status of the request being responded to.",
+      "fix:tag": "2813"
+    }
+  },
+  {
+    "name": "encodedposttradepaymentdesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedPostTradePaymentDesc",
+      "fix:description": "Encoded (non-ASCII characters) representation of the PostTradePaymentDesc(2820) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the PostTradePaymentDesc(2820) field.",
+      "fix:tag": "2814"
+    }
+  },
+  {
+    "name": "encodedposttradepaymentdesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedPostTradePaymentDescLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedPostTradePaymentDesc(2814) field.",
+      "fix:tag": "2815"
+    }
+  },
+  {
+    "name": "posttradepaymentaccount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentAccount",
+      "fix:description": "The cash account on the books of the receiver of the request or the sender of the report to be debited or credited.",
+      "fix:tag": "2816"
+    }
+  },
+  {
+    "name": "posttradepaymentamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentAmount",
+      "fix:description": "The payment amount for the specified PostTradePaymentType(2824).",
+      "fix:tag": "2817"
+    }
+  },
+  {
+    "name": "posttradepaymentcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentCurrency",
+      "fix:description": "Specifies the currency in which PostTradePaymentAmount(2817) is denominated.",
+      "fix:tag": "2818"
+    }
+  },
+  {
+    "name": "posttradepaymentdebitorcredit",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentDebitOrCredit",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"DebitPay\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"Debit / Pay\"},{\"value\":\"1\",\"name\":\"CreditReceive\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Credit / Receive\"}]}",
+      "fix:description": "Payment side of this individual payment from the requesting firm's perspective.",
+      "fix:tag": "2819"
+    }
+  },
+  {
+    "name": "posttradepaymentdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentDesc",
+      "fix:description": "A short descriptive name given to the payment, e.g. Premium, Upfront, etc. The description may be used as reference.",
+      "fix:tag": "2820"
+    }
+  },
+  {
+    "name": "posttradepaymentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentID",
+      "fix:description": "The identifier for the individual payment.",
+      "fix:tag": "2821"
+    }
+  },
+  {
+    "name": "posttradepaymentlinkid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentLinkID",
+      "fix:description": "Used to link a group of payments together, e.g. cross-currency payments associated with a swap.",
+      "fix:tag": "2822"
+    }
+  },
+  {
+    "name": "posttradepaymentstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":249,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Initiated\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":1,\"doc\":\"Initiated\"},{\"value\":\"2\",\"name\":\"Pending\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":2,\"doc\":\"Pending\"},{\"value\":\"3\",\"name\":\"Confirmed\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":3,\"doc\":\"Confirmed\"},{\"value\":\"4\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":249,\"sort\":4,\"doc\":\"Rejected\"}]}",
+      "fix:description": "Used to indicate the status of a post-trade payment.",
+      "fix:tag": "2823"
+    }
+  },
+  {
+    "name": "posttradepaymenttype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentType",
+      "fix:description": "Type of post-trade payment.",
+      "fix:tag": "2824"
+    }
+  },
+  {
+    "name": "posttradepaymentcalculationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentCalculationDate",
+      "fix:description": "The (actual) date the periodic payments calculations are made.",
+      "fix:tag": "2825"
+    }
+  },
+  {
+    "name": "posttradepaymentvaluedate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentValueDate",
+      "fix:description": "The adjusted (for holidays and other non-business days) payment date on which the payment is expected to settle.",
+      "fix:tag": "2826"
+    }
+  },
+  {
+    "name": "posttradepaymentfinalvaluedate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PostTradePaymentFinalValueDate",
+      "fix:description": "The actual or final payment date on which the payment was made.",
+      "fix:tag": "2827"
+    }
+  },
+  {
+    "name": "currentdisplayprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CurrentDisplayPrice",
+      "fix:description": "Price at which the order is currently displayed to the market. Can be used on order messages, e.g. NewOrderSingle(35=D), to provide the current displayed price of a parent order when splitting it into smaller child orders.",
+      "fix:tag": "2828"
+    }
+  },
+  {
+    "name": "duplicateclordidindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DuplicateClOrdIDIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"UniqueClOrdID\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":1,\"doc\":\"Unique ClOrdID(11)\"},{\"value\":\"Y\",\"name\":\"DuplicateClOrdID\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":2,\"doc\":\"Duplicate ClOrdID(11)\"}]}",
+      "fix:description": "Used to indicate that a ClOrdID(11) value is an intentional duplicate of a previously sent value. Allows to avoid the rejection of an order with OrdRejReason(103) = 6 (Duplicate Order).",
+      "fix:tag": "2829"
+    }
+  },
+  {
+    "name": "eventinitiatortype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EventInitiatorType",
+      "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"CustomerOrClient\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":12,\"doc\":\"Customer or client\"},{\"value\":\"E\",\"name\":\"ExchangeOrExecutionVenue\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":14,\"doc\":\"Exchange or execution venue\"},{\"value\":\"F\",\"name\":\"FirmOrBroker\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":15,\"doc\":\"Firm or broker\"}]}",
+      "fix:description": "Indicates the type of entity who initiated an event, e.g. modification or cancellation of an order or quote.",
+      "fix:tag": "2830"
+    }
+  },
+  {
+    "name": "nbboentrytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NBBOEntryType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0SP2\",\"ep\":253,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Offer\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":1,\"doc\":\"Offer\"},{\"value\":\"2\",\"name\":\"MidPrice\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":2,\"doc\":\"Mid-price\"}]}",
+      "fix:description": "Type of NBBO information.",
+      "fix:tag": "2831"
+    }
+  },
+  {
+    "name": "nbboprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NBBOPrice",
+      "fix:description": "Price related to NBBO. NBBOEntryType(2831) may be used to indicate entry type, e.g. bid or offer.",
+      "fix:tag": "2832"
+    }
+  },
+  {
+    "name": "nbboqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NBBOQty",
+      "fix:description": "Quantity related to NBBO. NBBOEntryType(2831) may be used to indicte entry type, e.g. bid or offer.",
+      "fix:tag": "2833"
+    }
+  },
+  {
+    "name": "nbbosource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NBBOSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":253,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"Direct\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":1,\"doc\":\"Direct\"},{\"value\":\"2\",\"name\":\"SIP\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":2,\"doc\":\"Securities Information Processor\"},{\"value\":\"3\",\"name\":\"Hybrid\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":3,\"doc\":\"Hybrid\"}]}",
+      "fix:description": "Source of NBBO information.",
+      "fix:tag": "2834"
+    }
+  },
+  {
+    "name": "orderoriginationfirmid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderOriginationFirmID",
+      "fix:description": "Identifier for the original owner of an order as part of the RelatedOrderGrp component. Use the Parties component with PartyRole(452) = 13 (Order Origination Firm) to identify the original owner of an individual order.",
+      "fix:tag": "2835"
+    }
+  },
+  {
+    "name": "relatedordertime",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedOrderTime",
+      "fix:description": "Timestamp for the assignment of a (unique) identifier to an order.",
+      "fix:tag": "2836"
+    }
+  },
+  {
+    "name": "singlequoteindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SingleQuoteIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"MultipleQuotesAllowed\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":1,\"doc\":\"Multiple quotes allowed\"},{\"value\":\"Y\",\"name\":\"OnlyOneQuoteAllowed\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":2,\"doc\":\"Only one quote allowed\"}]}",
+      "fix:description": "Used to indicate whether the quoting system allows only one quote to be active at a time for the quote issuer or market maker.",
+      "fix:tag": "2837"
+    }
+  },
+  {
+    "name": "currentworkingprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CurrentWorkingPrice",
+      "fix:description": "Current working price of the order relative to the state of the order.",
+      "fix:tag": "2838"
+    }
+  },
+  {
+    "name": "trdregtimestampmanualindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TrdRegTimestampManualIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"NotManuallyCaptured\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":1,\"doc\":\"Not manually captured\"},{\"value\":\"Y\",\"name\":\"ManuallyCaptured\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":2,\"doc\":\"Manually captured\"}]}",
+      "fix:description": "Indicates whether a given timestamp was manually captured.",
+      "fix:tag": "2839"
+    }
+  },
+  {
+    "name": "collateralreinvestmentrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralReinvestmentRate",
+      "fix:description": "Interest rate received for collateral reinvestment.",
+      "fix:tag": "2840"
+    }
+  },
+  {
+    "name": "underlyingrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingRefID",
+      "fix:description": "Identifies the underlying instrument the entity applies to by referencing the underlying instrument's UnderlyingID(2874).",
+      "fix:tag": "2841"
+    }
+  },
+  {
+    "name": "collateralreinvestmentamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralReinvestmentAmount",
+      "fix:description": "The cash amount of the specified re-investment type.",
+      "fix:tag": "2842"
+    }
+  },
+  {
+    "name": "collateralreinvestmentcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralReinvestmentCurrency",
+      "fix:description": "The currency denomination of the re-invested cash amount.",
+      "fix:tag": "2843"
+    }
+  },
+  {
+    "name": "collateralreinvestmenttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralReinvestmentType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MoneyMarketFund\",\"since\":\"5.0SP2\",\"ep\":254,\"doc\":\"Money market fund\"},{\"value\":\"1\",\"name\":\"OtherComingledPool\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":1,\"doc\":\"Other comingled pool\"},{\"value\":\"2\",\"name\":\"RepoMarket\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":2,\"doc\":\"Repo market\"},{\"value\":\"3\",\"name\":\"DirectPurchaseOfSecurities\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":3,\"doc\":\"Direct purchase of securities\"},{\"value\":\"4\",\"name\":\"OtherInvestments\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":4,\"doc\":\"Other investments\"}]}",
+      "fix:description": "Indicates the type of investment the cash collateral is re-invested in.",
+      "fix:tag": "2844"
+    }
+  },
+  {
+    "name": "fundingsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FundingSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Repo\",\"since\":\"5.0SP2\",\"ep\":254,\"doc\":\"Repurchase agreement\"},{\"value\":\"1\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":1,\"doc\":\"Cash\"},{\"value\":\"2\",\"name\":\"FreeCedits\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":2,\"doc\":\"Free credits\"},{\"value\":\"3\",\"name\":\"CustomerShortSales\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":3,\"doc\":\"Customer short sales\"},{\"value\":\"4\",\"name\":\"BrokerShortSales\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":4,\"doc\":\"Broker short sales\"},{\"value\":\"5\",\"name\":\"UnsecuredBorrowing\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":5,\"doc\":\"Unsecured borrowing\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Specifies the funding source used to finance margin or collateralized loan.",
+      "fix:tag": "2846"
+    }
+  },
+  {
+    "name": "fundingsourcecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FundingSourceCurrency",
+      "fix:description": "Currency denomination of the market value of the funding source.",
+      "fix:tag": "2847"
+    }
+  },
+  {
+    "name": "fundingsourcemarketvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FundingSourceMarketValue",
+      "fix:description": "Market value of the funding source.",
+      "fix:tag": "2848"
+    }
+  },
+  {
+    "name": "margindirection",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MarginDirection",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Posted\",\"since\":\"5.0SP2\",\"ep\":254,\"doc\":\"Posted\"},{\"value\":\"1\",\"name\":\"Received\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":1,\"doc\":\"Received\"}]}",
+      "fix:description": "Indicates whether the margin described is posted or received.",
+      "fix:tag": "2851"
+    }
+  },
+  {
+    "name": "sidecollateralreinvestmentrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideCollateralReinvestmentRate",
+      "fix:description": "Interest rate received for collateral reinvestment.",
+      "fix:tag": "2862"
+    }
+  },
+  {
+    "name": "sideunderlyingrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideUnderlyingRefID",
+      "fix:description": "Identifies the underlying instrument the entity applies to by referencing the underlying instrument's UnderlyingID(2874).",
+      "fix:tag": "2863"
+    }
+  },
+  {
+    "name": "sidecollateralreinvestmentamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideCollateralReinvestmentAmount",
+      "fix:description": "The cash amount of the specified re-investment type.",
+      "fix:tag": "2865"
+    }
+  },
+  {
+    "name": "sidecollateralreinvestmentcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideCollateralReinvestmentCurrency",
+      "fix:description": "The currency denomination of the re-invested cash amount.",
+      "fix:tag": "2866"
+    }
+  },
+  {
+    "name": "sidecollateralreinvestmenttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideCollateralReinvestmentType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MoneyMarketFund\",\"since\":\"5.0SP2\",\"ep\":254,\"doc\":\"Money market fund\"},{\"value\":\"1\",\"name\":\"OtherComingledPool\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":1,\"doc\":\"Other comingled pool\"},{\"value\":\"2\",\"name\":\"RepoMarket\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":2,\"doc\":\"Repo market\"},{\"value\":\"3\",\"name\":\"DirectPurchaseOfSecurities\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":3,\"doc\":\"Direct purchase of securities\"},{\"value\":\"4\",\"name\":\"OtherInvestments\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":4,\"doc\":\"Other investments\"}]}",
+      "fix:description": "Indicates the type of investment the cash collateral is re-invested in.",
+      "fix:tag": "2867"
+    }
+  },
+  {
+    "name": "collateralizationvaluedate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralizationValueDate",
+      "fix:description": "Date when the collateral is to be assessed or assigned.",
+      "fix:tag": "2868"
+    }
+  },
+  {
+    "name": "regulatoryreporttypebusinessdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryReportTypeBusinessDate",
+      "fix:description": "The business date on which the event identified in RegulatoryReportType(1934) took place.",
+      "fix:tag": "2869"
+    }
+  },
+  {
+    "name": "clearingportfolioid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ClearingPortfolioID",
+      "fix:description": "When the transaction is cleared and included in a portfolio of transactions this identifies the portfolio by its unique identifier.",
+      "fix:tag": "2870"
+    }
+  },
+  {
+    "name": "transactionattributetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransactionAttributeType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExclusiveArrangement\",\"since\":\"5.0SP2\",\"ep\":254,\"doc\":\"Exclusive arrangement\"},{\"value\":\"1\",\"name\":\"CollateralReuse\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":1,\"doc\":\"Collateral reuse\"},{\"value\":\"2\",\"name\":\"CollateralArrangementType\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":2,\"doc\":\"Collateral arrangement type\"}]}",
+      "fix:description": "Type of attribute(s) or characteristic(s) associated with the transaction.",
+      "fix:tag": "2872"
+    }
+  },
+  {
+    "name": "transactionattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TransactionAttributeValue",
+      "fix:description": "Value associated with the specificed TransactionAttributeType(2872).",
+      "fix:tag": "2873"
+    }
+  },
+  {
+    "name": "underlyingid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingID",
+      "fix:description": "Unique identifier for the underlying instrument within the context of a message.",
+      "fix:tag": "2874"
+    }
+  },
+  {
+    "name": "posamtprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PosAmtPrice",
+      "fix:description": "The price used to calculate the PosAmt(708).",
+      "fix:tag": "2876"
+    }
+  },
+  {
+    "name": "posamtpricetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PosAmtPriceType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"4.2\",\"doc\":\"Percentage (i.e. percent of par) (often called \\\"dollar price\\\" for fixed income)\"},{\"value\":\"10\",\"name\":\"FixedCabinetTradePrice\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Fixed cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"11\",\"name\":\"VariableCabinetTradePrice\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Variable cabinet trade price (primarily for listed futures and options)\"},{\"value\":\"12\",\"name\":\"PriceSpread\",\"since\":\"5.0SP2\",\"ep\":207,\"sort\":11,\"doc\":\"Price spread\"},{\"value\":\"13\",\"name\":\"ProductTicksInHalves\",\"since\":\"4.4\",\"ep\":19,\"sort\":12,\"doc\":\"Product ticks in halves\"},{\"value\":\"14\",\"name\":\"ProductTicksInFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"doc\":\"Product ticks in fourths\"},{\"value\":\"15\",\"name\":\"ProductTicksInEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"doc\":\"Product ticks in eighths\"},{\"value\":\"16\",\"name\":\"ProductTicksInSixteenths\",\"since\":\"4.4\",\"ep\":19,\"sort\":15,\"doc\":\"Product ticks in sixteenths\"},{\"value\":\"17\",\"name\":\"ProductTicksInThirtySeconds\",\"since\":\"4.4\",\"ep\":19,\"sort\":16,\"doc\":\"Product ticks in thirty-seconds\"},{\"value\":\"18\",\"name\":\"ProductTicksInSixtyFourths\",\"since\":\"4.4\",\"ep\":19,\"sort\":17,\"doc\":\"Product ticks in sixty-fourths\"},{\"value\":\"19\",\"name\":\"ProductTicksInOneTwentyEighths\",\"since\":\"4.4\",\"ep\":19,\"sort\":18,\"doc\":\"Product ticks in one-twenty-eighths\"},{\"value\":\"2\",\"name\":\"PerUnit\",\"since\":\"4.2\",\"sort\":1,\"doc\":\"Per unit (i.e. per share or contract)\"},{\"value\":\"20\",\"name\":\"NormalRateRepresentation\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":19,\"doc\":\"Normal rate representation (e.g. FX rate)\"},{\"value\":\"21\",\"name\":\"InverseRateRepresentation\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":20,\"doc\":\"Inverse rate representation (e.g. FX rate)\"},{\"value\":\"22\",\"name\":\"BasisPoints\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"Basis points\"},{\"value\":\"23\",\"name\":\"UpfrontPoints\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"Up front points\"},{\"value\":\"24\",\"name\":\"InterestRate\",\"since\":\"5.0SP2\",\"ep\":174,\"sort\":24,\"doc\":\"Interest rate\"},{\"value\":\"25\",\"name\":\"PercentageNotional\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":25,\"doc\":\"Percentage of notional\"},{\"value\":\"3\",\"name\":\"FixedAmount\",\"since\":\"4.2\",\"sort\":2,\"doc\":\"Fixed amount (absolute value)\"},{\"value\":\"4\",\"name\":\"Discount\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Discount - percentage points below par\"},{\"value\":\"5\",\"name\":\"Premium\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Premium - percentage points over par\"},{\"value\":\"6\",\"name\":\"Spread\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Spread (basis points spread)\"},{\"value\":\"7\",\"name\":\"TEDPrice\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"TED Price\"},{\"value\":\"8\",\"name\":\"TEDYield\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"TED Yield\"},{\"value\":\"9\",\"name\":\"Yield\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Yield\"}]}",
+      "fix:description": "Specifies the type of price for PosAmtPrice(2876).",
+      "fix:tag": "2877"
+    }
+  },
+  {
+    "name": "terminationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TerminationDate",
+      "fix:description": "The date of a contract's early termination or other post-trade event when the event is prior to the contract natural end or maturity not defined as part of the security's reference data or contractual terms/agreement.",
+      "fix:tag": "2878"
+    }
+  },
+  {
+    "name": "couponotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CouponOtherDayCount",
+      "fix:description": "The industry name of the day count convention not listed in CouponDayCount(1950).",
+      "fix:tag": "2879"
+    }
+  },
+  {
+    "name": "legcouponotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCouponOtherDayCount",
+      "fix:description": "The industry name of the day count convention not listed in LegCouponDayCount(2165).",
+      "fix:tag": "2880"
+    }
+  },
+  {
+    "name": "underlyingcouponotherdaycount",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCouponOtherDayCount",
+      "fix:description": "The industry name of the day count convention not listed in UnderlyingCouponDayCount(1993).",
+      "fix:tag": "2881"
+    }
+  },
+  {
+    "name": "contraorderorigination",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ContraOrderOrigination",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OrderReceivedFromCustomer\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":1,\"doc\":\"Order received from a customer\"},{\"value\":\"2\",\"name\":\"OrderReceivedFromWithinFirm\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":2,\"doc\":\"Order received from within the firm\"},{\"value\":\"3\",\"name\":\"OrderReceivedFromAnotherBrokerDealer\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":3,\"doc\":\"Order received from another broker-dealer\"},{\"value\":\"4\",\"name\":\"OrderReceivedFromCustomerOrWithFirm\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":4,\"doc\":\"Order received from a customer or originated from within the firm\"},{\"value\":\"5\",\"name\":\"OrderReceivedFromDirectAccessCustomer\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":5,\"doc\":\"Order received from a direct access or sponsored access customer\"},{\"value\":\"6\",\"name\":\"OrderReceivedFromForeignDealerEquivalent\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":6,\"doc\":\"Order received from a foreign dealer equivalent\"},{\"value\":\"7\",\"name\":\"OrderReceivedFromExecutionOnlyService\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":7,\"doc\":\"Order received from an execution-only service\"}]}",
+      "fix:description": "Identifies the origin of the order from the counterparty of the execution or trade.",
+      "fix:tag": "2882"
+    }
+  },
+  {
+    "name": "routingarrangementindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RoutingArrangementIndicator",
+      "fix:aliases": "routingarrangmentindicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
+      "fix:description": "Indicates whether a routing arrangement is in place, e.g. between two brokers. May be used together with OrderOrigination(1724) to further describe the origin of an order.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"routingarrangmentindicator\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"routingarrangementindicator\",\"type\":\"int\"}]}",
+      "fix:tag": "2883"
+    }
+  },
+  {
+    "name": "contraroutingarrangementindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ContraRoutingArrangementIndicator",
+      "fix:aliases": "contraroutingarrangmentindicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
+      "fix:description": "Indicates whether a routing arrangement is in place, e.g. between two brokers. May be used together with ContraOrderOrigination(2882) to further describe the origin of an order.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"contraroutingarrangmentindicator\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"contraroutingarrangementindicator\",\"type\":\"int\"}]}",
+      "fix:tag": "2884"
+    }
+  },
+  {
+    "name": "underlyingaccruedinterestamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAccruedInterestAmt",
+      "fix:description": "Amount of accrued interest of underlying security.",
+      "fix:tag": "2885"
+    }
+  },
+  {
+    "name": "underlyingnumdaysinterest",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingNumDaysInterest",
+      "fix:description": "Number of days of interest for underlying security.",
+      "fix:tag": "2886"
+    }
+  },
+  {
+    "name": "relatedorderid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedOrderID",
+      "fix:description": "Identifier of a related order.",
+      "fix:tag": "2887"
+    }
+  },
+  {
+    "name": "relatedorderidsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedOrderIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NonFIXSource\",\"since\":\"5.0SP2\",\"ep\":259,\"doc\":\"Non-FIX Source\"},{\"value\":\"1\",\"name\":\"SystemOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":1,\"doc\":\"Order identifier\"},{\"value\":\"2\",\"name\":\"ClientOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":2,\"doc\":\"Client order identifier\"},{\"value\":\"3\",\"name\":\"SecondaryOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":3,\"doc\":\"Secondary order identifier\"},{\"value\":\"4\",\"name\":\"SecondaryClientOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":4,\"doc\":\"Secondary client order identifier\"}]}",
+      "fix:description": "Describes the source of the identifier that RelatedOrderID(2887) represents.",
+      "fix:tag": "2888"
+    }
+  },
+  {
+    "name": "relatedorderqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RelatedOrderQty",
+      "fix:description": "Quantity of the related order which can be less than its total quantity. For example, when only parts of an order contribute to an aggregated order.",
+      "fix:tag": "2889"
+    }
+  },
+  {
+    "name": "orderrelationship",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderRelationship",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotSpecified\",\"since\":\"5.0SP2\",\"ep\":259,\"doc\":\"Not specified\"},{\"value\":\"1\",\"name\":\"OrderAggregation\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":1,\"doc\":\"Order aggregation\"},{\"value\":\"2\",\"name\":\"OrderSplit\",\"since\":\"5.0SP2\",\"ep\":259,\"sort\":2,\"doc\":\"Order split\"}]}",
+      "fix:description": "Describes the type of relationship between the order identified by RelatedOrderID(2887) and the order outside of the RelatedOrderGrp component.",
+      "fix:tag": "2890"
+    }
+  },
+  {
+    "name": "upicode",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UPICode",
+      "fix:description": "Uniquely identifies the product of a security using ISO 4914 standard, Unique Product Identifier (UPI). The DSB (Derivative Service Bureau Ltd) is acting as designated service provider for UPI System.",
+      "fix:tag": "2891"
+    }
+  },
+  {
+    "name": "derivativeupicode",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DerivativeUPICode",
+      "fix:description": "Uniquely identifies the product of a derivative instrument using ISO 4914. See UPICode(2891) for complete definition.",
+      "fix:tag": "2892"
+    }
+  },
+  {
+    "name": "legupicode",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegUPICode",
+      "fix:description": "Uniquely identifies the product of a leg instrument using ISO 4914. See UPICode(2891) for further detail.",
+      "fix:tag": "2893"
+    }
+  },
+  {
+    "name": "underlyingupicode",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingUPICode",
+      "fix:description": "Uniquely identifies the product of an underlying instrument using ISO 4914. See UPICode(2891) for further detail.",
+      "fix:tag": "2894"
+    }
+  },
+  {
+    "name": "instrumentscopeupicode",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentScopeUPICode",
+      "fix:description": "Uniquely identifies the product of a security using ISO 4914 as filter criteria. See UPICode(2891) for further detail.",
+      "fix:tag": "2895"
+    }
+  },
+  {
+    "name": "tertiarytrdtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TertiaryTrdType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RegularTrade\",\"since\":\"4.4\",\"doc\":\"Regular trade\"},{\"value\":\"1\",\"name\":\"BlockTrade\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Block trade\"},{\"value\":\"10\",\"name\":\"AfterHoursTrade\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"After hours trade\"},{\"value\":\"11\",\"name\":\"ExchangeForRisk\",\"since\":\"4.4\",\"ep\":5,\"sort\":11,\"doc\":\"Exchange for risk (EFR)\"},{\"value\":\"12\",\"name\":\"ExchangeForSwap\",\"since\":\"4.4\",\"ep\":5,\"sort\":12,\"doc\":\"Exchange for swap (EFS)\"},{\"value\":\"13\",\"name\":\"ExchangeOfFuturesFor\",\"since\":\"4.4\",\"ep\":5,\"sort\":13,\"doc\":\"Exchange of futures for in market futures (EFM)\"},{\"value\":\"14\",\"name\":\"ExchangeOfOptionsForOptions\",\"since\":\"4.4\",\"ep\":5,\"sort\":14,\"doc\":\"Exchange of options for options (EOO)\"},{\"value\":\"15\",\"name\":\"TradingAtSettlement\",\"since\":\"4.4\",\"ep\":5,\"sort\":15,\"doc\":\"Trading at settlement\"},{\"value\":\"16\",\"name\":\"AllOrNone\",\"since\":\"4.4\",\"ep\":5,\"sort\":16,\"doc\":\"All or none\"},{\"value\":\"17\",\"name\":\"FuturesLargeOrderExecution\",\"since\":\"4.4\",\"ep\":5,\"sort\":17,\"doc\":\"Futures large order execution\"},{\"value\":\"18\",\"name\":\"ExchangeOfFuturesForFutures\",\"since\":\"4.4\",\"ep\":5,\"sort\":18,\"doc\":\"Exchange of futures for external market futures (EFF)\"},{\"value\":\"19\",\"name\":\"OptionInterimTrade\",\"since\":\"4.4\",\"ep\":5,\"sort\":19,\"doc\":\"Option interim trade\"},{\"value\":\"2\",\"name\":\"EFP\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Exchange for physical (EFP)\"},{\"value\":\"20\",\"name\":\"OptionCabinetTrade\",\"since\":\"4.4\",\"ep\":5,\"sort\":20,\"doc\":\"Option cabinet trade\"},{\"value\":\"22\",\"name\":\"PrivatelyNegotiatedTrades\",\"since\":\"4.4\",\"ep\":19,\"sort\":21,\"doc\":\"Privately negotiated trade\"},{\"value\":\"23\",\"name\":\"SubstitutionOfFuturesForForwards\",\"since\":\"4.4\",\"ep\":19,\"sort\":22,\"doc\":\"Substitution of futures for forwards\"},{\"value\":\"24\",\"name\":\"ErrorTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":24,\"group\":\"MiFID Values\",\"doc\":\"Error trade\"},{\"value\":\"25\",\"name\":\"SpecialCumDividend\",\"since\":\"4.4\",\"ep\":26,\"sort\":25,\"group\":\"MiFID Values\",\"doc\":\"Special cum dividend (CD)\"},{\"value\":\"26\",\"name\":\"SpecialExDividend\",\"since\":\"4.4\",\"ep\":26,\"sort\":26,\"group\":\"MiFID Values\",\"doc\":\"Special ex dividend (XD)\"},{\"value\":\"27\",\"name\":\"SpecialCumCoupon\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"group\":\"MiFID Values\",\"doc\":\"Special cum coupon (CC)\"},{\"value\":\"28\",\"name\":\"SpecialExCoupon\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"group\":\"MiFID Values\",\"doc\":\"Special ex coupon (XC)\"},{\"value\":\"29\",\"name\":\"CashSettlement\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"group\":\"MiFID Values\",\"doc\":\"Cash settlement (CS)\"},{\"value\":\"3\",\"name\":\"Transfer\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Transfer\"},{\"value\":\"30\",\"name\":\"SpecialPrice\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"group\":\"MiFID Values\",\"doc\":\"Special price (SP)\"},{\"value\":\"31\",\"name\":\"GuaranteedDelivery\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"group\":\"MiFID Values\",\"doc\":\"Guaranteed delivery (GD)\"},{\"value\":\"32\",\"name\":\"SpecialCumRights\",\"since\":\"4.4\",\"ep\":26,\"sort\":32,\"group\":\"MiFID Values\",\"doc\":\"Special cum rights (CR)\"},{\"value\":\"33\",\"name\":\"SpecialExRights\",\"since\":\"4.4\",\"ep\":26,\"sort\":33,\"group\":\"MiFID Values\",\"doc\":\"Special ex rights (XR)\"},{\"value\":\"34\",\"name\":\"SpecialCumCapitalRepayments\",\"since\":\"4.4\",\"ep\":26,\"sort\":34,\"group\":\"MiFID Values\",\"doc\":\"Special cum capital repayments (CP)\"},{\"value\":\"35\",\"name\":\"SpecialExCapitalRepayments\",\"since\":\"4.4\",\"ep\":26,\"sort\":35,\"group\":\"MiFID Values\",\"doc\":\"Special ex capital repayments (XP)\"},{\"value\":\"36\",\"name\":\"SpecialCumBonus\",\"since\":\"4.4\",\"ep\":26,\"sort\":36,\"group\":\"MiFID Values\",\"doc\":\"Special cum bonus (CB)\"},{\"value\":\"37\",\"name\":\"SpecialExBonus\",\"since\":\"4.4\",\"ep\":26,\"sort\":37,\"group\":\"MiFID Values\",\"doc\":\"Special ex bonus (XB)\"},{\"value\":\"38\",\"name\":\"LargeTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":38,\"group\":\"MiFID Values\",\"doc\":\"Block trade\"},{\"value\":\"39\",\"name\":\"WorkedPrincipalTrade\",\"since\":\"4.4\",\"ep\":26,\"sort\":39,\"group\":\"MiFID Values\",\"doc\":\"Worked principal trade\"},{\"value\":\"4\",\"name\":\"LateTrade\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Late trade\"},{\"value\":\"40\",\"name\":\"BlockTrades\",\"since\":\"4.4\",\"ep\":26,\"sort\":40,\"group\":\"MiFID Values\",\"doc\":\"Block trades\"},{\"value\":\"41\",\"name\":\"NameChange\",\"since\":\"4.4\",\"ep\":26,\"sort\":41,\"group\":\"MiFID Values\",\"doc\":\"Name change\"},{\"value\":\"42\",\"name\":\"PortfolioTransfer\",\"since\":\"4.4\",\"ep\":26,\"sort\":42,\"group\":\"MiFID Values\",\"doc\":\"Portfolio transfer\"},{\"value\":\"43\",\"name\":\"ProrogationBuy\",\"since\":\"4.4\",\"ep\":26,\"sort\":43,\"group\":\"MiFID Values\",\"doc\":\"Prorogation buy\"},{\"value\":\"44\",\"name\":\"ProrogationSell\",\"since\":\"4.4\",\"ep\":26,\"sort\":44,\"group\":\"MiFID Values\",\"doc\":\"Prorogation sell\"},{\"value\":\"45\",\"name\":\"OptionExercise\",\"since\":\"4.4\",\"ep\":26,\"sort\":45,\"group\":\"MiFID Values\",\"doc\":\"Option exercise\"},{\"value\":\"46\",\"name\":\"DeltaNeutralTransaction\",\"since\":\"4.4\",\"ep\":26,\"sort\":46,\"group\":\"MiFID Values\",\"doc\":\"Delta neutral transaction\"},{\"value\":\"47\",\"name\":\"FinancingTransaction\",\"since\":\"4.4\",\"ep\":26,\"sort\":47,\"group\":\"MiFID Values\",\"doc\":\"Financing transaction\"},{\"value\":\"48\",\"name\":\"NonStandardSettlement\",\"since\":\"5.0\",\"ep\":47,\"sort\":48,\"doc\":\"Non-standard settlement\"},{\"value\":\"49\",\"name\":\"DerivativeRelatedTransaction\",\"since\":\"5.0\",\"ep\":47,\"sort\":49,\"doc\":\"Derivative related transaction\"},{\"value\":\"5\",\"name\":\"TTrade\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"T trade\"},{\"value\":\"50\",\"name\":\"PortfolioTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":50,\"doc\":\"Portfolio trade\"},{\"value\":\"51\",\"name\":\"VolumeWeightedAverageTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":51,\"doc\":\"Volume weighted average trade\"},{\"value\":\"52\",\"name\":\"ExchangeGrantedTrade\",\"since\":\"5.0\",\"ep\":47,\"sort\":52,\"doc\":\"Exchange granted trade\"},{\"value\":\"53\",\"name\":\"RepurchaseAgreement\",\"since\":\"5.0\",\"ep\":47,\"sort\":53,\"doc\":\"Repurchase agreement\"},{\"value\":\"54\",\"name\":\"OTC\",\"since\":\"5.0\",\"ep\":47,\"sort\":54,\"doc\":\"OTC\"},{\"value\":\"55\",\"name\":\"ExchangeBasisFacility\",\"since\":\"5.0\",\"ep\":55,\"sort\":55,\"doc\":\"Exchange basis facility (EBF)\"},{\"value\":\"56\",\"name\":\"OpeningTrade\",\"since\":\"5.0SP2\",\"ep\":104,\"sort\":56,\"doc\":\"Opening trade\"},{\"value\":\"57\",\"name\":\"NettedTrade\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":57,\"doc\":\"Netted trade\"},{\"value\":\"58\",\"name\":\"BlockSwapTrade\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":58,\"doc\":\"Block swap trade\"},{\"value\":\"59\",\"name\":\"CreditEventTrade\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":59,\"doc\":\"Credit event trade\"},{\"value\":\"6\",\"name\":\"WeightedAveragePriceTrade\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Weighted average price trade\"},{\"value\":\"60\",\"name\":\"SuccessionEventTrade\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":60,\"doc\":\"Succession event trade\"},{\"value\":\"61\",\"name\":\"GiveUpGiveInTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":61,\"doc\":\"Give-up Give-in trade\"},{\"value\":\"62\",\"name\":\"DarkTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":62,\"doc\":\"Dark trade\"},{\"value\":\"63\",\"name\":\"TechnicalTrade\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":63,\"doc\":\"Technical trade\"},{\"value\":\"64\",\"name\":\"Benchmark\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":64,\"doc\":\"Benchmark\"},{\"value\":\"65\",\"name\":\"PackageTrade\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":65,\"doc\":\"Package trade\"},{\"value\":\"66\",\"name\":\"RollTrade\",\"since\":\"5.0SP2\",\"ep\":258,\"sort\":66,\"doc\":\"Roll trade\"},{\"value\":\"67\",\"name\":\"ClosingPriceTrade\",\"ep\":283,\"sort\":67,\"doc\":\"Closing price trade\"},{\"value\":\"68\",\"name\":\"InterFundTransferTrade\",\"ep\":289,\"sort\":68,\"doc\":\"Inter-fund transfer trade\"},{\"value\":\"69\",\"name\":\"NetAssetValueCalculatedTrade\",\"ep\":289,\"sort\":69,\"doc\":\"Net asset value calculated trade\"},{\"value\":\"7\",\"name\":\"BunchedTrade\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Bunched trade\"},{\"value\":\"8\",\"name\":\"LateBunchedTrade\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Late bunched trade\"},{\"value\":\"9\",\"name\":\"PriorReferencePriceTrade\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Prior reference price trade\"}]}",
+      "fix:description": "Type of trade assigned to a trade. Used in addition to TrdType(828) and SecondaryTrdType(855). Must not be used when only one additional trade type needs to be assigned.",
+      "fix:tag": "2896"
+    }
+  },
+  {
+    "name": "currencycodesource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CurrencyCodeSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies class or source of the Currency(15) value.",
+      "fix:tag": "2897"
+    }
+  },
+  {
+    "name": "legcurrencycodesource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCurrencyCodeSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies class or source of the LegCurrency(556) value.",
+      "fix:tag": "2898"
+    }
+  },
+  {
+    "name": "settlcurrencycodesource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlCurrencyCodeSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies class or source of the SettlCurrency(120) value.",
+      "fix:tag": "2899"
+    }
+  }
+]

@@ -1,0 +1,1068 @@
+[
+  {
+    "name": "streamcommoditysettlholidaysprocessinginstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamCommoditySettlHolidaysProcessingInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"DoNotIncludeHolidays\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Do not include holidays\"},{\"value\":\"1\",\"name\":\"IncludeHolidays\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Include holidays\"}]}",
+      "fix:description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
+      "fix:tag": "41300"
+    }
+  },
+  {
+    "name": "streamcommoditysettlperiodxid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamCommoditySettlPeriodXID",
+      "fix:description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommoditysettlperiodxid\",\"type\":\"XID\"}]}",
+      "fix:tag": "41301"
+    }
+  },
+  {
+    "name": "streamcommoditysettlperiodxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamCommoditySettlPeriodXIDRef",
+      "fix:description": "Cross reference to another settlement period for duplicating its properties.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommoditysettlperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "41302"
+    }
+  },
+  {
+    "name": "streamxid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamXID",
+      "fix:description": "Identifier of this Stream for cross referencing elsewhere in the message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamxid\",\"type\":\"XID\"}]}",
+      "fix:tag": "41303"
+    }
+  },
+  {
+    "name": "paymentlegrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PaymentLegRefID",
+      "fix:description": "Identifies the instrument leg in which this payment applies to by referencing the leg's LegID(1788).",
+      "fix:tag": "41304"
+    }
+  },
+  {
+    "name": "streamnotionalxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamNotionalXIDRef",
+      "fix:description": "Cross reference to another Stream notional for duplicating its properties.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamnotionalxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamnotionalxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "41305"
+    }
+  },
+  {
+    "name": "streamnotionalfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamNotionalFrequencyPeriod",
+      "fix:description": "Time unit multiplier for the swap stream's notional frequency.",
+      "fix:tag": "41306"
+    }
+  },
+  {
+    "name": "streamnotionalfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamNotionalFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the swap stream's notional frequency.",
+      "fix:tag": "41307"
+    }
+  },
+  {
+    "name": "streamnotionalcommodityfrequency",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamNotionalCommodityFrequency",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Term\"},{\"value\":\"1\",\"name\":\"PerBusinessDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Per business day\"},{\"value\":\"2\",\"name\":\"PerCalculationPeriod\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Per calculation period\"},{\"value\":\"3\",\"name\":\"PerSettlPeriod\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Per settlement period\"},{\"value\":\"4\",\"name\":\"PerCalendarDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Per calendar day\"},{\"value\":\"5\",\"name\":\"PerHour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Per hour\"},{\"value\":\"6\",\"name\":\"PerMonth\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Per month\"}]}",
+      "fix:description": "The commodity's notional or quantity delivery frequency.",
+      "fix:tag": "41308"
+    }
+  },
+  {
+    "name": "streamnotionalunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamNotionalUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"ep\":-1,\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"ep\":-1,\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"ep\":-1,\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"ep\":-1,\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"ep\":-1,\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:description": "Specifies the delivery stream quantity unit of measure (UOM).",
+      "fix:tag": "41309"
+    }
+  },
+  {
+    "name": "streamtotalnotional",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamTotalNotional",
+      "fix:description": "Total notional or delivery quantity over the term of the contract.",
+      "fix:tag": "41310"
+    }
+  },
+  {
+    "name": "streamtotalnotionalunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "StreamTotalNotionalUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"ep\":-1,\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"ep\":-1,\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"ep\":-1,\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"ep\":-1,\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"ep\":-1,\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"ep\":-1,\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:description": "Specifies the unit of measure (UOM) for the total notional or delivery quantity over the term of the contract.",
+      "fix:tag": "41311"
+    }
+  },
+  {
+    "name": "mandatoryclearingjurisdiction",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MandatoryClearingJurisdiction",
+      "fix:description": "Identifier of the regulatory jurisdiction requiring the trade to be cleared.",
+      "fix:tag": "41313"
+    }
+  },
+  {
+    "name": "underlyingprotectiontermxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingProtectionTermXIDRef",
+      "fix:description": "Reference to the protection terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the ProtectionTerms repeating group that applies to this Underlying.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprotectiontermxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"underlyingprotectiontermxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "41314"
+    }
+  },
+  {
+    "name": "underlyingsettltermxidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSettlTermXIDRef",
+      "fix:description": "Reference to the cash or physical settlement terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the appropriate repeating group that applies to this Underlying.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingsettltermxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"underlyingsettltermxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "41315"
+    }
+  },
+  {
+    "name": "legadditionaltermbondsecurityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondSecurityID",
+      "fix:description": "Security identifier of the bond.",
+      "fix:tag": "41317"
+    }
+  },
+  {
+    "name": "legadditionaltermbondsecurityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondSecurityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Identifies the source scheme of the LegAdditionalTermBondSecurityID(41317) value.",
+      "fix:tag": "41318"
+    }
+  },
+  {
+    "name": "legadditionaltermbonddesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondDesc",
+      "fix:description": "Description of the bond.",
+      "fix:tag": "41319"
+    }
+  },
+  {
+    "name": "encodedlegadditionaltermbonddesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegAdditionalTermBondDescLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedLegAdditionalTermBondDesc(41321) field.",
+      "fix:tag": "41320"
+    }
+  },
+  {
+    "name": "encodedlegadditionaltermbonddesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegAdditionalTermBondDesc",
+      "fix:description": "Encoded (non-ASCII characters) representation of the LegAdditionalTermBondDesc(41319) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegAdditionalTermBondDesc(41319) field.",
+      "fix:tag": "41321"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCurrency",
+      "fix:description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
+      "fix:tag": "41322"
+    }
+  },
+  {
+    "name": "legadditionaltermbondissuer",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondIssuer",
+      "fix:description": "Issuer of the bond.",
+      "fix:tag": "41323"
+    }
+  },
+  {
+    "name": "encodedlegadditionaltermbondissuerlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegAdditionalTermBondIssuerLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedLegAdditionalTermBondIssuer(41325) field.",
+      "fix:tag": "41324"
+    }
+  },
+  {
+    "name": "encodedlegadditionaltermbondissuer",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedLegAdditionalTermBondIssuer",
+      "fix:description": "Encoded (non-ASCII characters) representation of the LegAdditionalTermBondIssuer(41323) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegAdditionalTermBondIssuer(41323) field.",
+      "fix:tag": "41325"
+    }
+  },
+  {
+    "name": "legadditionaltermbondseniority",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondSeniority",
+      "fix:codes": "{\"codes\":[{\"value\":\"JR\",\"name\":\"Junior\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":3,\"doc\":\"Junior\"},{\"value\":\"MZ\",\"name\":\"Mezzanine\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":4,\"doc\":\"Mezzanine\"},{\"value\":\"SB\",\"name\":\"Subordinated\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":2,\"doc\":\"Subordinated\"},{\"value\":\"SD\",\"name\":\"SeniorSecured\",\"since\":\"5.0SP1\",\"ep\":83,\"doc\":\"Senior Secured\"},{\"value\":\"SN\",\"name\":\"SeniorNonPreferred\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":5,\"doc\":\"Senior Non-Preferred\"},{\"value\":\"SR\",\"name\":\"Senior\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":1,\"doc\":\"Senior\"}]}",
+      "fix:description": "Specifies the bond's payment priority in the event of a default.",
+      "fix:tag": "41326"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcoupontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCouponType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Zero\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero\"},{\"value\":\"1\",\"name\":\"FixedRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Fixed rate\"},{\"value\":\"2\",\"name\":\"FloatingRate\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Floating rate\"},{\"value\":\"3\",\"name\":\"Structured\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Structured\"}]}",
+      "fix:description": "Specifies the coupon type of the bond.",
+      "fix:tag": "41327"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcouponrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCouponRate",
+      "fix:description": "Coupon rate of the bond. See also CouponRate(223).",
+      "fix:tag": "41328"
+    }
+  },
+  {
+    "name": "legadditionaltermbondmaturitydate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondMaturityDate",
+      "fix:description": "The maturity date of the bond.",
+      "fix:tag": "41329"
+    }
+  },
+  {
+    "name": "legadditionaltermbondparvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondParValue",
+      "fix:description": "The par value of the bond.",
+      "fix:tag": "41330"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcurrenttotalissuedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCurrentTotalIssuedAmount",
+      "fix:description": "Total issued amount of the bond.",
+      "fix:tag": "41331"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcouponfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCouponFrequencyPeriod",
+      "fix:description": "Time unit multiplier for the frequency of the bond's coupon payment.",
+      "fix:tag": "41332"
+    }
+  },
+  {
+    "name": "legadditionaltermbondcouponfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondCouponFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "fix:tag": "41333"
+    }
+  },
+  {
+    "name": "legadditionaltermbonddaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermBondDayCount",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OneOne\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"1/1\"},{\"value\":\"1\",\"name\":\"ThirtyThreeSixtyUS\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"30/360 (30U/360 or Bond Basis)\"},{\"value\":\"10\",\"name\":\"ActActISMAUltimo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Act/Act (ICMA Ultimo)\"},{\"value\":\"11\",\"name\":\"ActActISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Act/Act (ISDA)\"},{\"value\":\"12\",\"name\":\"BusTwoFiftyTwo\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"BUS/252\"},{\"value\":\"13\",\"name\":\"ThirtyEPlusThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"30E+/360\"},{\"value\":\"14\",\"name\":\"ActThreeSixtyFiveL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Act/365L\"},{\"value\":\"15\",\"name\":\"NLThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"NL365\"},{\"value\":\"16\",\"name\":\"NLThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"NL360\"},{\"value\":\"17\",\"name\":\"Act364\",\"since\":\"5.0SP2\",\"ep\":200,\"sort\":17,\"doc\":\"Act/364\"},{\"value\":\"18\",\"name\":\"ThirtyThreeSixtyFive\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":18,\"doc\":\"30/365\"},{\"value\":\"19\",\"name\":\"ThirtyActual\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":19,\"doc\":\"30/Actual\"},{\"value\":\"2\",\"name\":\"ThirtyThreeSixtySIA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"30/360 (SIA)\"},{\"value\":\"20\",\"name\":\"ThirtyThreeSixtyICMA\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":20,\"doc\":\"30/360 (ICMA or basis rule)\"},{\"value\":\"21\",\"name\":\"ThirtyETwoThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":21,\"doc\":\"30E2/360 (Eurobond basis model two)\"},{\"value\":\"22\",\"name\":\"ThirtyEThreeThreeSixty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":22,\"doc\":\"30E3/360 (Eurobond basis model three)\"},{\"value\":\"3\",\"name\":\"ThirtyThreeSixtyM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"30/360M\"},{\"value\":\"4\",\"name\":\"ThirtyEThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"30E/360 (Eurobond Basis)\"},{\"value\":\"5\",\"name\":\"ThirtyEThreeSixtyISDA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"30E/360 (ISDA)\"},{\"value\":\"6\",\"name\":\"ActThreeSixty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Act/360\"},{\"value\":\"7\",\"name\":\"ActThreeSixtyFiveFixed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Act/365 (FIXED)\"},{\"value\":\"8\",\"name\":\"ActActAFB\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"Act/Act (AFB)\"},{\"value\":\"9\",\"name\":\"ActActICMA\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"Act/Act (ICMA)\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "fix:tag": "41334"
+    }
+  },
+  {
+    "name": "legadditionaltermconditionprecedentbondindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermConditionPrecedentBondIndicator",
+      "fix:description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
+      "fix:tag": "41336"
+    }
+  },
+  {
+    "name": "legadditionaltermdiscrepancyclauseindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAdditionalTermDiscrepancyClauseIndicator",
+      "fix:description": "Indicates whether the discrepancy clause is applicable.",
+      "fix:tag": "41337"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionvalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingMarketDisruptionValue",
+      "fix:description": "Applicable value for UnderlyingMarketDisruptionEvent(41865).",
+      "fix:tag": "41338"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackvalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingMarketDisruptionFallbackValue",
+      "fix:description": "Applicable value for UnderlyingMarketDisruptionFallbackType(41867).",
+      "fix:tag": "41339"
+    }
+  },
+  {
+    "name": "underlyingadditionaltermbondsecurityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAdditionalTermBondSecurityID",
+      "fix:description": "Security identifier of the bond.",
+      "fix:tag": "41341"
+    }
+  },
+  {
+    "name": "legcashsettldealer",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlDealer",
+      "fix:description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
+      "fix:tag": "41343"
+    }
+  },
+  {
+    "name": "legcashsettlcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlCurrency",
+      "fix:description": "Specifies the currency the LegCashSettlAmount(41357) is denominated in. Uses ISO 4217 currency codes.",
+      "fix:tag": "41345"
+    }
+  },
+  {
+    "name": "legcassettlvaluationfirstbusinessdayoffset",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCasSettlValuationFirstBusinessDayOffset",
+      "fix:description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for purposes of cash settlement.",
+      "fix:tag": "41346"
+    }
+  },
+  {
+    "name": "legcashsettlvaluationsubsequentbusinessdaysoffset",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlValuationSubsequentBusinessDaysOffset",
+      "fix:description": "The number of business days between successive valuation dates when multiple valuation dates are applicable for cash settlement.",
+      "fix:tag": "41347"
+    }
+  },
+  {
+    "name": "legcashsettlnumofvaluationdates",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlNumOfValuationDates",
+      "fix:description": "Where multiple valuation dates are specified as being applicable for cash settlement, this element specifies the number of applicable valuation dates.",
+      "fix:tag": "41348"
+    }
+  },
+  {
+    "name": "legcashsettlvaluationtime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlValuationTime",
+      "fix:description": "Time of valuation.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettlvaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcashsettlvaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41349"
+    }
+  },
+  {
+    "name": "legcashsettlbusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlBusinessCenter",
+      "fix:description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "41350"
+    }
+  },
+  {
+    "name": "legcashsettlquotemethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlQuoteMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:description": "The type of quote used to determine the cash settlement price.",
+      "fix:tag": "41351"
+    }
+  },
+  {
+    "name": "legcashsettlquoteamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlQuoteAmount",
+      "fix:description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
+      "fix:tag": "41352"
+    }
+  },
+  {
+    "name": "legcashsettlquotecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlQuoteCurrency",
+      "fix:description": "Specifies the currency the LegCashSettlQuoteAmount(41352) is denominated in. Uses ISO 4217 Currency Code.",
+      "fix:tag": "41353"
+    }
+  },
+  {
+    "name": "legcashsettlminimumquoteamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlMinimumQuoteAmount",
+      "fix:description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
+      "fix:tag": "41354"
+    }
+  },
+  {
+    "name": "legcashsettlminimumquotecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlMinimumQuoteCurrency",
+      "fix:description": "Specifies the currency the LegCashSettlQuoteMinimumAmount(41354) is denominated in. Uses ISO 4217 Currency Code.",
+      "fix:tag": "41355"
+    }
+  },
+  {
+    "name": "legcashsettlbusinessdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlBusinessDays",
+      "fix:description": "The number of business days used in the determination of the cash settlement payment date.",
+      "fix:tag": "41356"
+    }
+  },
+  {
+    "name": "legcashsettlamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlAmount",
+      "fix:description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
+      "fix:tag": "41357"
+    }
+  },
+  {
+    "name": "legcashsettlrecoveryfactor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlRecoveryFactor",
+      "fix:description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount calculated is (1 - LegCashSettlRecoveryFactor(41358)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
+      "fix:tag": "41358"
+    }
+  },
+  {
+    "name": "legcashsettlfixedtermindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlFixedTermIndicator",
+      "fix:description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
+      "fix:tag": "41359"
+    }
+  },
+  {
+    "name": "legcashsettlaccruedinterestindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlAccruedInterestIndicator",
+      "fix:description": "Indicates whether accrued interest is included or not in the value provided in LegCashSettlAmount(41357).",
+      "fix:tag": "41360"
+    }
+  },
+  {
+    "name": "legcashsettlvaluationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlValuationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Market\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Market\"},{\"value\":\"1\",\"name\":\"Highest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Highest\"},{\"value\":\"2\",\"name\":\"AverageMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Average market\"},{\"value\":\"3\",\"name\":\"AverageHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Average highest\"},{\"value\":\"4\",\"name\":\"BlendedMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Blended market\"},{\"value\":\"5\",\"name\":\"BlendedHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Blended highest\"},{\"value\":\"6\",\"name\":\"AverageBlendedMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Average blended market\"},{\"value\":\"7\",\"name\":\"AverageBlendedHighest\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Average blended highest\"}]}",
+      "fix:description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
+      "fix:tag": "41361"
+    }
+  },
+  {
+    "name": "legcashsettltermxid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlTermXID",
+      "fix:description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcashsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:tag": "41362"
+    }
+  },
+  {
+    "name": "legcomplexeventaveragingobservationnumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventAveragingObservationNumber",
+      "fix:description": "Cross reference to the ordinal observation as specified either in the LegComplexEventScheduleGrp or LegComplexEventPeriodDateGrp components.",
+      "fix:tag": "41364"
+    }
+  },
+  {
+    "name": "legcomplexeventaveragingweight",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventAveragingWeight",
+      "fix:description": "The weight factor to be applied to the observation.",
+      "fix:tag": "41365"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventtype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventType",
+      "fix:description": "Specifies the type of credit event. See https://fixtrading.org/packages/credit-event-type for code list of applicable event types.",
+      "fix:tag": "41367"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventvalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventValue",
+      "fix:description": "The credit event value appropriate to LegComplexEventCreditEventType(41367). See https://fixtrading.org/packages/credit-event-type for applicable event type values.",
+      "fix:tag": "41368"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventCurrency",
+      "fix:description": "Specifies the applicable currency when LegComplexEventCreditEventCurrency(41368) is an amount. Uses ISO 4217 currency codes.",
+      "fix:tag": "41369"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventPeriod",
+      "fix:description": "Time unit multiplier for complex credit events.",
+      "fix:tag": "41370"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with complex credit events.",
+      "fix:tag": "41371"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type for the complex credit events.",
+      "fix:tag": "41372"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventratesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventRateSource",
+      "fix:description": "Identifies the source of rate information used for credit events. See https://fixtrading.org/packages/credit-event-rate-source for code list of applicable sources.",
+      "fix:tag": "41373"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventqualifier",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"FloatingRateInterestShortfall\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate interest shortfall\"},{\"value\":\"E\",\"name\":\"RestructuringMultipleCreditEventNotices\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Restructuring - multiple credit event notices\"},{\"value\":\"H\",\"name\":\"RestructuringMultipleHoldingObligations\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Retructuring - multiple holding obligations\"}]}",
+      "fix:description": "Specifies a complex event qualifier. Used to further qualify LegComplexEventCreditEventType(41367).",
+      "fix:tag": "41375"
+    }
+  },
+  {
+    "name": "legcomplexeventperioddate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventPeriodDate",
+      "fix:description": "Averaging date for an Asian option.",
+      "fix:tag": "41377"
+    }
+  },
+  {
+    "name": "legcomplexeventperiodtime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventPeriodTime",
+      "fix:description": "Averaging time for an Asian option.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventperiodtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventperiodtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41378"
+    }
+  },
+  {
+    "name": "legcomplexeventperiodtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventPeriodType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AsianOut\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Asian Out\"},{\"value\":\"1\",\"name\":\"AsianIn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Asian In\"},{\"value\":\"2\",\"name\":\"BarrierCap\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Barrier Cap\"},{\"value\":\"3\",\"name\":\"BarrierFloor\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Barrier Floor\"},{\"value\":\"4\",\"name\":\"KnockOut\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Knock Out\"},{\"value\":\"5\",\"name\":\"KnockIn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Knock In\"}]}",
+      "fix:description": "Specifies the period type.",
+      "fix:tag": "41380"
+    }
+  },
+  {
+    "name": "legcomplexeventbusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventBusinessCenter",
+      "fix:description": "The business center for adjusting dates and times in the schedule or date-time group. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "41381"
+    }
+  },
+  {
+    "name": "legcomplexeventratesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventRateSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Identifies the source of rate information.",
+      "fix:tag": "41383"
+    }
+  },
+  {
+    "name": "legcomplexeventratesourcetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventRateSourceType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Primary\",\"since\":\"5.0SP1\",\"ep\":82,\"doc\":\"Primary\"},{\"value\":\"1\",\"name\":\"Secondary\",\"since\":\"5.0SP1\",\"ep\":82,\"sort\":1,\"doc\":\"Secondary\"}]}",
+      "fix:description": "Indicates whether the rate source specified is a primary or secondary source.",
+      "fix:tag": "41384"
+    }
+  },
+  {
+    "name": "legcomplexeventreferencepage",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventReferencePage",
+      "fix:description": "Identifies the reference page from the rate source. For FX, the reference page to the spot rate is to be used for the reference FX spot rate. When LegComplexEventRateSource(41383) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option.",
+      "fix:tag": "41385"
+    }
+  },
+  {
+    "name": "legcomplexevenreferencepageheading",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEvenReferencePageHeading",
+      "fix:description": "Identifies the reference page heading from the rate source.",
+      "fix:tag": "41386"
+    }
+  },
+  {
+    "name": "legcomplexeventdatebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateBusinessCenter",
+      "fix:description": "The business center calendar used to adjust the event date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "41388"
+    }
+  },
+  {
+    "name": "legcomplexeventdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateUnadjusted",
+      "fix:description": "The unadjusted complex event date.",
+      "fix:tag": "41389"
+    }
+  },
+  {
+    "name": "legcomplexeventdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the complex event date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "41390"
+    }
+  },
+  {
+    "name": "legcomplexeventdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative date offset.",
+      "fix:tag": "41391"
+    }
+  },
+  {
+    "name": "legcomplexeventdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative date offset.",
+      "fix:tag": "41392"
+    }
+  },
+  {
+    "name": "legcomplexeventdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative date offset.",
+      "fix:tag": "41393"
+    }
+  },
+  {
+    "name": "legcomplexeventdatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "The business day convention used to adjust the event date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "fix:tag": "41394"
+    }
+  },
+  {
+    "name": "legcomplexeventdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventDateAdjusted",
+      "fix:description": "The adjusted complex event date.",
+      "fix:tag": "41395"
+    }
+  },
+  {
+    "name": "legcomplexeventfixingtime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventFixingTime",
+      "fix:description": "The local market fixing time.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventfixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventfixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41396"
+    }
+  },
+  {
+    "name": "legcomplexeventfixingtimebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventFixingTimeBusinessCenter",
+      "fix:description": "The business center for determining the actual fixing times. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "41397"
+    }
+  },
+  {
+    "name": "legcomplexeventcrediteventsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegComplexEventCreditEventSource",
+      "fix:description": "A newspaper or electronic news service that may publish relevant information used in the determination of whether or not a credit event has occurred.",
+      "fix:tag": "41399"
+    }
+  }
+]

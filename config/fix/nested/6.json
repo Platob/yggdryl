@@ -1,0 +1,276 @@
+[
+  {
+    "name": "nolegsecurityaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legsecurityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "605"
+              }
+            },
+            {
+              "name": "legsecurityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "606"
+              }
+            },
+            {
+              "name": "legsymbolpositionnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2958"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegSecurityAltID",
+      "fix:description": "Multileg instrument's individual security's NoSecurityAltID.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegsecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "604"
+    }
+  },
+  {
+    "name": "nohops",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "hopcompid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "628"
+              }
+            },
+            {
+              "name": "hopsendingtime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "629"
+              }
+            },
+            {
+              "name": "hoprefid",
+              "dtype": {
+                "type": "int64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "630"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoHops",
+      "fix:description": "Number of HopCompID entries in repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nohops\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "627"
+    }
+  },
+  {
+    "name": "nolegallocs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legallocaccount",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "671"
+              }
+            },
+            {
+              "name": "legindividualallocid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "672"
+              }
+            },
+            {
+              "name": "legallocqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "673"
+              }
+            },
+            {
+              "name": "legallocacctidsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "674"
+              }
+            },
+            {
+              "name": "legallocsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1367"
+              }
+            },
+            {
+              "name": "legallocsettlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2928"
+              }
+            },
+            {
+              "name": "legcustodiallotid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1756"
+              }
+            },
+            {
+              "name": "legversuspurchasedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1757"
+              }
+            },
+            {
+              "name": "legversuspurchaseprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1758"
+              }
+            },
+            {
+              "name": "legcurrentcostbasis",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1759"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegAllocs",
+      "fix:description": "Number of Allocations for the leg",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegallocs\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "670"
+    }
+  },
+  {
+    "name": "nolegstipulations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstipulationtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "688"
+              }
+            },
+            {
+              "name": "legstipulationvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "689"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStipulations",
+      "fix:description": "Number of leg stipulation entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegstipulations\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "683"
+    }
+  }
+]

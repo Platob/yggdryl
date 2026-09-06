@@ -1,0 +1,136 @@
+[
+  {
+    "name": "noattachments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "attachmentname",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2105"
+              }
+            },
+            {
+              "name": "attachmentmediatype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2106"
+              }
+            },
+            {
+              "name": "attachmentclassification",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2107"
+              }
+            },
+            {
+              "name": "attachmentexternalurl",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2108"
+              }
+            },
+            {
+              "name": "attachmentencodingtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2109"
+              }
+            },
+            {
+              "name": "unencodedattachmentlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2110"
+              }
+            },
+            {
+              "name": "encodedattachmentlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2111"
+              }
+            },
+            {
+              "name": "encodedattachment",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2112"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoAttachments",
+      "fix:description": "The number of attached files.",
+      "fix:tag": "2104"
+    }
+  },
+  {
+    "name": "noattachmentkeywords",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "attachmentkeyword",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2114"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoAttachmentKeywords",
+      "fix:description": "The number of attachment keywords.",
+      "fix:tag": "2113"
+    }
+  }
+]

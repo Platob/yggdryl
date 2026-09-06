@@ -1,0 +1,652 @@
+[
+  {
+    "name": "nomiscfeesubtypes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "miscfeesubtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2634"
+              }
+            },
+            {
+              "name": "miscfeesubtypeamt",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2635"
+              }
+            },
+            {
+              "name": "miscfeesubtypedesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2636"
+              }
+            },
+            {
+              "name": "encodedmiscfeesubtypedesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2637"
+              }
+            },
+            {
+              "name": "encodedmiscfeesubtypedesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2638"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoMiscFeeSubTypes",
+      "fix:description": "Specifies the number of miscellaneous fee sub-types.",
+      "fix:tag": "2633"
+    }
+  },
+  {
+    "name": "nocommissions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "commissionamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2640"
+              }
+            },
+            {
+              "name": "commissionamounttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2641"
+              }
+            },
+            {
+              "name": "commissionamountsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2725"
+              }
+            },
+            {
+              "name": "commissionbasis",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2642"
+              }
+            },
+            {
+              "name": "commissioncurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2643"
+              }
+            },
+            {
+              "name": "commissioncurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2923"
+              }
+            },
+            {
+              "name": "commissionunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2644"
+              }
+            },
+            {
+              "name": "commissionunitofmeasurecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2645"
+              }
+            },
+            {
+              "name": "commissionunitofmeasurecurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2924"
+              }
+            },
+            {
+              "name": "commissionrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2646"
+              }
+            },
+            {
+              "name": "commissionsharedindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2647"
+              }
+            },
+            {
+              "name": "commissionamountshared",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2648"
+              }
+            },
+            {
+              "name": "commissionlegrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2649"
+              }
+            },
+            {
+              "name": "commissiondesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2650"
+              }
+            },
+            {
+              "name": "encodedcommissiondesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2651"
+              }
+            },
+            {
+              "name": "encodedcommissiondesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2652"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoCommissions",
+      "fix:description": "Number of commissions in the repeating group.",
+      "fix:tag": "2639"
+    }
+  },
+  {
+    "name": "noalloccommissions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "alloccommissionamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2654"
+              }
+            },
+            {
+              "name": "alloccommissionamounttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2655"
+              }
+            },
+            {
+              "name": "alloccommissionamountsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2726"
+              }
+            },
+            {
+              "name": "alloccommissionbasis",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2656"
+              }
+            },
+            {
+              "name": "alloccommissioncurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2657"
+              }
+            },
+            {
+              "name": "alloccommissioncurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2925"
+              }
+            },
+            {
+              "name": "alloccommissionunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2658"
+              }
+            },
+            {
+              "name": "alloccommissionunitofmeasurecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2659"
+              }
+            },
+            {
+              "name": "alloccommissionunitofmeasurecurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2926"
+              }
+            },
+            {
+              "name": "alloccommissionrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2660"
+              }
+            },
+            {
+              "name": "alloccommissionsharedindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2661"
+              }
+            },
+            {
+              "name": "alloccommissionamountshared",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2662"
+              }
+            },
+            {
+              "name": "alloccommissionlegrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2663"
+              }
+            },
+            {
+              "name": "alloccommissiondesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2664"
+              }
+            },
+            {
+              "name": "encodedalloccommissiondesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2665"
+              }
+            },
+            {
+              "name": "encodedalloccommissiondesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2666"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoAllocCommissions",
+      "fix:description": "Number of commissions in the repeating group.",
+      "fix:tag": "2653"
+    }
+  },
+  {
+    "name": "notrdregpublications",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "trdregpublicationtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2669"
+              }
+            },
+            {
+              "name": "trdregpublicationreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2670"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTrdRegPublications",
+      "fix:description": "Number of regulatory publication rules in repeating group.",
+      "fix:tag": "2668"
+    }
+  },
+  {
+    "name": "nosidecollateralamounts",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "sidecurrentcollateralamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2702"
+              }
+            },
+            {
+              "name": "sidecollateralcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2695"
+              }
+            },
+            {
+              "name": "sidecollateralcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2930"
+              }
+            },
+            {
+              "name": "sidecollateralamounttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2694"
+              }
+            },
+            {
+              "name": "sidecollateralfxrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2696"
+              }
+            },
+            {
+              "name": "sidecollateralfxratecalc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2697"
+              }
+            },
+            {
+              "name": "sidecollateraltype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2701"
+              }
+            },
+            {
+              "name": "sidecollateralamountmarketsegmentid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2693"
+              }
+            },
+            {
+              "name": "sidecollateralamountmarketid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2692"
+              }
+            },
+            {
+              "name": "sidehaircutindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2703"
+              }
+            },
+            {
+              "name": "sidecollateralportfolioid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2700"
+              }
+            },
+            {
+              "name": "sidecollateralpercentoverage",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2699"
+              }
+            },
+            {
+              "name": "sidecollateralmarketprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2698"
+              }
+            },
+            {
+              "name": "sidecollateralreinvestmentrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2862"
+              }
+            },
+            {
+              "name": "sideunderlyingrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2863"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoSideCollateralAmounts",
+      "fix:description": "Number of side collateral amount entries.",
+      "fix:tag": "2691"
+    }
+  }
+]

@@ -1,0 +1,961 @@
+[
+  {
+    "name": "nonondeliverablefixingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nondeliverablefixingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40826"
+              }
+            },
+            {
+              "name": "nondeliverablefixingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40827"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNonDeliverableFixingDates",
+      "fix:description": "Number of Fixing dates in the repeating group",
+      "fix:tag": "40825"
+    }
+  },
+  {
+    "name": "nopaymentschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentscheduletype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40829"
+              }
+            },
+            {
+              "name": "paymentschedulexid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41164"
+              }
+            },
+            {
+              "name": "paymentschedulexidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41165"
+              }
+            },
+            {
+              "name": "paymentschedulestubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40830"
+              }
+            },
+            {
+              "name": "paymentschedulestartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40831"
+              }
+            },
+            {
+              "name": "paymentscheduleenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40832"
+              }
+            },
+            {
+              "name": "paymentschedulepayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40833"
+              }
+            },
+            {
+              "name": "paymentschedulereceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40834"
+              }
+            },
+            {
+              "name": "paymentschedulenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40835"
+              }
+            },
+            {
+              "name": "paymentschedulecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40836"
+              }
+            },
+            {
+              "name": "paymentschedulerate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40837"
+              }
+            },
+            {
+              "name": "paymentscheduleratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40838"
+              }
+            },
+            {
+              "name": "paymentscheduleratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40839"
+              }
+            },
+            {
+              "name": "paymentscheduleratecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41166"
+              }
+            },
+            {
+              "name": "paymentschedulerateunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41167"
+              }
+            },
+            {
+              "name": "paymentschedulerateconversionfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41168"
+              }
+            },
+            {
+              "name": "paymentscheduleratespreadtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41169"
+              }
+            },
+            {
+              "name": "paymentscheduleratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40840"
+              }
+            },
+            {
+              "name": "paymentscheduleratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40841"
+              }
+            },
+            {
+              "name": "paymentschedulefixedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40842"
+              }
+            },
+            {
+              "name": "paymentschedulefixedcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40843"
+              }
+            },
+            {
+              "name": "paymentschedulesettlperiodprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41170"
+              }
+            },
+            {
+              "name": "paymentschedulesettlperiodpricecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41171"
+              }
+            },
+            {
+              "name": "paymentschedulesettlperiodpriceunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41172"
+              }
+            },
+            {
+              "name": "paymentschedulestepunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41173"
+              }
+            },
+            {
+              "name": "paymentschedulestepfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40844"
+              }
+            },
+            {
+              "name": "paymentschedulestepfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40845"
+              }
+            },
+            {
+              "name": "paymentschedulestepoffsetvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40846"
+              }
+            },
+            {
+              "name": "paymentschedulesteprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40847"
+              }
+            },
+            {
+              "name": "paymentschedulestepoffsetrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40848"
+              }
+            },
+            {
+              "name": "paymentschedulesteprelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40849"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40850"
+              }
+            },
+            {
+              "name": "paymentscheduleweight",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40851"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40852"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdatebusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40853"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40855"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40856"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40857"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdaydistribution",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41174"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdaycount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41175"
+              }
+            },
+            {
+              "name": "paymentschedulefixingdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40858"
+              }
+            },
+            {
+              "name": "paymentschedulefixinglagperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41176"
+              }
+            },
+            {
+              "name": "paymentschedulefixinglagunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41177"
+              }
+            },
+            {
+              "name": "paymentschedulefixingfirstobservationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41178"
+              }
+            },
+            {
+              "name": "paymentschedulefixingfirstobservationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41179"
+              }
+            },
+            {
+              "name": "paymentschedulefixingtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40859"
+              }
+            },
+            {
+              "name": "paymentschedulefixingtimebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40860"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangepaymentdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40861"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangedatesbusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40862"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangedatesoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40864"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangedatesoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40865"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangedatesoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40866"
+              }
+            },
+            {
+              "name": "paymentscheduleinterimexchangedateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40867"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentSchedules",
+      "fix:description": "Number of swap schedules in the repeating group",
+      "fix:tag": "40828"
+    }
+  },
+  {
+    "name": "nopaymentscheduleratesources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentscheduleratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40869"
+              }
+            },
+            {
+              "name": "paymentscheduleratesourcetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40870"
+              }
+            },
+            {
+              "name": "paymentschedulereferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40871"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentScheduleRateSources",
+      "fix:description": "Number of swap schedule rate sources.",
+      "fix:tag": "40868"
+    }
+  },
+  {
+    "name": "nopaymentstubs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40873"
+              }
+            },
+            {
+              "name": "paymentstublength",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40874"
+              }
+            },
+            {
+              "name": "paymentstubrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40875"
+              }
+            },
+            {
+              "name": "paymentstubfixedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40876"
+              }
+            },
+            {
+              "name": "paymentstubfixedcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40877"
+              }
+            },
+            {
+              "name": "paymentstubindex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40878"
+              }
+            },
+            {
+              "name": "paymentstubindexsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40879"
+              }
+            },
+            {
+              "name": "paymentstubindexcurveperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40880"
+              }
+            },
+            {
+              "name": "paymentstubindexcurveunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40881"
+              }
+            },
+            {
+              "name": "paymentstubindexratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40882"
+              }
+            },
+            {
+              "name": "paymentstubindexratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40883"
+              }
+            },
+            {
+              "name": "paymentstubindexratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40884"
+              }
+            },
+            {
+              "name": "paymentstubindexratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40885"
+              }
+            },
+            {
+              "name": "paymentstubindexcaprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40886"
+              }
+            },
+            {
+              "name": "paymentstubindexcapratebuyside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40887"
+              }
+            },
+            {
+              "name": "paymentstubindexcapratesellside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40888"
+              }
+            },
+            {
+              "name": "paymentstubindexfloorrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40889"
+              }
+            },
+            {
+              "name": "paymentstubindexfloorratebuyside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40890"
+              }
+            },
+            {
+              "name": "paymentstubindexfloorratesellside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40891"
+              }
+            },
+            {
+              "name": "paymentstubindex2",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40892"
+              }
+            },
+            {
+              "name": "paymentstubindex2source",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40893"
+              }
+            },
+            {
+              "name": "paymentstubindex2curveperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40894"
+              }
+            },
+            {
+              "name": "paymentstubindex2curveunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40895"
+              }
+            },
+            {
+              "name": "paymentstubindex2ratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40896"
+              }
+            },
+            {
+              "name": "paymentstubindex2ratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40897"
+              }
+            },
+            {
+              "name": "paymentstubindex2ratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40898"
+              }
+            },
+            {
+              "name": "paymentstubindex2ratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40899"
+              }
+            },
+            {
+              "name": "paymentstubindex2caprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40900"
+              }
+            },
+            {
+              "name": "paymentstubindex2floorrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40901"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStubs",
+      "fix:description": "Number of stubs in the repeating group",
+      "fix:tag": "40872"
+    }
+  }
+]

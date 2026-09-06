@@ -1,0 +1,992 @@
+[
+  {
+    "name": "noprotectiontermobligations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "protectiontermobligationtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40202"
+              }
+            },
+            {
+              "name": "protectiontermobligationvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40203"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProtectionTermObligations",
+      "fix:description": "Number of obligations in the repeating group.",
+      "fix:tag": "40201"
+    }
+  },
+  {
+    "name": "nophysicalsettlterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "physicalsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40205"
+              }
+            },
+            {
+              "name": "physicalsettlbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40206"
+              }
+            },
+            {
+              "name": "physicalsettlmaximumbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40207"
+              }
+            },
+            {
+              "name": "physicalsettltermxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40208"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPhysicalSettlTerms",
+      "fix:description": "Number of entries in the repeating group.",
+      "fix:tag": "40204"
+    }
+  },
+  {
+    "name": "nophysicalsettldeliverableobligations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "physicalsettldeliverableobligationtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40210"
+              }
+            },
+            {
+              "name": "physicalsettldeliverableobligationvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40211"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPhysicalSettlDeliverableObligations",
+      "fix:description": "Number of entries in the repeating group.",
+      "fix:tag": "40209"
+    }
+  },
+  {
+    "name": "nopayments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymenttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40213"
+              }
+            },
+            {
+              "name": "paymentsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40993"
+              }
+            },
+            {
+              "name": "paymentpayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40214"
+              }
+            },
+            {
+              "name": "paymentreceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40215"
+              }
+            },
+            {
+              "name": "paymentdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43087"
+              }
+            },
+            {
+              "name": "paymentcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40216"
+              }
+            },
+            {
+              "name": "paymentamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40217"
+              }
+            },
+            {
+              "name": "paymentamountrelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42598"
+              }
+            },
+            {
+              "name": "paymentamountdeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42599"
+              }
+            },
+            {
+              "name": "paymentfixedrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43097"
+              }
+            },
+            {
+              "name": "paymentfloatingrateindex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43098"
+              }
+            },
+            {
+              "name": "paymentfloatingrateindexcurveunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43100"
+              }
+            },
+            {
+              "name": "paymentfloatingrateindexcurveperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43099"
+              }
+            },
+            {
+              "name": "paymentfloatingratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43101"
+              }
+            },
+            {
+              "name": "paymentrateresetfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43105"
+              }
+            },
+            {
+              "name": "paymentrateresetfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43104"
+              }
+            },
+            {
+              "name": "paymentfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43103"
+              }
+            },
+            {
+              "name": "paymentfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43102"
+              }
+            },
+            {
+              "name": "paymentprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40218"
+              }
+            },
+            {
+              "name": "paymentpricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40919"
+              }
+            },
+            {
+              "name": "paymentunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41155"
+              }
+            },
+            {
+              "name": "paymentdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40219"
+              }
+            },
+            {
+              "name": "paymentbusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40220"
+              }
+            },
+            {
+              "name": "paymentdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41156"
+              }
+            },
+            {
+              "name": "paymentdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41157"
+              }
+            },
+            {
+              "name": "paymentdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41158"
+              }
+            },
+            {
+              "name": "paymentdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41159"
+              }
+            },
+            {
+              "name": "paymentdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40222"
+              }
+            },
+            {
+              "name": "paymentforwardstarttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41160"
+              }
+            },
+            {
+              "name": "paymentdiscountfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40224"
+              }
+            },
+            {
+              "name": "paymentpresentvalueamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40225"
+              }
+            },
+            {
+              "name": "paymentpresentvaluecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40226"
+              }
+            },
+            {
+              "name": "paymentsettlstyle",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40227"
+              }
+            },
+            {
+              "name": "paymentmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "492"
+              }
+            },
+            {
+              "name": "paymentlegrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41304"
+              }
+            },
+            {
+              "name": "paymenttext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40229"
+              }
+            },
+            {
+              "name": "encodedpaymenttextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40984"
+              }
+            },
+            {
+              "name": "encodedpaymenttext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40985"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPayments",
+      "fix:description": "Number of additional settlement or bullet payments.",
+      "fix:tag": "40212"
+    }
+  },
+  {
+    "name": "nopaymentsettls",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentsettlamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40231"
+              }
+            },
+            {
+              "name": "paymentsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40232"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentSettls",
+      "fix:description": "Number of additional settlements or bullet payments.",
+      "fix:tag": "40230"
+    }
+  },
+  {
+    "name": "nopaymentsettlpartyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentsettlpartyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40234"
+              }
+            },
+            {
+              "name": "paymentsettlpartyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40235"
+              }
+            },
+            {
+              "name": "paymentsettlpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40236"
+              }
+            },
+            {
+              "name": "paymentsettlpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40237"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentSettlPartyIDs",
+      "fix:description": "Number of parties identified in the additional settlement or bullet payment.",
+      "fix:tag": "40233"
+    }
+  },
+  {
+    "name": "nopaymentsettlpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentsettlpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40239"
+              }
+            },
+            {
+              "name": "paymentsettlpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40240"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentSettlPartySubIDs",
+      "fix:description": "Number of sub-party IDs to be reported for the party.",
+      "fix:tag": "40238"
+    }
+  },
+  {
+    "name": "nolegstreams",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreamtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40242"
+              }
+            },
+            {
+              "name": "legstreamxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41700"
+              }
+            },
+            {
+              "name": "legstreamdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40243"
+              }
+            },
+            {
+              "name": "legstreamversion",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42583"
+              }
+            },
+            {
+              "name": "legstreamversioneffectivedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42584"
+              }
+            },
+            {
+              "name": "legstreampayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40244"
+              }
+            },
+            {
+              "name": "legstreamreceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40245"
+              }
+            },
+            {
+              "name": "legstreamnotionalxidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41702"
+              }
+            },
+            {
+              "name": "legstreamnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40246"
+              }
+            },
+            {
+              "name": "legstreamcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40247"
+              }
+            },
+            {
+              "name": "legstreamnotionaldeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42585"
+              }
+            },
+            {
+              "name": "legstreamnotionaladjustments",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42586"
+              }
+            },
+            {
+              "name": "legstreamnotionalfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41703"
+              }
+            },
+            {
+              "name": "legstreamnotionalfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41704"
+              }
+            },
+            {
+              "name": "legstreamnotionalcommodityfrequency",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41705"
+              }
+            },
+            {
+              "name": "legstreamnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41706"
+              }
+            },
+            {
+              "name": "legstreamtotalnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41707"
+              }
+            },
+            {
+              "name": "legstreamtotalnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41708"
+              }
+            },
+            {
+              "name": "legstreamtext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40248"
+              }
+            },
+            {
+              "name": "encodedlegstreamtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40978"
+              }
+            },
+            {
+              "name": "encodedlegstreamtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40979"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreams",
+      "fix:description": "Number of swap streams in the repeating group.",
+      "fix:tag": "40241"
+    }
+  },
+  {
+    "name": "nocashsettldealers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "cashsettldealer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40032"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoCashSettlDealers",
+      "fix:description": "Number of dealers in the repeating group.",
+      "fix:tag": "40277"
+    }
+  },
+  {
+    "name": "nobusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "businesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40471"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40278"
+    }
+  }
+]

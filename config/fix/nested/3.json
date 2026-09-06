@@ -1,0 +1,548 @@
+[
+  {
+    "name": "nocontrabrokers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "contrabroker",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "375"
+              }
+            },
+            {
+              "name": "contratrader",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "337"
+              }
+            },
+            {
+              "name": "contratradeqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "437"
+              }
+            },
+            {
+              "name": "contratradetime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "438"
+              }
+            },
+            {
+              "name": "contralegrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "655"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoContraBrokers",
+      "fix:description": "The number of ContraBroker (375) entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nocontrabrokers\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nocontrabrokers\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "382"
+    }
+  },
+  {
+    "name": "nomsgtypes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "refmsgtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "372"
+              }
+            },
+            {
+              "name": "msgdirection",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "385"
+              }
+            },
+            {
+              "name": "refapplverid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1130"
+              }
+            },
+            {
+              "name": "refapplextid",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1406"
+              }
+            },
+            {
+              "name": "refcstmapplverid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1131"
+              }
+            },
+            {
+              "name": "defaultverindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1410"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoMsgTypes",
+      "fix:description": "Number of MsgTypes (35) in repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomsgtypes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomsgtypes\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "384"
+    }
+  },
+  {
+    "name": "notradingsessions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradingsessionid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "336"
+              }
+            },
+            {
+              "name": "tradingsessionsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "625"
+              }
+            },
+            {
+              "name": "tradsesupdateaction",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1327"
+              }
+            },
+            {
+              "name": "securityexchange",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "207"
+              }
+            },
+            {
+              "name": "marketid",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1301"
+              }
+            },
+            {
+              "name": "marketsegmentid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1300"
+              }
+            },
+            {
+              "name": "tradingsessiondesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1326"
+              }
+            },
+            {
+              "name": "tradsesmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "338"
+              }
+            },
+            {
+              "name": "tradsesmode",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "339"
+              }
+            },
+            {
+              "name": "unsolicitedindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "325"
+              }
+            },
+            {
+              "name": "tradsesstatus",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "340"
+              }
+            },
+            {
+              "name": "tradsesstatusrejreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "567"
+              }
+            },
+            {
+              "name": "tradsesstarttime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "341"
+              }
+            },
+            {
+              "name": "tradsesopentime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "342"
+              }
+            },
+            {
+              "name": "tradsespreclosetime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "343"
+              }
+            },
+            {
+              "name": "tradsesclosetime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "344"
+              }
+            },
+            {
+              "name": "tradsesendtime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "345"
+              }
+            },
+            {
+              "name": "totalvolumetraded",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "387"
+              }
+            },
+            {
+              "name": "transacttime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "60"
+              }
+            },
+            {
+              "name": "text",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "58"
+              }
+            },
+            {
+              "name": "encodedtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "354"
+              }
+            },
+            {
+              "name": "encodedtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "355"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTradingSessions",
+      "fix:description": "Number of TradingSessionIDs (336) in repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"notradingsessions\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"notradingsessions\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "386"
+    }
+  },
+  {
+    "name": "nobiddescriptors",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "biddescriptortype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "399"
+              }
+            },
+            {
+              "name": "biddescriptor",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "400"
+              }
+            },
+            {
+              "name": "sidevalueind",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "401"
+              }
+            },
+            {
+              "name": "liquidityvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "404"
+              }
+            },
+            {
+              "name": "liquiditynumsecurities",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "441"
+              }
+            },
+            {
+              "name": "liquiditypctlow",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "402"
+              }
+            },
+            {
+              "name": "liquiditypcthigh",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "403"
+              }
+            },
+            {
+              "name": "efptrackingerror",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "405"
+              }
+            },
+            {
+              "name": "fairvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "406"
+              }
+            },
+            {
+              "name": "outsideindexpct",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "407"
+              }
+            },
+            {
+              "name": "valueoffutures",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "408"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoBidDescriptors",
+      "fix:description": "Number of BidDescriptor (400) entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobiddescriptors\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nobiddescriptors\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "398"
+    }
+  }
+]

@@ -1,0 +1,1665 @@
+[
+  {
+    "name": "noroutingids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "routingtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "216"
+              }
+            },
+            {
+              "name": "routingid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "217"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoRoutingIDs",
+      "fix:description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noroutingids\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noroutingids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "215"
+    }
+  },
+  {
+    "name": "nostipulations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "stipulationtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "233"
+              }
+            },
+            {
+              "name": "stipulationvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "234"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStipulations",
+      "fix:description": "Number of stipulation entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostipulations\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "232"
+    }
+  },
+  {
+    "name": "nomdentrytypes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "mdentrytype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "269"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoMDEntryTypes",
+      "fix:description": "Number of MDEntryType (269) fields requested.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentrytypes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentrytypes\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "267"
+    }
+  },
+  {
+    "name": "nomdentries",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "mdentrystatus",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3106"
+              }
+            },
+            {
+              "name": "mdentryid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "278"
+              }
+            },
+            {
+              "name": "mdentrystatustext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3107"
+              }
+            },
+            {
+              "name": "encodedmdentrystatustextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3108"
+              }
+            },
+            {
+              "name": "encodedmdentrystatustext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3109"
+              }
+            },
+            {
+              "name": "mdentrytype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "269"
+              }
+            },
+            {
+              "name": "mdentrypx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "270"
+              }
+            },
+            {
+              "name": "pricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "423"
+              }
+            },
+            {
+              "name": "avgpxindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "819"
+              }
+            },
+            {
+              "name": "ordtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40"
+              }
+            },
+            {
+              "name": "currency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "15"
+              }
+            },
+            {
+              "name": "currencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2897"
+              }
+            },
+            {
+              "name": "settlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "120"
+              }
+            },
+            {
+              "name": "settlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2899"
+              }
+            },
+            {
+              "name": "mdentrysize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "271"
+              }
+            },
+            {
+              "name": "lottype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1093"
+              }
+            },
+            {
+              "name": "mdentrydate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "272"
+              }
+            },
+            {
+              "name": "mdentrytime",
+              "dtype": {
+                "type": "time64",
+                "unit": "nanosecond"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "273"
+              }
+            },
+            {
+              "name": "tickdirection",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "274"
+              }
+            },
+            {
+              "name": "mdmkt",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "275"
+              }
+            },
+            {
+              "name": "tradingsessionid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "336"
+              }
+            },
+            {
+              "name": "tradingsessionsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "625"
+              }
+            },
+            {
+              "name": "securitytradingstatus",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "326"
+              }
+            },
+            {
+              "name": "haltreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "327"
+              }
+            },
+            {
+              "name": "fastmarketindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2447"
+              }
+            },
+            {
+              "name": "marketcondition",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2705"
+              }
+            },
+            {
+              "name": "quotecondition",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "276"
+              }
+            },
+            {
+              "name": "tradecondition",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "277"
+              }
+            },
+            {
+              "name": "anonymoustradeindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2961"
+              }
+            },
+            {
+              "name": "algorithmictradeindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2667"
+              }
+            },
+            {
+              "name": "mdentryoriginator",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "282"
+              }
+            },
+            {
+              "name": "locationid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "283"
+              }
+            },
+            {
+              "name": "deskid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "284"
+              }
+            },
+            {
+              "name": "openclosesettlflag",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "286"
+              }
+            },
+            {
+              "name": "timeinforce",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "59"
+              }
+            },
+            {
+              "name": "expiredate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "432"
+              }
+            },
+            {
+              "name": "expiretime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "126"
+              }
+            },
+            {
+              "name": "exposureduration",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1629"
+              }
+            },
+            {
+              "name": "exposuredurationunit",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1916"
+              }
+            },
+            {
+              "name": "minqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "110"
+              }
+            },
+            {
+              "name": "execinst",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "18"
+              }
+            },
+            {
+              "name": "sellerdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "287"
+              }
+            },
+            {
+              "name": "orderid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "37"
+              }
+            },
+            {
+              "name": "secondaryorderid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "198"
+              }
+            },
+            {
+              "name": "quoteentryid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "299"
+              }
+            },
+            {
+              "name": "tradeid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1003"
+              }
+            },
+            {
+              "name": "strategylinkid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1851"
+              }
+            },
+            {
+              "name": "mdentrybuyer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "288"
+              }
+            },
+            {
+              "name": "mdentryseller",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "289"
+              }
+            },
+            {
+              "name": "numberofbuyorders",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2449"
+              }
+            },
+            {
+              "name": "numberofsellorders",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2450"
+              }
+            },
+            {
+              "name": "numberoforders",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "346"
+              }
+            },
+            {
+              "name": "numberoftrades",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3104"
+              }
+            },
+            {
+              "name": "mdentrypositionno",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "290"
+              }
+            },
+            {
+              "name": "scope",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "546"
+              }
+            },
+            {
+              "name": "pricedelta",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "811"
+              }
+            },
+            {
+              "name": "trdtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "828"
+              }
+            },
+            {
+              "name": "trdsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "829"
+              }
+            },
+            {
+              "name": "secondarytrdtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "855"
+              }
+            },
+            {
+              "name": "tertiarytrdtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2896"
+              }
+            },
+            {
+              "name": "regulatoryreporttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1934"
+              }
+            },
+            {
+              "name": "multijurisdictionreportingindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2963"
+              }
+            },
+            {
+              "name": "execmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2405"
+              }
+            },
+            {
+              "name": "matchtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "574"
+              }
+            },
+            {
+              "name": "ordercategory",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1115"
+              }
+            },
+            {
+              "name": "tradepublishindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1390"
+              }
+            },
+            {
+              "name": "intrafirmtradeindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2373"
+              }
+            },
+            {
+              "name": "previouslyreported",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "570"
+              }
+            },
+            {
+              "name": "text",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "58"
+              }
+            },
+            {
+              "name": "encodedtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "354"
+              }
+            },
+            {
+              "name": "encodedtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "355"
+              }
+            },
+            {
+              "name": "mdpricelevel",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1023"
+              }
+            },
+            {
+              "name": "ordercapacity",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "528"
+              }
+            },
+            {
+              "name": "mdorigintype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1024"
+              }
+            },
+            {
+              "name": "mdqualityindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3105"
+              }
+            },
+            {
+              "name": "highpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "332"
+              }
+            },
+            {
+              "name": "lowpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "333"
+              }
+            },
+            {
+              "name": "firstpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1025"
+              }
+            },
+            {
+              "name": "lastpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "31"
+              }
+            },
+            {
+              "name": "lastmkt",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "30"
+              }
+            },
+            {
+              "name": "discountfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1592"
+              }
+            },
+            {
+              "name": "tradevolume",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1020"
+              }
+            },
+            {
+              "name": "maxpricevariation",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1143"
+              }
+            },
+            {
+              "name": "settlpricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "731"
+              }
+            },
+            {
+              "name": "settlpricedeterminationmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2451"
+              }
+            },
+            {
+              "name": "settltype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "63"
+              }
+            },
+            {
+              "name": "settldate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "64"
+              }
+            },
+            {
+              "name": "mdquotetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1070"
+              }
+            },
+            {
+              "name": "rptseq",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "83"
+              }
+            },
+            {
+              "name": "dealingcapacity",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1048"
+              }
+            },
+            {
+              "name": "mdentryspotrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1026"
+              }
+            },
+            {
+              "name": "mdentryforwardpoints",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1027"
+              }
+            },
+            {
+              "name": "aggressortime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2445"
+              }
+            },
+            {
+              "name": "aggressorside",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2446"
+              }
+            },
+            {
+              "name": "legrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "654"
+              }
+            },
+            {
+              "name": "manualorderindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1028"
+              }
+            },
+            {
+              "name": "mdupdateaction",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": false,
+              "metadata": {
+                "fix:tag": "279"
+              }
+            },
+            {
+              "name": "deletereason",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "285"
+              }
+            },
+            {
+              "name": "mdsubbooktype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1173"
+              }
+            },
+            {
+              "name": "marketdepth",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "264"
+              }
+            },
+            {
+              "name": "mdentryrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "280"
+              }
+            },
+            {
+              "name": "mdstreamid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1500"
+              }
+            },
+            {
+              "name": "financialstatus",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "291"
+              }
+            },
+            {
+              "name": "corporateaction",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "292"
+              }
+            },
+            {
+              "name": "netchgprevday",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "451"
+              }
+            },
+            {
+              "name": "transbkdtime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "483"
+              }
+            },
+            {
+              "name": "transacttime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "60"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoMDEntries",
+      "fix:description": "Number of entries in Market Data message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentries\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "268"
+    }
+  },
+  {
+    "name": "noquoteentries",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "quoteentryid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "299"
+              }
+            },
+            {
+              "name": "bidpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "132"
+              }
+            },
+            {
+              "name": "offerpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "133"
+              }
+            },
+            {
+              "name": "bidsize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "134"
+              }
+            },
+            {
+              "name": "offersize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "135"
+              }
+            },
+            {
+              "name": "validuntiltime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "62"
+              }
+            },
+            {
+              "name": "bidspotrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "188"
+              }
+            },
+            {
+              "name": "offerspotrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "190"
+              }
+            },
+            {
+              "name": "bidforwardpoints",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "189"
+              }
+            },
+            {
+              "name": "offerforwardpoints",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "191"
+              }
+            },
+            {
+              "name": "midpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "631"
+              }
+            },
+            {
+              "name": "bidyield",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "632"
+              }
+            },
+            {
+              "name": "midyield",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "633"
+              }
+            },
+            {
+              "name": "offeryield",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "634"
+              }
+            },
+            {
+              "name": "transacttime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "60"
+              }
+            },
+            {
+              "name": "tradingsessionid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "336"
+              }
+            },
+            {
+              "name": "tradingsessionsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "625"
+              }
+            },
+            {
+              "name": "settldate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "64"
+              }
+            },
+            {
+              "name": "ordtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40"
+              }
+            },
+            {
+              "name": "settldate2",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "193"
+              }
+            },
+            {
+              "name": "orderqty2",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "192"
+              }
+            },
+            {
+              "name": "bidforwardpoints2",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "642"
+              }
+            },
+            {
+              "name": "offerforwardpoints2",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "643"
+              }
+            },
+            {
+              "name": "currency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "15"
+              }
+            },
+            {
+              "name": "currencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2897"
+              }
+            },
+            {
+              "name": "bookingtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "775"
+              }
+            },
+            {
+              "name": "ordercapacity",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "528"
+              }
+            },
+            {
+              "name": "orderrestrictions",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "529"
+              }
+            },
+            {
+              "name": "quoteentrystatus",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1167"
+              }
+            },
+            {
+              "name": "quoteentryrejectreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "368"
+              }
+            },
+            {
+              "name": "totalbidsize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1749"
+              }
+            },
+            {
+              "name": "totaloffersize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1750"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoQuoteEntries",
+      "fix:description": "The number of quote entries for a QuoteSet.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquoteentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquoteentries\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "295"
+    }
+  },
+  {
+    "name": "noquotesets",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "quotesetid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "302"
+              }
+            },
+            {
+              "name": "quotesetvaliduntiltime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "367"
+              }
+            },
+            {
+              "name": "totnoquoteentries",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "304"
+              }
+            },
+            {
+              "name": "totnocxldquotes",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1168"
+              }
+            },
+            {
+              "name": "totnoaccquotes",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1169"
+              }
+            },
+            {
+              "name": "totnorejquotes",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1170"
+              }
+            },
+            {
+              "name": "lastfragment",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "893"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoQuoteSets",
+      "fix:description": "The number of sets of quotes in the message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquotesets\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquotesets\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "296"
+    }
+  }
+]

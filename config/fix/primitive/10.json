@@ -1,0 +1,1217 @@
+[
+  {
+    "name": "underlyingtimeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingTimeUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "See TimeUnit(997) for complete definition.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingtimeunit\",\"type\":\"String\"}]}",
+      "fix:tag": "1000"
+    }
+  },
+  {
+    "name": "legtimeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTimeUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "See TimeUnit(997) for complete definition.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legtimeunit\",\"type\":\"String\"}]}",
+      "fix:tag": "1001"
+    }
+  },
+  {
+    "name": "allocmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Automatic\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Automatic\"},{\"value\":\"2\",\"name\":\"Guarantor\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Guarantor\"},{\"value\":\"3\",\"name\":\"Manual\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Manual\"},{\"value\":\"4\",\"name\":\"BrokerAssigned\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":4,\"doc\":\"Broker assigned\"}]}",
+      "fix:description": "Specifies the method under which a trade quantity was allocated.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"allocmethod\",\"type\":\"int\"}]}",
+      "fix:tag": "1002"
+    }
+  },
+  {
+    "name": "tradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeID",
+      "fix:description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"tradeid\",\"type\":\"String\"}]}",
+      "fix:tag": "1003"
+    }
+  },
+  {
+    "name": "sidetradereportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideTradeReportID",
+      "fix:description": "Used on a multi-sided trade to designate the ReportID",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidetradereportid\",\"type\":\"String\"}]}",
+      "fix:tag": "1005"
+    }
+  },
+  {
+    "name": "sidefillstationcd",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideFillStationCd",
+      "fix:description": "Used on a multi-sided trade to convey order routing information",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidefillstationcd\",\"type\":\"String\"}]}",
+      "fix:tag": "1006"
+    }
+  },
+  {
+    "name": "sidereasoncd",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideReasonCd",
+      "fix:description": "Used on a multi-sided trade to convey reason for execution",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidereasoncd\",\"type\":\"String\"}]}",
+      "fix:tag": "1007"
+    }
+  },
+  {
+    "name": "sidetrdsubtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideTrdSubType",
+      "fix:aliases": "sidetrdsubtyp",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CMTA\",\"since\":\"4.4\",\"ep\":4,\"sort\":1,\"doc\":\"CMTA\"},{\"value\":\"1\",\"name\":\"InternalTransferOrAdjustment\",\"since\":\"4.4\",\"ep\":4,\"sort\":2,\"doc\":\"Internal transfer or adjustment\"},{\"value\":\"10\",\"name\":\"TransactionFromAssignment\",\"since\":\"4.4\",\"ep\":5,\"sort\":11,\"doc\":\"Transaction from assignment\"},{\"value\":\"11\",\"name\":\"ACATS\",\"since\":\"4.4\",\"ep\":8,\"sort\":12,\"doc\":\"ACATS\"},{\"value\":\"14\",\"name\":\"AI\",\"since\":\"4.4\",\"ep\":26,\"sort\":13,\"group\":\"MiFID Values\",\"doc\":\"AI (Automated input facility disabled in response to an exchange request.)\"},{\"value\":\"15\",\"name\":\"B\",\"since\":\"4.4\",\"ep\":26,\"sort\":14,\"group\":\"MiFID Values\",\"doc\":\"B (Transaction between two member firms where neither member firm is registered as a market maker in the security in question and neither is a designated fund manager. Also used by broker dealers when dealing with another broker which is not a member firm. Non-order book securities only.)\"},{\"value\":\"16\",\"name\":\"K\",\"since\":\"4.4\",\"ep\":26,\"sort\":15,\"group\":\"MiFID Values\",\"doc\":\"K (Transaction using block trade facility.)\"},{\"value\":\"17\",\"name\":\"LC\",\"since\":\"4.4\",\"ep\":26,\"sort\":16,\"group\":\"MiFID Values\",\"doc\":\"LC (Correction submitted more than three days after publication of the original trade report.)\"},{\"value\":\"18\",\"name\":\"M\",\"since\":\"4.4\",\"ep\":26,\"sort\":17,\"group\":\"MiFID Values\",\"doc\":\"M (Transaction, other than a transaction resulting from a stock swap or stock switch, between two market makers registered in that security including IDB or a public display system trades. Non-order book securities only.)\"},{\"value\":\"19\",\"name\":\"N\",\"since\":\"4.4\",\"ep\":26,\"sort\":18,\"group\":\"MiFID Values\",\"doc\":\"N (Non-protected portfolio transaction or a fully disclosed portfolio transaction)\"},{\"value\":\"2\",\"name\":\"ExternalTransferOrTransferOfAccount\",\"since\":\"4.4\",\"ep\":4,\"sort\":3,\"doc\":\"External transfer or transfer of account\"},{\"value\":\"20\",\"name\":\"NM\",\"since\":\"4.4\",\"ep\":26,\"sort\":19,\"group\":\"MiFID Values\",\"doc\":\"NM ( i) transaction where Exchange has granted permission for non-publication\"},{\"value\":\"21\",\"name\":\"NR\",\"since\":\"4.4\",\"ep\":26,\"sort\":20,\"group\":\"MiFID Values\",\"doc\":\"NR (Non-risk transaction in a SEATS security other than an AIM security)\"},{\"value\":\"22\",\"name\":\"P\",\"since\":\"4.4\",\"ep\":26,\"sort\":21,\"group\":\"MiFID Values\",\"doc\":\"P (Protected portfolio transaction or a worked principal agreement to effect a portfolio transaction which includes order book securities)\"},{\"value\":\"23\",\"name\":\"PA\",\"since\":\"4.4\",\"ep\":26,\"sort\":22,\"group\":\"MiFID Values\",\"doc\":\"PA (Protected transaction notification)\"},{\"value\":\"24\",\"name\":\"PC\",\"since\":\"4.4\",\"ep\":26,\"sort\":23,\"group\":\"MiFID Values\",\"doc\":\"PC (Contra trade for transaction which took place on a previous day and which was automatically executed on the Exchange trading system)\"},{\"value\":\"25\",\"name\":\"PN\",\"since\":\"4.4\",\"ep\":26,\"sort\":24,\"group\":\"MiFID Values\",\"doc\":\"PN (Worked principal notification for a portfolio transaction which includes order book securities)\"},{\"value\":\"26\",\"name\":\"R\",\"since\":\"4.4\",\"ep\":26,\"sort\":25,\"group\":\"MiFID Values\",\"doc\":\"R ( (i) riskless principal transaction between non-members where the buying and selling transactions are executed at different prices or on different terms (requires a trade report with trade type indicator R for each transaction)\"},{\"value\":\"27\",\"name\":\"RO\",\"since\":\"4.4\",\"ep\":26,\"sort\":26,\"group\":\"MiFID Values\",\"doc\":\"RO (Transaction which resulted from the exercise of a traditional option or a stock-settled covered warrant)\"},{\"value\":\"28\",\"name\":\"RT\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"group\":\"MiFID Values\",\"doc\":\"RT (Risk transaction in a SEATS security, (excluding AIM security) reported by a market maker registered in that security)\"},{\"value\":\"29\",\"name\":\"SW\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"group\":\"MiFID Values\",\"doc\":\"SW (Transactions resulting from stock swap or a stock switch (one report is required for each line of stock))\"},{\"value\":\"3\",\"name\":\"RejectForSubmittingSide\",\"since\":\"4.4\",\"ep\":4,\"sort\":4,\"doc\":\"Reject for submitting side\"},{\"value\":\"30\",\"name\":\"T\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"group\":\"MiFID Values\",\"doc\":\"T (If reporting a single protected transaction)\"},{\"value\":\"31\",\"name\":\"WN\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"group\":\"MiFID Values\",\"doc\":\"WN (Worked principal notification for a single order book security)\"},{\"value\":\"32\",\"name\":\"WT\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"group\":\"MiFID Values\",\"doc\":\"WT (Worked principal transaction (other than a portfolio transaction))\"},{\"value\":\"33\",\"name\":\"OffHoursTrade\",\"since\":\"5.0\",\"ep\":61,\"sort\":32,\"doc\":\"Off Hours Trade\"},{\"value\":\"34\",\"name\":\"OnHoursTrade\",\"since\":\"5.0\",\"ep\":61,\"sort\":33,\"doc\":\"On Hours Trade\"},{\"value\":\"35\",\"name\":\"OTCQuote\",\"since\":\"5.0\",\"ep\":61,\"sort\":34,\"doc\":\"OTC Quote\"},{\"value\":\"36\",\"name\":\"ConvertedSWAP\",\"since\":\"5.0\",\"ep\":-1,\"sort\":36,\"doc\":\"Converted SWAP\"},{\"value\":\"37\",\"name\":\"CrossedTrade\",\"since\":\"5.0\",\"ep\":-1,\"sort\":37,\"group\":\"MiFID Values\",\"doc\":\"Crossed Trade (X)\"},{\"value\":\"38\",\"name\":\"InterimProtectedTrade\",\"since\":\"5.0\",\"ep\":-1,\"sort\":38,\"group\":\"MiFID Values\",\"doc\":\"Interim Protected Trade (I)\"},{\"value\":\"39\",\"name\":\"LargeInScale\",\"since\":\"5.0\",\"ep\":-1,\"sort\":39,\"group\":\"MiFID Values\",\"doc\":\"Large in Scale (L)\"},{\"value\":\"4\",\"name\":\"AdvisoryForContraSide\",\"since\":\"4.4\",\"ep\":4,\"sort\":5,\"doc\":\"Advisory for contra side\"},{\"value\":\"40\",\"name\":\"WashTrade\",\"since\":\"5.0SP2\",\"ep\":101,\"sort\":40,\"doc\":\"Wash Trade\"},{\"value\":\"41\",\"name\":\"TradeAtSettlement\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":41,\"doc\":\"Trade at Settlement (TAS)\"},{\"value\":\"42\",\"name\":\"AuctionTrade\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":42,\"doc\":\"Auction Trade\"},{\"value\":\"43\",\"name\":\"TradeAtMarker\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":43,\"doc\":\"Trade at Marker (TAM)\"},{\"value\":\"44\",\"name\":\"CreditDefault\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":44,\"doc\":\"Default (Credit Event)\"},{\"value\":\"45\",\"name\":\"CreditRestructuring\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":45,\"doc\":\"Restructuring (credit event)\"},{\"value\":\"46\",\"name\":\"Merger\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":46,\"doc\":\"Merger (succession event)\"},{\"value\":\"47\",\"name\":\"SpinOff\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":47,\"doc\":\"Spin-off (succession event)\"},{\"value\":\"48\",\"name\":\"MultilateralCompression\",\"since\":\"5.0SP2\",\"ep\":201,\"sort\":48,\"doc\":\"Multilateral compression\"},{\"value\":\"5\",\"name\":\"OffsetDueToAnAllocation\",\"since\":\"4.4\",\"ep\":5,\"sort\":6,\"doc\":\"Offset due to an allocation\"},{\"value\":\"50\",\"name\":\"Balancing\",\"since\":\"5.0SP2\",\"ep\":227,\"sort\":50,\"doc\":\"Balancing\"},{\"value\":\"51\",\"name\":\"BasisTradeIndexClose\",\"since\":\"5.0SP2\",\"ep\":227,\"sort\":51,\"doc\":\"Basis Trade index Close (BTIC)\"},{\"value\":\"52\",\"name\":\"TradeAtCashOpen\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":52,\"doc\":\"Trade At Cash Open (TACO)\"},{\"value\":\"53\",\"name\":\"TrdSubmitVenueClrSettl\",\"ep\":268,\"sort\":53,\"doc\":\"Trade submitted to venue for clearing and settlement\"},{\"value\":\"54\",\"name\":\"BilateralCompression\",\"ep\":269,\"sort\":54,\"doc\":\"Bilateral compression\"},{\"value\":\"6\",\"name\":\"OnsetDueToAnAllocation\",\"since\":\"4.4\",\"ep\":5,\"sort\":7,\"doc\":\"Onset due to an allocation\"},{\"value\":\"7\",\"name\":\"DifferentialSpread\",\"since\":\"4.4\",\"ep\":5,\"sort\":8,\"doc\":\"Differential spread\"},{\"value\":\"8\",\"name\":\"ImpliedSpreadLegExecutedAgainstAnOutright\",\"since\":\"4.4\",\"ep\":5,\"sort\":9,\"doc\":\"Implied spread leg executed against an outright\"},{\"value\":\"9\",\"name\":\"TransactionFromExercise\",\"since\":\"4.4\",\"ep\":5,\"sort\":10,\"doc\":\"Transaction from exercise\"}]}",
+      "fix:description": "Used on a multi-sided trade to specify the type of trade for a given side. Same values as TrdSubType (829).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidetrdsubtyp\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"name\":\"sidetrdsubtype\",\"type\":\"int\"}]}",
+      "fix:tag": "1008"
+    }
+  },
+  {
+    "name": "sidelastqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideLastQty",
+      "fix:aliases": "sideqty",
+      "fix:description": "Used to indicate the quantity on one side of a multi-sided trade.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sideqty\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"name\":\"sidelastqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1009"
+    }
+  },
+  {
+    "name": "messageeventsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MessageEventSource",
+      "fix:description": "Used to identify the event or source which gave rise to a message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"messageeventsource\",\"type\":\"String\"}]}",
+      "fix:tag": "1011"
+    }
+  },
+  {
+    "name": "sidetrdregtimestamp",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideTrdRegTimestamp",
+      "fix:description": "Same as TrdRegTimestamp(769). Used in a multi-sided message to indicate relevant trade-side timestamp.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidetrdregtimestamp\",\"type\":\"UTCTimestamp\"}]}",
+      "fix:tag": "1012"
+    }
+  },
+  {
+    "name": "sidetrdregtimestamptype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideTrdRegTimestampType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutionTime\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Execution time\"},{\"value\":\"10\",\"name\":\"OrderSubmissionTime\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"Order submission time\"},{\"value\":\"11\",\"name\":\"PubliclyReported\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"Publicly reported\"},{\"value\":\"12\",\"name\":\"PublicReportUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"Public report updated\"},{\"value\":\"13\",\"name\":\"NonPubliclyReported\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"Non-publicly reported\"},{\"value\":\"14\",\"name\":\"NonPublicReportUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"Non-public report updated\"},{\"value\":\"15\",\"name\":\"SubmittedForConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"Submitted for confirmation\"},{\"value\":\"16\",\"name\":\"UpdatedForConfirmation\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"Updated for confirmation\"},{\"value\":\"17\",\"name\":\"Confirmed\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"Confirmed\"},{\"value\":\"18\",\"name\":\"UpdatedForClearing\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"Updated for clearing\"},{\"value\":\"19\",\"name\":\"Cleared\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"Cleared\"},{\"value\":\"2\",\"name\":\"TimeIn\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Time in\"},{\"value\":\"20\",\"name\":\"AllocationsSubmitted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"Allocations submitted\"},{\"value\":\"21\",\"name\":\"AllocationsUpdated\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"Allocations updated\"},{\"value\":\"22\",\"name\":\"AllocationsCompleted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"Allocations completed\"},{\"value\":\"23\",\"name\":\"SubmittedToRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"Submitted to repository\"},{\"value\":\"24\",\"name\":\"PostTrdContntnEvnt\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":24,\"doc\":\"Post-trade continuation event\"},{\"value\":\"25\",\"name\":\"PostTradeValuation\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":25,\"doc\":\"Post-trade valuation\"},{\"value\":\"26\",\"name\":\"PreviousTimePriority\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"doc\":\"Previous time priority\"},{\"value\":\"27\",\"name\":\"IdentifierAssigned\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":27,\"doc\":\"Identifier assigned\"},{\"value\":\"28\",\"name\":\"PreviousIdentifierAssigned\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":28,\"doc\":\"Previous identifier assigned\"},{\"value\":\"29\",\"name\":\"OrderCancellationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":29,\"doc\":\"Order cancellation time\"},{\"value\":\"3\",\"name\":\"TimeOut\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Time out\"},{\"value\":\"30\",\"name\":\"OrderModificationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":30,\"doc\":\"Order modification time\"},{\"value\":\"31\",\"name\":\"OrderRoutingTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":31,\"doc\":\"Order routing time\"},{\"value\":\"32\",\"name\":\"TradeCancellationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":32,\"doc\":\"Trade cancellation time\"},{\"value\":\"33\",\"name\":\"TradeModificationTime\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":33,\"doc\":\"Trade modification time\"},{\"value\":\"34\",\"name\":\"ReferenceTimeForBBO\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":34,\"doc\":\"Reference time for BBO\"},{\"value\":\"35\",\"name\":\"Affirmed\",\"ep\":291,\"sort\":35,\"doc\":\"Affirmed\"},{\"value\":\"36\",\"name\":\"UpdateTime\",\"ep\":300,\"sort\":36,\"doc\":\"Update time\"},{\"value\":\"4\",\"name\":\"BrokerReceipt\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Broker receipt\"},{\"value\":\"5\",\"name\":\"BrokerExecution\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Broker execution\"},{\"value\":\"6\",\"name\":\"DeskReceipt\",\"since\":\"4.4\",\"ep\":9,\"sort\":6,\"doc\":\"Desk receipt\"},{\"value\":\"7\",\"name\":\"SubmissionToClearing\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":7,\"doc\":\"Submission to clearing\"},{\"value\":\"8\",\"name\":\"TimePriority\",\"since\":\"5.0SP2\",\"ep\":101,\"sort\":8,\"doc\":\"Time priority\"},{\"value\":\"9\",\"name\":\"OrderbookEntryTime\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":9,\"doc\":\"Orderbook entry time\"}]}",
+      "fix:description": "Same as TrdRegTimeStampType(770). Used in a multi-sided message to indicate relevant trade-side timestamp type.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidetrdregtimestamptype\",\"type\":\"int\"}]}",
+      "fix:tag": "1013"
+    }
+  },
+  {
+    "name": "sidetrdregtimestampsrc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideTrdRegTimestampSrc",
+      "fix:description": "Same as TrdRegTimestampOrigin(771). Used in a multi-sided message to indicate relevant trade-side origin or source of timestamp.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidetrdregtimestampsrc\",\"type\":\"String\"}]}",
+      "fix:tag": "1014"
+    }
+  },
+  {
+    "name": "asofindicator",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AsOfIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"False\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"false - trade is not an AsOf trade\"},{\"value\":\"1\",\"name\":\"True\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"true - trade is an AsOf trade\"}]}",
+      "fix:description": "A trade that is being submitted for a trade date prior to the current trade or clearing date, e.g. in an open outcry market an out trade being submitted for the previous trading session or trading day.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"asofindicator\",\"type\":\"char\"}]}",
+      "fix:tag": "1015"
+    }
+  },
+  {
+    "name": "legoptionratio",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegOptionRatio",
+      "fix:description": "Expresses the risk of an option leg",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legoptionratio\",\"type\":\"float\"}]}",
+      "fix:tag": "1017"
+    }
+  },
+  {
+    "name": "instrumentpartyid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartyID",
+      "fix:description": "PartyID value within an instrument party repeating group. Same values as PartyID (448)",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrumentpartyid\",\"type\":\"String\"}]}",
+      "fix:tag": "1019"
+    }
+  },
+  {
+    "name": "tradevolume",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeVolume",
+      "fix:description": "Used to report volume with a trade",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"tradevolume\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1020"
+    }
+  },
+  {
+    "name": "mdbooktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDBookType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"TopOfBook\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Top of Book\"},{\"value\":\"2\",\"name\":\"PriceDepth\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Price Depth\"},{\"value\":\"3\",\"name\":\"OrderDepth\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Order Depth\"}]}",
+      "fix:description": "Describes the type of book for which the feed is intended. Used when multiple feeds are provided over the same connection",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdbooktype\",\"type\":\"int\"}]}",
+      "fix:tag": "1021"
+    }
+  },
+  {
+    "name": "mdfeedtype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDFeedType",
+      "fix:description": "Describes a class of service for a given data feed, ie Regular and Market Maker, Bandwidth Intensive or Bandwidth Conservative",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdfeedtype\",\"type\":\"String\"}]}",
+      "fix:tag": "1022"
+    }
+  },
+  {
+    "name": "mdpricelevel",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDPriceLevel",
+      "fix:description": "Integer to convey the level of a bid or offer at a given price level. This is in contrast to MDEntryPositionNo(290) which is used to convey the position of an order within a price level.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdpricelevel\",\"type\":\"int\"}]}",
+      "fix:tag": "1023"
+    }
+  },
+  {
+    "name": "mdorigintype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDOriginType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Book\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Book\"},{\"value\":\"1\",\"name\":\"OffBook\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Off-Book\"},{\"value\":\"2\",\"name\":\"Cross\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Cross\"},{\"value\":\"3\",\"name\":\"QuoteDrivenMarket\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":4,\"doc\":\"Quote driven market\"},{\"value\":\"4\",\"name\":\"DarkOrderBook\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":5,\"doc\":\"Dark order book\"},{\"value\":\"5\",\"name\":\"AuctionDrivenMarket\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":6,\"doc\":\"Auction driven market\"},{\"value\":\"6\",\"name\":\"QuoteNegotiation\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":7,\"doc\":\"Quote negotiation\"},{\"value\":\"7\",\"name\":\"VoiceNegotiation\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":7,\"doc\":\"Voice negotiation\"},{\"value\":\"8\",\"name\":\"HybridMarket\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":8,\"doc\":\"Hybrid market\"},{\"value\":\"9\",\"name\":\"OtherMarket\",\"ep\":286,\"sort\":9,\"doc\":\"Other market\"}]}",
+      "fix:description": "Used to describe the origin of the market data entry.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdorigintype\",\"type\":\"int\"}]}",
+      "fix:tag": "1024"
+    }
+  },
+  {
+    "name": "firstpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FirstPx",
+      "fix:description": "Indicates the first trade price of the day/session",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"firstpx\",\"type\":\"Price\"}]}",
+      "fix:tag": "1025"
+    }
+  },
+  {
+    "name": "mdentryspotrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDEntrySpotRate",
+      "fix:description": "The spot rate for an FX entry",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdentryspotrate\",\"type\":\"float\"}]}",
+      "fix:tag": "1026"
+    }
+  },
+  {
+    "name": "mdentryforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDEntryForwardPoints",
+      "fix:description": "Used for an F/X entry. The forward points to be added to or subtracted from the spot rate to get the \"all-in\" rate in MDEntryPx. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdentryforwardpoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1027"
+    }
+  },
+  {
+    "name": "manualorderindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ManualOrderIndicator",
+      "fix:description": "Indicates if an order, quote or trade was initially received manually (as opposed to electronically) or if it was entered manually (as opposed to entered by automated trading software).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"manualorderindicator\",\"type\":\"Boolean\"}]}",
+      "fix:tag": "1028"
+    }
+  },
+  {
+    "name": "custdirectedorder",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CustDirectedOrder",
+      "fix:description": "Indicates if the customer directed this order to a specific execution venue \"Y\" or not \"N\".",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"custdirectedorder\",\"type\":\"Boolean\"}]}",
+      "fix:tag": "1029"
+    }
+  },
+  {
+    "name": "receiveddeptid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ReceivedDeptID",
+      "fix:description": "Identifies the broker-dealer department that first took the order.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"receiveddeptid\",\"type\":\"String\"}]}",
+      "fix:tag": "1030"
+    }
+  },
+  {
+    "name": "custorderhandlinginst",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CustOrderHandlingInst",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"PhoneSimple\",\"since\":\"5.0SP2\",\"ep\":133,\"group\":\"FIA Execution Source Code\",\"doc\":\"Phone simple\"},{\"value\":\"ADD\",\"name\":\"AddOnOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"FINRA OATS\",\"doc\":\"Add-on order\"},{\"value\":\"AON\",\"name\":\"AllOrNone\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"FINRA OATS\",\"doc\":\"All or none\"},{\"value\":\"B\",\"name\":\"PhoneComplex\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":1,\"group\":\"FIA Execution Source Code\",\"doc\":\"Phone complex\"},{\"value\":\"C\",\"name\":\"FCMProvidedScreen\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":2,\"group\":\"FIA Execution Source Code\",\"doc\":\"FCM provided screen\"},{\"value\":\"CND\",\"name\":\"ConditionalOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":3,\"group\":\"FINRA OATS\",\"doc\":\"Conditional order\"},{\"value\":\"CNH\",\"name\":\"CashNotHeld\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"group\":\"FINRA OATS\",\"doc\":\"Cash not held\"},{\"value\":\"CSH\",\"name\":\"DeliveryInstructionsCash\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":5,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - cash\"},{\"value\":\"D\",\"name\":\"OtherProvidedScreen\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":3,\"group\":\"FIA Execution Source Code\",\"doc\":\"Other provided screen\"},{\"value\":\"DIR\",\"name\":\"DirectedOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"group\":\"FINRA OATS\",\"doc\":\"Directed order\"},{\"value\":\"DLO\",\"name\":\"DiscretionaryLimitOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":7,\"group\":\"FINRA OATS\",\"doc\":\"Discretionary limit order\"},{\"value\":\"E\",\"name\":\"ClientProvidedPlatformControlledByFCM\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":4,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client provided platform controlled by FCM\"},{\"value\":\"E.W\",\"name\":\"ExchangeForPhysicalTransaction\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"group\":\"FINRA OATS\",\"doc\":\"Exchange for physical transaction\"},{\"value\":\"F\",\"name\":\"ClientProvidedPlatformDirectToExchange\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":5,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client provided platform direct to exchange\"},{\"value\":\"F0\",\"name\":\"StayOnOfferside\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":36,\"group\":\"FINRA OATS\",\"doc\":\"Stay on offerside\"},{\"value\":\"F3\",\"name\":\"GoAlong\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":37,\"group\":\"FINRA OATS\",\"doc\":\"Go along\"},{\"value\":\"F6\",\"name\":\"ParticipateDoNotInitiate\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":38,\"group\":\"FINRA OATS\",\"doc\":\"Participate do not initiate\"},{\"value\":\"F7\",\"name\":\"StrictScale\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":39,\"group\":\"FINRA OATS\",\"doc\":\"Strict scale\"},{\"value\":\"F8\",\"name\":\"TryToScale\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":40,\"group\":\"FINRA OATS\",\"doc\":\"Try to scale\"},{\"value\":\"F9\",\"name\":\"StayOnBidside\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":41,\"group\":\"FINRA OATS\",\"doc\":\"Stay on bidside\"},{\"value\":\"FA\",\"name\":\"NoCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":42,\"group\":\"FINRA OATS\",\"doc\":\"No cross\"},{\"value\":\"FB\",\"name\":\"OKToCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":43,\"group\":\"FINRA OATS\",\"doc\":\"OK to cross\"},{\"value\":\"FC\",\"name\":\"CallFirst\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":44,\"group\":\"FINRA OATS\",\"doc\":\"Call first\"},{\"value\":\"FD\",\"name\":\"PercentOfVolume\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":45,\"group\":\"FINRA OATS\",\"doc\":\"Percent of volume\"},{\"value\":\"FH\",\"name\":\"ReinstateOnSystemFailure\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":46,\"group\":\"FINRA OATS\",\"doc\":\"Reinstate on system failure\"},{\"value\":\"FI\",\"name\":\"InstitutionOnly\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":47,\"group\":\"FINRA OATS\",\"doc\":\"Institution only\"},{\"value\":\"FJ\",\"name\":\"ReinstateOnTradingHalt\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":48,\"group\":\"FINRA OATS\",\"doc\":\"Reinstate on trading halt\"},{\"value\":\"FK\",\"name\":\"CancelOnTradingHalf\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":49,\"group\":\"FINRA OATS\",\"doc\":\"Cancel on trading half\"},{\"value\":\"FL\",\"name\":\"LastPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":50,\"group\":\"FINRA OATS\",\"doc\":\"Last peg\"},{\"value\":\"FM\",\"name\":\"MidPricePeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":51,\"group\":\"FINRA OATS\",\"doc\":\"Mid-price peg\"},{\"value\":\"FN\",\"name\":\"NonNegotiable\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":52,\"group\":\"FINRA OATS\",\"doc\":\"Non-negotiable\"},{\"value\":\"FO\",\"name\":\"OpeningPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":53,\"group\":\"FINRA OATS\",\"doc\":\"Opening peg\"},{\"value\":\"FOK\",\"name\":\"FillOrKill\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"group\":\"FINRA OATS\",\"doc\":\"Fill or kill\"},{\"value\":\"FP\",\"name\":\"MarketPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":54,\"group\":\"FINRA OATS\",\"doc\":\"Market peg\"},{\"value\":\"FQ\",\"name\":\"CancelOnSystemFailure\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":55,\"group\":\"FINRA OATS\",\"doc\":\"Cancel on system failure\"},{\"value\":\"FR\",\"name\":\"PrimaryPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":56,\"group\":\"FINRA OATS\",\"doc\":\"Primary peg\"},{\"value\":\"FS\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":57,\"group\":\"FINRA OATS\",\"doc\":\"Suspend\"},{\"value\":\"FT\",\"name\":\"FixedPegToLocalBBO\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":58,\"group\":\"FINRA OATS\",\"doc\":\"Fixed peg to local best bid or offer at time of order\"},{\"value\":\"FW\",\"name\":\"PegToVWAP\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":59,\"group\":\"FINRA OATS\",\"doc\":\"Peg to VWAP\"},{\"value\":\"FX\",\"name\":\"TradeAlong\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":60,\"group\":\"FINRA OATS\",\"doc\":\"Trade along\"},{\"value\":\"FY\",\"name\":\"TryToStop\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":61,\"group\":\"FINRA OATS\",\"doc\":\"Try to stop\"},{\"value\":\"FZ\",\"name\":\"CancelIfNotBest\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":62,\"group\":\"FINRA OATS\",\"doc\":\"Cancel if not best\"},{\"value\":\"Fb\",\"name\":\"StrictLimit\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":63,\"group\":\"FINRA OATS\",\"doc\":\"Strict limit\"},{\"value\":\"Fc\",\"name\":\"IgnorePriceValidityChecks\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":64,\"group\":\"FINRA OATS\",\"doc\":\"Ignore price validity checks\"},{\"value\":\"Fd\",\"name\":\"PegToLimitPrice\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":65,\"group\":\"FINRA OATS\",\"doc\":\"Peg to Limit Price\"},{\"value\":\"Fe\",\"name\":\"WorkToTargetStrategy\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":66,\"group\":\"FINRA OATS\",\"doc\":\"Work to target strategy\"},{\"value\":\"G\",\"name\":\"GOrderAndFCMAPIorFIX\",\"since\":\"5.0SP2\",\"ep\":133,\"group\":\"SHARED\",\"doc\":\"G Order(FINRA OATS), FCM API or FIX(FIA Execution Source)\"},{\"value\":\"H\",\"name\":\"AlgoEngine\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":7,\"group\":\"FIA Execution Source Code\",\"doc\":\"Algo engine\"},{\"value\":\"IDX\",\"name\":\"IntraDayCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":11,\"group\":\"FINRA OATS\",\"doc\":\"Intraday cross\"},{\"value\":\"IO\",\"name\":\"ImbalanceOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":12,\"group\":\"FINRA OATS\",\"doc\":\"Imbalance only\"},{\"value\":\"IOC\",\"name\":\"ImmediateOrCancel\",\"since\":\"4.4\",\"ep\":-1,\"sort\":13,\"group\":\"FINRA OATS\",\"doc\":\"Immediate or cancel\"},{\"value\":\"ISO\",\"name\":\"IntermarketSweepOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":14,\"group\":\"FINRA OATS\",\"doc\":\"Intermarket sweep order\"},{\"value\":\"J\",\"name\":\"PriceAtExecution\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":8,\"group\":\"FIA Execution Source Code\",\"doc\":\"Price at execution (price added at initial order entry, trading, middle office or time of give-up)\"},{\"value\":\"LOC\",\"name\":\"LimitOnClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":16,\"group\":\"FINRA OATS\",\"doc\":\"Limit on Close\"},{\"value\":\"LOO\",\"name\":\"LimitOnOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":15,\"group\":\"FINRA OATS\",\"doc\":\"Limit on open\"},{\"value\":\"MAC\",\"name\":\"MarketAtClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":18,\"group\":\"FINRA OATS\",\"doc\":\"Market at close\"},{\"value\":\"MAO\",\"name\":\"MarketAtOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"group\":\"FINRA OATS\",\"doc\":\"Market at Open\"},{\"value\":\"MOC\",\"name\":\"MarketOnClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":20,\"group\":\"FINRA OATS\",\"doc\":\"Market on close\"},{\"value\":\"MOO\",\"name\":\"MarketOnOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":19,\"group\":\"FINRA OATS\",\"doc\":\"Market on open\"},{\"value\":\"MPT\",\"name\":\"MergerRelatedTransferPosition\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":21,\"group\":\"FINRA OATS\",\"doc\":\"Merger related transfer position\"},{\"value\":\"MQT\",\"name\":\"MinimumQuantity\",\"since\":\"4.4\",\"ep\":-1,\"sort\":22,\"group\":\"FINRA OATS\",\"doc\":\"Minimum quantity\"},{\"value\":\"MTL\",\"name\":\"MarketToLimit\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":23,\"group\":\"FINRA OATS\",\"doc\":\"Market to limit\"},{\"value\":\"ND\",\"name\":\"DeliveryInstructionsNextDay\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":24,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - next day\"},{\"value\":\"NH\",\"name\":\"NotHeld\",\"since\":\"4.4\",\"ep\":-1,\"sort\":25,\"group\":\"FINRA OATS\",\"doc\":\"Not held\"},{\"value\":\"OPT\",\"name\":\"OptionsRelatedTransaction\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":26,\"group\":\"FINRA OATS\",\"doc\":\"Options related transaction\"},{\"value\":\"OVD\",\"name\":\"OverTheDay\",\"since\":\"4.4\",\"ep\":-1,\"sort\":27,\"group\":\"FINRA OATS\",\"doc\":\"Over the day\"},{\"value\":\"PEG\",\"name\":\"Pegged\",\"since\":\"4.4\",\"ep\":-1,\"sort\":28,\"group\":\"FINRA OATS\",\"doc\":\"Pegged\"},{\"value\":\"RSV\",\"name\":\"ReserveSizeOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":29,\"group\":\"FINRA OATS\",\"doc\":\"Reserve size order\"},{\"value\":\"S.W\",\"name\":\"StopStockTransaction\",\"since\":\"4.4\",\"ep\":-1,\"sort\":30,\"group\":\"FINRA OATS\",\"doc\":\"Stop stock transaction\"},{\"value\":\"SCL\",\"name\":\"Scale\",\"since\":\"4.4\",\"ep\":-1,\"sort\":31,\"group\":\"FINRA OATS\",\"doc\":\"Scale\"},{\"value\":\"SLR\",\"name\":\"DeliveryInstructionsSellersOption\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":32,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - sellers option\"},{\"value\":\"TMO\",\"name\":\"TimeOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":33,\"group\":\"FINRA OATS\",\"doc\":\"Time order\"},{\"value\":\"TS\",\"name\":\"TrailingStop\",\"since\":\"4.4\",\"ep\":-1,\"sort\":34,\"group\":\"FINRA OATS\",\"doc\":\"Trailing stop\"},{\"value\":\"W\",\"name\":\"DeskElectronic\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":9,\"group\":\"FIA Execution Source Code\",\"doc\":\"Desk - electronic\"},{\"value\":\"WRK\",\"name\":\"Work\",\"since\":\"4.4\",\"ep\":-1,\"sort\":35,\"group\":\"FINRA OATS\",\"doc\":\"Work\"},{\"value\":\"X\",\"name\":\"DeskPit\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":10,\"group\":\"FIA Execution Source Code\",\"doc\":\"Desk - pit\"},{\"value\":\"Y\",\"name\":\"ClientElectronic\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":11,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client - electronic\"},{\"value\":\"Z\",\"name\":\"ClientPit\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":12,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client - pit\"}]}",
+      "fix:description": "Codes that apply special information that the Broker / Dealer needs to report, as specified by the customer.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"custorderhandlinginst\",\"type\":\"MultipleStringValue\"}]}",
+      "fix:tag": "1031"
+    }
+  },
+  {
+    "name": "orderhandlinginstsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OrderHandlingInstSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"FINRA OATS\"},{\"value\":\"2\",\"name\":\"FIAExecutionSourceCode\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":2,\"doc\":\"FIA Execution Source Code\"}]}",
+      "fix:description": "Identifies the class or source of the order handling instruction values. Scope of this will apply to both CustOrderHandlingInst(1031) and DeskOrderHandlingInst(1035).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"orderhandlinginstsource\",\"type\":\"int\"}]}",
+      "fix:tag": "1032"
+    }
+  },
+  {
+    "name": "desktype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DeskType",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agency\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"FINRA OATS\",\"doc\":\"Agency\"},{\"value\":\"AR\",\"name\":\"Arbitrage\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"FINRA OATS\",\"doc\":\"Arbitrage\"},{\"value\":\"B\",\"name\":\"BlockTrading\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":3,\"group\":\"FINRA OATS\",\"doc\":\"Block trading\"},{\"value\":\"C\",\"name\":\"ConvertibleDesk\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":4,\"group\":\"FINRA OATS\",\"doc\":\"Convertible desk\"},{\"value\":\"CR\",\"name\":\"CentralRiskBooks\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":5,\"group\":\"FINRA OATS\",\"doc\":\"Central risk books\"},{\"value\":\"D\",\"name\":\"Derivatives\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"group\":\"FINRA OATS\",\"doc\":\"Derivatives\"},{\"value\":\"EC\",\"name\":\"EquityCapitalMarkets\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":7,\"group\":\"FINRA OATS\",\"doc\":\"Equity capital markets\"},{\"value\":\"FB\",\"name\":\"FloorBroker\",\"ep\":264,\"sort\":18,\"group\":\"FINRA OATS\",\"doc\":\"Floor Broker\"},{\"value\":\"IN\",\"name\":\"International\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"group\":\"FINRA OATS\",\"doc\":\"International\"},{\"value\":\"IS\",\"name\":\"Institutional\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"group\":\"FINRA OATS\",\"doc\":\"Institutional\"},{\"value\":\"O\",\"name\":\"Other\",\"since\":\"4.4\",\"ep\":-1,\"sort\":10,\"group\":\"FINRA OATS\",\"doc\":\"Other\"},{\"value\":\"PF\",\"name\":\"PreferredTrading\",\"since\":\"4.4\",\"ep\":-1,\"sort\":11,\"group\":\"FINRA OATS\",\"doc\":\"Preferred trading\"},{\"value\":\"PR\",\"name\":\"Proprietary\",\"since\":\"4.4\",\"ep\":-1,\"sort\":12,\"group\":\"FINRA OATS\",\"doc\":\"Proprietary\"},{\"value\":\"PT\",\"name\":\"ProgramTrading\",\"since\":\"4.4\",\"ep\":-1,\"sort\":13,\"group\":\"FINRA OATS\",\"doc\":\"Program trading\"},{\"value\":\"S\",\"name\":\"Sales\",\"since\":\"4.4\",\"ep\":-1,\"sort\":14,\"group\":\"FINRA OATS\",\"doc\":\"Sales\"},{\"value\":\"SW\",\"name\":\"Swaps\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":15,\"group\":\"FINRA OATS\",\"doc\":\"Swaps\"},{\"value\":\"T\",\"name\":\"TradingDeskSystem\",\"since\":\"4.4\",\"ep\":-1,\"sort\":16,\"group\":\"FINRA OATS\",\"doc\":\"Trading desk or system non-market maker\"},{\"value\":\"TR\",\"name\":\"Treasury\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":17,\"group\":\"FINRA OATS\",\"doc\":\"Treasury\"}]}",
+      "fix:description": "Identifies the type of Trading Desk.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"desktype\",\"type\":\"String\"}]}",
+      "fix:tag": "1033"
+    }
+  },
+  {
+    "name": "desktypesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DeskTypeSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FINRAOATS\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"FINRA OATS\"}]}",
+      "fix:description": "Identifies the class or source of DeskType(1033) values. Conditionally required when DeskType(1033) is specified.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"desktypesource\",\"type\":\"int\"}]}",
+      "fix:tag": "1034"
+    }
+  },
+  {
+    "name": "deskorderhandlinginst",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DeskOrderHandlingInst",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"PhoneSimple\",\"since\":\"5.0SP2\",\"ep\":133,\"group\":\"FIA Execution Source Code\",\"doc\":\"Phone simple\"},{\"value\":\"ADD\",\"name\":\"AddOnOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"group\":\"FINRA OATS\",\"doc\":\"Add-on order\"},{\"value\":\"AON\",\"name\":\"AllOrNone\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"group\":\"FINRA OATS\",\"doc\":\"All or none\"},{\"value\":\"B\",\"name\":\"PhoneComplex\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":1,\"group\":\"FIA Execution Source Code\",\"doc\":\"Phone complex\"},{\"value\":\"C\",\"name\":\"FCMProvidedScreen\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":2,\"group\":\"FIA Execution Source Code\",\"doc\":\"FCM provided screen\"},{\"value\":\"CND\",\"name\":\"ConditionalOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":3,\"group\":\"FINRA OATS\",\"doc\":\"Conditional order\"},{\"value\":\"CNH\",\"name\":\"CashNotHeld\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"group\":\"FINRA OATS\",\"doc\":\"Cash not held\"},{\"value\":\"CSH\",\"name\":\"DeliveryInstructionsCash\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":5,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - cash\"},{\"value\":\"D\",\"name\":\"OtherProvidedScreen\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":3,\"group\":\"FIA Execution Source Code\",\"doc\":\"Other provided screen\"},{\"value\":\"DIR\",\"name\":\"DirectedOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"group\":\"FINRA OATS\",\"doc\":\"Directed order\"},{\"value\":\"DLO\",\"name\":\"DiscretionaryLimitOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":7,\"group\":\"FINRA OATS\",\"doc\":\"Discretionary limit order\"},{\"value\":\"E\",\"name\":\"ClientProvidedPlatformControlledByFCM\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":4,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client provided platform controlled by FCM\"},{\"value\":\"E.W\",\"name\":\"ExchangeForPhysicalTransaction\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"group\":\"FINRA OATS\",\"doc\":\"Exchange for physical transaction\"},{\"value\":\"F\",\"name\":\"ClientProvidedPlatformDirectToExchange\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":5,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client provided platform direct to exchange\"},{\"value\":\"F0\",\"name\":\"StayOnOfferside\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":36,\"group\":\"FINRA OATS\",\"doc\":\"Stay on offerside\"},{\"value\":\"F3\",\"name\":\"GoAlong\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":37,\"group\":\"FINRA OATS\",\"doc\":\"Go along\"},{\"value\":\"F6\",\"name\":\"ParticipateDoNotInitiate\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":38,\"group\":\"FINRA OATS\",\"doc\":\"Participate do not initiate\"},{\"value\":\"F7\",\"name\":\"StrictScale\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":39,\"group\":\"FINRA OATS\",\"doc\":\"Strict scale\"},{\"value\":\"F8\",\"name\":\"TryToScale\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":40,\"group\":\"FINRA OATS\",\"doc\":\"Try to scale\"},{\"value\":\"F9\",\"name\":\"StayOnBidside\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":41,\"group\":\"FINRA OATS\",\"doc\":\"Stay on bidside\"},{\"value\":\"FA\",\"name\":\"NoCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":42,\"group\":\"FINRA OATS\",\"doc\":\"No cross\"},{\"value\":\"FB\",\"name\":\"OKToCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":43,\"group\":\"FINRA OATS\",\"doc\":\"OK to cross\"},{\"value\":\"FC\",\"name\":\"CallFirst\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":44,\"group\":\"FINRA OATS\",\"doc\":\"Call first\"},{\"value\":\"FD\",\"name\":\"PercentOfVolume\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":45,\"group\":\"FINRA OATS\",\"doc\":\"Percent of volume\"},{\"value\":\"FH\",\"name\":\"ReinstateOnSystemFailure\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":46,\"group\":\"FINRA OATS\",\"doc\":\"Reinstate on system failure\"},{\"value\":\"FI\",\"name\":\"InstitutionOnly\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":47,\"group\":\"FINRA OATS\",\"doc\":\"Institution only\"},{\"value\":\"FJ\",\"name\":\"ReinstateOnTradingHalt\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":48,\"group\":\"FINRA OATS\",\"doc\":\"Reinstate on trading halt\"},{\"value\":\"FK\",\"name\":\"CancelOnTradingHalf\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":49,\"group\":\"FINRA OATS\",\"doc\":\"Cancel on trading half\"},{\"value\":\"FL\",\"name\":\"LastPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":50,\"group\":\"FINRA OATS\",\"doc\":\"Last peg\"},{\"value\":\"FM\",\"name\":\"MidPricePeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":51,\"group\":\"FINRA OATS\",\"doc\":\"Mid-price peg\"},{\"value\":\"FN\",\"name\":\"NonNegotiable\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":52,\"group\":\"FINRA OATS\",\"doc\":\"Non-negotiable\"},{\"value\":\"FO\",\"name\":\"OpeningPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":53,\"group\":\"FINRA OATS\",\"doc\":\"Opening peg\"},{\"value\":\"FOK\",\"name\":\"FillOrKill\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"group\":\"FINRA OATS\",\"doc\":\"Fill or kill\"},{\"value\":\"FP\",\"name\":\"MarketPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":54,\"group\":\"FINRA OATS\",\"doc\":\"Market peg\"},{\"value\":\"FQ\",\"name\":\"CancelOnSystemFailure\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":55,\"group\":\"FINRA OATS\",\"doc\":\"Cancel on system failure\"},{\"value\":\"FR\",\"name\":\"PrimaryPeg\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":56,\"group\":\"FINRA OATS\",\"doc\":\"Primary peg\"},{\"value\":\"FS\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":57,\"group\":\"FINRA OATS\",\"doc\":\"Suspend\"},{\"value\":\"FT\",\"name\":\"FixedPegToLocalBBO\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":58,\"group\":\"FINRA OATS\",\"doc\":\"Fixed peg to local best bid or offer at time of order\"},{\"value\":\"FW\",\"name\":\"PegToVWAP\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":59,\"group\":\"FINRA OATS\",\"doc\":\"Peg to VWAP\"},{\"value\":\"FX\",\"name\":\"TradeAlong\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":60,\"group\":\"FINRA OATS\",\"doc\":\"Trade along\"},{\"value\":\"FY\",\"name\":\"TryToStop\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":61,\"group\":\"FINRA OATS\",\"doc\":\"Try to stop\"},{\"value\":\"FZ\",\"name\":\"CancelIfNotBest\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":62,\"group\":\"FINRA OATS\",\"doc\":\"Cancel if not best\"},{\"value\":\"Fb\",\"name\":\"StrictLimit\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":63,\"group\":\"FINRA OATS\",\"doc\":\"Strict limit\"},{\"value\":\"Fc\",\"name\":\"IgnorePriceValidityChecks\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":64,\"group\":\"FINRA OATS\",\"doc\":\"Ignore price validity checks\"},{\"value\":\"Fd\",\"name\":\"PegToLimitPrice\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":65,\"group\":\"FINRA OATS\",\"doc\":\"Peg to Limit Price\"},{\"value\":\"Fe\",\"name\":\"WorkToTargetStrategy\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":66,\"group\":\"FINRA OATS\",\"doc\":\"Work to target strategy\"},{\"value\":\"G\",\"name\":\"GOrderAndFCMAPIorFIX\",\"since\":\"5.0SP2\",\"ep\":133,\"group\":\"SHARED\",\"doc\":\"G Order(FINRA OATS), FCM API or FIX(FIA Execution Source)\"},{\"value\":\"H\",\"name\":\"AlgoEngine\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":7,\"group\":\"FIA Execution Source Code\",\"doc\":\"Algo engine\"},{\"value\":\"IDX\",\"name\":\"IntraDayCross\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":11,\"group\":\"FINRA OATS\",\"doc\":\"Intraday cross\"},{\"value\":\"IO\",\"name\":\"ImbalanceOnly\",\"since\":\"4.4\",\"ep\":-1,\"sort\":12,\"group\":\"FINRA OATS\",\"doc\":\"Imbalance only\"},{\"value\":\"IOC\",\"name\":\"ImmediateOrCancel\",\"since\":\"4.4\",\"ep\":-1,\"sort\":13,\"group\":\"FINRA OATS\",\"doc\":\"Immediate or cancel\"},{\"value\":\"ISO\",\"name\":\"IntermarketSweepOrder\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":14,\"group\":\"FINRA OATS\",\"doc\":\"Intermarket sweep order\"},{\"value\":\"J\",\"name\":\"PriceAtExecution\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":8,\"group\":\"FIA Execution Source Code\",\"doc\":\"Price at execution (price added at initial order entry, trading, middle office or time of give-up)\"},{\"value\":\"LOC\",\"name\":\"LimitOnClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":16,\"group\":\"FINRA OATS\",\"doc\":\"Limit on Close\"},{\"value\":\"LOO\",\"name\":\"LimitOnOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":15,\"group\":\"FINRA OATS\",\"doc\":\"Limit on open\"},{\"value\":\"MAC\",\"name\":\"MarketAtClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":18,\"group\":\"FINRA OATS\",\"doc\":\"Market at close\"},{\"value\":\"MAO\",\"name\":\"MarketAtOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":17,\"group\":\"FINRA OATS\",\"doc\":\"Market at Open\"},{\"value\":\"MOC\",\"name\":\"MarketOnClose\",\"since\":\"4.4\",\"ep\":-1,\"sort\":20,\"group\":\"FINRA OATS\",\"doc\":\"Market on close\"},{\"value\":\"MOO\",\"name\":\"MarketOnOpen\",\"since\":\"4.4\",\"ep\":-1,\"sort\":19,\"group\":\"FINRA OATS\",\"doc\":\"Market on open\"},{\"value\":\"MPT\",\"name\":\"MergerRelatedTransferPosition\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":21,\"group\":\"FINRA OATS\",\"doc\":\"Merger related transfer position\"},{\"value\":\"MQT\",\"name\":\"MinimumQuantity\",\"since\":\"4.4\",\"ep\":-1,\"sort\":22,\"group\":\"FINRA OATS\",\"doc\":\"Minimum quantity\"},{\"value\":\"MTL\",\"name\":\"MarketToLimit\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":23,\"group\":\"FINRA OATS\",\"doc\":\"Market to limit\"},{\"value\":\"ND\",\"name\":\"DeliveryInstructionsNextDay\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":24,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - next day\"},{\"value\":\"NH\",\"name\":\"NotHeld\",\"since\":\"4.4\",\"ep\":-1,\"sort\":25,\"group\":\"FINRA OATS\",\"doc\":\"Not held\"},{\"value\":\"OPT\",\"name\":\"OptionsRelatedTransaction\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":26,\"group\":\"FINRA OATS\",\"doc\":\"Options related transaction\"},{\"value\":\"OVD\",\"name\":\"OverTheDay\",\"since\":\"4.4\",\"ep\":-1,\"sort\":27,\"group\":\"FINRA OATS\",\"doc\":\"Over the day\"},{\"value\":\"PEG\",\"name\":\"Pegged\",\"since\":\"4.4\",\"ep\":-1,\"sort\":28,\"group\":\"FINRA OATS\",\"doc\":\"Pegged\"},{\"value\":\"RSV\",\"name\":\"ReserveSizeOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":29,\"group\":\"FINRA OATS\",\"doc\":\"Reserve size order\"},{\"value\":\"S.W\",\"name\":\"StopStockTransaction\",\"since\":\"4.4\",\"ep\":-1,\"sort\":30,\"group\":\"FINRA OATS\",\"doc\":\"Stop stock transaction\"},{\"value\":\"SCL\",\"name\":\"Scale\",\"since\":\"4.4\",\"ep\":-1,\"sort\":31,\"group\":\"FINRA OATS\",\"doc\":\"Scale\"},{\"value\":\"SLR\",\"name\":\"DeliveryInstructionsSellersOption\",\"since\":\"5.0SP2\",\"ep\":135,\"sort\":32,\"group\":\"FINRA OATS\",\"doc\":\"Delivery instructions - sellers option\"},{\"value\":\"TMO\",\"name\":\"TimeOrder\",\"since\":\"4.4\",\"ep\":-1,\"sort\":33,\"group\":\"FINRA OATS\",\"doc\":\"Time order\"},{\"value\":\"TS\",\"name\":\"TrailingStop\",\"since\":\"4.4\",\"ep\":-1,\"sort\":34,\"group\":\"FINRA OATS\",\"doc\":\"Trailing stop\"},{\"value\":\"W\",\"name\":\"DeskElectronic\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":9,\"group\":\"FIA Execution Source Code\",\"doc\":\"Desk - electronic\"},{\"value\":\"WRK\",\"name\":\"Work\",\"since\":\"4.4\",\"ep\":-1,\"sort\":35,\"group\":\"FINRA OATS\",\"doc\":\"Work\"},{\"value\":\"X\",\"name\":\"DeskPit\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":10,\"group\":\"FIA Execution Source Code\",\"doc\":\"Desk - pit\"},{\"value\":\"Y\",\"name\":\"ClientElectronic\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":11,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client - electronic\"},{\"value\":\"Z\",\"name\":\"ClientPit\",\"since\":\"5.0SP2\",\"ep\":133,\"sort\":12,\"group\":\"FIA Execution Source Code\",\"doc\":\"Client - pit\"}]}",
+      "fix:description": "Codes that apply special information that the broker-dealer needs to report.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"deskorderhandlinginst\",\"type\":\"MultipleStringValue\"}]}",
+      "fix:tag": "1035"
+    }
+  },
+  {
+    "name": "execackstatus",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExecAckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"DontKnow\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Don't know / Rejected\"}]}",
+      "fix:description": "The status of this execution acknowledgement message.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"execackstatus\",\"type\":\"char\"}]}",
+      "fix:tag": "1036"
+    }
+  },
+  {
+    "name": "underlyingdeliveryamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingDeliveryAmount",
+      "fix:description": "Indicates the underlying position amount to be delivered",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingdeliveryamount\",\"type\":\"Amt\"}]}",
+      "fix:tag": "1037"
+    }
+  },
+  {
+    "name": "underlyingcapvalue",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingCapValue",
+      "fix:description": "Maximum notional value for a capped financial instrument",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingcapvalue\",\"type\":\"Amt\"}]}",
+      "fix:tag": "1038"
+    }
+  },
+  {
+    "name": "underlyingsettlmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingSettlMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"CashSettlementRequired\",\"since\":\"5.0\",\"ep\":52,\"sort\":1,\"doc\":\"Cash settlement required\"},{\"value\":\"E\",\"name\":\"Election\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Election at exercise\"},{\"value\":\"P\",\"name\":\"PhysicalSettlementRequired\",\"since\":\"5.0\",\"ep\":52,\"sort\":2,\"doc\":\"Physical settlement required\"}]}",
+      "fix:description": "Settlement method for a contract or instrument. Additional values may be used with bilateral agreement.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingsettlmethod\",\"type\":\"String\"}]}",
+      "fix:tag": "1039"
+    }
+  },
+  {
+    "name": "secondarytradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryTradeID",
+      "fix:description": "Used to carry an internal trade entity ID which may or may not be reported to the firm",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarytradeid\",\"type\":\"String\"}]}",
+      "fix:tag": "1040"
+    }
+  },
+  {
+    "name": "firmtradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "FirmTradeID",
+      "fix:description": "The ID assigned to a trade by the Firm to track a trade within the Firm system. This ID can be assigned either before or after submission to the exchange or central counterpary",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"firmtradeid\",\"type\":\"String\"}]}",
+      "fix:tag": "1041"
+    }
+  },
+  {
+    "name": "secondaryfirmtradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryFirmTradeID",
+      "fix:description": "Used to carry an internal firm assigned ID which may or may not be reported to the exchange or central counterpary",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondaryfirmtradeid\",\"type\":\"String\"}]}",
+      "fix:tag": "1042"
+    }
+  },
+  {
+    "name": "collappltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollApplType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"SpecificDeposit\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Specific Deposit\"},{\"value\":\"1\",\"name\":\"General\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"General\"}]}",
+      "fix:description": "conveys how the collateral should be/has been applied",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"collappltype\",\"type\":\"int\"}]}",
+      "fix:tag": "1043"
+    }
+  },
+  {
+    "name": "underlyingadjustedquantity",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAdjustedQuantity",
+      "fix:description": "Unit amount of the underlying security (shares) adjusted for pending corporate action not yet allocated.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingadjustedquantity\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1044"
+    }
+  },
+  {
+    "name": "underlyingfxrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingFXRate",
+      "fix:description": "Foreign exchange rate used to compute UnderlyingCurrentValue(885) (or market value) from UnderlyingCurrency(318) to Currency(15).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingfxrate\",\"type\":\"float\"}]}",
+      "fix:tag": "1045"
+    }
+  },
+  {
+    "name": "underlyingfxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingFXRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether the UnderlyingFxRate(1045) should be multiplied or divided.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"underlyingfxratecalc\",\"type\":\"char\"}]}",
+      "fix:tag": "1046"
+    }
+  },
+  {
+    "name": "allocpositioneffect",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocPositionEffect",
+      "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"Close\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Close\"},{\"value\":\"F\",\"name\":\"FIFO\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"FIFO\"},{\"value\":\"O\",\"name\":\"Open\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Open\"},{\"value\":\"R\",\"name\":\"Rolled\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Rolled\"}]}",
+      "fix:description": "Indicates whether the resulting position after a trade should be an opening position or closing position. Used for omnibus accounting - where accounts are held on a gross basis instead of being netted together.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"allocpositioneffect\",\"type\":\"char\"}]}",
+      "fix:tag": "1047"
+    }
+  },
+  {
+    "name": "dealingcapacity",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DealingCapacity",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agent\",\"since\":\"5.0SP1\",\"ep\":95,\"doc\":\"Agent\"},{\"value\":\"P\",\"name\":\"Principal\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":1,\"doc\":\"Principal\"},{\"value\":\"R\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP1\",\"ep\":95,\"sort\":2,\"doc\":\"Riskless Principal\"},{\"value\":\"X\",\"name\":\"CrossAsPrincipal\",\"ep\":300,\"sort\":3,\"doc\":\"Cross as principal\"}]}",
+      "fix:description": "Identifies role of dealer in the trade.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"dealingcapacity\",\"type\":\"PriceOffset\"},{\"since\":\"5.0SP2\",\"name\":\"dealingcapacity\",\"type\":\"char\"}]}",
+      "fix:tag": "1048"
+    }
+  },
+  {
+    "name": "instrmtassignmentmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrmtAssignmentMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"P\",\"name\":\"ProRata\",\"since\":\"4.4\",\"ep\":4,\"sort\":1,\"doc\":\"Pro rata\"},{\"value\":\"R\",\"name\":\"Random\",\"since\":\"4.4\",\"ep\":4,\"sort\":2,\"doc\":\"Random\"}]}",
+      "fix:description": "Method under which assignment was conducted",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrmtassignmentmethod\",\"type\":\"char\"}]}",
+      "fix:tag": "1049"
+    }
+  },
+  {
+    "name": "instrumentpartyidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartyIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0SP2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0SP2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
+      "fix:description": "PartyIDSource value within an instrument partyrepeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrumentpartyidsource\",\"type\":\"char\"}]}",
+      "fix:tag": "1050"
+    }
+  },
+  {
+    "name": "instrumentpartyrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartyRole",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutingFirm\",\"since\":\"4.3\",\"doc\":\"Executing Firm (formerly FIX 4.2 ExecBroker)\"},{\"value\":\"10\",\"name\":\"SettlementLocation\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Settlement Location (formerly FIX 4.2 SettlLocation)\"},{\"value\":\"100\",\"name\":\"MarginAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":98,\"doc\":\"Margin account\"},{\"value\":\"101\",\"name\":\"CollateralAssetAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":99,\"doc\":\"Collateral asset account\"},{\"value\":\"102\",\"name\":\"DataRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":100,\"doc\":\"Data repository\"},{\"value\":\"103\",\"name\":\"CalculationAgent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":101,\"doc\":\"Calculation agent\"},{\"value\":\"104\",\"name\":\"ExerciseNoticeSender\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":102,\"doc\":\"Sender of exercise notice\"},{\"value\":\"105\",\"name\":\"ExerciseNoticeReceiver\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":103,\"doc\":\"Receiver of exercise notice\"},{\"value\":\"106\",\"name\":\"RateReferenceBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":104,\"doc\":\"Rate reference bank\"},{\"value\":\"107\",\"name\":\"Correspondent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":105,\"doc\":\"Correspondent\"},{\"value\":\"109\",\"name\":\"BeneficiaryBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":106,\"doc\":\"Beneficiary's bank or depository institution\"},{\"value\":\"11\",\"name\":\"OrderOriginationTrader\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)\"},{\"value\":\"110\",\"name\":\"Borrower\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":107,\"doc\":\"Borrower\"},{\"value\":\"111\",\"name\":\"PrimaryObligator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":108,\"doc\":\"Primary obligator\"},{\"value\":\"112\",\"name\":\"Guarantor\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":109,\"doc\":\"Guarantor\"},{\"value\":\"113\",\"name\":\"ExcludedReferenceEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":110,\"doc\":\"Excluded reference entity\"},{\"value\":\"114\",\"name\":\"DeterminingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":111,\"doc\":\"Determining party\"},{\"value\":\"115\",\"name\":\"HedgingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":112,\"doc\":\"Hedging party\"},{\"value\":\"116\",\"name\":\"ReportingEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":113,\"doc\":\"Reporting entity\"},{\"value\":\"117\",\"name\":\"SalesPerson\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":114,\"doc\":\"Sales person\"},{\"value\":\"118\",\"name\":\"Operator\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":115,\"doc\":\"Operator\"},{\"value\":\"119\",\"name\":\"CSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":116,\"doc\":\"Central Securities Depository (CSD)\"},{\"value\":\"12\",\"name\":\"ExecutingTrader\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Executing Trader (associated with Executing Firm - actually executes)\"},{\"value\":\"120\",\"name\":\"ICSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":117,\"doc\":\"International Central Securities Depository (ICSD)\"},{\"value\":\"121\",\"name\":\"TradingSubAccount\",\"since\":\"5.0SP2\",\"ep\":217,\"sort\":118,\"doc\":\"Trading sub-account\"},{\"value\":\"122\",\"name\":\"InvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":119,\"doc\":\"Investment decision maker\"},{\"value\":\"123\",\"name\":\"PublishingIntermediary\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":120,\"doc\":\"Publishing intermediary\"},{\"value\":\"124\",\"name\":\"CSDParticipant\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":121,\"doc\":\"Central Securities Depository (CSD) Participant\"},{\"value\":\"125\",\"name\":\"Issuer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":122,\"doc\":\"Issuer\"},{\"value\":\"126\",\"name\":\"ContraCustomerAccount\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":123,\"doc\":\"Contra Customer Account\"},{\"value\":\"127\",\"name\":\"ContraInvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":124,\"doc\":\"Contra Investment Decision Maker\"},{\"value\":\"128\",\"name\":\"AuthorizingPerson\",\"ep\":292,\"sort\":125,\"doc\":\"Authorizing person\"},{\"value\":\"129\",\"name\":\"PrimaryPlaceOfListing\",\"ep\":300,\"sort\":126,\"doc\":\"Primary place of listing\"},{\"value\":\"13\",\"name\":\"OrderOriginationFirm\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Order Origination Firm (e.g. buy-side firm)\"},{\"value\":\"130\",\"name\":\"SecondaryPlaceOfListing\",\"ep\":300,\"sort\":127,\"doc\":\"Secondary place of listing\"},{\"value\":\"131\",\"name\":\"Algorithm\",\"ep\":303,\"sort\":128,\"doc\":\"Algorithm\"},{\"value\":\"14\",\"name\":\"GiveupClearingFirmDepr\",\"since\":\"4.3\",\"deprecated\":\"5.0SP2\",\"sort\":13,\"doc\":\"Giveup Clearing Firm (firm to which trade is given up)\"},{\"value\":\"15\",\"name\":\"CorrespondantClearingFirm\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Correspondant Clearing Firm\"},{\"value\":\"16\",\"name\":\"ExecutingSystem\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Executing System\"},{\"value\":\"17\",\"name\":\"ContraFirm\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Contra Firm\"},{\"value\":\"18\",\"name\":\"ContraClearingFirm\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Contra Clearing Firm\"},{\"value\":\"19\",\"name\":\"SponsoringFirm\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Sponsoring Firm\"},{\"value\":\"2\",\"name\":\"BrokerOfCredit\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Broker of Credit (formerly FIX 4.2 BrokerOfCredit)\"},{\"value\":\"20\",\"name\":\"UnderlyingContraFirm\",\"since\":\"4.3\",\"sort\":19,\"doc\":\"Underlying Contra Firm\"},{\"value\":\"21\",\"name\":\"ClearingOrganization\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Clearing Organization\"},{\"value\":\"22\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Exchange\"},{\"value\":\"24\",\"name\":\"CustomerAccount\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Customer Account\"},{\"value\":\"25\",\"name\":\"CorrespondentClearingOrganization\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Correspondent Clearing Organization\"},{\"value\":\"26\",\"name\":\"CorrespondentBroker\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Correspondent Broker\"},{\"value\":\"27\",\"name\":\"Buyer\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Buyer/Seller (Receiver/Deliverer)\"},{\"value\":\"28\",\"name\":\"Custodian\",\"since\":\"4.4\",\"sort\":26,\"doc\":\"Custodian\"},{\"value\":\"29\",\"name\":\"Intermediary\",\"since\":\"4.4\",\"sort\":27,\"doc\":\"Intermediary\"},{\"value\":\"3\",\"name\":\"ClientID\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Client ID (formerly FIX 4.2 ClientID)\"},{\"value\":\"30\",\"name\":\"Agent\",\"since\":\"4.4\",\"sort\":28,\"doc\":\"Agent\"},{\"value\":\"31\",\"name\":\"SubCustodian\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Sub-custodian\"},{\"value\":\"32\",\"name\":\"Beneficiary\",\"since\":\"4.4\",\"sort\":30,\"doc\":\"Beneficiary\"},{\"value\":\"33\",\"name\":\"InterestedParty\",\"since\":\"4.4\",\"sort\":31,\"doc\":\"Interested party\"},{\"value\":\"34\",\"name\":\"RegulatoryBody\",\"since\":\"4.4\",\"sort\":32,\"doc\":\"Regulatory body\"},{\"value\":\"35\",\"name\":\"LiquidityProvider\",\"since\":\"4.4\",\"sort\":33,\"doc\":\"Liquidity provider\"},{\"value\":\"36\",\"name\":\"EnteringTrader\",\"since\":\"4.4\",\"sort\":34,\"doc\":\"Entering trader\"},{\"value\":\"37\",\"name\":\"ContraTrader\",\"since\":\"4.4\",\"sort\":35,\"doc\":\"Contra trader\"},{\"value\":\"38\",\"name\":\"PositionAccount\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Position account\"},{\"value\":\"39\",\"name\":\"ContraInvestorID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":37,\"doc\":\"Contra Investor ID\"},{\"value\":\"4\",\"name\":\"ClearingFirm\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Clearing Firm (formerly FIX 4.2 ClearingFirm)\"},{\"value\":\"40\",\"name\":\"TransferToFirm\",\"since\":\"4.4\",\"ep\":-1,\"sort\":38,\"doc\":\"Transfer to Firm\"},{\"value\":\"41\",\"name\":\"ContraPositionAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":39,\"doc\":\"Contra Position Account\"},{\"value\":\"42\",\"name\":\"ContraExchange\",\"since\":\"4.4\",\"ep\":5,\"sort\":40,\"doc\":\"Contra Exchange\"},{\"value\":\"43\",\"name\":\"InternalCarryAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":41,\"doc\":\"Internal Carry Account\"},{\"value\":\"44\",\"name\":\"OrderEntryOperatorID\",\"since\":\"4.4\",\"ep\":5,\"sort\":42,\"doc\":\"Order Entry Operator ID\"},{\"value\":\"45\",\"name\":\"SecondaryAccountNumber\",\"since\":\"4.4\",\"ep\":5,\"sort\":43,\"doc\":\"Secondary Account Number\"},{\"value\":\"46\",\"name\":\"ForeignFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":44,\"doc\":\"Foreign Firm\"},{\"value\":\"47\",\"name\":\"ThirdPartyAllocationFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":45,\"doc\":\"Third Party Allocation Firm\"},{\"value\":\"48\",\"name\":\"ClaimingAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":46,\"doc\":\"Claiming Account\"},{\"value\":\"49\",\"name\":\"AssetManager\",\"since\":\"4.4\",\"ep\":8,\"sort\":47,\"doc\":\"Asset Manager\"},{\"value\":\"5\",\"name\":\"InvestorID\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Investor ID\"},{\"value\":\"50\",\"name\":\"PledgorAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":48,\"doc\":\"Pledgor Account\"},{\"value\":\"51\",\"name\":\"PledgeeAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":49,\"doc\":\"Pledgee Account\"},{\"value\":\"52\",\"name\":\"LargeTraderReportableAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":50,\"doc\":\"Large Trader Reportable Account\"},{\"value\":\"53\",\"name\":\"TraderMnemonic\",\"since\":\"4.4\",\"ep\":8,\"sort\":51,\"doc\":\"Trader mnemonic\"},{\"value\":\"54\",\"name\":\"SenderLocation\",\"since\":\"4.4\",\"ep\":8,\"sort\":52,\"doc\":\"Sender Location\"},{\"value\":\"55\",\"name\":\"SessionID\",\"since\":\"4.4\",\"ep\":8,\"sort\":53,\"doc\":\"Session ID\"},{\"value\":\"56\",\"name\":\"AcceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":54,\"doc\":\"Acceptable Counterparty\"},{\"value\":\"57\",\"name\":\"UnacceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":55,\"doc\":\"Unacceptable Counterparty\"},{\"value\":\"58\",\"name\":\"EnteringUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":56,\"doc\":\"Entering Unit\"},{\"value\":\"59\",\"name\":\"ExecutingUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":57,\"doc\":\"Executing Unit\"},{\"value\":\"6\",\"name\":\"IntroducingFirm\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Introducing Firm\"},{\"value\":\"60\",\"name\":\"IntroducingBroker\",\"since\":\"4.4\",\"ep\":4,\"sort\":58,\"doc\":\"Introducing Broker\"},{\"value\":\"61\",\"name\":\"QuoteOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":59,\"doc\":\"Quote originator\"},{\"value\":\"62\",\"name\":\"ReportOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":60,\"doc\":\"Report originator\"},{\"value\":\"63\",\"name\":\"SystematicInternaliser\",\"since\":\"4.4\",\"ep\":26,\"sort\":61,\"doc\":\"Systematic internaliser (SI)\"},{\"value\":\"64\",\"name\":\"MultilateralTradingFacility\",\"since\":\"4.4\",\"ep\":26,\"sort\":62,\"doc\":\"Multilateral Trading Facility (MTF)\"},{\"value\":\"65\",\"name\":\"RegulatedMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":63,\"doc\":\"Regulated Market (RM)\"},{\"value\":\"66\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":64,\"doc\":\"Market Maker\"},{\"value\":\"67\",\"name\":\"InvestmentFirm\",\"since\":\"4.4\",\"ep\":26,\"sort\":65,\"doc\":\"Investment Firm\"},{\"value\":\"68\",\"name\":\"HostCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":66,\"doc\":\"Host Competent Authority (Host CA)\"},{\"value\":\"69\",\"name\":\"HomeCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":67,\"doc\":\"Home Competent Authority (Home CA)\"},{\"value\":\"7\",\"name\":\"EnteringFirm\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Entering Firm\"},{\"value\":\"70\",\"name\":\"CompetentAuthorityLiquidity\",\"since\":\"4.4\",\"ep\":26,\"sort\":68,\"doc\":\"Competent Authority of the most relevant market in terms of liquidity (CAL)\"},{\"value\":\"71\",\"name\":\"CompetentAuthorityTransactionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":69,\"doc\":\"Competent Authority of the Transaction (Execution) Venue (CATV)\"},{\"value\":\"72\",\"name\":\"ReportingIntermediary\",\"since\":\"4.4\",\"ep\":26,\"sort\":70,\"doc\":\"Reporting intermediary\"},{\"value\":\"73\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":71,\"doc\":\"Execution Venue\"},{\"value\":\"74\",\"name\":\"MarketDataEntryOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":72,\"doc\":\"Market data entry originator\"},{\"value\":\"75\",\"name\":\"LocationID\",\"since\":\"4.4\",\"ep\":26,\"sort\":73,\"doc\":\"Location ID\"},{\"value\":\"76\",\"name\":\"DeskID\",\"since\":\"4.4\",\"ep\":26,\"sort\":74,\"doc\":\"Desk ID\"},{\"value\":\"77\",\"name\":\"MarketDataMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":75,\"doc\":\"Market data market\"},{\"value\":\"78\",\"name\":\"AllocationEntity\",\"since\":\"4.4\",\"ep\":35,\"sort\":76,\"doc\":\"Allocation Entity\"},{\"value\":\"79\",\"name\":\"PrimeBroker\",\"since\":\"5.0\",\"ep\":68,\"sort\":77,\"doc\":\"Prime Broker providing General Trade Services\"},{\"value\":\"8\",\"name\":\"Locate\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Locate / Lending Firm (for short-sales)\"},{\"value\":\"80\",\"name\":\"StepOutFirm\",\"since\":\"5.0\",\"ep\":68,\"sort\":78,\"doc\":\"Step-Out Firm (Prime Broker)\"},{\"value\":\"81\",\"name\":\"BrokerClearingID\",\"since\":\"5.0\",\"ep\":68,\"sort\":79,\"doc\":\"Broker clearing identifier\"},{\"value\":\"82\",\"name\":\"CentralRegistrationDepository\",\"since\":\"5.0SP1\",\"ep\":79,\"sort\":80,\"doc\":\"Central Registration Depository (CRD)\"},{\"value\":\"83\",\"name\":\"ClearingAccount\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":81,\"doc\":\"Clearing Account\"},{\"value\":\"84\",\"name\":\"AcceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":82,\"doc\":\"Acceptable Settling Counterparty\"},{\"value\":\"85\",\"name\":\"UnacceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":83,\"doc\":\"Unacceptable Settling Counterparty\"},{\"value\":\"86\",\"name\":\"CLSMemberBank\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":84,\"doc\":\"CLS Member Bank\"},{\"value\":\"87\",\"name\":\"InConcertGroup\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":85,\"doc\":\"In Concert Group\"},{\"value\":\"88\",\"name\":\"InConcertControllingEntity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":86,\"doc\":\"In Concert Controlling Entity\"},{\"value\":\"89\",\"name\":\"LargePositionsReportingAccount\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":87,\"doc\":\"Large Positions Reporting Account\"},{\"value\":\"9\",\"name\":\"FundManagerClientID\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Fund Manager Client ID (for CIV)\"},{\"value\":\"90\",\"name\":\"SettlementFirm\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":88,\"doc\":\"Settlement Firm\"},{\"value\":\"91\",\"name\":\"SettlementAccount\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":89,\"doc\":\"Settlement account\"},{\"value\":\"92\",\"name\":\"ReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":90,\"doc\":\"Reporting Market Center\"},{\"value\":\"93\",\"name\":\"RelatedReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":91,\"doc\":\"Related Reporting Market Center\"},{\"value\":\"94\",\"name\":\"AwayMarket\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":92,\"doc\":\"Away Market\"},{\"value\":\"95\",\"name\":\"GiveupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":93,\"doc\":\"Give-up (trading) firm\"},{\"value\":\"96\",\"name\":\"TakeupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":94,\"doc\":\"Take-up (trading) firm\"},{\"value\":\"97\",\"name\":\"GiveupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":95,\"doc\":\"Give-up clearing firm\"},{\"value\":\"98\",\"name\":\"TakeupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":96,\"doc\":\"Take-up clearing firm\"},{\"value\":\"99\",\"name\":\"OriginatingMarket\",\"since\":\"5.0SP2\",\"ep\":139,\"sort\":97,\"doc\":\"Originating Market\"}]}",
+      "fix:description": "PartyRole value within an instrument partyepeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrumentpartyrole\",\"type\":\"int\"}]}",
+      "fix:tag": "1051"
+    }
+  },
+  {
+    "name": "instrumentpartysubid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartySubID",
+      "fix:description": "PartySubID value within an instrument party repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrumentpartysubid\",\"type\":\"String\"}]}",
+      "fix:tag": "1053"
+    }
+  },
+  {
+    "name": "instrumentpartysubidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartySubIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Firm\",\"since\":\"4.4\",\"doc\":\"Firm\"},{\"value\":\"10\",\"name\":\"SecuritiesAccountNumber\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Securities account number (for settlement instructions)\"},{\"value\":\"11\",\"name\":\"RegistrationNumber\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Registration number (for settlement instructions and confirmations)\"},{\"value\":\"12\",\"name\":\"RegisteredAddressForConfirmation\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Registered address (for confirmation purposes)\"},{\"value\":\"13\",\"name\":\"RegulatoryStatus\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Regulatory status (for confirmation purposes)\"},{\"value\":\"14\",\"name\":\"RegistrationName\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Registration name (for settlement instructions)\"},{\"value\":\"15\",\"name\":\"CashAccountNumber\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Cash account number (for settlement instructions)\"},{\"value\":\"16\",\"name\":\"BIC\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"BIC\"},{\"value\":\"17\",\"name\":\"CSDParticipantMemberCode\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"CSD participant member code\"},{\"value\":\"18\",\"name\":\"RegisteredAddress\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Registered address\"},{\"value\":\"19\",\"name\":\"FundAccountName\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"Fund account name\"},{\"value\":\"2\",\"name\":\"Person\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Person\"},{\"value\":\"20\",\"name\":\"TelexNumber\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Telex number\"},{\"value\":\"21\",\"name\":\"FaxNumber\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Fax number\"},{\"value\":\"22\",\"name\":\"SecuritiesAccountName\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Securities account name\"},{\"value\":\"23\",\"name\":\"CashAccountName\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Cash account name\"},{\"value\":\"24\",\"name\":\"Department\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Department\"},{\"value\":\"25\",\"name\":\"LocationDesk\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Location desk\"},{\"value\":\"26\",\"name\":\"PositionAccountType\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Position account type\"},{\"value\":\"27\",\"name\":\"SecurityLocateID\",\"since\":\"4.4\",\"ep\":1,\"sort\":26,\"doc\":\"Security locate ID\"},{\"value\":\"28\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"doc\":\"Market maker\"},{\"value\":\"29\",\"name\":\"EligibleCounterparty\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"doc\":\"Eligible counterparty\"},{\"value\":\"3\",\"name\":\"System\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"System\"},{\"value\":\"30\",\"name\":\"ProfessionalClient\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"doc\":\"Professional client\"},{\"value\":\"31\",\"name\":\"Location\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"doc\":\"Location\"},{\"value\":\"32\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"doc\":\"Execution venue\"},{\"value\":\"33\",\"name\":\"CurrencyDeliveryIdentifier\",\"since\":\"5.0\",\"ep\":44,\"sort\":32,\"doc\":\"Currency delivery identifier\"},{\"value\":\"34\",\"name\":\"AddressCity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":33,\"doc\":\"Address City\"},{\"value\":\"35\",\"name\":\"AddressStateOrProvince\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":34,\"doc\":\"Address State/Province\"},{\"value\":\"36\",\"name\":\"AddressPostalCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":35,\"doc\":\"Address Postal Code\"},{\"value\":\"37\",\"name\":\"AddressStreet\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":36,\"doc\":\"Address Street\"},{\"value\":\"38\",\"name\":\"AddressISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":37,\"doc\":\"Address Country (ISO country code)\"},{\"value\":\"39\",\"name\":\"ISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":38,\"doc\":\"ISO country code\"},{\"value\":\"4\",\"name\":\"Application\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Application\"},{\"value\":\"40\",\"name\":\"MarketSegment\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":39,\"doc\":\"Market segment\"},{\"value\":\"41\",\"name\":\"CustomerAccountType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":40,\"doc\":\"Customer account type\"},{\"value\":\"42\",\"name\":\"OmnibusAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":41,\"doc\":\"Omnibus account\"},{\"value\":\"43\",\"name\":\"FundsSegregationType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":42,\"doc\":\"Funds segregation type\"},{\"value\":\"44\",\"name\":\"GuaranteeFund\",\"since\":\"5.0SP2\",\"ep\":157,\"sort\":43,\"doc\":\"Guarantee fund\"},{\"value\":\"45\",\"name\":\"SwapDealer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Swap dealer\"},{\"value\":\"46\",\"name\":\"MajorParticipant\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Major participant\"},{\"value\":\"47\",\"name\":\"FinancialEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Financial entity\"},{\"value\":\"48\",\"name\":\"USPerson\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":47,\"doc\":\"U.S. person\"},{\"value\":\"49\",\"name\":\"ReportingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":48,\"doc\":\"Reporting entity indicator\"},{\"value\":\"5\",\"name\":\"FullLegalNameOfFirm\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Full legal name of firm\"},{\"value\":\"50\",\"name\":\"ElectedClearingRequirementException\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":49,\"doc\":\"Elected clearing requirement exception\"},{\"value\":\"51\",\"name\":\"BusinessCenter\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":50,\"doc\":\"Business center\"},{\"value\":\"52\",\"name\":\"ReferenceText\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":51,\"doc\":\"Reference text\"},{\"value\":\"53\",\"name\":\"ShortMarkingExemptAccount\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":52,\"doc\":\"Short-marking exempt account\"},{\"value\":\"54\",\"name\":\"ParentFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":53,\"doc\":\"Parent firm identifier\"},{\"value\":\"55\",\"name\":\"ParentFirmName\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":54,\"doc\":\"Parent firm name\"},{\"value\":\"56\",\"name\":\"DealIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":55,\"doc\":\"Deal identifier\"},{\"value\":\"57\",\"name\":\"SystemTradeID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":56,\"doc\":\"System trade identifier\"},{\"value\":\"58\",\"name\":\"SystemTradeSubID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":57,\"doc\":\"System trade sub-identifier\"},{\"value\":\"59\",\"name\":\"FCMCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":58,\"doc\":\"Futures Commission Merchant (FCM) code\"},{\"value\":\"6\",\"name\":\"PostalAddress\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Postal address\"},{\"value\":\"60\",\"name\":\"DlvryTrmlCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":59,\"doc\":\"Delivery terminal customer account/code\"},{\"value\":\"61\",\"name\":\"VolntyRptEntity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":60,\"doc\":\"Voluntary reporting entity\"},{\"value\":\"62\",\"name\":\"RptObligJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":61,\"doc\":\"Reporting obligation jurisdiction\"},{\"value\":\"63\",\"name\":\"VolntyRptJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":62,\"doc\":\"Voluntary reporting jurisdiction\"},{\"value\":\"64\",\"name\":\"CompanyActivities\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":63,\"doc\":\"Company activities\"},{\"value\":\"65\",\"name\":\"EEAreaDomiciled\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":64,\"doc\":\"European Economic Area domiciled\"},{\"value\":\"66\",\"name\":\"ContractLinked\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":65,\"doc\":\"Contract linked to commercial or treasury financing for this counterparty\"},{\"value\":\"67\",\"name\":\"ContractAbove\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":66,\"doc\":\"Contract above clearing threshold for this counterparty\"},{\"value\":\"68\",\"name\":\"VolntyRptPty\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":67,\"doc\":\"Voluntary reporting party\"},{\"value\":\"69\",\"name\":\"EndUser\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":68,\"doc\":\"End user\"},{\"value\":\"7\",\"name\":\"PhoneNumber\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Phone number\"},{\"value\":\"70\",\"name\":\"LocationOrJurisdiction\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":69,\"doc\":\"Location or jurisdiction\"},{\"value\":\"71\",\"name\":\"DerivativesDealer\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":70,\"doc\":\"Derivatives dealer\"},{\"value\":\"72\",\"name\":\"Domicile\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":71,\"doc\":\"Domicile\"},{\"value\":\"73\",\"name\":\"ExemptFromRecognition\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":72,\"doc\":\"Exempt from recognition\"},{\"value\":\"74\",\"name\":\"Payer\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":73,\"doc\":\"Payer\"},{\"value\":\"75\",\"name\":\"Receiver\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":74,\"doc\":\"Receiver\"},{\"value\":\"76\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":75,\"doc\":\"Systematic Internaliser (SI)\"},{\"value\":\"77\",\"name\":\"PublishingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":76,\"doc\":\"Publishing entity indicator\"},{\"value\":\"78\",\"name\":\"FirstName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":77,\"doc\":\"First name\"},{\"value\":\"79\",\"name\":\"Surname\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":78,\"doc\":\"Surname\"},{\"value\":\"8\",\"name\":\"EmailAddress\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Email address\"},{\"value\":\"80\",\"name\":\"DateOfBirth\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":79,\"doc\":\"Date of birth\"},{\"value\":\"81\",\"name\":\"OrderTransmittingFirm\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":80,\"doc\":\"Order transmitting firm\"},{\"value\":\"82\",\"name\":\"OrderTransmittingFirmBuyer\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":81,\"doc\":\"Order transmitting firm for buyer\"},{\"value\":\"83\",\"name\":\"OrderTransmitterSeller\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":82,\"doc\":\"Order transmitter for seller\"},{\"value\":\"84\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":83,\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"85\",\"name\":\"SubSectorClassification\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":84,\"doc\":\"Sub-sector classification\"},{\"value\":\"86\",\"name\":\"PartySide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":85,\"doc\":\"Party side\"},{\"value\":\"87\",\"name\":\"LegalRegistrationCountry\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":86,\"doc\":\"Legal registration country\"},{\"value\":\"88\",\"name\":\"AlgorithmVersion\",\"ep\":303,\"sort\":87,\"doc\":\"Algorithm version\"},{\"value\":\"89\",\"name\":\"CertificateRegistrationStatus\",\"ep\":303,\"sort\":88,\"doc\":\"Certificate registration status\"},{\"value\":\"9\",\"name\":\"ContactName\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Contact name\"}]}",
+      "fix:description": "Type of InstrumentPartySubID (1053) value.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"instrumentpartysubidtype\",\"type\":\"int\"}]}",
+      "fix:tag": "1054"
+    }
+  },
+  {
+    "name": "positioncurrency",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PositionCurrency",
+      "fix:description": "The Currency in which the position Amount is denominated",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"positioncurrency\",\"type\":\"String\"}]}",
+      "fix:tag": "1055"
+    }
+  },
+  {
+    "name": "calculatedccylastqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CalculatedCcyLastQty",
+      "fix:description": "Used for the calculated quantity of the other side of the currency trade. Can be derived from LastQty and LastPx.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"calculatedccylastqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1056"
+    }
+  },
+  {
+    "name": "aggressorindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AggressorIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"OrderInitiatorIsPassive\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Order initiator is passive\"},{\"value\":\"Y\",\"name\":\"OrderInitiatorIsAggressor\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Order initiator is aggressor\"}]}",
+      "fix:description": "Used to identify whether the order initiator is an aggressor or not in the trade.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"aggressorindicator\",\"type\":\"Boolean\"}]}",
+      "fix:tag": "1057"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartyid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartyID",
+      "fix:aliases": "undlyinstrumentpartyid",
+      "fix:description": "PartyID value within an underlying instrument party repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"undlyinstrumentpartyid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentpartyid\",\"type\":\"String\"}]}",
+      "fix:tag": "1059"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartyidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartyIDSource",
+      "fix:aliases": "undlyinstrumentpartyidsource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0SP2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0SP2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0SP2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
+      "fix:description": "PartyIDSource value within an underlying instrument partyrepeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"undlyinstrumentpartyidsource\",\"type\":\"char\"},{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentpartyidsource\",\"type\":\"char\"}]}",
+      "fix:tag": "1060"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartyrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartyRole",
+      "fix:aliases": "undlyinstrumentpartyrole",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutingFirm\",\"since\":\"4.3\",\"doc\":\"Executing Firm (formerly FIX 4.2 ExecBroker)\"},{\"value\":\"10\",\"name\":\"SettlementLocation\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Settlement Location (formerly FIX 4.2 SettlLocation)\"},{\"value\":\"100\",\"name\":\"MarginAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":98,\"doc\":\"Margin account\"},{\"value\":\"101\",\"name\":\"CollateralAssetAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":99,\"doc\":\"Collateral asset account\"},{\"value\":\"102\",\"name\":\"DataRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":100,\"doc\":\"Data repository\"},{\"value\":\"103\",\"name\":\"CalculationAgent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":101,\"doc\":\"Calculation agent\"},{\"value\":\"104\",\"name\":\"ExerciseNoticeSender\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":102,\"doc\":\"Sender of exercise notice\"},{\"value\":\"105\",\"name\":\"ExerciseNoticeReceiver\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":103,\"doc\":\"Receiver of exercise notice\"},{\"value\":\"106\",\"name\":\"RateReferenceBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":104,\"doc\":\"Rate reference bank\"},{\"value\":\"107\",\"name\":\"Correspondent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":105,\"doc\":\"Correspondent\"},{\"value\":\"109\",\"name\":\"BeneficiaryBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":106,\"doc\":\"Beneficiary's bank or depository institution\"},{\"value\":\"11\",\"name\":\"OrderOriginationTrader\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)\"},{\"value\":\"110\",\"name\":\"Borrower\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":107,\"doc\":\"Borrower\"},{\"value\":\"111\",\"name\":\"PrimaryObligator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":108,\"doc\":\"Primary obligator\"},{\"value\":\"112\",\"name\":\"Guarantor\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":109,\"doc\":\"Guarantor\"},{\"value\":\"113\",\"name\":\"ExcludedReferenceEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":110,\"doc\":\"Excluded reference entity\"},{\"value\":\"114\",\"name\":\"DeterminingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":111,\"doc\":\"Determining party\"},{\"value\":\"115\",\"name\":\"HedgingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":112,\"doc\":\"Hedging party\"},{\"value\":\"116\",\"name\":\"ReportingEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":113,\"doc\":\"Reporting entity\"},{\"value\":\"117\",\"name\":\"SalesPerson\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":114,\"doc\":\"Sales person\"},{\"value\":\"118\",\"name\":\"Operator\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":115,\"doc\":\"Operator\"},{\"value\":\"119\",\"name\":\"CSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":116,\"doc\":\"Central Securities Depository (CSD)\"},{\"value\":\"12\",\"name\":\"ExecutingTrader\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Executing Trader (associated with Executing Firm - actually executes)\"},{\"value\":\"120\",\"name\":\"ICSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":117,\"doc\":\"International Central Securities Depository (ICSD)\"},{\"value\":\"121\",\"name\":\"TradingSubAccount\",\"since\":\"5.0SP2\",\"ep\":217,\"sort\":118,\"doc\":\"Trading sub-account\"},{\"value\":\"122\",\"name\":\"InvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":119,\"doc\":\"Investment decision maker\"},{\"value\":\"123\",\"name\":\"PublishingIntermediary\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":120,\"doc\":\"Publishing intermediary\"},{\"value\":\"124\",\"name\":\"CSDParticipant\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":121,\"doc\":\"Central Securities Depository (CSD) Participant\"},{\"value\":\"125\",\"name\":\"Issuer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":122,\"doc\":\"Issuer\"},{\"value\":\"126\",\"name\":\"ContraCustomerAccount\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":123,\"doc\":\"Contra Customer Account\"},{\"value\":\"127\",\"name\":\"ContraInvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":124,\"doc\":\"Contra Investment Decision Maker\"},{\"value\":\"128\",\"name\":\"AuthorizingPerson\",\"ep\":292,\"sort\":125,\"doc\":\"Authorizing person\"},{\"value\":\"129\",\"name\":\"PrimaryPlaceOfListing\",\"ep\":300,\"sort\":126,\"doc\":\"Primary place of listing\"},{\"value\":\"13\",\"name\":\"OrderOriginationFirm\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Order Origination Firm (e.g. buy-side firm)\"},{\"value\":\"130\",\"name\":\"SecondaryPlaceOfListing\",\"ep\":300,\"sort\":127,\"doc\":\"Secondary place of listing\"},{\"value\":\"131\",\"name\":\"Algorithm\",\"ep\":303,\"sort\":128,\"doc\":\"Algorithm\"},{\"value\":\"14\",\"name\":\"GiveupClearingFirmDepr\",\"since\":\"4.3\",\"deprecated\":\"5.0SP2\",\"sort\":13,\"doc\":\"Giveup Clearing Firm (firm to which trade is given up)\"},{\"value\":\"15\",\"name\":\"CorrespondantClearingFirm\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Correspondant Clearing Firm\"},{\"value\":\"16\",\"name\":\"ExecutingSystem\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Executing System\"},{\"value\":\"17\",\"name\":\"ContraFirm\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Contra Firm\"},{\"value\":\"18\",\"name\":\"ContraClearingFirm\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Contra Clearing Firm\"},{\"value\":\"19\",\"name\":\"SponsoringFirm\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Sponsoring Firm\"},{\"value\":\"2\",\"name\":\"BrokerOfCredit\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Broker of Credit (formerly FIX 4.2 BrokerOfCredit)\"},{\"value\":\"20\",\"name\":\"UnderlyingContraFirm\",\"since\":\"4.3\",\"sort\":19,\"doc\":\"Underlying Contra Firm\"},{\"value\":\"21\",\"name\":\"ClearingOrganization\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Clearing Organization\"},{\"value\":\"22\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Exchange\"},{\"value\":\"24\",\"name\":\"CustomerAccount\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Customer Account\"},{\"value\":\"25\",\"name\":\"CorrespondentClearingOrganization\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Correspondent Clearing Organization\"},{\"value\":\"26\",\"name\":\"CorrespondentBroker\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Correspondent Broker\"},{\"value\":\"27\",\"name\":\"Buyer\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Buyer/Seller (Receiver/Deliverer)\"},{\"value\":\"28\",\"name\":\"Custodian\",\"since\":\"4.4\",\"sort\":26,\"doc\":\"Custodian\"},{\"value\":\"29\",\"name\":\"Intermediary\",\"since\":\"4.4\",\"sort\":27,\"doc\":\"Intermediary\"},{\"value\":\"3\",\"name\":\"ClientID\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Client ID (formerly FIX 4.2 ClientID)\"},{\"value\":\"30\",\"name\":\"Agent\",\"since\":\"4.4\",\"sort\":28,\"doc\":\"Agent\"},{\"value\":\"31\",\"name\":\"SubCustodian\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Sub-custodian\"},{\"value\":\"32\",\"name\":\"Beneficiary\",\"since\":\"4.4\",\"sort\":30,\"doc\":\"Beneficiary\"},{\"value\":\"33\",\"name\":\"InterestedParty\",\"since\":\"4.4\",\"sort\":31,\"doc\":\"Interested party\"},{\"value\":\"34\",\"name\":\"RegulatoryBody\",\"since\":\"4.4\",\"sort\":32,\"doc\":\"Regulatory body\"},{\"value\":\"35\",\"name\":\"LiquidityProvider\",\"since\":\"4.4\",\"sort\":33,\"doc\":\"Liquidity provider\"},{\"value\":\"36\",\"name\":\"EnteringTrader\",\"since\":\"4.4\",\"sort\":34,\"doc\":\"Entering trader\"},{\"value\":\"37\",\"name\":\"ContraTrader\",\"since\":\"4.4\",\"sort\":35,\"doc\":\"Contra trader\"},{\"value\":\"38\",\"name\":\"PositionAccount\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Position account\"},{\"value\":\"39\",\"name\":\"ContraInvestorID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":37,\"doc\":\"Contra Investor ID\"},{\"value\":\"4\",\"name\":\"ClearingFirm\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Clearing Firm (formerly FIX 4.2 ClearingFirm)\"},{\"value\":\"40\",\"name\":\"TransferToFirm\",\"since\":\"4.4\",\"ep\":-1,\"sort\":38,\"doc\":\"Transfer to Firm\"},{\"value\":\"41\",\"name\":\"ContraPositionAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":39,\"doc\":\"Contra Position Account\"},{\"value\":\"42\",\"name\":\"ContraExchange\",\"since\":\"4.4\",\"ep\":5,\"sort\":40,\"doc\":\"Contra Exchange\"},{\"value\":\"43\",\"name\":\"InternalCarryAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":41,\"doc\":\"Internal Carry Account\"},{\"value\":\"44\",\"name\":\"OrderEntryOperatorID\",\"since\":\"4.4\",\"ep\":5,\"sort\":42,\"doc\":\"Order Entry Operator ID\"},{\"value\":\"45\",\"name\":\"SecondaryAccountNumber\",\"since\":\"4.4\",\"ep\":5,\"sort\":43,\"doc\":\"Secondary Account Number\"},{\"value\":\"46\",\"name\":\"ForeignFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":44,\"doc\":\"Foreign Firm\"},{\"value\":\"47\",\"name\":\"ThirdPartyAllocationFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":45,\"doc\":\"Third Party Allocation Firm\"},{\"value\":\"48\",\"name\":\"ClaimingAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":46,\"doc\":\"Claiming Account\"},{\"value\":\"49\",\"name\":\"AssetManager\",\"since\":\"4.4\",\"ep\":8,\"sort\":47,\"doc\":\"Asset Manager\"},{\"value\":\"5\",\"name\":\"InvestorID\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Investor ID\"},{\"value\":\"50\",\"name\":\"PledgorAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":48,\"doc\":\"Pledgor Account\"},{\"value\":\"51\",\"name\":\"PledgeeAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":49,\"doc\":\"Pledgee Account\"},{\"value\":\"52\",\"name\":\"LargeTraderReportableAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":50,\"doc\":\"Large Trader Reportable Account\"},{\"value\":\"53\",\"name\":\"TraderMnemonic\",\"since\":\"4.4\",\"ep\":8,\"sort\":51,\"doc\":\"Trader mnemonic\"},{\"value\":\"54\",\"name\":\"SenderLocation\",\"since\":\"4.4\",\"ep\":8,\"sort\":52,\"doc\":\"Sender Location\"},{\"value\":\"55\",\"name\":\"SessionID\",\"since\":\"4.4\",\"ep\":8,\"sort\":53,\"doc\":\"Session ID\"},{\"value\":\"56\",\"name\":\"AcceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":54,\"doc\":\"Acceptable Counterparty\"},{\"value\":\"57\",\"name\":\"UnacceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":55,\"doc\":\"Unacceptable Counterparty\"},{\"value\":\"58\",\"name\":\"EnteringUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":56,\"doc\":\"Entering Unit\"},{\"value\":\"59\",\"name\":\"ExecutingUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":57,\"doc\":\"Executing Unit\"},{\"value\":\"6\",\"name\":\"IntroducingFirm\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Introducing Firm\"},{\"value\":\"60\",\"name\":\"IntroducingBroker\",\"since\":\"4.4\",\"ep\":4,\"sort\":58,\"doc\":\"Introducing Broker\"},{\"value\":\"61\",\"name\":\"QuoteOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":59,\"doc\":\"Quote originator\"},{\"value\":\"62\",\"name\":\"ReportOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":60,\"doc\":\"Report originator\"},{\"value\":\"63\",\"name\":\"SystematicInternaliser\",\"since\":\"4.4\",\"ep\":26,\"sort\":61,\"doc\":\"Systematic internaliser (SI)\"},{\"value\":\"64\",\"name\":\"MultilateralTradingFacility\",\"since\":\"4.4\",\"ep\":26,\"sort\":62,\"doc\":\"Multilateral Trading Facility (MTF)\"},{\"value\":\"65\",\"name\":\"RegulatedMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":63,\"doc\":\"Regulated Market (RM)\"},{\"value\":\"66\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":64,\"doc\":\"Market Maker\"},{\"value\":\"67\",\"name\":\"InvestmentFirm\",\"since\":\"4.4\",\"ep\":26,\"sort\":65,\"doc\":\"Investment Firm\"},{\"value\":\"68\",\"name\":\"HostCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":66,\"doc\":\"Host Competent Authority (Host CA)\"},{\"value\":\"69\",\"name\":\"HomeCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":67,\"doc\":\"Home Competent Authority (Home CA)\"},{\"value\":\"7\",\"name\":\"EnteringFirm\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Entering Firm\"},{\"value\":\"70\",\"name\":\"CompetentAuthorityLiquidity\",\"since\":\"4.4\",\"ep\":26,\"sort\":68,\"doc\":\"Competent Authority of the most relevant market in terms of liquidity (CAL)\"},{\"value\":\"71\",\"name\":\"CompetentAuthorityTransactionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":69,\"doc\":\"Competent Authority of the Transaction (Execution) Venue (CATV)\"},{\"value\":\"72\",\"name\":\"ReportingIntermediary\",\"since\":\"4.4\",\"ep\":26,\"sort\":70,\"doc\":\"Reporting intermediary\"},{\"value\":\"73\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":71,\"doc\":\"Execution Venue\"},{\"value\":\"74\",\"name\":\"MarketDataEntryOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":72,\"doc\":\"Market data entry originator\"},{\"value\":\"75\",\"name\":\"LocationID\",\"since\":\"4.4\",\"ep\":26,\"sort\":73,\"doc\":\"Location ID\"},{\"value\":\"76\",\"name\":\"DeskID\",\"since\":\"4.4\",\"ep\":26,\"sort\":74,\"doc\":\"Desk ID\"},{\"value\":\"77\",\"name\":\"MarketDataMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":75,\"doc\":\"Market data market\"},{\"value\":\"78\",\"name\":\"AllocationEntity\",\"since\":\"4.4\",\"ep\":35,\"sort\":76,\"doc\":\"Allocation Entity\"},{\"value\":\"79\",\"name\":\"PrimeBroker\",\"since\":\"5.0\",\"ep\":68,\"sort\":77,\"doc\":\"Prime Broker providing General Trade Services\"},{\"value\":\"8\",\"name\":\"Locate\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Locate / Lending Firm (for short-sales)\"},{\"value\":\"80\",\"name\":\"StepOutFirm\",\"since\":\"5.0\",\"ep\":68,\"sort\":78,\"doc\":\"Step-Out Firm (Prime Broker)\"},{\"value\":\"81\",\"name\":\"BrokerClearingID\",\"since\":\"5.0\",\"ep\":68,\"sort\":79,\"doc\":\"Broker clearing identifier\"},{\"value\":\"82\",\"name\":\"CentralRegistrationDepository\",\"since\":\"5.0SP1\",\"ep\":79,\"sort\":80,\"doc\":\"Central Registration Depository (CRD)\"},{\"value\":\"83\",\"name\":\"ClearingAccount\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":81,\"doc\":\"Clearing Account\"},{\"value\":\"84\",\"name\":\"AcceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":82,\"doc\":\"Acceptable Settling Counterparty\"},{\"value\":\"85\",\"name\":\"UnacceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":83,\"doc\":\"Unacceptable Settling Counterparty\"},{\"value\":\"86\",\"name\":\"CLSMemberBank\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":84,\"doc\":\"CLS Member Bank\"},{\"value\":\"87\",\"name\":\"InConcertGroup\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":85,\"doc\":\"In Concert Group\"},{\"value\":\"88\",\"name\":\"InConcertControllingEntity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":86,\"doc\":\"In Concert Controlling Entity\"},{\"value\":\"89\",\"name\":\"LargePositionsReportingAccount\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":87,\"doc\":\"Large Positions Reporting Account\"},{\"value\":\"9\",\"name\":\"FundManagerClientID\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Fund Manager Client ID (for CIV)\"},{\"value\":\"90\",\"name\":\"SettlementFirm\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":88,\"doc\":\"Settlement Firm\"},{\"value\":\"91\",\"name\":\"SettlementAccount\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":89,\"doc\":\"Settlement account\"},{\"value\":\"92\",\"name\":\"ReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":90,\"doc\":\"Reporting Market Center\"},{\"value\":\"93\",\"name\":\"RelatedReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":91,\"doc\":\"Related Reporting Market Center\"},{\"value\":\"94\",\"name\":\"AwayMarket\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":92,\"doc\":\"Away Market\"},{\"value\":\"95\",\"name\":\"GiveupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":93,\"doc\":\"Give-up (trading) firm\"},{\"value\":\"96\",\"name\":\"TakeupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":94,\"doc\":\"Take-up (trading) firm\"},{\"value\":\"97\",\"name\":\"GiveupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":95,\"doc\":\"Give-up clearing firm\"},{\"value\":\"98\",\"name\":\"TakeupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":96,\"doc\":\"Take-up clearing firm\"},{\"value\":\"99\",\"name\":\"OriginatingMarket\",\"since\":\"5.0SP2\",\"ep\":139,\"sort\":97,\"doc\":\"Originating Market\"}]}",
+      "fix:description": "PartyRole value within an underlying instrument partyepeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"undlyinstrumentpartyrole\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentpartyrole\",\"type\":\"int\"}]}",
+      "fix:tag": "1061"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartysubid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartySubID",
+      "fix:aliases": "undlyinstrumentpartysubid",
+      "fix:description": "PartySubID value within an underlying instrument party repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"undlyinstrumentpartysubid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentpartysubid\",\"type\":\"String\"}]}",
+      "fix:tag": "1063"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartysubidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartySubIDType",
+      "fix:aliases": "undlyinstrumentpartysubidtype",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Firm\",\"since\":\"4.4\",\"doc\":\"Firm\"},{\"value\":\"10\",\"name\":\"SecuritiesAccountNumber\",\"since\":\"4.4\",\"sort\":9,\"doc\":\"Securities account number (for settlement instructions)\"},{\"value\":\"11\",\"name\":\"RegistrationNumber\",\"since\":\"4.4\",\"sort\":10,\"doc\":\"Registration number (for settlement instructions and confirmations)\"},{\"value\":\"12\",\"name\":\"RegisteredAddressForConfirmation\",\"since\":\"4.4\",\"sort\":11,\"doc\":\"Registered address (for confirmation purposes)\"},{\"value\":\"13\",\"name\":\"RegulatoryStatus\",\"since\":\"4.4\",\"sort\":12,\"doc\":\"Regulatory status (for confirmation purposes)\"},{\"value\":\"14\",\"name\":\"RegistrationName\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Registration name (for settlement instructions)\"},{\"value\":\"15\",\"name\":\"CashAccountNumber\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Cash account number (for settlement instructions)\"},{\"value\":\"16\",\"name\":\"BIC\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"BIC\"},{\"value\":\"17\",\"name\":\"CSDParticipantMemberCode\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"CSD participant member code\"},{\"value\":\"18\",\"name\":\"RegisteredAddress\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Registered address\"},{\"value\":\"19\",\"name\":\"FundAccountName\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"Fund account name\"},{\"value\":\"2\",\"name\":\"Person\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Person\"},{\"value\":\"20\",\"name\":\"TelexNumber\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Telex number\"},{\"value\":\"21\",\"name\":\"FaxNumber\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Fax number\"},{\"value\":\"22\",\"name\":\"SecuritiesAccountName\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Securities account name\"},{\"value\":\"23\",\"name\":\"CashAccountName\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Cash account name\"},{\"value\":\"24\",\"name\":\"Department\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Department\"},{\"value\":\"25\",\"name\":\"LocationDesk\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Location desk\"},{\"value\":\"26\",\"name\":\"PositionAccountType\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Position account type\"},{\"value\":\"27\",\"name\":\"SecurityLocateID\",\"since\":\"4.4\",\"ep\":1,\"sort\":26,\"doc\":\"Security locate ID\"},{\"value\":\"28\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":27,\"doc\":\"Market maker\"},{\"value\":\"29\",\"name\":\"EligibleCounterparty\",\"since\":\"4.4\",\"ep\":26,\"sort\":28,\"doc\":\"Eligible counterparty\"},{\"value\":\"3\",\"name\":\"System\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"System\"},{\"value\":\"30\",\"name\":\"ProfessionalClient\",\"since\":\"4.4\",\"ep\":26,\"sort\":29,\"doc\":\"Professional client\"},{\"value\":\"31\",\"name\":\"Location\",\"since\":\"4.4\",\"ep\":26,\"sort\":30,\"doc\":\"Location\"},{\"value\":\"32\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":31,\"doc\":\"Execution venue\"},{\"value\":\"33\",\"name\":\"CurrencyDeliveryIdentifier\",\"since\":\"5.0\",\"ep\":44,\"sort\":32,\"doc\":\"Currency delivery identifier\"},{\"value\":\"34\",\"name\":\"AddressCity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":33,\"doc\":\"Address City\"},{\"value\":\"35\",\"name\":\"AddressStateOrProvince\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":34,\"doc\":\"Address State/Province\"},{\"value\":\"36\",\"name\":\"AddressPostalCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":35,\"doc\":\"Address Postal Code\"},{\"value\":\"37\",\"name\":\"AddressStreet\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":36,\"doc\":\"Address Street\"},{\"value\":\"38\",\"name\":\"AddressISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":37,\"doc\":\"Address Country (ISO country code)\"},{\"value\":\"39\",\"name\":\"ISOCountryCode\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":38,\"doc\":\"ISO country code\"},{\"value\":\"4\",\"name\":\"Application\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Application\"},{\"value\":\"40\",\"name\":\"MarketSegment\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":39,\"doc\":\"Market segment\"},{\"value\":\"41\",\"name\":\"CustomerAccountType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":40,\"doc\":\"Customer account type\"},{\"value\":\"42\",\"name\":\"OmnibusAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":41,\"doc\":\"Omnibus account\"},{\"value\":\"43\",\"name\":\"FundsSegregationType\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":42,\"doc\":\"Funds segregation type\"},{\"value\":\"44\",\"name\":\"GuaranteeFund\",\"since\":\"5.0SP2\",\"ep\":157,\"sort\":43,\"doc\":\"Guarantee fund\"},{\"value\":\"45\",\"name\":\"SwapDealer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Swap dealer\"},{\"value\":\"46\",\"name\":\"MajorParticipant\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Major participant\"},{\"value\":\"47\",\"name\":\"FinancialEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Financial entity\"},{\"value\":\"48\",\"name\":\"USPerson\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":47,\"doc\":\"U.S. person\"},{\"value\":\"49\",\"name\":\"ReportingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":48,\"doc\":\"Reporting entity indicator\"},{\"value\":\"5\",\"name\":\"FullLegalNameOfFirm\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Full legal name of firm\"},{\"value\":\"50\",\"name\":\"ElectedClearingRequirementException\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":49,\"doc\":\"Elected clearing requirement exception\"},{\"value\":\"51\",\"name\":\"BusinessCenter\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":50,\"doc\":\"Business center\"},{\"value\":\"52\",\"name\":\"ReferenceText\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":51,\"doc\":\"Reference text\"},{\"value\":\"53\",\"name\":\"ShortMarkingExemptAccount\",\"since\":\"5.0SP2\",\"ep\":164,\"sort\":52,\"doc\":\"Short-marking exempt account\"},{\"value\":\"54\",\"name\":\"ParentFirmIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":53,\"doc\":\"Parent firm identifier\"},{\"value\":\"55\",\"name\":\"ParentFirmName\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":54,\"doc\":\"Parent firm name\"},{\"value\":\"56\",\"name\":\"DealIdentifier\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":55,\"doc\":\"Deal identifier\"},{\"value\":\"57\",\"name\":\"SystemTradeID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":56,\"doc\":\"System trade identifier\"},{\"value\":\"58\",\"name\":\"SystemTradeSubID\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":57,\"doc\":\"System trade sub-identifier\"},{\"value\":\"59\",\"name\":\"FCMCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":58,\"doc\":\"Futures Commission Merchant (FCM) code\"},{\"value\":\"6\",\"name\":\"PostalAddress\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Postal address\"},{\"value\":\"60\",\"name\":\"DlvryTrmlCode\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":59,\"doc\":\"Delivery terminal customer account/code\"},{\"value\":\"61\",\"name\":\"VolntyRptEntity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":60,\"doc\":\"Voluntary reporting entity\"},{\"value\":\"62\",\"name\":\"RptObligJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":61,\"doc\":\"Reporting obligation jurisdiction\"},{\"value\":\"63\",\"name\":\"VolntyRptJursdctn\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":62,\"doc\":\"Voluntary reporting jurisdiction\"},{\"value\":\"64\",\"name\":\"CompanyActivities\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":63,\"doc\":\"Company activities\"},{\"value\":\"65\",\"name\":\"EEAreaDomiciled\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":64,\"doc\":\"European Economic Area domiciled\"},{\"value\":\"66\",\"name\":\"ContractLinked\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":65,\"doc\":\"Contract linked to commercial or treasury financing for this counterparty\"},{\"value\":\"67\",\"name\":\"ContractAbove\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":66,\"doc\":\"Contract above clearing threshold for this counterparty\"},{\"value\":\"68\",\"name\":\"VolntyRptPty\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":67,\"doc\":\"Voluntary reporting party\"},{\"value\":\"69\",\"name\":\"EndUser\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":68,\"doc\":\"End user\"},{\"value\":\"7\",\"name\":\"PhoneNumber\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Phone number\"},{\"value\":\"70\",\"name\":\"LocationOrJurisdiction\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":69,\"doc\":\"Location or jurisdiction\"},{\"value\":\"71\",\"name\":\"DerivativesDealer\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":70,\"doc\":\"Derivatives dealer\"},{\"value\":\"72\",\"name\":\"Domicile\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":71,\"doc\":\"Domicile\"},{\"value\":\"73\",\"name\":\"ExemptFromRecognition\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":72,\"doc\":\"Exempt from recognition\"},{\"value\":\"74\",\"name\":\"Payer\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":73,\"doc\":\"Payer\"},{\"value\":\"75\",\"name\":\"Receiver\",\"since\":\"5.0SP2\",\"ep\":203,\"sort\":74,\"doc\":\"Receiver\"},{\"value\":\"76\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":75,\"doc\":\"Systematic Internaliser (SI)\"},{\"value\":\"77\",\"name\":\"PublishingEntityIndicator\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":76,\"doc\":\"Publishing entity indicator\"},{\"value\":\"78\",\"name\":\"FirstName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":77,\"doc\":\"First name\"},{\"value\":\"79\",\"name\":\"Surname\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":78,\"doc\":\"Surname\"},{\"value\":\"8\",\"name\":\"EmailAddress\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Email address\"},{\"value\":\"80\",\"name\":\"DateOfBirth\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":79,\"doc\":\"Date of birth\"},{\"value\":\"81\",\"name\":\"OrderTransmittingFirm\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":80,\"doc\":\"Order transmitting firm\"},{\"value\":\"82\",\"name\":\"OrderTransmittingFirmBuyer\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":81,\"doc\":\"Order transmitting firm for buyer\"},{\"value\":\"83\",\"name\":\"OrderTransmitterSeller\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":82,\"doc\":\"Order transmitter for seller\"},{\"value\":\"84\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":235,\"sort\":83,\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"85\",\"name\":\"SubSectorClassification\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":84,\"doc\":\"Sub-sector classification\"},{\"value\":\"86\",\"name\":\"PartySide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":85,\"doc\":\"Party side\"},{\"value\":\"87\",\"name\":\"LegalRegistrationCountry\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":86,\"doc\":\"Legal registration country\"},{\"value\":\"88\",\"name\":\"AlgorithmVersion\",\"ep\":303,\"sort\":87,\"doc\":\"Algorithm version\"},{\"value\":\"89\",\"name\":\"CertificateRegistrationStatus\",\"ep\":303,\"sort\":88,\"doc\":\"Certificate registration status\"},{\"value\":\"9\",\"name\":\"ContactName\",\"since\":\"4.4\",\"sort\":8,\"doc\":\"Contact name\"}]}",
+      "fix:description": "Type of underlying InstrumentPartySubID (1053) value.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"undlyinstrumentpartysubidtype\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentpartysubidtype\",\"type\":\"int\"}]}",
+      "fix:tag": "1064"
+    }
+  },
+  {
+    "name": "bidswappoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "BidSwapPoints",
+      "fix:description": "The bid FX Swap points for an FX Swap. It is the \"far bid forward points - near offer forward point\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"bidswappoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1065"
+    }
+  },
+  {
+    "name": "offerswappoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OfferSwapPoints",
+      "fix:description": "The offer FX Swap points for an FX Swap. It is the \"far offer forward points - near bid forward points\". Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"offerswappoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1066"
+    }
+  },
+  {
+    "name": "legbidforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegBidForwardPoints",
+      "fix:description": "The bid FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legbidforwardpoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1067"
+    }
+  },
+  {
+    "name": "legofferforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegOfferForwardPoints",
+      "fix:description": "The offer FX forward points for the leg of an FX Swap. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legofferforwardpoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1068"
+    }
+  },
+  {
+    "name": "swappoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SwapPoints",
+      "fix:description": "For FX Swap, this is used to express the differential between the far leg's bid/offer and the near leg's bid/offer. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"swappoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1069"
+    }
+  },
+  {
+    "name": "mdquotetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MDQuoteType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Indicative\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Indicative\"},{\"value\":\"1\",\"name\":\"Tradeable\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Tradeable\"},{\"value\":\"2\",\"name\":\"RestrictedTradeable\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Restricted tradeable\"},{\"value\":\"3\",\"name\":\"Counter\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Counter (tradeable)\"},{\"value\":\"4\",\"name\":\"InitiallyTradeable\",\"since\":\"5.0SP2\",\"ep\":126,\"sort\":5,\"doc\":\"Initially tradeable\"}]}",
+      "fix:description": "Identifies market data quote type.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"mdquotetype\",\"type\":\"int\"}]}",
+      "fix:tag": "1070"
+    }
+  },
+  {
+    "name": "lastswappoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LastSwapPoints",
+      "fix:description": "For FX Swap, this is used to express the last market event for the differential between the far leg's bid/offer and the near leg's bid/offer in a fill or partial fill. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"lastswappoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1071"
+    }
+  },
+  {
+    "name": "sidegrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideGrossTradeAmt",
+      "fix:description": "The gross trade amount for this side of the trade. See also GrossTradeAmt (381) for additional definition.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"sidegrosstradeamt\",\"type\":\"Amt\"}]}",
+      "fix:tag": "1072"
+    }
+  },
+  {
+    "name": "leglastforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegLastForwardPoints",
+      "fix:description": "The forward points for this leg's fill event. Value can be negative. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"leglastforwardpoints\",\"type\":\"PriceOffset\"}]}",
+      "fix:tag": "1073"
+    }
+  },
+  {
+    "name": "legcalculatedccylastqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCalculatedCcyLastQty",
+      "fix:description": "Used for the calculated quantity of the other side of the currency for this leg. Can be derived from LegQty and LegLastPx.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"legcalculatedccylastqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1074"
+    }
+  },
+  {
+    "name": "leggrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegGrossTradeAmt",
+      "fix:description": "The gross trade amount of the leg. For FX Futures this is used to express the notional value of a fill when LegLastQty and other quantity fields are express in terms of contract size.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"leggrosstradeamt\",\"type\":\"Amt\"}]}",
+      "fix:tag": "1075"
+    }
+  },
+  {
+    "name": "maturitytime",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 16
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MaturityTime",
+      "fix:description": "Time of security's maturity expressed in local time with offset to UTC specified",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"maturitytime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":21,\"name\":\"maturitytime\",\"type\":\"TZTimeOnly\"}]}",
+      "fix:tag": "1079"
+    }
+  },
+  {
+    "name": "reforderid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RefOrderID",
+      "fix:description": "The ID reference to the order being hit or taken.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"reforderid\",\"type\":\"String\"}]}",
+      "fix:tag": "1080"
+    }
+  },
+  {
+    "name": "reforderidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RefOrderIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"SecondaryOrderID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Secondary order ID\"},{\"value\":\"1\",\"name\":\"OrderID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Order ID\"},{\"value\":\"2\",\"name\":\"MDEntryID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Market data entry ID\"},{\"value\":\"3\",\"name\":\"QuoteEntryID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Quote entry ID\"},{\"value\":\"4\",\"name\":\"OriginalOrderID\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":4,\"doc\":\"Original order ID\"},{\"value\":\"5\",\"name\":\"QuoteID\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":5,\"doc\":\"Quote ID\"},{\"value\":\"6\",\"name\":\"QuoteReqID\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":6,\"doc\":\"Quote request ID\"},{\"value\":\"7\",\"name\":\"PreviousOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":7,\"doc\":\"Previous order identifier\"},{\"value\":\"8\",\"name\":\"PreviousQuoteIdentifier\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":8,\"doc\":\"Previous quote identifier\"},{\"value\":\"9\",\"name\":\"ParentOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":9,\"doc\":\"Parent order identifier\"},{\"value\":\"A\",\"name\":\"ManualOrderIdentifier\",\"since\":\"5.0SP2\",\"ep\":253,\"sort\":10,\"doc\":\"Manual order identifier\"}]}",
+      "fix:description": "Used to specify the source for the identifier in RefOrderID(1080). This can be an identifier provided in order depth market data when hitting (taking) a specific order or to identify what type of order or quote reference is being provided when seeking credit limit check. In the context of US CAT this can be used to identify related orders and quotes which are parent, previous, or manual orders or quotes. Previous relates to orders changing their unique system assigned order identifier.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"reforderidsource\",\"type\":\"char\"}]}",
+      "fix:tag": "1081"
+    }
+  },
+  {
+    "name": "secondarydisplayqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SecondaryDisplayQty",
+      "fix:description": "Used for reserve orders when DisplayQty applies to the primary execution market (e.g.an ECN) and another quantity is to be shown at other markets (e.g. the exchange). On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"secondarydisplayqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1082"
+    }
+  },
+  {
+    "name": "displaywhen",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DisplayWhen",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Immediate\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Immediate (after each fill)\"},{\"value\":\"2\",\"name\":\"Exhaust\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Exhaust (when DisplayQty = 0)\"}]}",
+      "fix:description": "Instructs when to refresh DisplayQty (1138).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"displaywhen\",\"type\":\"char\"}]}",
+      "fix:tag": "1083"
+    }
+  },
+  {
+    "name": "displaymethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DisplayMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Initial\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Initial (use original DisplayQty)\"},{\"value\":\"2\",\"name\":\"New\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"New (use RefreshQty)\"},{\"value\":\"3\",\"name\":\"Random\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Random (randomize value)\"},{\"value\":\"4\",\"name\":\"Undisclosed\",\"since\":\"5.0SP1\",\"ep\":78,\"sort\":4,\"doc\":\"Undisclosed (invisible order)\"}]}",
+      "fix:description": "Defines what value to use in DisplayQty (1138). If not specified the default DisplayMethod is \"1\"",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"displaymethod\",\"type\":\"char\"}]}",
+      "fix:tag": "1084"
+    }
+  },
+  {
+    "name": "displaylowqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DisplayLowQty",
+      "fix:description": "Defines the lower quantity limit to a randomized refresh of DisplayQty.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"displaylowqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1085"
+    }
+  },
+  {
+    "name": "displayhighqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DisplayHighQty",
+      "fix:description": "Defines the upper quantity limit to a randomized refresh of DisplayQty.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"displayhighqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1086"
+    }
+  },
+  {
+    "name": "displayminincr",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DisplayMinIncr",
+      "fix:description": "Defines the minimum increment to be used when calculating a random refresh of DisplayQty. A user specifies this when he wants a larger increment than the standard provided by the market (e.g. the round lot size).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"displayminincr\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1087"
+    }
+  },
+  {
+    "name": "refreshqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RefreshQty",
+      "fix:description": "Defines the quantity used to refresh DisplayQty.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"refreshqty\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1088"
+    }
+  },
+  {
+    "name": "matchincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MatchIncrement",
+      "fix:description": "Allows orders to specify a minimum quantity that applies to every execution (one execution could be for multiple counter-orders). The order may still fill against smaller orders, but the cumulative quantity of the execution must be in multiples of the MatchIncrement.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"matchincrement\",\"type\":\"Qty\"}]}",
+      "fix:tag": "1089"
+    }
+  },
+  {
+    "name": "maxpricelevels",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MaxPriceLevels",
+      "fix:description": "Allows an order to specify a maximum number of price levels to trade through. Only valid for aggressive orders and during continuous (autoexecution) trading sessions. Property lost when order is put on book. A partially filled order is assigned last trade price as limit price. Non-filled order behaves as ordinary Market or Limit.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"maxpricelevels\",\"type\":\"int\"}]}",
+      "fix:tag": "1090"
+    }
+  },
+  {
+    "name": "pretradeanonymity",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PreTradeAnonymity",
+      "fix:description": "Allows trader to explicitly request anonymity or disclosure in pre-trade market data feeds. Anonymity is relevant in markets where counterparties are regularly disclosed in order depth feeds. Disclosure is relevant when counterparties are not normally visible.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pretradeanonymity\",\"type\":\"Boolean\"}]}",
+      "fix:tag": "1091"
+    }
+  },
+  {
+    "name": "priceprotectionscope",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PriceProtectionScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"Local\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Local (Exchange, ECN, ATS)\"},{\"value\":\"2\",\"name\":\"National\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"National (Across all national markets)\"},{\"value\":\"3\",\"name\":\"Global\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Global (Across all markets)\"}]}",
+      "fix:description": "Defines the type of price protection the customer requires on their order.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"priceprotectionscope\",\"type\":\"char\"}]}",
+      "fix:tag": "1092"
+    }
+  },
+  {
+    "name": "lottype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LotType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OddLot\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Odd Lot\"},{\"value\":\"2\",\"name\":\"RoundLot\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Round Lot\"},{\"value\":\"3\",\"name\":\"BlockLot\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Block Lot\"},{\"value\":\"4\",\"name\":\"RoundLotBasedUpon\",\"since\":\"5.0SP1\",\"ep\":80,\"sort\":4,\"doc\":\"Round lot based upon UnitOfMeasure(996)\"}]}",
+      "fix:description": "Defines the lot type assigned to the order.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"lottype\",\"type\":\"char\"}]}",
+      "fix:tag": "1093"
+    }
+  },
+  {
+    "name": "pegpricetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PegPriceType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LastPeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Last peg (last sale)\"},{\"value\":\"10\",\"name\":\"ShortSaleMinPricePeg\",\"since\":\"5.0SP2\",\"ep\":123,\"sort\":10,\"doc\":\"Short sale minimum price Peg\"},{\"value\":\"2\",\"name\":\"MidPricePeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Mid-price peg (midprice of inside quote)\"},{\"value\":\"3\",\"name\":\"OpeningPeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Opening peg\"},{\"value\":\"4\",\"name\":\"MarketPeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Market peg\"},{\"value\":\"5\",\"name\":\"PrimaryPeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Primary peg (primary market - buy at bid or sell at offer)\"},{\"value\":\"7\",\"name\":\"PegToVWAP\",\"since\":\"4.4\",\"ep\":-1,\"sort\":7,\"doc\":\"Peg to VWAP\"},{\"value\":\"8\",\"name\":\"TrailingStopPeg\",\"since\":\"4.4\",\"ep\":-1,\"sort\":8,\"doc\":\"Trailing Stop Peg\"},{\"value\":\"9\",\"name\":\"PegToLimitPrice\",\"since\":\"4.4\",\"ep\":-1,\"sort\":9,\"doc\":\"Peg to Limit Price\"}]}",
+      "fix:description": "Defines the type of peg.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegpricetype\",\"type\":\"int\"}]}",
+      "fix:tag": "1094"
+    }
+  },
+  {
+    "name": "peggedrefprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PeggedRefPrice",
+      "fix:description": "The value of the reference price that the order is pegged to. PeggedRefPrice + PegOffsetValue (211) = PeggedPrice (839) unless the limit price (44, Price) is breached. The values may not be exact due to rounding.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"peggedrefprice\",\"type\":\"Price\"}]}",
+      "fix:tag": "1095"
+    }
+  },
+  {
+    "name": "pegsecurityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PegSecurityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:description": "Defines the identity of the security off whose prices the order will peg. Same values as SecurityIDSource (22)",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegsecurityidsource\",\"type\":\"String\"}]}",
+      "fix:tag": "1096"
+    }
+  },
+  {
+    "name": "pegsecurityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PegSecurityID",
+      "fix:description": "Defines the identity of the security off whose prices the order will peg.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegsecurityid\",\"type\":\"String\"}]}",
+      "fix:tag": "1097"
+    }
+  },
+  {
+    "name": "pegsymbol",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PegSymbol",
+      "fix:description": "Defines the common, 'human understood' representation of the security off whose prices the order will Peg.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegsymbol\",\"type\":\"String\"}]}",
+      "fix:tag": "1098"
+    }
+  },
+  {
+    "name": "pegsecuritydesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PegSecurityDesc",
+      "fix:description": "Security description of the security off whose prices the order will Peg.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"pegsecuritydesc\",\"type\":\"String\"}]}",
+      "fix:tag": "1099"
+    }
+  }
+]

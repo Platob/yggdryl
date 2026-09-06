@@ -150,6 +150,7 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 use crate::{Error, Result, Version};
 
 mod codes;
+mod constants;
 mod document;
 mod field;
 mod global;
@@ -161,6 +162,7 @@ mod store;
 mod tests;
 
 pub use codes::{FixCode, FixCodes, FixEnumValue};
+pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use document::Words;
 pub use field::FixAliases;
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};

@@ -1,0 +1,261 @@
+[
+  {
+    "name": "nolegratesources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3117"
+              }
+            },
+            {
+              "name": "legratesourcetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3118"
+              }
+            },
+            {
+              "name": "legreferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3119"
+              }
+            },
+            {
+              "name": "legratesourcereferencepageheading",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3120"
+              }
+            },
+            {
+              "name": "legratesourcesymbol",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3121"
+              }
+            },
+            {
+              "name": "legfxbenchmark",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3122"
+              }
+            },
+            {
+              "name": "legfxbenchmarkdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3123"
+              }
+            },
+            {
+              "name": "legfxbenchmarktime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3124"
+              }
+            },
+            {
+              "name": "legfxbenchmarkbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3125"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegRateSources",
+      "fix:description": "Number of LegRateSource entries in the repeating group.",
+      "fix:tag": "3116"
+    }
+  },
+  {
+    "name": "notestsuiteparameters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "testsuiteparametername",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3127"
+              }
+            },
+            {
+              "name": "testsuiteparametertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3128"
+              }
+            },
+            {
+              "name": "testsuiteparametervalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3129"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTestSuiteParameters",
+      "fix:description": "Number of test suite parameters.",
+      "fix:tag": "3126"
+    }
+  },
+  {
+    "name": "notestscenarioparameters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "testscenarioparametername",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3131"
+              }
+            },
+            {
+              "name": "testscenarioparametertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3132"
+              }
+            },
+            {
+              "name": "testscenarioparametervalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3133"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTestScenarioParameters",
+      "fix:description": "Number of test scenario parameters.",
+      "fix:tag": "3130"
+    }
+  },
+  {
+    "name": "notradingservices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradingservicetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3135"
+              }
+            },
+            {
+              "name": "tradingservicedesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "3136"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTradingServices",
+      "fix:description": "Number of trading service entries.",
+      "fix:tag": "3134"
+    }
+  }
+]

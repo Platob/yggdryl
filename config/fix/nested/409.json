@@ -1,0 +1,1756 @@
+[
+  {
+    "name": "nolegsettlratefallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legsettlratepostponementmaximumdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40903"
+              }
+            },
+            {
+              "name": "legsettlratepostponementsurvey",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40905"
+              }
+            },
+            {
+              "name": "legsettlratepostponementcalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40906"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegSettlRateFallbacks",
+      "fix:description": "Number of settlement rate fallbacks in the repeating group",
+      "fix:tag": "40902"
+    }
+  },
+  {
+    "name": "nolegbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40924"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40923"
+    }
+  },
+  {
+    "name": "nolegpaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentschedulefixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40400"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentScheduleFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40927"
+    }
+  },
+  {
+    "name": "nolegpaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentscheduleinterimexchangedatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40409"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40928"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamnondeliverablefixingdatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40361"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamNonDeliverableFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40929"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreampaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40293"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamPaymentDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40930"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamresetdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40305"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamResetDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40931"
+    }
+  },
+  {
+    "name": "nolegpaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreaminitialfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40311"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40932"
+    }
+  },
+  {
+    "name": "nolegpaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreamfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40318"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40933"
+    }
+  },
+  {
+    "name": "nolegprovisioncashsettlpaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisioncashsettlpaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40517"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionCashSettlPaymentDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40934"
+    }
+  },
+  {
+    "name": "nolegprovisioncashsettlvaluedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisioncashsettlvaluedatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40527"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionCashSettlValueDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40935"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionoptionexercisebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40477"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionOptionExerciseBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40936"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionoptionexpirationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40500"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionOptionExpirationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40937"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionoptionrelevantunderlyingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40510"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40938"
+    }
+  },
+  {
+    "name": "nolegprovisiondatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisiondatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40452"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40939"
+    }
+  },
+  {
+    "name": "nolegstreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreamcalculationperiodbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40266"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreamCalculationPeriodBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40940"
+    }
+  },
+  {
+    "name": "nolegstreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreamfirstperiodstartdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40269"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreamFirstPeriodStartDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40941"
+    }
+  },
+  {
+    "name": "nolegstreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreameffectivedatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40251"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreamEffectiveDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40942"
+    }
+  },
+  {
+    "name": "nolegstreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legstreamterminationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40259"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegStreamTerminationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40943"
+    }
+  },
+  {
+    "name": "nopaymentbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40221"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40944"
+    }
+  },
+  {
+    "name": "nopaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentscheduleinterimexchangedatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40863"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40945"
+    }
+  },
+  {
+    "name": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamnondeliverablefixingdatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40819"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStreamNonDeliverableFixingDatesBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40946"
+    }
+  },
+  {
+    "name": "nopaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreampaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40752"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStreamPaymentDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40947"
+    }
+  },
+  {
+    "name": "nopaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamresetdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40763"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStreamResetDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40948"
+    }
+  },
+  {
+    "name": "nopaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreaminitialfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40769"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40949"
+    }
+  },
+  {
+    "name": "nopaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40776"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentStreamFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40950"
+    }
+  },
+  {
+    "name": "noprotectiontermeventnewssources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "protectiontermeventnewssource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40189"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProtectionTermEventNewsSources",
+      "fix:description": "Number of event news sources in the repeating group.",
+      "fix:tag": "40951"
+    }
+  },
+  {
+    "name": "noprovisioncashsettlpaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisioncashsettlpaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40164"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionCashSettlPaymentDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40952"
+    }
+  },
+  {
+    "name": "noprovisioncashsettlvaluedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisioncashsettlvaluedatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40117"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionCashSettlValueDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40953"
+    }
+  },
+  {
+    "name": "noprovisionoptionexercisebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisionoptionexercisebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40124"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionOptionExerciseBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40954"
+    }
+  },
+  {
+    "name": "noprovisionoptionexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisionoptionexpirationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40147"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionOptionExpirationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40955"
+    }
+  },
+  {
+    "name": "noprovisionoptionrelevantunderlyingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisionoptionrelevantunderlyingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40157"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionOptionRelevantUnderlyingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40956"
+    }
+  },
+  {
+    "name": "noprovisiondatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisiondatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40094"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoProvisionDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40957"
+    }
+  },
+  {
+    "name": "nostreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "streamcalculationperiodbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40074"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStreamCalculationPeriodBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40958"
+    }
+  },
+  {
+    "name": "nostreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "streamfirstperiodstartdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40077"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStreamFirstPeriodStartDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40959"
+    }
+  },
+  {
+    "name": "nostreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "streameffectivedatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40909"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStreamEffectiveDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40960"
+    }
+  },
+  {
+    "name": "nostreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "streamterminationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40067"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoStreamTerminationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40961"
+    }
+  },
+  {
+    "name": "nounderlyingbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40963"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40962"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentschedulefixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40690"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentScheduleFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40966"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentscheduleinterimexchangedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40699"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40967"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40650"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40968"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreampaymentdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreampaymentdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40582"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentStreamPaymentDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40969"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamresetdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreamresetdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40594"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentStreamResetDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40970"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreaminitialfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreaminitialfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40600"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentStreamInitialFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40971"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreamfixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreamfixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40607"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingPaymentStreamFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40972"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcalculationperiodbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcalculationperiodbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40557"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreamCalculationPeriodBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40973"
+    }
+  },
+  {
+    "name": "nounderlyingstreamfirstperiodstartdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamfirstperiodstartdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40560"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreamFirstPeriodStartDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40974"
+    }
+  },
+  {
+    "name": "nounderlyingstreameffectivedatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreameffectivedatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40059"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreamEffectiveDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40975"
+    }
+  },
+  {
+    "name": "nounderlyingstreamterminationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamterminationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40550"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreamTerminationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40976"
+    }
+  },
+  {
+    "name": "nopaymentschedulefixingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentschedulefixingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40854"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPaymentScheduleFixingDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "40977"
+    }
+  },
+  {
+    "name": "nocomplexeventaveragingobservations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventaveragingobservationnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40995"
+              }
+            },
+            {
+              "name": "complexeventaveragingweight",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40996"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoComplexEventAveragingObservations",
+      "fix:description": "The number of averaging observations in the repeating group.",
+      "fix:tag": "40994"
+    }
+  },
+  {
+    "name": "nocomplexeventcreditevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventcrediteventtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40998"
+              }
+            },
+            {
+              "name": "complexeventcrediteventvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40999"
+              }
+            },
+            {
+              "name": "complexeventcrediteventcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41000"
+              }
+            },
+            {
+              "name": "complexeventcrediteventperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41001"
+              }
+            },
+            {
+              "name": "complexeventcrediteventunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41002"
+              }
+            },
+            {
+              "name": "complexeventcrediteventdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41003"
+              }
+            },
+            {
+              "name": "complexeventcrediteventratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41004"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoComplexEventCreditEvents",
+      "fix:description": "The number of credit events specified in the repeating group.",
+      "fix:tag": "40997"
+    }
+  }
+]

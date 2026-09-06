@@ -60,7 +60,8 @@ pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
     FixAliases, FixBranch, FixCode, FixCodes, FixEnumValue, FixFieldIter, FixId, FixKey,
-    FixLineage, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, Words,
+    FixLineage, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, Words,
 };
 pub use i256::I256;
 #[cfg(feature = "arrow")]

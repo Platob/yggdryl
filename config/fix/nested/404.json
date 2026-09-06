@@ -1,0 +1,722 @@
+[
+  {
+    "name": "nolegpaymentscheduleratesources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentscheduleratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40415"
+              }
+            },
+            {
+              "name": "legpaymentscheduleratesourcetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40416"
+              }
+            },
+            {
+              "name": "legpaymentschedulereferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40417"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentScheduleRateSources",
+      "fix:description": "Number of rate sources in the repeating group",
+      "fix:tag": "40414"
+    }
+  },
+  {
+    "name": "nolegpaymentstubs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40419"
+              }
+            },
+            {
+              "name": "legpaymentstublength",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40420"
+              }
+            },
+            {
+              "name": "legpaymentstubrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40421"
+              }
+            },
+            {
+              "name": "legpaymentstubfixedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40422"
+              }
+            },
+            {
+              "name": "legpaymentstubfixedcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40423"
+              }
+            },
+            {
+              "name": "legpaymentstubindex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40424"
+              }
+            },
+            {
+              "name": "legpaymentstubindexsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40425"
+              }
+            },
+            {
+              "name": "legpaymentstubindexcurveperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40426"
+              }
+            },
+            {
+              "name": "legpaymentstubindexcurveunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40427"
+              }
+            },
+            {
+              "name": "legpaymentstubindexratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40428"
+              }
+            },
+            {
+              "name": "legpaymentstubindexratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40429"
+              }
+            },
+            {
+              "name": "legpaymentstubindexratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40430"
+              }
+            },
+            {
+              "name": "legpaymentstubindexratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40431"
+              }
+            },
+            {
+              "name": "legpaymentstubindexcaprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40432"
+              }
+            },
+            {
+              "name": "legpaymentstubindexcapratebuyside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40433"
+              }
+            },
+            {
+              "name": "legpaymentstubindexcapratesellside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40434"
+              }
+            },
+            {
+              "name": "legpaymentstubindexfloorrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40435"
+              }
+            },
+            {
+              "name": "legpaymentstubindexfloorratebuyside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40436"
+              }
+            },
+            {
+              "name": "legpaymentstubindexfloorratesellside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40437"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40438"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2source",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40439"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2curveperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40440"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2curveunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40441"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2ratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40442"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2ratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40443"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2ratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40444"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2ratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40445"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2caprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40446"
+              }
+            },
+            {
+              "name": "legpaymentstubindex2floorrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40447"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStubs",
+      "fix:description": "Number of stubs in the repeating group",
+      "fix:tag": "40418"
+    }
+  },
+  {
+    "name": "nolegprovisions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40449"
+              }
+            },
+            {
+              "name": "legprovisiondateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40450"
+              }
+            },
+            {
+              "name": "legprovisiondatebusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40451"
+              }
+            },
+            {
+              "name": "legprovisiondateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40453"
+              }
+            },
+            {
+              "name": "legprovisiondatetenorperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40454"
+              }
+            },
+            {
+              "name": "legprovisiondatetenorunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40455"
+              }
+            },
+            {
+              "name": "legprovisionbreakfeeelection",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42506"
+              }
+            },
+            {
+              "name": "legprovisionbreakfeerate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42507"
+              }
+            },
+            {
+              "name": "legprovisioncalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40456"
+              }
+            },
+            {
+              "name": "legprovisionoptionsinglepartybuyerside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40457"
+              }
+            },
+            {
+              "name": "legprovisionoptionsinglepartysellerside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40458"
+              }
+            },
+            {
+              "name": "legprovisionoptionexercisestyle",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40459"
+              }
+            },
+            {
+              "name": "legprovisionoptionexercisemultiplenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40460"
+              }
+            },
+            {
+              "name": "legprovisionoptionexerciseminimumnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40461"
+              }
+            },
+            {
+              "name": "legprovisionoptionexercisemaximumnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40462"
+              }
+            },
+            {
+              "name": "legprovisionoptionminimumnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40463"
+              }
+            },
+            {
+              "name": "legprovisionoptionmaximumnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40464"
+              }
+            },
+            {
+              "name": "legprovisionoptionexerciseconfirmation",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40465"
+              }
+            },
+            {
+              "name": "legprovisioncashsettlmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40466"
+              }
+            },
+            {
+              "name": "legprovisioncashsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40467"
+              }
+            },
+            {
+              "name": "legprovisioncashsettlcurrency2",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40468"
+              }
+            },
+            {
+              "name": "legprovisioncashsettlquotetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40469"
+              }
+            },
+            {
+              "name": "legprovisiontext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40472"
+              }
+            },
+            {
+              "name": "encodedlegprovisiontextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40980"
+              }
+            },
+            {
+              "name": "encodedlegprovisiontext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40981"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisions",
+      "fix:description": "Number of provisions in the repeating group.",
+      "fix:tag": "40448"
+    }
+  },
+  {
+    "name": "nolegprovisioncashsettlpaymentdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisioncashsettlpaymentdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40474"
+              }
+            },
+            {
+              "name": "legprovisioncashsettlpaymentdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40475"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionCashSettlPaymentDates",
+      "fix:description": "Number of provision cash settlement payment dates in the repeating group.",
+      "fix:tag": "40473"
+    }
+  },
+  {
+    "name": "nolegprovisionoptionexercisefixeddates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionoptionexercisefixeddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40496"
+              }
+            },
+            {
+              "name": "legprovisionoptionexercisefixeddatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40497"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionOptionExerciseFixedDates",
+      "fix:description": "Number of provision option exercise fixed dates in the repeating group.",
+      "fix:tag": "40495"
+    }
+  }
+]

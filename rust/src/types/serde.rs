@@ -117,6 +117,7 @@ enum DataTypeRef<'a> {
     Mic {},
     Cfi {},
     Side {},
+    #[serde(rename = "msgtype")]
     MsgType {},
     Direction {},
     Uuid {},
@@ -365,6 +366,7 @@ enum DataTypeValue {
     Mic {},
     Cfi {},
     Side {},
+    #[serde(rename = "msgtype")]
     MsgType {},
     Direction {},
     Uuid {},

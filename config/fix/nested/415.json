@@ -1,0 +1,380 @@
+[
+  {
+    "name": "nolegoptionexercisedates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legoptionexercisedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41513"
+              }
+            },
+            {
+              "name": "legoptionexercisedatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41514"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegOptionExerciseDates",
+      "fix:description": "Number of dates in the repeating group.",
+      "fix:tag": "41512"
+    }
+  },
+  {
+    "name": "nolegoptionexerciseexpirationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legoptionexerciseexpirationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41516"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegOptionExerciseExpirationDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41515"
+    }
+  },
+  {
+    "name": "nolegoptionexerciseexpirationdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legoptionexerciseexpirationdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41528"
+              }
+            },
+            {
+              "name": "legoptionexerciseexpirationdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41529"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegOptionExerciseExpirationDates",
+      "fix:description": "Number of fixed exercise expiration dates in the repeating group.",
+      "fix:tag": "41527"
+    }
+  },
+  {
+    "name": "nolegpaymentschedulefixingdays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentschedulefixingdayofweek",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41531"
+              }
+            },
+            {
+              "name": "legpaymentschedulefixingdaynumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41532"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentScheduleFixingDays",
+      "fix:description": "Number of fixing days in the repeating group.",
+      "fix:tag": "41530"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampricingbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreampricingbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41562"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamPricingBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41561"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampaymentdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreampaymentdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41590"
+              }
+            },
+            {
+              "name": "legpaymentstreampaymentdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41591"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamPaymentDates",
+      "fix:description": "Number of payment dates in the repeating group.",
+      "fix:tag": "41589"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampricingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreampricingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41594"
+              }
+            },
+            {
+              "name": "legpaymentstreampricingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41595"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamPricingDates",
+      "fix:description": "Number of pricing dates in the repeating group.",
+      "fix:tag": "41593"
+    }
+  },
+  {
+    "name": "nolegpaymentstreampricingdays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstreampricingdayofweek",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41597"
+              }
+            },
+            {
+              "name": "legpaymentstreampricingdaynumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41598"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPaymentStreamPricingDays",
+      "fix:description": "Number of pricing days in the repeating group.",
+      "fix:tag": "41596"
+    }
+  },
+  {
+    "name": "nolegphysicalsettlterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legphysicalsettlcurency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41601"
+              }
+            },
+            {
+              "name": "legphysicalsettlbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41602"
+              }
+            },
+            {
+              "name": "legphysicalsettlmaximumbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41603"
+              }
+            },
+            {
+              "name": "legphysicalsettltermxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41600"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegPhysicalSettlTerms",
+      "fix:description": "Number of entries in the repeating group.",
+      "fix:tag": "41599"
+    }
+  }
+]

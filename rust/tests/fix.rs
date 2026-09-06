@@ -1,5 +1,7 @@
 //! FIX integration tests.
 
+#[path = "fix/dictionary.rs"]
+mod dictionary;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]

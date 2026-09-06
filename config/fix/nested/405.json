@@ -1,0 +1,338 @@
+[
+  {
+    "name": "nolegprovisionpartyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionpartyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40534"
+              }
+            },
+            {
+              "name": "legprovisionpartyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40535"
+              }
+            },
+            {
+              "name": "legprovisionpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40536"
+              }
+            },
+            {
+              "name": "legprovisionpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2380"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionPartyIDs",
+      "fix:description": "Number of parties identified in the contract provision.",
+      "fix:tag": "40533"
+    }
+  },
+  {
+    "name": "nolegprovisionpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legprovisionpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40538"
+              }
+            },
+            {
+              "name": "legprovisionpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40539"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegProvisionPartySubIDs",
+      "fix:description": "Number of sub-party IDs to be reported for the party.",
+      "fix:tag": "40537"
+    }
+  },
+  {
+    "name": "nounderlyingstreams",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40541"
+              }
+            },
+            {
+              "name": "underlyingstreamxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42016"
+              }
+            },
+            {
+              "name": "underlyingstreamdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40542"
+              }
+            },
+            {
+              "name": "underlyingstreamversion",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43083"
+              }
+            },
+            {
+              "name": "underlyingstreamversioneffectivedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43084"
+              }
+            },
+            {
+              "name": "underlyingstreampayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40543"
+              }
+            },
+            {
+              "name": "underlyingstreamreceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40544"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionalxidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42018"
+              }
+            },
+            {
+              "name": "underlyingstreamnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40545"
+              }
+            },
+            {
+              "name": "underlyingstreamcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40546"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionaldeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43085"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionaladjustments",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43086"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionalfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42019"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionalfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42020"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionalcommodityfrequency",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42021"
+              }
+            },
+            {
+              "name": "underlyingstreamnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42022"
+              }
+            },
+            {
+              "name": "underlyingstreamtotalnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42023"
+              }
+            },
+            {
+              "name": "underlyingstreamtotalnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42024"
+              }
+            },
+            {
+              "name": "underlyingstreamtext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40547"
+              }
+            },
+            {
+              "name": "encodedunderlyingstreamtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40988"
+              }
+            },
+            {
+              "name": "encodedunderlyingstreamtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40989"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingStreams",
+      "fix:description": "Number of swap streams in the repeating group.",
+      "fix:tag": "40540"
+    }
+  }
+]

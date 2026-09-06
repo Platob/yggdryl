@@ -1,0 +1,1139 @@
+[
+  {
+    "name": "legfinancingtermsupplementdesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFinancingTermSupplementDesc",
+      "fix:description": "Identifies the applicable contractual supplement. See https://fpml.org/coding-scheme/contractual-supplement for values.",
+      "fix:tag": "42201"
+    }
+  },
+  {
+    "name": "legfinancingtermsupplementdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegFinancingTermSupplementDate",
+      "fix:description": "Specifies the publication date of the applicable version of the contractual supplement.",
+      "fix:tag": "42202"
+    }
+  },
+  {
+    "name": "legcontractualmatrixsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegContractualMatrixSource",
+      "fix:description": "Identifies the applicable contract matrix. See https://fpml.org/coding-scheme/matrix-type-1-0.xml for values.",
+      "fix:tag": "42204"
+    }
+  },
+  {
+    "name": "legcontractualmatrixdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegContractualMatrixDate",
+      "fix:description": "Specifies the publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable.",
+      "fix:tag": "42205"
+    }
+  },
+  {
+    "name": "legcontractualmatrixterm",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegContractualMatrixTerm",
+      "fix:description": "Specifies the applicable key into the relevant contract matrix. In the case of 2000 ISDA Definitions Settlement Matrix for Early Termination and Swaptions, the LegContractualMatrixTerm(42206) is not applicable and is to be omitted. See https://fpml.org/coding-scheme/credit-matrix-transaction-type for values.",
+      "fix:tag": "42206"
+    }
+  },
+  {
+    "name": "cashsettldateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateUnadjusted",
+      "fix:description": "The unadjusted cash settlement date.",
+      "fix:tag": "42207"
+    }
+  },
+  {
+    "name": "cashsettldatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the Instrument component.",
+      "fix:tag": "42208"
+    }
+  },
+  {
+    "name": "cashsettldaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the cash settlement date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "42209"
+    }
+  },
+  {
+    "name": "cashsettldateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative cash settlement date offset.",
+      "fix:tag": "42210"
+    }
+  },
+  {
+    "name": "cashsettldateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative cash settlement date offset.",
+      "fix:tag": "42211"
+    }
+  },
+  {
+    "name": "cashsettldateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative cash settlement date offset.",
+      "fix:tag": "42212"
+    }
+  },
+  {
+    "name": "cashsettldateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateAdjusted",
+      "fix:description": "The adjusted cash settlement date.",
+      "fix:tag": "42213"
+    }
+  },
+  {
+    "name": "cashsettldatebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlDateBusinessCenter",
+      "fix:description": "The business center calendar used for date adjustment of the cash settlement unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "42215"
+    }
+  },
+  {
+    "name": "cashsettlpricesource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlPriceSource",
+      "fix:description": "The source from which the settlement price is to be obtained. See https://fpml.org/coding-scheme/settlement-price-source for values.",
+      "fix:tag": "42216"
+    }
+  },
+  {
+    "name": "cashsettlpricedefault",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CashSettlPriceDefault",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"Hedge\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge\"}]}",
+      "fix:description": "The default election for determining settlement price.",
+      "fix:tag": "42217"
+    }
+  },
+  {
+    "name": "dividendfloatingrateindex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateIndex",
+      "fix:description": "The dividend accrual floating rate index.",
+      "fix:tag": "42218"
+    }
+  },
+  {
+    "name": "dividendfloatingrateindexcurveperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateIndexCurvePeriod",
+      "fix:description": "Time unit multiplier for the dividend accrual floating rate index curve.",
+      "fix:tag": "42219"
+    }
+  },
+  {
+    "name": "dividendfloatingrateindexcurveunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateIndexCurveUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the dividend accrual floating rate index curve period.",
+      "fix:tag": "42220"
+    }
+  },
+  {
+    "name": "dividendfloatingratemultiplier",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateMultiplier",
+      "fix:description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This should only be included if the multiplier is not equal to 1 (one) for the term of the contract.",
+      "fix:tag": "42221"
+    }
+  },
+  {
+    "name": "dividendfloatingratespread",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateSpread",
+      "fix:description": "The basis points spread from the index specified in DividendFloatingRateIndex(42218).",
+      "fix:tag": "42222"
+    }
+  },
+  {
+    "name": "dividendfloatingratespreadpositiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateSpreadPositionType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
+      "fix:description": "Identifies whether the rate spread is applied to a long or short position.",
+      "fix:tag": "42223"
+    }
+  },
+  {
+    "name": "dividendfloatingratetreatment",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloatingRateTreatment",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
+      "fix:description": "Specifies the yield calculation treatment for the index.",
+      "fix:tag": "42224"
+    }
+  },
+  {
+    "name": "dividendcaprate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCapRate",
+      "fix:description": "The cap rate, if any, which applies to the floating rate. It is only required where the floating rate is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as \"0.05\".",
+      "fix:tag": "42225"
+    }
+  },
+  {
+    "name": "dividendcapratebuyside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCapRateBuySide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:description": "Reference to the buyer of the cap rate option through its trade side.",
+      "fix:tag": "42226"
+    }
+  },
+  {
+    "name": "dividendcapratesellside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCapRateSellSide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:description": "Reference to the seller of the cap rate option through its trade side.",
+      "fix:tag": "42227"
+    }
+  },
+  {
+    "name": "dividendfloorrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloorRate",
+      "fix:description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate. The rate is expressed as a decimal, e.g. 5% is represented as \"0.05\".",
+      "fix:tag": "42228"
+    }
+  },
+  {
+    "name": "dividendfloorratebuyside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloorRateBuySide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:description": "Reference to the buyer of the floor rate option through its trade side.",
+      "fix:tag": "42229"
+    }
+  },
+  {
+    "name": "dividendfloorratesellside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFloorRateSellSide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:description": "Reference to the seller of the floor rate option through its trade side.",
+      "fix:tag": "42230"
+    }
+  },
+  {
+    "name": "dividendinitialrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendInitialRate",
+      "fix:description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. The initial rate is expressed in decimal form, e.g. 5% is represented as \"0.05\".",
+      "fix:tag": "42231"
+    }
+  },
+  {
+    "name": "dividendfinalrateroundingdirection",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFinalRateRoundingDirection",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
+      "fix:description": "Specifies the rounding direction of the final rate.",
+      "fix:tag": "42232"
+    }
+  },
+  {
+    "name": "dividendfinalrateprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFinalRatePrecision",
+      "fix:description": "Specifies the rounding precision of the final rate in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
+      "fix:tag": "42233"
+    }
+  },
+  {
+    "name": "dividendaveragingmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAveragingMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unweighted\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Unweighted\"},{\"value\":\"1\",\"name\":\"Weighted\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Weighted\"}]}",
+      "fix:description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
+      "fix:tag": "42234"
+    }
+  },
+  {
+    "name": "dividendnegativeratetreatment",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendNegativeRateTreatment",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ZeroInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Zero interest rate method\"},{\"value\":\"1\",\"name\":\"NegativeInterestRateMethod\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Negative interest rate method\"}]}",
+      "fix:description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
+      "fix:tag": "42235"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdatebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateBusinessCenter",
+      "fix:description": "The business center calendar used for date adjustment of the instrument's dividend accrual payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "42237"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the accrual payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "42238"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative accrual payment date offset.",
+      "fix:tag": "42239"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative accrual payment date offset.",
+      "fix:tag": "42240"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative accrual payment date offset.",
+      "fix:tag": "42241"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateUnadjusted",
+      "fix:description": "The unadjusted accrual payment date.",
+      "fix:tag": "42242"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymeentdatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymeentDateBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "Accrual payment date adjustment business day convention.",
+      "fix:tag": "42243"
+    }
+  },
+  {
+    "name": "dividendaccrualpaymentdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualPaymentDateAdjusted",
+      "fix:description": "The adjusted accrual payment date.",
+      "fix:tag": "42244"
+    }
+  },
+  {
+    "name": "dividendreinvestmentindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendReinvestmentIndicator",
+      "fix:description": "Indicates whether the dividend will be reinvested.",
+      "fix:tag": "42245"
+    }
+  },
+  {
+    "name": "dividendentitlementevent",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendEntitlementEvent",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExDate\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Ex-date\"},{\"value\":\"1\",\"name\":\"RecordDate\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Record date\"}]}",
+      "fix:description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
+      "fix:tag": "42246"
+    }
+  },
+  {
+    "name": "dividendamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RecordAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Record amount\"},{\"value\":\"1\",\"name\":\"ExAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Ex amount\"},{\"value\":\"2\",\"name\":\"PaidAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Paid amount\"},{\"value\":\"3\",\"name\":\"PerMasterConfirm\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"As specified in master confirmation\"}]}",
+      "fix:description": "Indicates how the gross cash dividend amount per share is determined.",
+      "fix:tag": "42247"
+    }
+  },
+  {
+    "name": "dividendunderlierrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendUnderlierRefID",
+      "fix:description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
+      "fix:tag": "42248"
+    }
+  },
+  {
+    "name": "extraordinarydividendpartyside",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryDividendPartySide",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
+      "fix:tag": "42249"
+    }
+  },
+  {
+    "name": "extraordinarydividendamounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryDividendAmountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RecordAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Record amount\"},{\"value\":\"1\",\"name\":\"ExAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Ex amount\"},{\"value\":\"2\",\"name\":\"PaidAmount\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":2,\"doc\":\"Paid amount\"},{\"value\":\"3\",\"name\":\"PerMasterConfirm\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":3,\"doc\":\"As specified in master confirmation\"}]}",
+      "fix:description": "Indicates how the extraordinary gross cash dividend per share is determined.",
+      "fix:tag": "42250"
+    }
+  },
+  {
+    "name": "extraordinarydividendcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryDividendCurrency",
+      "fix:description": "The currency in which the excess dividend is denominated. Uses ISO 4217 currency codes.",
+      "fix:tag": "42251"
+    }
+  },
+  {
+    "name": "extraordinarydividenddeterminationmethod",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryDividendDeterminationMethod",
+      "fix:description": "Specifies the method in which the excess amount is determined. See https://fpml.org/coding-scheme/determination-method for values.",
+      "fix:tag": "42252"
+    }
+  },
+  {
+    "name": "dividendaccrualfixedrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendAccrualFixedRate",
+      "fix:description": "The dividend accrual fixed rate per annum expressed as a decimal.",
+      "fix:tag": "42253"
+    }
+  },
+  {
+    "name": "dividendcompoundingmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCompoundingMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"Flat\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Flat\"},{\"value\":\"2\",\"name\":\"Straight\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Straight\"},{\"value\":\"3\",\"name\":\"SpreadExclusive\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Spread exclusive\"}]}",
+      "fix:description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
+      "fix:tag": "42254"
+    }
+  },
+  {
+    "name": "dividendnumofindexunits",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendNumOfIndexUnits",
+      "fix:description": "The number of index units applicable to dividends.",
+      "fix:tag": "42255"
+    }
+  },
+  {
+    "name": "dividendcashpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCashPercentage",
+      "fix:description": "Declared cash dividend percentage.",
+      "fix:tag": "42256"
+    }
+  },
+  {
+    "name": "dividendcashequivalentpercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendCashEquivalentPercentage",
+      "fix:description": "Declared cash-equivalent dividend percentage.",
+      "fix:tag": "42257"
+    }
+  },
+  {
+    "name": "noncashdividendtreatment",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NonCashDividendTreatment",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PotentialAdjustment\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Potential adjustment event\"},{\"value\":\"1\",\"name\":\"CashEquivalent\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Cash equivalent\"}]}",
+      "fix:description": "Defines the treatment of non-cash dividends.",
+      "fix:tag": "42258"
+    }
+  },
+  {
+    "name": "dividendcomposition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendComposition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"EquityAmountReceiver\",\"since\":\"5.0SP2\",\"ep\":208,\"doc\":\"Equity amount receiver election\"},{\"value\":\"1\",\"name\":\"CalculationAgent\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":1,\"doc\":\"Calculation agent election\"}]}",
+      "fix:description": "Defines how the composition of dividends is to be determined.",
+      "fix:tag": "42259"
+    }
+  },
+  {
+    "name": "specialdividendsindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SpecialDividendsIndicator",
+      "fix:description": "Indicates whether special dividends are applicable.",
+      "fix:tag": "42260"
+    }
+  },
+  {
+    "name": "materialdividendsindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "MaterialDividendsIndicator",
+      "fix:description": "Indicates whether material non-cash dividends are applicable.",
+      "fix:tag": "42261"
+    }
+  },
+  {
+    "name": "optionsexchangedividendsindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "OptionsExchangeDividendsIndicator",
+      "fix:description": "Indicates whether option exchange dividends are applicable.",
+      "fix:tag": "42262"
+    }
+  },
+  {
+    "name": "additionaldividendsindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AdditionalDividendsIndicator",
+      "fix:description": "Indicates whether additional dividends are applicable.",
+      "fix:tag": "42263"
+    }
+  },
+  {
+    "name": "alldividendsindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllDividendsIndicator",
+      "fix:description": "Represents the European Master Confirmation value of 'All Dividends' which, when applicable, signifies that, for a given Ex-Date, the daily observed share price for that day is adjusted (reduced) by the cash dividend and/or the cash value of any non-cash dividend per share (including extraordinary dividends) declared by the issuer.",
+      "fix:tag": "42264"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the FX trigger date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "42265"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative FX trigger date offset.",
+      "fix:tag": "42266"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative FX trigger date offset.",
+      "fix:tag": "42267"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative FX trigger date offset.",
+      "fix:tag": "42268"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateUnadjusted",
+      "fix:description": "The unadjusted FX trigger date.",
+      "fix:tag": "42269"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "The business day convention used for the FX trigger date adjustment.",
+      "fix:tag": "42270"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateAdjusted",
+      "fix:description": "The adjusted FX trigger date.",
+      "fix:tag": "42271"
+    }
+  },
+  {
+    "name": "dividendfxtriggerdatebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendFXTriggerDateBusinessCenter",
+      "fix:description": "The business center calendar used for date adjustment of the instrument's FX trigger date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "42273"
+    }
+  },
+  {
+    "name": "dividendperiodsequence",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodSequence",
+      "fix:description": "Defines the ordinal dividend period. E.g. 1 = First period, 2 = Second period, etc.",
+      "fix:tag": "42275"
+    }
+  },
+  {
+    "name": "dividendperiodstartdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodStartDateUnadjusted",
+      "fix:description": "The unadjusted date on which the dividend period will begin.",
+      "fix:tag": "42276"
+    }
+  },
+  {
+    "name": "dividendperiodenddateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodEndDateUnadjusted",
+      "fix:description": "The unadjusted date on which the dividend period will end.",
+      "fix:tag": "42277"
+    }
+  },
+  {
+    "name": "dividendperiodunderlierrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodUnderlierRefID",
+      "fix:description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
+      "fix:tag": "42278"
+    }
+  },
+  {
+    "name": "dividendperiodstrikeprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodStrikePrice",
+      "fix:description": "Specifies the fixed strike price of the dividend period.",
+      "fix:tag": "42279"
+    }
+  },
+  {
+    "name": "dividendperiodbusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:description": "The dividend period dates business day convention.",
+      "fix:tag": "42280"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateUnadjusted",
+      "fix:description": "The unadjusted dividend period valuation date.",
+      "fix:tag": "42281"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the dividend period valuation date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "42282"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative dividend period valuation date offset.",
+      "fix:tag": "42283"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative dividend period valuation date offset.",
+      "fix:tag": "42284"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative dividend period valuation date offset.",
+      "fix:tag": "42285"
+    }
+  },
+  {
+    "name": "dividendperiodvaluationdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodValuationDateAdjusted",
+      "fix:description": "The adjusted dividend period valuation date.",
+      "fix:tag": "42286"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateUnadjusted",
+      "fix:description": "The unadjusted dividend period payment date.",
+      "fix:tag": "42287"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateRelativeTo",
+      "fix:description": "Specifies the anchor date when the dividend period payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "fix:tag": "42288"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateOffsetPeriod",
+      "fix:description": "Time unit multiplier for the relative dividend period payment date offset.",
+      "fix:tag": "42289"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:description": "Time unit associated with the relative dividend period payment date offset.",
+      "fix:tag": "42290"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:description": "Specifies the day type of the relative dividend period payment date offset.",
+      "fix:tag": "42291"
+    }
+  },
+  {
+    "name": "dividendperiodpaymentdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodPaymentDateAdjusted",
+      "fix:description": "The adjusted dividend period payment date.",
+      "fix:tag": "42292"
+    }
+  },
+  {
+    "name": "dividendperiodxid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodXID",
+      "fix:description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"dividendperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"dividendperiodxid\",\"type\":\"XID\"}]}",
+      "fix:tag": "42293"
+    }
+  },
+  {
+    "name": "dividendperiodbusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DividendPeriodBusinessCenter",
+      "fix:description": "The business center calendar used for date adjustment of the instrument's dividend period date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "fix:tag": "42295"
+    }
+  },
+  {
+    "name": "extraordinaryeventtype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryEventType",
+      "fix:description": "Identifies the type of extraordinary or disruptive event applicable to the reference entity. See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
+      "fix:tag": "42297"
+    }
+  },
+  {
+    "name": "extraordinaryeventvalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ExtraordinaryEventValue",
+      "fix:description": "The extraordinary or disruptive event value appropriate to ExtraordinaryEventType(42297). See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
+      "fix:tag": "42298"
+    }
+  },
+  {
+    "name": "legcashsettldateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegCashSettlDateUnadjusted",
+      "fix:description": "The unadjusted cash settlement date.",
+      "fix:tag": "42299"
+    }
+  }
+]

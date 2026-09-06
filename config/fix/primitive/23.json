@@ -1,0 +1,1200 @@
+[
+  {
+    "name": "allocgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocGrossTradeAmt",
+      "fix:description": "Total amount traded for this account (i.e. quantity * price) expressed in units of currency.",
+      "fix:tag": "2300"
+    }
+  },
+  {
+    "name": "lastqtychanged",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LastQtyChanged",
+      "fix:description": "The positive or negative change in quantity when this report is a trade correction or continuation.",
+      "fix:tag": "2301"
+    }
+  },
+  {
+    "name": "tradeversion",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeVersion",
+      "fix:description": "Specifies the version of a trade or contract. This is used by systems or trading platforms in conjunction with TradeID(1003) to uniquely identify the version of a trade or contract. If used the conditions for a change of version are subject to bilateral agreement. It is recommended to change the version only for significant updates to the business entity rather than for minor changes to trade details or systematic distribution of reports. Examples where the version would change are trade quantity modification, customer account assignment or trade novation.",
+      "fix:tag": "2302"
+    }
+  },
+  {
+    "name": "historicalreportindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "HistoricalReportIndicator",
+      "fix:description": "Indicates that the trade or event being reported occurred in the past and the trade is terminated or no longer active.",
+      "fix:tag": "2303"
+    }
+  },
+  {
+    "name": "assetattributetype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetAttributeType",
+      "fix:description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "fix:tag": "2305"
+    }
+  },
+  {
+    "name": "assetattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetAttributeValue",
+      "fix:description": "Specifies the value of the asset attribute.",
+      "fix:tag": "2306"
+    }
+  },
+  {
+    "name": "assetattributelimit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AssetAttributeLimit",
+      "fix:description": "Limit or lower acceptable value of the attribute.",
+      "fix:tag": "2307"
+    }
+  },
+  {
+    "name": "legassetattributetype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetAttributeType",
+      "fix:description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "fix:tag": "2309"
+    }
+  },
+  {
+    "name": "legassetattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetAttributeValue",
+      "fix:description": "Specifies the value of the attribute.",
+      "fix:tag": "2310"
+    }
+  },
+  {
+    "name": "legassetattributelimit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetAttributeLimit",
+      "fix:description": "Limit or lower acceptable value of the attribute.",
+      "fix:tag": "2311"
+    }
+  },
+  {
+    "name": "underlyingassetattributetype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetAttributeType",
+      "fix:description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "fix:tag": "2313"
+    }
+  },
+  {
+    "name": "underlyingassetattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetAttributeValue",
+      "fix:description": "Specifies the value of the attribute.",
+      "fix:tag": "2314"
+    }
+  },
+  {
+    "name": "underlyingassetattributelimit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingAssetAttributeLimit",
+      "fix:description": "Limit or lower acceptable value of the attribute.",
+      "fix:tag": "2315"
+    }
+  },
+  {
+    "name": "risklimitreportstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitReportStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Rejected\"}]}",
+      "fix:description": "Status of risk limit report.",
+      "fix:tag": "2316"
+    }
+  },
+  {
+    "name": "risklimitreportrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitReportRejectReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"UnkRiskLmtRprtID\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Unknown RiskLimitReportID(1667)\"},{\"value\":\"1\",\"name\":\"UnkPty\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Unknown party\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "The reason for rejecting the PartyRiskLimitsReport(35=CM) or PartyRiskLimitsUpdateReport(35=CR).",
+      "fix:tag": "2317"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckRequestID",
+      "fix:description": "The unique identifier of the PartyRiskLimitCheckRequest(35=DF) message.",
+      "fix:tag": "2318"
+    }
+  },
+  {
+    "name": "risklimitcheckid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckID",
+      "fix:description": "The unique and static identifier, at the business entity level, of a risk limit check request.",
+      "fix:tag": "2319"
+    }
+  },
+  {
+    "name": "risklimitchecktranstype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckTransType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Cancel\"},{\"value\":\"2\",\"name\":\"Replace\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Replace\"}]}",
+      "fix:description": "Specifies the transaction type of the risk limit check request.",
+      "fix:tag": "2320"
+    }
+  },
+  {
+    "name": "risklimitchecktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Submit\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Submit\"},{\"value\":\"1\",\"name\":\"LimitConsumed\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Limit consumed\"}]}",
+      "fix:description": "Specifies the type of limit check message.",
+      "fix:tag": "2321"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestrefid",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckRequestRefID",
+      "fix:description": "Specifies the message reference identifier of the risk limit check request message.",
+      "fix:tag": "2322"
+    }
+  },
+  {
+    "name": "risklimitcheckrequesttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckRequestType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AllOrNone\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"All or none (default if not specified).\"},{\"value\":\"1\",\"name\":\"Partial\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Partial\"}]}",
+      "fix:description": "Specifies the type of limit amount check being requested.",
+      "fix:tag": "2323"
+    }
+  },
+  {
+    "name": "risklimitcheckamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckAmount",
+      "fix:description": "Specifies the amount being requested for approval.",
+      "fix:tag": "2324"
+    }
+  },
+  {
+    "name": "risklimitcheckrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckRequestStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Approved\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Approved\"},{\"value\":\"1\",\"name\":\"PartiallyApproved\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Partially approved\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"ApprovalPending\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":3,\"doc\":\"Approval pending\"},{\"value\":\"4\",\"name\":\"Cancelled\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":4,\"doc\":\"Cancelled\"}]}",
+      "fix:description": "Indicates the status of the risk limit check request.",
+      "fix:tag": "2325"
+    }
+  },
+  {
+    "name": "risklimitcheckrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckRequestResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Invalid party\"},{\"value\":\"2\",\"name\":\"ReqExceedsCreditLimit\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Requested amount exceeds credit limit\"},{\"value\":\"3\",\"name\":\"ReqExceedsClipSizeLimit\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":3,\"doc\":\"Requested amount exceeds clip size limit\"},{\"value\":\"4\",\"name\":\"ReqExceedsMaxNotional\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":4,\"doc\":\"Request exceeds maximum notional order amount\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Result of the credit limit check request.",
+      "fix:tag": "2326"
+    }
+  },
+  {
+    "name": "risklimitapprovedamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitApprovedAmount",
+      "fix:description": "The credit/risk limit amount approved.",
+      "fix:tag": "2327"
+    }
+  },
+  {
+    "name": "partyactionrequestid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyActionRequestID",
+      "fix:description": "The unique identifier of the PartyActionRequest(35=DH) message.",
+      "fix:tag": "2328"
+    }
+  },
+  {
+    "name": "partyactiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyActionType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Suspend\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Suspend\"},{\"value\":\"1\",\"name\":\"HaltTrading\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Halt trading\"},{\"value\":\"2\",\"name\":\"Reinstate\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Reinstate\"}]}",
+      "fix:description": "Specifies the type of action to take or was taken for a given party.",
+      "fix:tag": "2329"
+    }
+  },
+  {
+    "name": "appltestmessageindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ApplTestMessageIndicator",
+      "fix:description": "Used to indicate whether the message being sent is to test the receiving application's availability to process the message. When set to \"Y\" the message is a test message. If not specified, the message is by default not a test message.",
+      "fix:tag": "2330"
+    }
+  },
+  {
+    "name": "partyactionreportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyActionReportID",
+      "fix:description": "The unique identifier of the PartyActionReport(35=DI) message as assigned by the message sender.",
+      "fix:tag": "2331"
+    }
+  },
+  {
+    "name": "partyactionresponse",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyActionResponse",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"Completed\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Completed\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:description": "Specifies the action taken as a result of the PartyActionType(2239) of the PartyActionRequest(35=DH) message.",
+      "fix:tag": "2332"
+    }
+  },
+  {
+    "name": "partyactionrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyActionRejectReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"Invalid party or parties\"},{\"value\":\"1\",\"name\":\"UnkReqParty\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"Unknown requesting party\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:description": "Specifies the reason the PartyActionRequest(35=DH) was rejected.",
+      "fix:tag": "2333"
+    }
+  },
+  {
+    "name": "refrisklimitcheckid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RefRiskLimitCheckID",
+      "fix:description": "The reference identifier of the PartyRiskLimitCheckRequest(35=DF) message, or a similar out of band message, that contained the approval for the risk/credit limit check request.",
+      "fix:tag": "2334"
+    }
+  },
+  {
+    "name": "refrisklimitcheckidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RefRiskLimitCheckIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RiskLimitRequestID\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"RiskLimitRequestID(1666)\"},{\"value\":\"1\",\"name\":\"RiskLimitCheckID\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"RiskLimitCheckID(2319)\"},{\"value\":\"3\",\"name\":\"OutOfBandID\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":3,\"doc\":\"Out of band identifier\"}]}",
+      "fix:description": "Specifies which type of identifier is specified in RefRiskLimitCheckID(2334) field.",
+      "fix:tag": "2335"
+    }
+  },
+  {
+    "name": "risklimitvelocityperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitVelocityPeriod",
+      "fix:description": "The time interval for which the clip size limit applies. The velocity time unit is expressed in RiskLimitVelocityUnit(2337).",
+      "fix:tag": "2336"
+    }
+  },
+  {
+    "name": "risklimitvelocityunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitVelocityUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"ep\":-1,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"ep\":-1,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"ep\":-1,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"ep\":-1,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0SP2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"ep\":-1,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"ep\":-1,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"ep\":-1,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:description": "Unit of time in which RiskLimitVelocityPeriod(2336) is expressed.",
+      "fix:tag": "2337"
+    }
+  },
+  {
+    "name": "requestingpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RequestingPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Qualifies the value of RequestingPartyRole(1660).",
+      "fix:tag": "2338"
+    }
+  },
+  {
+    "name": "risklimitcheckmodeltype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckModelType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"None (default if not specified)\"},{\"value\":\"1\",\"name\":\"PlusOneModel\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"PlusOne model\"},{\"value\":\"2\",\"name\":\"PingModel\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":2,\"doc\":\"Ping model\"},{\"value\":\"3\",\"name\":\"PushModel\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":3,\"doc\":\"Push model\"}]}",
+      "fix:description": "Specifies the type of credit limit check model workflow to apply for the specified party",
+      "fix:tag": "2339"
+    }
+  },
+  {
+    "name": "eventmonthyear",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EventMonthYear",
+      "fix:description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "fix:tag": "2340"
+    }
+  },
+  {
+    "name": "legeventmonthyear",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegEventMonthYear",
+      "fix:description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "fix:tag": "2341"
+    }
+  },
+  {
+    "name": "underlyingeventmonthyear",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingEventMonthYear",
+      "fix:description": "Used with derivatives when an event is express as a month-year with optional day or month or week of month.",
+      "fix:tag": "2342"
+    }
+  },
+  {
+    "name": "risklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RiskLimitCheckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":172,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":1,\"doc\":\"Rejected\"},{\"value\":\"10\",\"name\":\"AcceptedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":10,\"doc\":\"Accepted by credit hub\"},{\"value\":\"11\",\"name\":\"RejectedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":11,\"doc\":\"Rejected by credit hub\"},{\"value\":\"12\",\"name\":\"PendingCreditHubCheck\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":12,\"doc\":\"Pending credit hub check\"},{\"value\":\"13\",\"name\":\"AcceptedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":13,\"doc\":\"Accepted by execution venue\"},{\"value\":\"14\",\"name\":\"RejectedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":14,\"doc\":\"Rejected by execution venue\"},{\"value\":\"2\",\"name\":\"ClaimRequired\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":2,\"doc\":\"Claim required\"},{\"value\":\"3\",\"name\":\"PreDefinedLimitCheckSucceeded\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":3,\"doc\":\"Pre-defined limit check succeeded\"},{\"value\":\"4\",\"name\":\"PreDefinedLimitCheckFailed\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":4,\"doc\":\"Pre-defined limit check failed\"},{\"value\":\"5\",\"name\":\"PreDefinedAutoAcceptRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":5,\"doc\":\"Pre-defined auto-accept rule invoked\"},{\"value\":\"6\",\"name\":\"PreDefinedAutoRejectRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":6,\"doc\":\"Pre-defined auto-reject rule invoked\"},{\"value\":\"7\",\"name\":\"AcceptedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":7,\"doc\":\"Accepted by clearing firm\"},{\"value\":\"8\",\"name\":\"RejectedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":8,\"doc\":\"Rejected by clearing firm\"},{\"value\":\"9\",\"name\":\"Pending\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":9,\"doc\":\"Pending\"}]}",
+      "fix:description": "Indicates the status of the risk limit check performed on a trade.",
+      "fix:tag": "2343"
+    }
+  },
+  {
+    "name": "siderisklimitcheckstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRiskLimitCheckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":172,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":1,\"doc\":\"Rejected\"},{\"value\":\"10\",\"name\":\"AcceptedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":10,\"doc\":\"Accepted by credit hub\"},{\"value\":\"11\",\"name\":\"RejectedByCreditHub\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":11,\"doc\":\"Rejected by credit hub\"},{\"value\":\"12\",\"name\":\"PendingCreditHubCheck\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":12,\"doc\":\"Pending credit hub check\"},{\"value\":\"13\",\"name\":\"AcceptedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":13,\"doc\":\"Accepted by execution venue\"},{\"value\":\"14\",\"name\":\"RejectedByExecVenue\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":14,\"doc\":\"Rejected by execution venue\"},{\"value\":\"2\",\"name\":\"ClaimRequired\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":2,\"doc\":\"Claim required\"},{\"value\":\"3\",\"name\":\"PreDefinedLimitCheckSucceeded\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":3,\"doc\":\"Pre-defined limit check succeeded\"},{\"value\":\"4\",\"name\":\"PreDefinedLimitCheckFailed\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":4,\"doc\":\"Pre-defined limit check failed\"},{\"value\":\"5\",\"name\":\"PreDefinedAutoAcceptRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":5,\"doc\":\"Pre-defined auto-accept rule invoked\"},{\"value\":\"6\",\"name\":\"PreDefinedAutoRejectRuleInvoked\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":6,\"doc\":\"Pre-defined auto-reject rule invoked\"},{\"value\":\"7\",\"name\":\"AcceptedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":7,\"doc\":\"Accepted by clearing firm\"},{\"value\":\"8\",\"name\":\"RejectedByClearingFirm\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":8,\"doc\":\"Rejected by clearing firm\"},{\"value\":\"9\",\"name\":\"Pending\",\"since\":\"5.0SP2\",\"ep\":172,\"sort\":9,\"doc\":\"Pending\"}]}",
+      "fix:description": "Indicates the status of the risk limit check performed on the side of a trade.",
+      "fix:tag": "2344"
+    }
+  },
+  {
+    "name": "legmidpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegMidPx",
+      "fix:description": "Leg Mid price/rate.",
+      "fix:tag": "2346"
+    }
+  },
+  {
+    "name": "regulatorytransactiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTransactionType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":176,\"doc\":\"None (default if not specified)\"},{\"value\":\"1\",\"name\":\"SEFRequiredTransaction\",\"since\":\"5.0SP2\",\"ep\":176,\"sort\":1,\"doc\":\"Swap Execution Facility (SEF) required transaction\"},{\"value\":\"2\",\"name\":\"SEFPermittedTransaction\",\"since\":\"5.0SP2\",\"ep\":176,\"sort\":2,\"doc\":\"Swap Execution Facility (SEF) permitted transaction\"}]}",
+      "fix:description": "Specifies the regulatory mandate or rule that the transaction complies with.",
+      "fix:tag": "2347"
+    }
+  },
+  {
+    "name": "legassetgroup",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegAssetGroup",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Financials\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":1,\"doc\":\"Financials\"},{\"value\":\"2\",\"name\":\"Commodities\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":2,\"doc\":\"Commodities\"},{\"value\":\"3\",\"name\":\"AlternativeInvestments\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":3,\"doc\":\"Alternative investments\"}]}",
+      "fix:description": "Indicates the broad product or asset classification. May be used to provide grouping for the product taxonomy (Product(460), SecurityType(167), etc.) and/or the risk taxonomy (AssetClass(1938), AssetSubClass(1939), AssetType(1940), etc.).",
+      "fix:tag": "2348"
+    }
+  },
+  {
+    "name": "priceprecision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PricePrecision",
+      "fix:description": "Specifies the price decimal precision of the instrument.",
+      "fix:tag": "2349"
+    }
+  },
+  {
+    "name": "collateralportfolioid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CollateralPortfolioID",
+      "fix:description": "Identifier of the collateral portfolio when reporting on a portfolio basis.",
+      "fix:tag": "2350"
+    }
+  },
+  {
+    "name": "encodedcompliancetextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedComplianceTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedComplianceText(2352) field.",
+      "fix:tag": "2351"
+    }
+  },
+  {
+    "name": "encodedcompliancetext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedComplianceText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the ComplianceText(2404) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ComplianceText(2404) field.",
+      "fix:tag": "2352"
+    }
+  },
+  {
+    "name": "tradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradingUnitPeriodMultiplier",
+      "fix:description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "fix:tag": "2353"
+    }
+  },
+  {
+    "name": "legtradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTradingUnitPeriodMultiplier",
+      "fix:description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "fix:tag": "2354"
+    }
+  },
+  {
+    "name": "partyrisklimitstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyRiskLimitStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Disabled\",\"since\":\"5.0SP2\",\"ep\":214,\"doc\":\"Disabled\"},{\"value\":\"1\",\"name\":\"Enabled\",\"since\":\"5.0SP2\",\"ep\":214,\"sort\":1,\"doc\":\"Enabled\"}]}",
+      "fix:description": "The status of risk limits for a party.",
+      "fix:tag": "2355"
+    }
+  },
+  {
+    "name": "remunerationindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RemunerationIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRemunerationPaid\",\"since\":\"5.0SP2\",\"ep\":209,\"doc\":\"No remuneration paid\"},{\"value\":\"1\",\"name\":\"RemunerationPaid\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":1,\"doc\":\"Remuneration paid\"}]}",
+      "fix:description": "Indicates whether the trade price was adjusted for compensation (i.e. includes a mark-up, mark-down or commission) in the price paid.",
+      "fix:tag": "2356"
+    }
+  },
+  {
+    "name": "legtotaltradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTotalTradeQty",
+      "fix:description": "Expresses the total quantity traded over the life of the contract when LegLastQty(1418) is to be repeated periodically over the term of the contract. The value is the product of LegLastQty(1418) and LegTradingUnitPeriodMultiplier(2353).",
+      "fix:tag": "2357"
+    }
+  },
+  {
+    "name": "leglastmultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegLastMultipliedQty",
+      "fix:description": "Expresses the quantity bought/sold when LastQty is expressed in contracts. Used in addition to LegLastQty(1418), it is the product of LegLastQty(1418) and LegContractMultiplier(614).",
+      "fix:tag": "2358"
+    }
+  },
+  {
+    "name": "legtotalgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTotalGrossTradeAmt",
+      "fix:description": "Expresses the full total monetary value of the traded contract. The value is the product of LegLastPx(637) and LegTotalTradeQty(2357) or LegTotalTradeMultipliedQty(2360), if priced in units instead of contracts.",
+      "fix:tag": "2359"
+    }
+  },
+  {
+    "name": "legtotaltrademultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegTotalTradeMultipliedQty",
+      "fix:description": "Expresses the total trade quantity in units where LegContractMultiplier(614) is not 1. The value is the product of LegTotalTradeQty(2357) and LegContractMultiplier(614).",
+      "fix:tag": "2360"
+    }
+  },
+  {
+    "name": "compressiongroupid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "CompressionGroupID",
+      "fix:description": "Use to identify a netting or compression group where trades in the group were netted or compressed. This includes both terminating trades and any remnant trades that result from the operation.",
+      "fix:tag": "2361"
+    }
+  },
+  {
+    "name": "selfmatchpreventionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SelfMatchPreventionID",
+      "fix:description": "Identifies an order or trade that should not be matched to an opposite order or trade if both buy and sell orders for the same asset contain the same SelfMatchPreventionID(2362) and submitted by the same firm.",
+      "fix:tag": "2362"
+    }
+  },
+  {
+    "name": "underlyingtradingunitperiodmultiplier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingTradingUnitPeriodMultiplier",
+      "fix:description": "Indicates the number of contract periods associated with the minimum trading unit for a given contract duration resulting in the number of total traded contracts.",
+      "fix:tag": "2363"
+    }
+  },
+  {
+    "name": "posreportaction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PosReportAction",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"New\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"Replace\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Replace\"},{\"value\":\"3\",\"name\":\"Cancel\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Cancel\"},{\"value\":\"4\",\"name\":\"Reverse\",\"since\":\"4.4\",\"ep\":4,\"sort\":4,\"doc\":\"Reverse\"}]}",
+      "fix:description": "Indicates action that triggered the Position Report.",
+      "fix:tag": "2364"
+    }
+  },
+  {
+    "name": "settlforwardpoints",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlForwardPoints",
+      "fix:description": "FX forward points added to SettlPrice(730). The value is expressed in decimal form and may be a negative.",
+      "fix:tag": "2365"
+    }
+  },
+  {
+    "name": "settlpricefxratecalc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlPriceFxRateCalc",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":38,\"sort\":2,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":38,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:description": "Specifies whether LastPx(31) [TradeCaptureReport] or SettlPrice(730) [PositionReport] should be multiplied or divided.",
+      "fix:tag": "2366"
+    }
+  },
+  {
+    "name": "totaltradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalTradeQty",
+      "fix:description": "Expresses the total quantity traded over the life of the contract when LastQty(32) is repeated periodically over the term of the contract. The value is the product of LastQty(32) and TradingUnitPeriodMultiplier(2353).",
+      "fix:tag": "2367"
+    }
+  },
+  {
+    "name": "lastmultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LastMultipliedQty",
+      "fix:description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
+      "fix:tag": "2368"
+    }
+  },
+  {
+    "name": "totalgrosstradeamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalGrossTradeAmt",
+      "fix:description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
+      "fix:tag": "2369"
+    }
+  },
+  {
+    "name": "totaltrademultipliedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TotalTradeMultipliedQty",
+      "fix:description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
+      "fix:tag": "2370"
+    }
+  },
+  {
+    "name": "encodedtradecontinuationtext",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedTradeContinuationText",
+      "fix:description": "Encoded (non-ASCII characters) representation of the TradeContinuationText(2374) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the TradeContinuationText(2374) field.",
+      "fix:tag": "2371"
+    }
+  },
+  {
+    "name": "encodedtradecontinuationtextlen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "EncodedTradeContinuationTextLen",
+      "fix:description": "Byte length of encoded (non-ASCII characters) EncodedTradeContinuationText(2371) field.",
+      "fix:tag": "2372"
+    }
+  },
+  {
+    "name": "intrafirmtradeindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "IntraFirmTradeIndicator",
+      "fix:description": "Indicates whether the trade or position was entered into as an intra-group transaction, i.e. between two units of the same parent entity having majority ownership interest in both counterparties.",
+      "fix:tag": "2373"
+    }
+  },
+  {
+    "name": "tradecontinuationtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeContinuationText",
+      "fix:description": "Free form text to specify additional trade continuation information or data.",
+      "fix:tag": "2374"
+    }
+  },
+  {
+    "name": "taxonomytype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TaxonomyType",
+      "fix:codes": "{\"codes\":[{\"value\":\"E\",\"name\":\"InterimTaxonomy\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":1,\"doc\":\"Interim Taxonomy\"},{\"value\":\"I\",\"name\":\"ISINOrAltInstrmtID\",\"since\":\"5.0SP2\",\"ep\":179,\"doc\":\"ISIN or Alternate instrument identifier plus CFI\"}]}",
+      "fix:description": "The type of identification taxonomy used to identify the security.",
+      "fix:tag": "2375"
+    }
+  },
+  {
+    "name": "partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "PartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of PartyRole(452).",
+      "fix:tag": "2376"
+    }
+  },
+  {
+    "name": "derivativeinstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "DerivativeInstrumentPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of DerivativeInstrumentPartyRole(1295).",
+      "fix:tag": "2377"
+    }
+  },
+  {
+    "name": "instrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "InstrumentPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of InstrumentPartyRole(1051).",
+      "fix:tag": "2378"
+    }
+  },
+  {
+    "name": "leginstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegInstrumentPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of LegInstrumentPartyRole(2257).",
+      "fix:tag": "2379"
+    }
+  },
+  {
+    "name": "legprovisionpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LegProvisionPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of LegProvisionPartyRole(40536).",
+      "fix:tag": "2380"
+    }
+  },
+  {
+    "name": "nested2partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Nested2PartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of Nested2PartyRole(759).",
+      "fix:tag": "2381"
+    }
+  },
+  {
+    "name": "nested3partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Nested3PartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of Nested3PartyRole(951).",
+      "fix:tag": "2382"
+    }
+  },
+  {
+    "name": "nested4partyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Nested4PartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of Nested4PartyRole(1417).",
+      "fix:tag": "2383"
+    }
+  },
+  {
+    "name": "nestedpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NestedPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of NestedPartyRole(538).",
+      "fix:tag": "2384"
+    }
+  },
+  {
+    "name": "provisionpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "ProvisionPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of ProvisionPartyRole(40177).",
+      "fix:tag": "2385"
+    }
+  },
+  {
+    "name": "requestedpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RequestedPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of RequestedPartyRole(1509).",
+      "fix:tag": "2386"
+    }
+  },
+  {
+    "name": "tradecontingency",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeContingency",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"DoesNotApply\",\"since\":\"5.0SP2\",\"ep\":187,\"doc\":\"Does not apply (default if not specified)\"},{\"value\":\"1\",\"name\":\"ContingentTrade\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":1,\"doc\":\"Contingent trade\"},{\"value\":\"2\",\"name\":\"NonContingentTrade\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":2,\"doc\":\"Non-contingent trade\"}]}",
+      "fix:description": "Indicates the contingency attribute for a trade in an asset class that may be contingent on the clearing of a corresponding paired trade (for example Exchange for Physical (EFP), Exchange for Swap (EFS), Exchange for Related (EFR) or Exchange for Option (EFO), collectively called EFRPs). Once the paired trade clears or fails to clear, the related trade (the trade which carries this attribute) ceases to exist.",
+      "fix:tag": "2387"
+    }
+  },
+  {
+    "name": "rootpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RootPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of RootPartyRole(1119).",
+      "fix:tag": "2388"
+    }
+  },
+  {
+    "name": "settlpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SettlPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of SettlPartyRole(784).",
+      "fix:tag": "2389"
+    }
+  },
+  {
+    "name": "tradeconfirmationreferenceid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "TradeConfirmationReferenceID",
+      "fix:description": "A reference or control identifier or number used as a trade confirmation key.",
+      "fix:tag": "2390"
+    }
+  },
+  {
+    "name": "underlyinginstrumentpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "UnderlyingInstrumentPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:description": "Used to further qualify the value of UnderlyingInstrumentPartyRole(1061).",
+      "fix:tag": "2391"
+    }
+  },
+  {
+    "name": "allocrefrisklimitcheckid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRefRiskLimitCheckID",
+      "fix:description": "The reference identifier to the PartyRiskLimitCheckRequest(35=DF), or a similar out of band message, message that contained the approval or rejection for risk/credit limit check for this allocation.",
+      "fix:tag": "2392"
+    }
+  },
+  {
+    "name": "allocrefrisklimitcheckidtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRefRiskLimitCheckIDType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RiskLimitRequestID\",\"since\":\"5.0SP2\",\"ep\":171,\"doc\":\"RiskLimitRequestID(1666)\"},{\"value\":\"1\",\"name\":\"RiskLimitCheckID\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":1,\"doc\":\"RiskLimitCheckID(2319)\"},{\"value\":\"3\",\"name\":\"OutOfBandID\",\"since\":\"5.0SP2\",\"ep\":180,\"sort\":3,\"doc\":\"Out of band identifier\"}]}",
+      "fix:description": "Specifies which type of identifier is specified in AllocRefRiskLimitCheckID(2392) field.",
+      "fix:tag": "2393"
+    }
+  },
+  {
+    "name": "limitutilizationamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LimitUtilizationAmt",
+      "fix:description": "The total amount of the limit that has been drawn down against the counterparty. This includes the amount for prior trades. It may or may not include the amount for the given trade, specified in LastLimitAmt(1632), depending upon whether the given trade is considered pending.",
+      "fix:tag": "2394"
+    }
+  },
+  {
+    "name": "limitamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LimitAmt",
+      "fix:description": "The limit for the counterparty. This represents the total limit amount, independent of any amount already utilized.",
+      "fix:tag": "2395"
+    }
+  },
+  {
+    "name": "limitrole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "LimitRole",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ExecutingFirm\",\"since\":\"4.3\",\"doc\":\"Executing Firm (formerly FIX 4.2 ExecBroker)\"},{\"value\":\"10\",\"name\":\"SettlementLocation\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"Settlement Location (formerly FIX 4.2 SettlLocation)\"},{\"value\":\"100\",\"name\":\"MarginAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":98,\"doc\":\"Margin account\"},{\"value\":\"101\",\"name\":\"CollateralAssetAccount\",\"since\":\"5.0SP2\",\"ep\":155,\"sort\":99,\"doc\":\"Collateral asset account\"},{\"value\":\"102\",\"name\":\"DataRepository\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":100,\"doc\":\"Data repository\"},{\"value\":\"103\",\"name\":\"CalculationAgent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":101,\"doc\":\"Calculation agent\"},{\"value\":\"104\",\"name\":\"ExerciseNoticeSender\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":102,\"doc\":\"Sender of exercise notice\"},{\"value\":\"105\",\"name\":\"ExerciseNoticeReceiver\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":103,\"doc\":\"Receiver of exercise notice\"},{\"value\":\"106\",\"name\":\"RateReferenceBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":104,\"doc\":\"Rate reference bank\"},{\"value\":\"107\",\"name\":\"Correspondent\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":105,\"doc\":\"Correspondent\"},{\"value\":\"109\",\"name\":\"BeneficiaryBank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":106,\"doc\":\"Beneficiary's bank or depository institution\"},{\"value\":\"11\",\"name\":\"OrderOriginationTrader\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Order Origination Trader (associated with Order Origination Firm - i.e. trader who initiates/submits the order)\"},{\"value\":\"110\",\"name\":\"Borrower\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":107,\"doc\":\"Borrower\"},{\"value\":\"111\",\"name\":\"PrimaryObligator\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":108,\"doc\":\"Primary obligator\"},{\"value\":\"112\",\"name\":\"Guarantor\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":109,\"doc\":\"Guarantor\"},{\"value\":\"113\",\"name\":\"ExcludedReferenceEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":110,\"doc\":\"Excluded reference entity\"},{\"value\":\"114\",\"name\":\"DeterminingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":111,\"doc\":\"Determining party\"},{\"value\":\"115\",\"name\":\"HedgingParty\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":112,\"doc\":\"Hedging party\"},{\"value\":\"116\",\"name\":\"ReportingEntity\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":113,\"doc\":\"Reporting entity\"},{\"value\":\"117\",\"name\":\"SalesPerson\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":114,\"doc\":\"Sales person\"},{\"value\":\"118\",\"name\":\"Operator\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":115,\"doc\":\"Operator\"},{\"value\":\"119\",\"name\":\"CSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":116,\"doc\":\"Central Securities Depository (CSD)\"},{\"value\":\"12\",\"name\":\"ExecutingTrader\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Executing Trader (associated with Executing Firm - actually executes)\"},{\"value\":\"120\",\"name\":\"ICSD\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":117,\"doc\":\"International Central Securities Depository (ICSD)\"},{\"value\":\"121\",\"name\":\"TradingSubAccount\",\"since\":\"5.0SP2\",\"ep\":217,\"sort\":118,\"doc\":\"Trading sub-account\"},{\"value\":\"122\",\"name\":\"InvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":119,\"doc\":\"Investment decision maker\"},{\"value\":\"123\",\"name\":\"PublishingIntermediary\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":120,\"doc\":\"Publishing intermediary\"},{\"value\":\"124\",\"name\":\"CSDParticipant\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":121,\"doc\":\"Central Securities Depository (CSD) Participant\"},{\"value\":\"125\",\"name\":\"Issuer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":122,\"doc\":\"Issuer\"},{\"value\":\"126\",\"name\":\"ContraCustomerAccount\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":123,\"doc\":\"Contra Customer Account\"},{\"value\":\"127\",\"name\":\"ContraInvestmentDecisionMaker\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":124,\"doc\":\"Contra Investment Decision Maker\"},{\"value\":\"128\",\"name\":\"AuthorizingPerson\",\"ep\":292,\"sort\":125,\"doc\":\"Authorizing person\"},{\"value\":\"129\",\"name\":\"PrimaryPlaceOfListing\",\"ep\":300,\"sort\":126,\"doc\":\"Primary place of listing\"},{\"value\":\"13\",\"name\":\"OrderOriginationFirm\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Order Origination Firm (e.g. buy-side firm)\"},{\"value\":\"130\",\"name\":\"SecondaryPlaceOfListing\",\"ep\":300,\"sort\":127,\"doc\":\"Secondary place of listing\"},{\"value\":\"131\",\"name\":\"Algorithm\",\"ep\":303,\"sort\":128,\"doc\":\"Algorithm\"},{\"value\":\"14\",\"name\":\"GiveupClearingFirmDepr\",\"since\":\"4.3\",\"deprecated\":\"5.0SP2\",\"sort\":13,\"doc\":\"Giveup Clearing Firm (firm to which trade is given up)\"},{\"value\":\"15\",\"name\":\"CorrespondantClearingFirm\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Correspondant Clearing Firm\"},{\"value\":\"16\",\"name\":\"ExecutingSystem\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Executing System\"},{\"value\":\"17\",\"name\":\"ContraFirm\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Contra Firm\"},{\"value\":\"18\",\"name\":\"ContraClearingFirm\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Contra Clearing Firm\"},{\"value\":\"19\",\"name\":\"SponsoringFirm\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Sponsoring Firm\"},{\"value\":\"2\",\"name\":\"BrokerOfCredit\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Broker of Credit (formerly FIX 4.2 BrokerOfCredit)\"},{\"value\":\"20\",\"name\":\"UnderlyingContraFirm\",\"since\":\"4.3\",\"sort\":19,\"doc\":\"Underlying Contra Firm\"},{\"value\":\"21\",\"name\":\"ClearingOrganization\",\"since\":\"4.4\",\"sort\":20,\"doc\":\"Clearing Organization\"},{\"value\":\"22\",\"name\":\"Exchange\",\"since\":\"4.4\",\"sort\":21,\"doc\":\"Exchange\"},{\"value\":\"24\",\"name\":\"CustomerAccount\",\"since\":\"4.4\",\"sort\":22,\"doc\":\"Customer Account\"},{\"value\":\"25\",\"name\":\"CorrespondentClearingOrganization\",\"since\":\"4.4\",\"sort\":23,\"doc\":\"Correspondent Clearing Organization\"},{\"value\":\"26\",\"name\":\"CorrespondentBroker\",\"since\":\"4.4\",\"sort\":24,\"doc\":\"Correspondent Broker\"},{\"value\":\"27\",\"name\":\"Buyer\",\"since\":\"4.4\",\"sort\":25,\"doc\":\"Buyer/Seller (Receiver/Deliverer)\"},{\"value\":\"28\",\"name\":\"Custodian\",\"since\":\"4.4\",\"sort\":26,\"doc\":\"Custodian\"},{\"value\":\"29\",\"name\":\"Intermediary\",\"since\":\"4.4\",\"sort\":27,\"doc\":\"Intermediary\"},{\"value\":\"3\",\"name\":\"ClientID\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Client ID (formerly FIX 4.2 ClientID)\"},{\"value\":\"30\",\"name\":\"Agent\",\"since\":\"4.4\",\"sort\":28,\"doc\":\"Agent\"},{\"value\":\"31\",\"name\":\"SubCustodian\",\"since\":\"4.4\",\"sort\":29,\"doc\":\"Sub-custodian\"},{\"value\":\"32\",\"name\":\"Beneficiary\",\"since\":\"4.4\",\"sort\":30,\"doc\":\"Beneficiary\"},{\"value\":\"33\",\"name\":\"InterestedParty\",\"since\":\"4.4\",\"sort\":31,\"doc\":\"Interested party\"},{\"value\":\"34\",\"name\":\"RegulatoryBody\",\"since\":\"4.4\",\"sort\":32,\"doc\":\"Regulatory body\"},{\"value\":\"35\",\"name\":\"LiquidityProvider\",\"since\":\"4.4\",\"sort\":33,\"doc\":\"Liquidity provider\"},{\"value\":\"36\",\"name\":\"EnteringTrader\",\"since\":\"4.4\",\"sort\":34,\"doc\":\"Entering trader\"},{\"value\":\"37\",\"name\":\"ContraTrader\",\"since\":\"4.4\",\"sort\":35,\"doc\":\"Contra trader\"},{\"value\":\"38\",\"name\":\"PositionAccount\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Position account\"},{\"value\":\"39\",\"name\":\"ContraInvestorID\",\"since\":\"4.4\",\"ep\":-1,\"sort\":37,\"doc\":\"Contra Investor ID\"},{\"value\":\"4\",\"name\":\"ClearingFirm\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Clearing Firm (formerly FIX 4.2 ClearingFirm)\"},{\"value\":\"40\",\"name\":\"TransferToFirm\",\"since\":\"4.4\",\"ep\":-1,\"sort\":38,\"doc\":\"Transfer to Firm\"},{\"value\":\"41\",\"name\":\"ContraPositionAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":39,\"doc\":\"Contra Position Account\"},{\"value\":\"42\",\"name\":\"ContraExchange\",\"since\":\"4.4\",\"ep\":5,\"sort\":40,\"doc\":\"Contra Exchange\"},{\"value\":\"43\",\"name\":\"InternalCarryAccount\",\"since\":\"4.4\",\"ep\":5,\"sort\":41,\"doc\":\"Internal Carry Account\"},{\"value\":\"44\",\"name\":\"OrderEntryOperatorID\",\"since\":\"4.4\",\"ep\":5,\"sort\":42,\"doc\":\"Order Entry Operator ID\"},{\"value\":\"45\",\"name\":\"SecondaryAccountNumber\",\"since\":\"4.4\",\"ep\":5,\"sort\":43,\"doc\":\"Secondary Account Number\"},{\"value\":\"46\",\"name\":\"ForeignFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":44,\"doc\":\"Foreign Firm\"},{\"value\":\"47\",\"name\":\"ThirdPartyAllocationFirm\",\"since\":\"4.4\",\"ep\":8,\"sort\":45,\"doc\":\"Third Party Allocation Firm\"},{\"value\":\"48\",\"name\":\"ClaimingAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":46,\"doc\":\"Claiming Account\"},{\"value\":\"49\",\"name\":\"AssetManager\",\"since\":\"4.4\",\"ep\":8,\"sort\":47,\"doc\":\"Asset Manager\"},{\"value\":\"5\",\"name\":\"InvestorID\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Investor ID\"},{\"value\":\"50\",\"name\":\"PledgorAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":48,\"doc\":\"Pledgor Account\"},{\"value\":\"51\",\"name\":\"PledgeeAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":49,\"doc\":\"Pledgee Account\"},{\"value\":\"52\",\"name\":\"LargeTraderReportableAccount\",\"since\":\"4.4\",\"ep\":8,\"sort\":50,\"doc\":\"Large Trader Reportable Account\"},{\"value\":\"53\",\"name\":\"TraderMnemonic\",\"since\":\"4.4\",\"ep\":8,\"sort\":51,\"doc\":\"Trader mnemonic\"},{\"value\":\"54\",\"name\":\"SenderLocation\",\"since\":\"4.4\",\"ep\":8,\"sort\":52,\"doc\":\"Sender Location\"},{\"value\":\"55\",\"name\":\"SessionID\",\"since\":\"4.4\",\"ep\":8,\"sort\":53,\"doc\":\"Session ID\"},{\"value\":\"56\",\"name\":\"AcceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":54,\"doc\":\"Acceptable Counterparty\"},{\"value\":\"57\",\"name\":\"UnacceptableCounterparty\",\"since\":\"4.4\",\"ep\":22,\"sort\":55,\"doc\":\"Unacceptable Counterparty\"},{\"value\":\"58\",\"name\":\"EnteringUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":56,\"doc\":\"Entering Unit\"},{\"value\":\"59\",\"name\":\"ExecutingUnit\",\"since\":\"4.4\",\"ep\":22,\"sort\":57,\"doc\":\"Executing Unit\"},{\"value\":\"6\",\"name\":\"IntroducingFirm\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Introducing Firm\"},{\"value\":\"60\",\"name\":\"IntroducingBroker\",\"since\":\"4.4\",\"ep\":4,\"sort\":58,\"doc\":\"Introducing Broker\"},{\"value\":\"61\",\"name\":\"QuoteOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":59,\"doc\":\"Quote originator\"},{\"value\":\"62\",\"name\":\"ReportOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":60,\"doc\":\"Report originator\"},{\"value\":\"63\",\"name\":\"SystematicInternaliser\",\"since\":\"4.4\",\"ep\":26,\"sort\":61,\"doc\":\"Systematic internaliser (SI)\"},{\"value\":\"64\",\"name\":\"MultilateralTradingFacility\",\"since\":\"4.4\",\"ep\":26,\"sort\":62,\"doc\":\"Multilateral Trading Facility (MTF)\"},{\"value\":\"65\",\"name\":\"RegulatedMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":63,\"doc\":\"Regulated Market (RM)\"},{\"value\":\"66\",\"name\":\"MarketMaker\",\"since\":\"4.4\",\"ep\":26,\"sort\":64,\"doc\":\"Market Maker\"},{\"value\":\"67\",\"name\":\"InvestmentFirm\",\"since\":\"4.4\",\"ep\":26,\"sort\":65,\"doc\":\"Investment Firm\"},{\"value\":\"68\",\"name\":\"HostCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":66,\"doc\":\"Host Competent Authority (Host CA)\"},{\"value\":\"69\",\"name\":\"HomeCompetentAuthority\",\"since\":\"4.4\",\"ep\":26,\"sort\":67,\"doc\":\"Home Competent Authority (Home CA)\"},{\"value\":\"7\",\"name\":\"EnteringFirm\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Entering Firm\"},{\"value\":\"70\",\"name\":\"CompetentAuthorityLiquidity\",\"since\":\"4.4\",\"ep\":26,\"sort\":68,\"doc\":\"Competent Authority of the most relevant market in terms of liquidity (CAL)\"},{\"value\":\"71\",\"name\":\"CompetentAuthorityTransactionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":69,\"doc\":\"Competent Authority of the Transaction (Execution) Venue (CATV)\"},{\"value\":\"72\",\"name\":\"ReportingIntermediary\",\"since\":\"4.4\",\"ep\":26,\"sort\":70,\"doc\":\"Reporting intermediary\"},{\"value\":\"73\",\"name\":\"ExecutionVenue\",\"since\":\"4.4\",\"ep\":26,\"sort\":71,\"doc\":\"Execution Venue\"},{\"value\":\"74\",\"name\":\"MarketDataEntryOriginator\",\"since\":\"4.4\",\"ep\":26,\"sort\":72,\"doc\":\"Market data entry originator\"},{\"value\":\"75\",\"name\":\"LocationID\",\"since\":\"4.4\",\"ep\":26,\"sort\":73,\"doc\":\"Location ID\"},{\"value\":\"76\",\"name\":\"DeskID\",\"since\":\"4.4\",\"ep\":26,\"sort\":74,\"doc\":\"Desk ID\"},{\"value\":\"77\",\"name\":\"MarketDataMarket\",\"since\":\"4.4\",\"ep\":26,\"sort\":75,\"doc\":\"Market data market\"},{\"value\":\"78\",\"name\":\"AllocationEntity\",\"since\":\"4.4\",\"ep\":35,\"sort\":76,\"doc\":\"Allocation Entity\"},{\"value\":\"79\",\"name\":\"PrimeBroker\",\"since\":\"5.0\",\"ep\":68,\"sort\":77,\"doc\":\"Prime Broker providing General Trade Services\"},{\"value\":\"8\",\"name\":\"Locate\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Locate / Lending Firm (for short-sales)\"},{\"value\":\"80\",\"name\":\"StepOutFirm\",\"since\":\"5.0\",\"ep\":68,\"sort\":78,\"doc\":\"Step-Out Firm (Prime Broker)\"},{\"value\":\"81\",\"name\":\"BrokerClearingID\",\"since\":\"5.0\",\"ep\":68,\"sort\":79,\"doc\":\"Broker clearing identifier\"},{\"value\":\"82\",\"name\":\"CentralRegistrationDepository\",\"since\":\"5.0SP1\",\"ep\":79,\"sort\":80,\"doc\":\"Central Registration Depository (CRD)\"},{\"value\":\"83\",\"name\":\"ClearingAccount\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":81,\"doc\":\"Clearing Account\"},{\"value\":\"84\",\"name\":\"AcceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":82,\"doc\":\"Acceptable Settling Counterparty\"},{\"value\":\"85\",\"name\":\"UnacceptableSettlingCounterparty\",\"since\":\"5.0SP1\",\"ep\":96,\"sort\":83,\"doc\":\"Unacceptable Settling Counterparty\"},{\"value\":\"86\",\"name\":\"CLSMemberBank\",\"since\":\"5.0SP2\",\"ep\":100,\"sort\":84,\"doc\":\"CLS Member Bank\"},{\"value\":\"87\",\"name\":\"InConcertGroup\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":85,\"doc\":\"In Concert Group\"},{\"value\":\"88\",\"name\":\"InConcertControllingEntity\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":86,\"doc\":\"In Concert Controlling Entity\"},{\"value\":\"89\",\"name\":\"LargePositionsReportingAccount\",\"since\":\"5.0SP2\",\"ep\":103,\"sort\":87,\"doc\":\"Large Positions Reporting Account\"},{\"value\":\"9\",\"name\":\"FundManagerClientID\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"Fund Manager Client ID (for CIV)\"},{\"value\":\"90\",\"name\":\"SettlementFirm\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":88,\"doc\":\"Settlement Firm\"},{\"value\":\"91\",\"name\":\"SettlementAccount\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":89,\"doc\":\"Settlement account\"},{\"value\":\"92\",\"name\":\"ReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":90,\"doc\":\"Reporting Market Center\"},{\"value\":\"93\",\"name\":\"RelatedReportingMarketCenter\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":91,\"doc\":\"Related Reporting Market Center\"},{\"value\":\"94\",\"name\":\"AwayMarket\",\"since\":\"5.0SP2\",\"ep\":112,\"sort\":92,\"doc\":\"Away Market\"},{\"value\":\"95\",\"name\":\"GiveupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":93,\"doc\":\"Give-up (trading) firm\"},{\"value\":\"96\",\"name\":\"TakeupTradingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":94,\"doc\":\"Take-up (trading) firm\"},{\"value\":\"97\",\"name\":\"GiveupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":95,\"doc\":\"Give-up clearing firm\"},{\"value\":\"98\",\"name\":\"TakeupClearingFirm\",\"since\":\"5.0SP2\",\"ep\":118,\"sort\":96,\"doc\":\"Take-up clearing firm\"},{\"value\":\"99\",\"name\":\"OriginatingMarket\",\"since\":\"5.0SP2\",\"ep\":139,\"sort\":97,\"doc\":\"Originating Market\"}]}",
+      "fix:description": "Indicates the scope of the limit by role.",
+      "fix:tag": "2396"
+    }
+  },
+  {
+    "name": "regulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "RegulatoryTradeIDScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ClearingMember\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":1,\"doc\":\"Clearing member\"},{\"value\":\"2\",\"name\":\"Client\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":2,\"doc\":\"Client\"}]}",
+      "fix:description": "Specifies the scope to which the RegulatoryTradeID(1903) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "fix:tag": "2397"
+    }
+  },
+  {
+    "name": "sideregulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "SideRegulatoryTradeIDScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ClearingMember\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":1,\"doc\":\"Clearing member\"},{\"value\":\"2\",\"name\":\"Client\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":2,\"doc\":\"Client\"}]}",
+      "fix:description": "Specifies the scope to which the SideRegulatoryTradeID(1972) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "fix:tag": "2398"
+    }
+  },
+  {
+    "name": "allocregulatorytradeidscope",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "AllocRegulatoryTradeIDScope",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ClearingMember\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":1,\"doc\":\"Clearing member\"},{\"value\":\"2\",\"name\":\"Client\",\"since\":\"5.0SP2\",\"ep\":181,\"sort\":2,\"doc\":\"Client\"}]}",
+      "fix:description": "Specifies the scope to which the AllocRegulatoryTradeID(1909) applies. Used when a trade must be assigned more than one identifier, e.g. one for the clearing member and another for the client on a cleared trade as with the principal model in Europe.",
+      "fix:tag": "2399"
+    }
+  }
+]

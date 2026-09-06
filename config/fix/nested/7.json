@@ -1,0 +1,874 @@
+[
+  {
+    "name": "nopositions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "postype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "703"
+              }
+            },
+            {
+              "name": "longqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "704"
+              }
+            },
+            {
+              "name": "shortqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "705"
+              }
+            },
+            {
+              "name": "coveredqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1654"
+              }
+            },
+            {
+              "name": "posqtystatus",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "706"
+              }
+            },
+            {
+              "name": "quantitydate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "976"
+              }
+            },
+            {
+              "name": "posqtyunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1836"
+              }
+            },
+            {
+              "name": "posqtyunitofmeasurecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1835"
+              }
+            },
+            {
+              "name": "posqtyunitofmeasurecurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2936"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPositions",
+      "fix:description": "Number of position entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopositions\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "702"
+    }
+  },
+  {
+    "name": "nounderlyings",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingsettlprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "732"
+              }
+            },
+            {
+              "name": "underlyingsettlpricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "733"
+              }
+            },
+            {
+              "name": "underlyingdeliveryamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1037"
+              }
+            },
+            {
+              "name": "collaction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "944"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyings",
+      "fix:description": "Number of underlying legs that make up the security.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyings\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "711"
+    }
+  },
+  {
+    "name": "noquotequalifiers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "quotequalifier",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "695"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoQuoteQualifiers",
+      "fix:description": "Number of repeating groups of QuoteQualifiers (695).",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noquotequalifiers\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "735"
+    }
+  },
+  {
+    "name": "noposamt",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "posamttype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "707"
+              }
+            },
+            {
+              "name": "posamt",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "708"
+              }
+            },
+            {
+              "name": "posamtstreamdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2096"
+              }
+            },
+            {
+              "name": "positioncurrency",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1055"
+              }
+            },
+            {
+              "name": "positioncurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2937"
+              }
+            },
+            {
+              "name": "positionfxrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2097"
+              }
+            },
+            {
+              "name": "positionfxratecalc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2098"
+              }
+            },
+            {
+              "name": "posamtreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1585"
+              }
+            },
+            {
+              "name": "posamtmarketsegmentid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2099"
+              }
+            },
+            {
+              "name": "posamtmarketid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2100"
+              }
+            },
+            {
+              "name": "posamtprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2876"
+              }
+            },
+            {
+              "name": "posamtpricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2877"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoPosAmt",
+      "fix:description": "Number of position amount entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noposamt\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "753"
+    }
+  },
+  {
+    "name": "nonested2partyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "nested2partyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "757"
+              }
+            },
+            {
+              "name": "nested2partyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "758"
+              }
+            },
+            {
+              "name": "nested2partyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "759"
+              }
+            },
+            {
+              "name": "nested2partyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2381"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoNested2PartyIDs",
+      "fix:description": "Number of Nested2PartyID (757), Nested2PartyIDSource (758), and Nested2PartyRole (759) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "756"
+    }
+  },
+  {
+    "name": "notrdregtimestamps",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "trdregtimestamp",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "769"
+              }
+            },
+            {
+              "name": "trdregtimestamptype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "770"
+              }
+            },
+            {
+              "name": "trdregtimestamporigin",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "771"
+              }
+            },
+            {
+              "name": "trdregtimestampmanualindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2839"
+              }
+            },
+            {
+              "name": "desktype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1033"
+              }
+            },
+            {
+              "name": "desktypesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1034"
+              }
+            },
+            {
+              "name": "deskorderhandlinginst",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1035"
+              }
+            },
+            {
+              "name": "informationbarrierid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1727"
+              }
+            },
+            {
+              "name": "nbboentrytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2831"
+              }
+            },
+            {
+              "name": "nbboprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2832"
+              }
+            },
+            {
+              "name": "nbboqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2833"
+              }
+            },
+            {
+              "name": "nbbosource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2834"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoTrdRegTimestamps",
+      "fix:description": "Number of timestamp entries.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrdregtimestamps\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "768"
+    }
+  },
+  {
+    "name": "nosettlinst",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "settlinstid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "162"
+              }
+            },
+            {
+              "name": "settlinsttranstype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "163"
+              }
+            },
+            {
+              "name": "settlinstrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "214"
+              }
+            },
+            {
+              "name": "side",
+              "dtype": {
+                "type": "side"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "54"
+              }
+            },
+            {
+              "name": "product",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "460"
+              }
+            },
+            {
+              "name": "securitytype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "167"
+              }
+            },
+            {
+              "name": "cficode",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "461"
+              }
+            },
+            {
+              "name": "upicode",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2891"
+              }
+            },
+            {
+              "name": "settlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "120"
+              }
+            },
+            {
+              "name": "settlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2899"
+              }
+            },
+            {
+              "name": "effectivetime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "168"
+              }
+            },
+            {
+              "name": "expiretime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "126"
+              }
+            },
+            {
+              "name": "lastupdatetime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "779"
+              }
+            },
+            {
+              "name": "paymentmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "492"
+              }
+            },
+            {
+              "name": "paymentref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "476"
+              }
+            },
+            {
+              "name": "cardholdername",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "488"
+              }
+            },
+            {
+              "name": "cardnumber",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "489"
+              }
+            },
+            {
+              "name": "cardstartdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "503"
+              }
+            },
+            {
+              "name": "cardexpdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "490"
+              }
+            },
+            {
+              "name": "cardissnum",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "491"
+              }
+            },
+            {
+              "name": "paymentdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "504"
+              }
+            },
+            {
+              "name": "paymentremitterid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "505"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoSettlInst",
+      "fix:description": "Number of settlement instructions within repeating group.",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlinst\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "778"
+    }
+  },
+  {
+    "name": "nosettlpartyids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "settlpartyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "782"
+              }
+            },
+            {
+              "name": "settlpartyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "783"
+              }
+            },
+            {
+              "name": "settlpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "784"
+              }
+            },
+            {
+              "name": "settlpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2389"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoSettlPartyIDs",
+      "fix:description": "Number of SettlPartyID (782), SettlPartyIDSource (783), and SettlPartyRole (784) entries",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "781"
+    }
+  }
+]

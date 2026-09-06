@@ -1,0 +1,1112 @@
+[
+  {
+    "name": "nomandatoryclearingjurisdictions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "mandatoryclearingjurisdiction",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41313"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoMandatoryClearingJurisdictions",
+      "fix:description": "Number of mandatory clearing jurisdictions.",
+      "fix:tag": "41312"
+    }
+  },
+  {
+    "name": "nolegadditionaltermbondrefs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legadditionaltermbondsecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41317"
+              }
+            },
+            {
+              "name": "legadditionaltermbondsecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41318"
+              }
+            },
+            {
+              "name": "legadditionaltermbonddesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41319"
+              }
+            },
+            {
+              "name": "encodedlegadditionaltermbonddesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41320"
+              }
+            },
+            {
+              "name": "encodedlegadditionaltermbonddesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41321"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41322"
+              }
+            },
+            {
+              "name": "legadditionaltermbondissuer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41323"
+              }
+            },
+            {
+              "name": "encodedlegadditionaltermbondissuerlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41324"
+              }
+            },
+            {
+              "name": "encodedlegadditionaltermbondissuer",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41325"
+              }
+            },
+            {
+              "name": "legadditionaltermbondseniority",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41326"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcoupontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41327"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcouponrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41328"
+              }
+            },
+            {
+              "name": "legadditionaltermbondmaturitydate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41329"
+              }
+            },
+            {
+              "name": "legadditionaltermbondparvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41330"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcurrenttotalissuedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41331"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcouponfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41332"
+              }
+            },
+            {
+              "name": "legadditionaltermbondcouponfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41333"
+              }
+            },
+            {
+              "name": "legadditionaltermbonddaycount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41334"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegAdditionalTermBondRefs",
+      "fix:description": "Number of bonds in the repeating group.",
+      "fix:tag": "41316"
+    }
+  },
+  {
+    "name": "nolegadditionalterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legadditionaltermconditionprecedentbondindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41336"
+              }
+            },
+            {
+              "name": "legadditionaltermdiscrepancyclauseindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41337"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegAdditionalTerms",
+      "fix:description": "Number of additional terms in the repeating group.",
+      "fix:tag": "41335"
+    }
+  },
+  {
+    "name": "nounderlyingadditionaltermbondrefs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingadditionaltermbondsecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41341"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondsecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41701"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbonddesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41709"
+              }
+            },
+            {
+              "name": "encodedunderlyingadditionaltermbonddesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41710"
+              }
+            },
+            {
+              "name": "encodedunderlyingadditionaltermbonddesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41711"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41712"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondissuer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42017"
+              }
+            },
+            {
+              "name": "encodedunderlyingadditionaltermbondissuerlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42025"
+              }
+            },
+            {
+              "name": "encodedunderlyingadditionaltermbondissuer",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42026"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondseniority",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42027"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcoupontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42028"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcouponrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42029"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondmaturitydate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42030"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondparvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42031"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcurrenttotalissuedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42032"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcouponfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42033"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbondcouponfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42034"
+              }
+            },
+            {
+              "name": "underlyingadditionaltermbonddaycount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42035"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoUnderlyingAdditionalTermBondRefs",
+      "fix:description": "Number of bonds in the repeating group.",
+      "fix:tag": "41340"
+    }
+  },
+  {
+    "name": "nolegcashsettldealers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcashsettldealer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41343"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegCashSettlDealers",
+      "fix:description": "Number of dealers in the repeating group.",
+      "fix:tag": "41342"
+    }
+  },
+  {
+    "name": "nolegcashsettlterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcashsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41345"
+              }
+            },
+            {
+              "name": "legcassettlvaluationfirstbusinessdayoffset",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41346"
+              }
+            },
+            {
+              "name": "legcashsettlvaluationsubsequentbusinessdaysoffset",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41347"
+              }
+            },
+            {
+              "name": "legcashsettlnumofvaluationdates",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41348"
+              }
+            },
+            {
+              "name": "legcashsettlvaluationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41349"
+              }
+            },
+            {
+              "name": "legcashsettlbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41350"
+              }
+            },
+            {
+              "name": "legcashsettlquotemethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41351"
+              }
+            },
+            {
+              "name": "legcashsettlquoteamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41352"
+              }
+            },
+            {
+              "name": "legcashsettlquotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41353"
+              }
+            },
+            {
+              "name": "legcashsettlminimumquoteamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41354"
+              }
+            },
+            {
+              "name": "legcashsettlminimumquotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41355"
+              }
+            },
+            {
+              "name": "legcashsettlpricesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42308"
+              }
+            },
+            {
+              "name": "legcashsettlpricedefault",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42309"
+              }
+            },
+            {
+              "name": "legcashsettlbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41356"
+              }
+            },
+            {
+              "name": "legcashsettlamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41357"
+              }
+            },
+            {
+              "name": "legcashsettlrecoveryfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41358"
+              }
+            },
+            {
+              "name": "legcashsettlfixedtermindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41359"
+              }
+            },
+            {
+              "name": "legcashsettlaccruedinterestindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41360"
+              }
+            },
+            {
+              "name": "legcashsettlvaluationmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41361"
+              }
+            },
+            {
+              "name": "legcashsettltermxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41362"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegCashSettlTerms",
+      "fix:description": "Number of elements in the repeating group.",
+      "fix:tag": "41344"
+    }
+  },
+  {
+    "name": "nolegcomplexeventaveragingobservations",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventaveragingobservationnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41364"
+              }
+            },
+            {
+              "name": "legcomplexeventaveragingweight",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41365"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventAveragingObservations",
+      "fix:description": "The number of averaging observations in the repeating group.",
+      "fix:tag": "41363"
+    }
+  },
+  {
+    "name": "nolegcomplexeventcreditevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventcrediteventtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41367"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41368"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41369"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41370"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41371"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41372"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41373"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventCreditEvents",
+      "fix:description": "The number of credit events specified in the repeating group.",
+      "fix:tag": "41366"
+    }
+  },
+  {
+    "name": "nolegcomplexeventcrediteventqualifiers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventcrediteventqualifier",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41375"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventCreditEventQualifiers",
+      "fix:description": "Number of qualifiers in the repeating group.",
+      "fix:tag": "41374"
+    }
+  },
+  {
+    "name": "nolegcomplexeventperioddatetimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventperioddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41377"
+              }
+            },
+            {
+              "name": "legcomplexeventperiodtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41378"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventPeriodDateTimes",
+      "fix:description": "Number of entries in the date-time repeating group.",
+      "fix:tag": "41376"
+    }
+  },
+  {
+    "name": "nolegcomplexeventperiods",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventperiodtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41380"
+              }
+            },
+            {
+              "name": "legcomplexeventbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41381"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventPeriods",
+      "fix:description": "Number of periods in the repeating group.",
+      "fix:tag": "41379"
+    }
+  },
+  {
+    "name": "nolegcomplexeventratesources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41383"
+              }
+            },
+            {
+              "name": "legcomplexeventratesourcetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41384"
+              }
+            },
+            {
+              "name": "legcomplexeventreferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41385"
+              }
+            },
+            {
+              "name": "legcomplexevenreferencepageheading",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41386"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventRateSources",
+      "fix:description": "Number of rate sources in the repeating group.",
+      "fix:tag": "41382"
+    }
+  },
+  {
+    "name": "nolegcomplexeventdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41388"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventDateBusinessCenters",
+      "fix:description": "Number of business centers in the repeating group.",
+      "fix:tag": "41387"
+    }
+  },
+  {
+    "name": "nolegcomplexeventcrediteventsources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventcrediteventsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41399"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "NoLegComplexEventCreditEventSources",
+      "fix:description": "Number of event sources in the repeating group.",
+      "fix:tag": "41398"
+    }
+  }
+]
