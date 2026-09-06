@@ -53,18 +53,20 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
         Some(field) => field.clone(),
         None => rows.inferred_struct_field()?,
     };
-    // Reading the spellings and canonicalizing the values are two walks, and
-    // the batch build owns the second one for every row at once. Only the
-    // first is done here, so no row is walked twice.
-    let prepared = rows
+    // Every row goes through the field's own value contract, which is what
+    // restates a document's number at the scale a decimal column declares and
+    // its text at the unit a temporal one does. The batch build canonicalizes
+    // again on the way in; that second pass is the price of the first being
+    // the only thing that reads a document's spellings.
+    let canonical = rows
         .as_sequence()
         .unwrap_or_default()
         .iter()
-        .map(|row| crate::text::typed::prepare(row.clone(), &root))
+        .map(|row| root.from_natural_value(row.clone()))
         .collect::<Result<Vec<_>>>()?;
     Ok(ArrowValue::from_rows(
         &root,
-        &Scalar::from_sequence(prepared),
+        &Scalar::from_sequence(canonical),
     )?)
 }
 

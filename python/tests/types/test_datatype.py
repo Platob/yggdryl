@@ -633,3 +633,162 @@ def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:
     # silently truncated into a member.
     with pytest.raises(ValueError, match="at most 2 bytes"):
         codes.into_members(DataType.ascii(2))
+
+
+def test_the_datatype_restates_a_value_as_the_representation_it_declares() -> None:
+    # The one value contract: a value crosses through the datatype, never
+    # through PyArrow, which knows none of these rules.
+    price = DataType("decimal128(18,4)").scalar(decimal.Decimal("12.5"))
+    assert price.kind == "d128"
+    assert price.as_py() == decimal.Decimal("12.5000")
+
+    narrowed = DataType("int8").scalar(5)
+    assert narrowed.kind == "i8"
+    assert narrowed.as_py() == 5
+
+    # An ASCII value is trimmed of its padding, and a value already in the
+    # declared representation crosses unchanged.
+    assert DataType.ascii(4).scalar("AAPL").as_py() == "AAPL"
+    assert DataType("utf8").scalar("AAPL").as_py() == "AAPL"
+
+    with pytest.raises(ValueError):
+        DataType("int8").scalar(9999)
+
+
+def test_a_datatype_recognizes_and_validates_its_own_default() -> None:
+    assert DataType("int64").is_default_value(0)
+    assert not DataType("int64").is_default_value(1)
+    assert DataType("utf8").is_default_value("")
+    assert DataType("int64").validate() is None
+    assert DataType("struct<id:int64>").validate() is None
+
+
+def test_a_datatype_answers_the_family_and_the_layout_of_its_identity() -> None:
+    integer = DataType("int32")
+    assert integer.is_integer
+    assert integer.is_signed_integer
+    assert not integer.is_unsigned_integer
+    assert integer.is_numeric
+    assert integer.is_ordered
+    assert integer.fixed_byte_width == 4
+    assert not integer.is_parameterized
+
+    assert DataType("uint64").is_unsigned_integer
+    assert DataType("float32").is_floating
+    assert DataType("decimal128(5,2)").is_decimal
+    assert DataType("decimal128(5,2)").is_parameterized
+    assert DataType("timestamp(us)").is_temporal
+    assert DataType("binary").is_binary
+    assert DataType("binary").is_bytes
+    assert DataType("utf8").is_string
+    assert DataType("utf8").is_bytes
+    assert DataType("utf8").fixed_byte_width is None
+
+    # A wrapper encodes another value type, so it is not itself nested.
+    encoded = DataType("dictionary<int32,utf8>")
+    assert encoded.is_wrapper
+    assert not DataType("struct<id:int64>").is_wrapper
+    assert DataType("struct<id:int64>").is_nested
+    assert not DataType("struct<id:int64>").is_ordered
+
+    assert DataType.PARSE_RECURSION_LIMIT > 0
+
+
+def test_an_ascii_datatype_names_the_vocabulary_it_draws_from() -> None:
+    country = DataType("country")
+    assert country.is_ascii
+    assert country.is_code
+    assert country.code_name == "country"
+
+    # A bare fixed ASCII of the same width is not a code.
+    plain = DataType.ascii(2)
+    assert plain.is_ascii
+    assert not plain.is_code
+    assert plain.code_name is None
+
+    assert not DataType("utf8").is_ascii
+    assert DataType("utf8").code_name is None
+
+
+def test_a_uuid_packs_into_the_integer_its_sixteen_bytes_are() -> None:
+    dtype = DataType("uuid")
+    value = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+    packed = dtype.uuid_packed(str(value))
+    assert packed == value.int
+    assert dtype.uuid_value(packed) == str(value)
+
+    # The hyphenated spelling, bare hex, and the raw bytes are one identifier.
+    assert dtype.uuid_packed(value.hex) == packed
+    assert dtype.uuid_packed(value.bytes) == packed
+
+    with pytest.raises(ValueError):
+        DataType("int64").uuid_packed(str(value))
+    # A packed UUID is unsigned, so a negative integer is not one.
+    with pytest.raises(OverflowError):
+        dtype.uuid_value(-1)
+
+
+def test_a_parameterized_datatype_answers_each_parameter_it_declares() -> None:
+    encoded = DataType("dictionary<int32,utf8>")
+    assert str(encoded.dictionary_key) == "int32"
+    assert str(encoded.dictionary_value) == "utf8"
+    assert DataType("int64").dictionary_key is None
+
+    entries = DataType("map<utf8,int64>")
+    assert entries.keys_sorted is False
+    assert DataType("int64").keys_sorted is None
+
+    union = DataType("dense_union<a:int32,b:utf8>")
+    assert union.union_type_ids == (0, 1)
+    assert union.union_mode == "dense"
+    assert DataType("int64").union_type_ids is None
+    assert DataType("int64").union_mode is None
+
+    geography = DataType.geography()
+    assert geography.crs == "OGC:CRS84"
+    assert geography.has_default_crs
+    assert geography.edge_algorithm == "spherical"
+
+    geometry = DataType.geometry()
+    assert geometry.edge_algorithm is None
+    assert not DataType.geometry("EPSG:4326").has_default_crs
+    assert DataType("int64").crs is None
+    assert DataType("int64").has_default_crs is None
+
+
+def test_a_struct_datatype_projects_the_arrow_schema_a_row_declares() -> None:
+    dtype = DataType("struct<id:int64,symbol:utf8>")
+    schema = dtype.into_arrow_schema()
+
+    assert isinstance(schema, pa.Schema)
+    assert schema.names == ["id", "symbol"]
+    assert schema.field("id").type == pa.int64()
+    assert DataType.from_arrow(pa.struct(list(schema))) == dtype
+
+    # A schema needs a row, so a leaf datatype refuses.
+    with pytest.raises(ValueError):
+        DataType("int64").into_arrow_schema()
+
+    default = DataType("int64").default_arrow_array()
+    assert isinstance(default, pa.Array)
+    assert default.to_pylist() == [0]
+    assert DataType("utf8").default_arrow_array().to_pylist() == [""]
+
+
+def test_a_nested_datatype_is_rebuilt_with_replacement_children() -> None:
+    struct = DataType("struct<id:int64,symbol:utf8>")
+    rebuilt = struct.with_fields([Field("id", "int32"), Field("symbol", "utf8")])
+
+    assert str(rebuilt["id"].dtype) == "int32"
+    assert [child.name for child in rebuilt] == ["id", "symbol"]
+
+    # The layout is kept, so the child count is part of the contract.
+    with pytest.raises(ValueError):
+        struct.with_fields([Field("id", "int32")])
+
+    # A list still holds exactly one item field, and the rebuilt datatype
+    # renders as the canonical lossless form the grammar round-trips.
+    widened = DataType("list<int32>").with_fields([Field("item", "int64")])
+    assert DataType.from_str(str(widened)) == widened
+    assert str(widened["item"].dtype) == "int64"

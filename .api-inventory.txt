@@ -1195,6 +1195,7 @@ pub const NULL_PARTITION: &str = "null";
   pub fn sources(&self) -> Result<Option<Vec<String>>>
   pub fn transform(&self) -> Result<Option<Function>>
   pub fn expression(&self) -> Result<Option<Expression>>
+  pub fn declares_derivation(&self) -> bool
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
   impl PartitionFieldMut<'_>
   pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
@@ -2782,13 +2783,14 @@ pub struct Authority(SmolStr);
 
 ### yggdryl::xxhash::arrow  [rust\src\xxhash\arrow.rs]
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
-  pub fn column_digests(array: &dyn Array, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn column_digests(array: ArrayRef, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
 
 ### yggdryl::xxhash::field  [rust\src\xxhash\field.rs]
 impl DigestField<'_>
   pub fn is_holder(&self) -> bool
   pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
   pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn declares_holder(&self) -> bool
   pub fn apply_arrow_batch(&self, batch: &arrow_array::RecordBatch) -> Result<arrow_array::RecordBatch>
   impl DigestFieldMut<'_>
   pub fn set_holder(&mut self) -> Result<()>

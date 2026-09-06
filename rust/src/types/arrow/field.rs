@@ -709,6 +709,19 @@ impl AppliedPlan {
     ) -> Result<Self> {
         use crate::types::cast::{ArrowCastPlan, Deferred};
 
+        // A protocol is asked whether it declares anything before it is
+        // planned: both walk every batch, and the digest fill casts one a
+        // second time to materialize the holder columns. A root that declares
+        // neither is the ordinary schema, and applying it must cost exactly
+        // the cast. The question is answered on the declaration, so it reads
+        // no row - but only after `require_struct`, because a root the
+        // protocols cannot run on at all is refused rather than skipped.
+        if partition || digest {
+            root.require_struct()?;
+        }
+        let partition = partition && root.as_partition().declares_derivation();
+        let digest = digest && root.as_digest().declares_holder();
+
         let cast = if cast {
             Some(ArrowCastPlan::compile_deferring(
                 &source,

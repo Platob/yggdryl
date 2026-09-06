@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, FixedSizeBinaryArray, LargeStringArray, StringArray, StringViewArray,
+    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, LargeStringArray, StringArray,
+    StringViewArray,
 };
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
 use arrow_schema::DataType as ArrowDataType;
@@ -11,6 +12,7 @@ use smol_str::SmolStr;
 
 use crate::arrow::{Error, Result};
 use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
+use crate::types::bytes::casts::variable_binary_source;
 use crate::types::cast::arrow_cast_exposed;
 use crate::types::cast::{downcast, internal_target_error};
 use crate::types::nested::casts::is_exposed;
@@ -42,6 +44,12 @@ pub(crate) fn ingest_uuid_array(
         }
         return Ok(Arc::clone(array));
     }
+    if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
+        let source = downcast::<BinaryArray>(bytes.as_ref())?;
+        return uuid_storage(field, source.len(), exposure, budget, |index| {
+            source.is_valid(index).then(|| source.value(index))
+        });
+    }
     let text = if array.data_type() == &ArrowDataType::Utf8 {
         Arc::clone(array)
     } else {
@@ -55,16 +63,34 @@ pub(crate) fn ingest_uuid_array(
         )?
     };
     let source = downcast::<StringArray>(text.as_ref())?;
-    budget.add_array(field.dtype(), source.len())?;
-    let mut bytes = vec![0_u8; source.len() * 16];
-    let mut validity = BooleanBufferBuilder::new(source.len());
-    for index in 0..source.len() {
-        let present = is_exposed(exposure, index) && source.is_valid(index);
-        if present {
-            let stored = uuid_cell(field, index, source.value(index).as_bytes())?;
-            bytes[index * 16..][..16].copy_from_slice(&stored);
+    uuid_storage(field, source.len(), exposure, budget, |index| {
+        source
+            .is_valid(index)
+            .then(|| source.value(index).as_bytes())
+    })
+}
+
+/// Builds the sixteen stored bytes of a UUID from one cell per row.
+///
+/// The cell is whatever spelling the source carried - the hyphenated text, the
+/// bare hex, or the sixteen bytes themselves - and the one UUID rule reads all
+/// three, so the reading is stated once for every source layout.
+fn uuid_storage<'a>(
+    field: &Field,
+    rows: usize,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+    cell: impl Fn(usize) -> Option<&'a [u8]>,
+) -> Result<ArrayRef> {
+    budget.add_array(field.dtype(), rows)?;
+    let mut bytes = vec![0_u8; rows * 16];
+    let mut validity = BooleanBufferBuilder::new(rows);
+    for index in 0..rows {
+        let present = is_exposed(exposure, index).then(|| cell(index)).flatten();
+        if let Some(value) = present {
+            bytes[index * 16..][..16].copy_from_slice(&uuid_cell(field, index, value)?);
         }
-        validity.append(present);
+        validity.append(present.is_some());
     }
     let nulls = arrow_buffer::NullBuffer::new(validity.finish());
     Ok(Arc::new(FixedSizeBinaryArray::try_new(

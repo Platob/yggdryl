@@ -14,7 +14,7 @@ Evaluation over every target: the vectorized Arrow tier, `Statement::bind` with 
 | Parameters | Rust `bind_with(&field, &[(name, Scalar)])`; Python `bind(field, parameters=None)`; JavaScript `bind(fieldLike, parameters?)` takes a `Scalar` record or a plain object; one core binder |
 | Streamed | `project_reader` / `project_arrow` / `projectArrow` apply predicate and projection per batch, one limit across the stream, where the holder permits streaming |
 | Sort | `sort` / `sort_arrow_batch` / `sortArrowBatch` order one materialized batch |
-| Bindings | Statement bind and Iceberg planning in all three; `ApplyExpression` is Rust only |
+| Bindings | Statement bind and Iceberg planning in all three; Python adds the `Bound` Arrow tier and statistics pushdown; `ApplyExpression` is Rust only |
 
 ## Use
 
@@ -90,7 +90,7 @@ Global ordering needs every row, so the `sort` family sorts one materialized bat
 | one Arrow `RecordBatch` | one column of answers, an `ArrayRef` |
 | one container's statistics (`Bounds`) | the `Option<bool>` certainty pruning runs on |
 
-Rust only.
+Rust and Python; JavaScript reaches only the row and statement tiers.
 
 ```rust
 use std::sync::Arc;

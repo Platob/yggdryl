@@ -98,9 +98,25 @@ impl Url {
     /// A private name begins with a dot - `.git`, `.venv`, `.DS_Store` - which
     /// every operating system and tool treats as hidden. A listing excludes
     /// these unless a caller asks for them, so walking a tree does not wander
-    /// into version control or virtual environments by default.
+    /// into version control or virtual environments by default. The last
+    /// segment is what is judged, so a container spelled `.git/` is as private
+    /// as `.git`.
     pub fn is_private(&self) -> bool {
-        self.file_name().is_some_and(|name| name.starts_with('.'))
+        self.path()
+            .segments()
+            .next_back()
+            .is_some_and(|name| name.starts_with('.'))
+    }
+
+    /// Return whether the path ends in `/`, which names a container.
+    ///
+    /// A location spelled `lake/` says what it is before anything looks: the
+    /// generic roles answer [`IOKind::Directory`](crate::IOKind::Directory)
+    /// from it without touching the backing store, and a child resolved by
+    /// such a name is a folder handle rather than a leaf. The root path `/`
+    /// counts, because a root can only hold others.
+    pub fn has_trailing_slash(&self) -> bool {
+        self.path().has_trailing_slash()
     }
 
     /// Return whether this URL locates something that exists right now.
@@ -168,6 +184,11 @@ impl Url {
         self.0.bucket()
     }
 
+    /// Return the S3 object key when this is an `s3` URL, per [`Uri::key`].
+    pub fn key(&self) -> Option<&str> {
+        self.0.key()
+    }
+
     /// Infer an AWS region from a recognized S3 hostname.
     pub fn region(&self) -> Option<&str> {
         self.0.region()
@@ -226,6 +247,35 @@ impl Url {
     /// As [`Uri::set_query`].
     pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
         self.0.set_query(query)
+    }
+
+    /// Replace or remove the URL fragment, from text that is not URI syntax.
+    ///
+    /// This is how a location inside a resource is addressed: an archive
+    /// member's path lives in the fragment, so `file:///lake/day.zip` and
+    /// `file:///lake/day.zip#trades/eu.csv` name the archive and one member of
+    /// it without either becoming a path segment of the other.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut url = Url::from_str("file:///lake/day.zip")?;
+    /// url.set_fragment(Some("trades/eu ndx.csv"))?;
+    ///
+    /// assert_eq!(url.to_string(), "file:///lake/day.zip#trades/eu%20ndx.csv");
+    /// assert_eq!(url.fragment(true)?.as_deref(), Some("trades/eu ndx.csv"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::set_fragment`].
+    pub fn set_fragment(&mut self, fragment: Option<&str>) -> Result<()> {
+        let mut candidate = self.0.clone();
+        candidate.set_fragment(fragment)?;
+        self.replace_uri(candidate)
     }
 
     /// Return URL fragment text without `#`, decoding its escapes when asked.

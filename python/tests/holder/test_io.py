@@ -642,3 +642,142 @@ class TestStructuredValues:
         invalid.write_text('{"quantity":"many","symbol":"AAPL"}')
         with pytest.raises(ValueError, match="quantity"):
             invalid.read_scalar(field)
+
+
+def test_a_handle_reports_and_reserves_the_allocation_behind_it() -> None:
+    handle = IOBase.from_bytes(b"AAPL", capacity=1024)
+
+    # Capacity is what fits before the next growth; size is what is stored.
+    assert handle.capacity >= 1024
+    assert handle.size == 4
+
+    handle.reserve(4096)
+    assert handle.capacity >= 4096
+    assert handle.size == 4
+    assert handle.read_bytes() == b"AAPL"
+
+    # Reserving never shrinks.
+    handle.reserve(16)
+    assert handle.capacity >= 4096
+
+    # A capacity with no data is the one-allocation start a known length wants.
+    assert IOBase.from_bytes(capacity=512).capacity >= 512
+    assert IOBase.from_bytes(capacity=512).size == 0
+    assert IOBase.from_bytes().capacity == 0
+
+
+def test_the_positional_primitives_have_an_exact_form() -> None:
+    handle = IOBase.from_bytes(b"symbol,price\nAAPL,187.23\n")
+
+    assert handle.pread_exact(0, 6) == b"symbol"
+    assert handle.pread_exact(13, 4) == b"AAPL"
+
+    # `read_range_bytes` answers what exists; the exact form refuses.
+    assert len(handle.read_range_bytes(0, 10_000)) == handle.size
+    with pytest.raises(OSError):
+        handle.pread_exact(0, 10_000)
+
+    handle.pwrite_all(0, b"SYMBOL")
+    assert handle.read_bytes().startswith(b"SYMBOL,price")
+
+
+def test_a_page_cache_answers_the_configuration_it_normalized_to() -> None:
+    handle = IOBase.from_bytes(b"x" * 200_000).buffered(
+        page_size=1000, max_bytes=100_000, ttl=30.0
+    )
+
+    # The core clamps the page size to a power of two, so the caller has to be
+    # able to read back what it actually got - `has_cached_page` is indexed by
+    # that size, not by the one the keyword asked for.
+    assert handle.page_size == 1024
+    assert handle.page_size != 1000
+    assert handle.max_bytes >= handle.page_size
+    assert handle.ttl == 30.0
+
+    assert handle.page_index(0) == 0
+    assert handle.page_index(handle.page_size) == 1
+    assert handle.page_index(5000) == 5000 // handle.page_size
+    assert handle.page_start(3) == 3 * handle.page_size
+
+    handle.read_range(0, 10)
+    assert handle.has_cached_page(handle.page_index(0))
+    assert handle.cached_pages >= 1
+
+    # An index past the end saturates rather than wrapping.
+    assert handle.page_start(2**63) > 0
+
+
+def test_a_cursor_goes_back_to_the_resource_it_rides() -> None:
+    handle = IOBase.from_bytes(b"symbol,price\n")
+    cursor = handle.cursor(7)
+
+    assert cursor.tell() == 7
+    assert cursor.handle.read_bytes() == b"symbol,price\n"
+    assert cursor.handle.size == handle.size
+    # The cursor owns only its position, so reading the whole resource
+    # through the handle does not move it.
+    assert cursor.tell() == 7
+
+
+def test_a_location_that_says_nothing_is_read_as_the_role_a_caller_declares(
+    tmp_path: pathlib.Path,
+) -> None:
+    from yggdryl.holder import File, Folder, Path
+
+    location = Path(tmp_path / "trades.parquet")
+    assert isinstance(location, Path)
+    assert isinstance(location.as_file(), File)
+    assert isinstance(Path(tmp_path / "lake").as_directory(), Folder)
+
+    # Neither call touches the file system: nothing exists yet.
+    assert not (tmp_path / "trades.parquet").exists()
+    assert not (tmp_path / "lake").exists()
+
+
+def test_a_handle_retains_the_record_encoding_it_turns_out_to_hold() -> None:
+    from yggdryl.media import Ipc, Parquet
+
+    stream = IOBase.from_bytes(b"")
+    stream.media_type = "application/vnd.apache.arrow.stream"
+    assert isinstance(stream.into_media(), Ipc)
+
+    columnar = IOBase.from_bytes(b"")
+    columnar.media_type = "application/vnd.apache.parquet"
+    assert isinstance(columnar.into_media(), Parquet)
+
+    # A resource that is not a record encoding answers itself.
+    plain = IOBase.from_bytes(b"")
+    plain.media_type = "application/json"
+    assert isinstance(plain.into_media(), Buffer)
+
+    # The handle is spent, the way every other wrapper conversion spends it.
+    spent = IOBase.from_bytes(b"")
+    spent.media_type = "application/vnd.apache.arrow.stream"
+    spent.into_media()
+    with pytest.raises(ValueError):
+        spent.into_media()
+
+
+def test_an_s3_location_reaches_the_native_backend_without_touching_it() -> None:
+    """An ``s3://`` URL is a handle like any other, and building one is free.
+
+    Nothing here contacts a store: the point is that the scheme selects the
+    backend and that construction stays lazy across the boundary, exactly as
+    it does for a local path.
+    """
+    handle = IOBase("s3://trades/lake/year=2026/part.parquet")
+
+    assert handle.url is not None
+    assert handle.url.scheme == "s3"
+    assert handle.url.bucket == "trades"
+    assert handle.url.key == "lake/year=2026/part.parquet"
+    assert handle.name == "part.parquet"
+    # The media type comes from the key, so it costs no request.
+    assert str(handle.media_type) == "application/vnd.apache.parquet"
+    assert handle.partitions == (("year", "2026"),)
+
+    # A child resolves without asking the store anything, and a trailing
+    # slash names a container by its spelling.
+    child = IOBase("s3://trades/lake/").joinpath("year=2026", "part.parquet")
+    assert child.url is not None
+    assert str(child.url) == "s3://trades/lake/year=2026/part.parquet"

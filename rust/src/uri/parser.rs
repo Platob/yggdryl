@@ -33,6 +33,19 @@ pub(super) const fn is_query_fragment_byte(byte: u8) -> bool {
     is_path_byte(byte) || byte == b'?'
 }
 
+/// Spell one raw name as a single URI path segment.
+///
+/// Everything a path segment admits is kept, so `year=2024` stays readable,
+/// and `/` is escaped rather than kept: a name a backend gave us is one
+/// segment, and letting a slash through would make it two.
+///
+/// Only a backend that names resources with raw text needs this; the S3 one
+/// is the only such backend in the crate today.
+#[cfg(feature = "s3")]
+pub(crate) fn percent_encode_segment(value: &str) -> Cow<'_, str> {
+    percent_encode(value, |byte| is_path_byte(byte) && byte != b'/')
+}
+
 pub(super) fn validate_component(
     value: &str,
     target: &'static str,

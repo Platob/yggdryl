@@ -83,7 +83,23 @@ type PartitionFilters = Either<Vec<PartitionEntry>, std::collections::HashMap<St
 
 /// Build a local handle for the location a `Url` names.
 fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
+    // The scheme is what says which backend a location belongs to, so this is
+    // the one place that decides. An `s3` URL reaches the native S3 backend;
+    // everything else stays local. Construction touches nothing on either.
+    if url.scheme() == &yggdryl::Scheme::S3 {
+        return yggdryl::holder::s3::located(&url.to_string()).map_err(napi_error);
+    }
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
+}
+
+/// Hold `url` as a container, on the store its scheme selects.
+fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
+    if url.scheme() == &yggdryl::Scheme::S3 {
+        return yggdryl::holder::s3::folder(&url.to_string())
+            .map(Holder::S3Folder)
+            .map_err(napi_error);
+    }
+    Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
 /// Rebuild a foreign-file-system handle, keeping the file system it stands on.
@@ -136,7 +152,7 @@ pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
         Either3::B(url) => url.inner.clone(),
         Either3::C(value) => yggdryl::Url::from_str(&value).map_err(napi_error)?,
     };
-    Holder::folder(url.into_path().map_err(napi_error)?).map_err(napi_error)
+    folder_holder_for(&url)
 }
 
 /// A stateful sequential filesystem input stream.
@@ -430,7 +446,7 @@ impl JsIOBase {
     /// Build a container handle for one recorded location.
     pub(crate) fn folder_at(location: &str) -> Result<Self> {
         let url = yggdryl::Url::from_str(location).map_err(napi_error)?;
-        Holder::folder(url.into_path().map_err(napi_error)?)
+        folder_holder_for(&url)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -1189,7 +1205,7 @@ impl JsIOBase {
                 .inner
                 .url()
                 .ok_or_else(|| napi_error("an in-memory resource cannot become a directory"))?;
-            Holder::folder(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)?
+            folder_holder_for(url)?
         };
         folder.truncate(0).map_err(napi_error)?;
         self.inner = folder;

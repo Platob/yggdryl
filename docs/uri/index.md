@@ -27,7 +27,8 @@
 | Hash lock | Python: the first `hash(...)` freezes that wrapper; a later setter raises `TypeError` |
 | Stable hash | `stable_hash()` / `stableHash()` compute only; never lock |
 | Credentials | Userinfo splits at its first colon; later colons stay in the password |
-| S3 authority | First component ending `.com` / `.io` is a hostname, else the bucket; AWS hosts expose `region` |
+| S3 authority | First component ending `.com` / `.io`, carrying a port, an IP literal, or `localhost` is a hostname, else the bucket; AWS hosts expose `region` |
+| S3 key | `key()` is the path below the bucket as spelled - escapes and trailing slash kept, `""` at the root |
 
 ## Use
 
@@ -189,6 +190,14 @@ Both are read off the authority without a network request.
     let s3 = Uri::from_str("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")?;
     assert_eq!(s3.bucket(), Some("trades"));
     assert_eq!(s3.region(), Some("eu-west-3"));
+    assert_eq!(s3.key(), Some("part.parquet"));
+
+    // A port, an IP literal, or `localhost` is an endpoint - no bucket is
+    // named any of those - so a local store reads the way AWS does.
+    let local = Uri::from_str("s3://localhost:9000/trades/lake/")?;
+    assert_eq!(local.hostname(), Some("localhost"));
+    assert_eq!(local.bucket(), Some("trades"));
+    assert_eq!(local.key(), Some("lake/"));
     ```
 
 === "Python"
@@ -202,7 +211,10 @@ Both are read off the authority without a network request.
     )
 
     s3 = Uri("s3://trades.s3.eu-west-3.amazonaws.com/part.parquet")
-    assert (s3.bucket, s3.region) == ("trades", "eu-west-3")
+    assert (s3.bucket, s3.region, s3.key) == ("trades", "eu-west-3", "part.parquet")
+
+    local = Uri("s3://localhost:9000/trades/lake/")
+    assert (local.hostname, local.bucket, local.key) == ("localhost", "trades", "lake/")
     ```
 
 === "JavaScript"
@@ -218,7 +230,10 @@ Both are read off the authority without a network request.
     )
 
     const s3 = Uri.from('s3://trades.s3.eu-west-3.amazonaws.com/part.parquet')
-    assert.deepEqual([s3.bucket, s3.region], ['trades', 'eu-west-3'])
+    assert.deepEqual([s3.bucket, s3.region, s3.key], ['trades', 'eu-west-3', 'part.parquet'])
+
+    const local = Uri.from('s3://localhost:9000/trades/lake/')
+    assert.deepEqual([local.hostname, local.bucket, local.key], ['localhost', 'trades', 'lake/'])
     ```
 
 ## Edges

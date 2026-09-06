@@ -560,3 +560,208 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
         .to_string();
     assert!(refused.contains("Iceberg v3 layer"), "{refused}");
 }
+
+/// Every wrapper reads what the value inside it reads: a list layout is a
+/// layout, an encoding is a layout, and a byte framing is a framing.
+mod layouts {
+    use std::sync::Arc;
+
+    use arrow_array::{
+        ArrayRef, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, Int32Array,
+        LargeListArray, ListArray, StringArray, StructArray,
+    };
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
+
+    use super::{ArrowCast, ArrowCastOptions};
+    use crate::DataType;
+
+    fn dtype(expression: &str) -> DataType {
+        expression.parse().unwrap()
+    }
+
+    fn strict() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_safe(false)
+    }
+
+    /// Two rows of two `{a: int32}` values, under every list layout in turn.
+    fn struct_items() -> (Arc<ArrowField>, ArrayRef) {
+        let fields: ArrowFields =
+            vec![Arc::new(ArrowField::new("a", ArrowDataType::Int32, true))].into();
+        let values: ArrayRef = Arc::new(StructArray::new(
+            fields.clone(),
+            vec![Arc::new(Int32Array::from(vec![1, 2, 3, 4])) as ArrayRef],
+            None,
+        ));
+        let item = Arc::new(ArrowField::new("item", ArrowDataType::Struct(fields), true));
+        (item, values)
+    }
+
+    #[test]
+    fn every_list_layout_reads_every_other_one_through_a_struct_child() {
+        let (item, values) = struct_items();
+        let offsets = OffsetBuffer::new(vec![0, 2, 4].into());
+        let sources: Vec<ArrayRef> = vec![
+            Arc::new(
+                ListArray::try_new(
+                    Arc::clone(&item),
+                    offsets.clone(),
+                    Arc::clone(&values),
+                    None,
+                )
+                .unwrap(),
+            ),
+            Arc::new(
+                LargeListArray::try_new(
+                    Arc::clone(&item),
+                    OffsetBuffer::new(vec![0_i64, 2, 4].into()),
+                    Arc::clone(&values),
+                    None,
+                )
+                .unwrap(),
+            ),
+            Arc::new(
+                FixedSizeListArray::try_new(Arc::clone(&item), 2, Arc::clone(&values), None)
+                    .unwrap(),
+            ),
+        ];
+        let targets = [
+            "list<struct<a: int32>>",
+            "large_list<struct<a: int32>>",
+            "list_view<struct<a: int32>>",
+            "large_list_view<struct<a: int32>>",
+            "fixed_size_list<struct<a: int32>, 2>",
+        ];
+        for source in sources {
+            for target in targets {
+                let cast = dtype(target)
+                    .cast_arrow_array(Arc::clone(&source), strict())
+                    .unwrap_or_else(|error| {
+                        panic!("{:?} -> {target}: {error}", source.data_type())
+                    });
+                assert_eq!(cast.len(), 2, "{target}");
+            }
+        }
+    }
+
+    #[test]
+    fn two_fixed_sizes_are_a_row_change_and_say_so() {
+        let (item, values) = struct_items();
+        let source: ArrayRef =
+            Arc::new(FixedSizeListArray::try_new(item, 2, values, None).unwrap());
+
+        let refused = dtype("fixed_size_list<struct<a: int32>, 4>")
+            .cast_arrow_array(source, strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("value change"), "{refused}");
+    }
+
+    #[test]
+    fn an_encoded_target_runs_the_value_rule_its_leaf_carries() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{e9}"]));
+        for target in ["dictionary<int32, ascii>", "run_end_encoded<int32, ascii>"] {
+            let refused = dtype(target)
+                .cast_arrow_array(Arc::clone(&text), strict())
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("non-ASCII byte"), "{target}: {refused}");
+        }
+
+        let wkb: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"nope"]));
+        let refused = dtype("dictionary<int32, geometry>")
+            .cast_arrow_array(wkb, strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("WKB"), "{refused}");
+    }
+
+    #[test]
+    fn an_encoded_target_reads_what_its_bare_leaf_reads() {
+        let codes: ArrayRef = Arc::new(StringArray::from(vec!["US", "US", "FR"]));
+        for target in [
+            "dictionary<int32, country>",
+            "run_end_encoded<int32, country>",
+            "dictionary<int32, uuid>",
+        ] {
+            let source: ArrayRef = if target.contains("uuid") {
+                Arc::new(StringArray::from(vec![
+                    "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+                ]))
+            } else {
+                Arc::clone(&codes)
+            };
+            let cast = dtype(target)
+                .cast_arrow_array(source, strict())
+                .unwrap_or_else(|error| panic!("{target}: {error}"));
+            // The declared child field keeps the extension identity Arrow's
+            // own encoding does not copy.
+            assert_eq!(
+                &cast.data_type().clone(),
+                dtype(target)
+                    .required_field("value")
+                    .into_arrow_ref()
+                    .unwrap()
+                    .data_type(),
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_encoded_struct_source_is_decoded_and_reconciled_by_name() {
+        use arrow_array::{DictionaryArray, Int32Array, RunArray, types::Int32Type};
+
+        let fields: ArrowFields =
+            vec![Arc::new(ArrowField::new("key", ArrowDataType::Utf8, true))].into();
+        let values: ArrayRef = Arc::new(StructArray::new(
+            fields,
+            vec![Arc::new(StringArray::from(vec!["a", "b"])) as ArrayRef],
+            None,
+        ));
+        let dictionary: ArrayRef = Arc::new(
+            DictionaryArray::<Int32Type>::try_new(
+                Int32Array::from(vec![0, 1, 0]),
+                Arc::clone(&values),
+            )
+            .unwrap(),
+        );
+        let run: ArrayRef = Arc::new(
+            RunArray::<Int32Type>::try_new(&Int32Array::from(vec![1, 2]), values.as_ref()).unwrap(),
+        );
+
+        for source in [dictionary, run] {
+            // The decode happens first, so the Struct child the encoding was
+            // hiding is reconciled by name rather than positionally.
+            let cast = dtype("struct<KEY: utf8>")
+                .cast_arrow_array(Arc::clone(&source), strict())
+                .unwrap_or_else(|error| panic!("{:?}: {error}", source.data_type()));
+            let ArrowDataType::Struct(cast_fields) = cast.data_type() else {
+                panic!("a struct target answers a struct");
+            };
+            assert_eq!(cast_fields[0].name(), "KEY");
+        }
+    }
+
+    #[test]
+    fn a_byte_framing_reaches_every_other_one_through_binary() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["abc"]));
+        let fixed = dtype("fixed_size_binary(3)")
+            .cast_arrow_array(Arc::clone(&text), strict())
+            .unwrap();
+        assert_eq!(
+            crate::types::cast::downcast::<FixedSizeBinaryArray>(fixed.as_ref())
+                .unwrap()
+                .value(0),
+            b"abc"
+        );
+
+        let back = DataType::Utf8.cast_arrow_array(fixed, strict()).unwrap();
+        assert_eq!(
+            crate::types::cast::downcast::<StringArray>(back.as_ref())
+                .unwrap()
+                .value(0),
+            "abc"
+        );
+    }
+}

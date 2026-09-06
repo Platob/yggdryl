@@ -166,6 +166,18 @@ pub enum Comparison {
 }
 
 impl Comparison {
+    /// Every comparison this grammar knows, in canonical spelling.
+    pub const ALL: [Self; 8] = [
+        Self::Eq,
+        Self::NotEq,
+        Self::Lt,
+        Self::LtEq,
+        Self::Gt,
+        Self::GtEq,
+        Self::IsDistinctFrom,
+        Self::IsNotDistinctFrom,
+    ];
+
     /// The canonical text of this comparison.
     #[must_use]
     pub const fn as_str(self) -> &'static str {

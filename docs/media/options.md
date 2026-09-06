@@ -212,11 +212,13 @@ The media type names the encoding, so no format argument is passed.
     assert.equal(options.name, 'trade')
     ```
 
-## Casting
+## Shaping
 
-`cast_arrow_batch` and `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root.
+`apply_arrow_batch` and `apply_arrow_reader` [apply](../types/field.md#applying-a-schemas-declarations) the declared schema, then narrow by `select_by_names`, then apply the optional `existing` root.
 
-Rust only.
+A field shapes rows by applying, not by casting: a declaration is the cast *and* the `partition:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection in between only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
+
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use arrow_array::RecordBatch;
@@ -233,11 +235,11 @@ let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
     .with_field(declared.clone())
     .with_select_by_names(["price"]);
 
-// One call is the whole pipeline: the declared cast, then the selection.
+// One call is the whole pipeline: the declared apply, then the selection.
 // Passing a stored root as the second argument adds the completion layer.
 let batch = RecordBatch::new_empty(declared.into_arrow_schema()?);
-let cast = options.cast_arrow_batch(batch, None)?;
-assert_eq!(cast.num_columns(), 1);
+let shaped = options.apply_arrow_batch(batch, None)?;
+assert_eq!(shaped.num_columns(), 1);
 ```
 
 ## Shared settings
@@ -267,7 +269,7 @@ assert_eq!(options.commit_row_size(), Some(10_000));
 
 `require_field` is what a write calls, and a datatype is the one part with no default.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};
@@ -289,7 +291,7 @@ assert!(message.contains("with_dtype"), "{message}");
 - `take_field` -> clears `dtype` and `metadata`, keeps `name`.
 - `with_field(f)` for `f` named `"row"` with no metadata -> equal, and hash-equal, to `with_dtype(f.dtype().clone())`.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
-- Every write path -> routes through `cast_arrow_batch` / `cast_arrow_reader`, so declaration, selection, and stored shape agree.
+- Every read and write path -> routes through `apply_arrow_batch` / `apply_arrow_reader`, so declaration, derivation, selection, and stored shape agree.
 - Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).
 - Content coding -> ignored, the derivation [`IOMedia::record_options`](index.md) also performs.
 - `max_row_group_size` on `trades.arrows` -> `None` in Python, `null` in JavaScript.

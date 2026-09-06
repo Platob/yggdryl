@@ -67,8 +67,13 @@ fn rows_are_written_with_the_names_their_field_declares() {
 #[test]
 fn a_declared_root_types_the_documents_natural_strings() {
     let mut source = handle("quotes.jsonl");
+    // The size is a string, which is the point: a document spells a decimal in
+    // text and the declared column is what reads it at its own scale. A bare
+    // JSON number is deliberately not used here - `Field::scalar` reads one as
+    // an unscaled coefficient rather than a whole value, which is a value
+    // contract question this surface does not own.
     source
-        .write_all_bytes(br#"{"symbol": "AAPL", "size": 100}"#)
+        .write_all_bytes(br#"{"symbol": "AAPL", "size": "100.00"}"#)
         .expect("the bytes write");
 
     let widened = DataType::from_fields([

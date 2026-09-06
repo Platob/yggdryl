@@ -144,6 +144,18 @@ pin an unsettled design by implementing a binding first.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.
+- `holder/s3/` speaks the S3 REST API directly - SigV4 over a synchronous
+  HTTP/1.1 client, no SDK, runtime, or object-store layer - behind the
+  non-default `s3` feature. Every operation states its request count on the
+  method that performs it, and the accounting tests assert each one exactly: a
+  ranged read is one ranged `GET`, a whole read or full stream drain is one
+  `GET`, a listing is one request per 1000 entries whether flat or recursive,
+  and a prefix removal is one listing and one bulk delete per 1000 keys.
+  Construction, child resolution, and a trailing-slash location cost nothing.
+  A listing states every entry's size, so a listed object never re-asks; `open`
+  caches an object's metadata and never its bytes. Connections are pooled, so
+  a body is always read to its end. Payloads are signed over plain HTTP and
+  unsigned over HTTPS, where TLS already covers them.
 - Arrow interop lives in `rust/src/arrow/`; recursive cast planning stays with
   `Field`. The default `arrow` feature is optional for schema-only callers.
 - `rust/src/media/{ipc,parquet,avro}/` each own free functions over `IOBase` plus a
@@ -263,6 +275,29 @@ scheme vocabulary.
 - `IOBase` is positional: `pread`/`pwrite` are primitives. Whole reads,
   streams, compression, records, and media derive from them. No second storage
   trait or hidden cursor in the base object.
+- Every operation issues the fewest `IOBase` calls that can answer it. One call
+  is a round trip against an object store, a syscall against a file, and a lock
+  through every wrapper, so the call count is the cost model - not the byte
+  count. Slice what a later step needs out of what a read already returned;
+  answer from an index, a listing, or a parsed footer instead of asking again;
+  record what a write already knows rather than reading it back; and make a
+  call conditional when the state already says it would change nothing.
+- An answer only the store can give about one resource - a member's data
+  offset, a footer's length - is read once and held where every handle on that
+  resource shares it, never once per handle. A wrapper that keeps its own copy
+  of the same answer is the bug that hides the call.
+- State each surface's cost model in call counts and assert it. A test pinning
+  "a warm positional read is one handle read" catches a regression that a
+  timing benchmark reports as noise, so a surface owning the handle it calls
+  exposes the counter that test reads.
+- `holder::counted::Counted` is how that is checked rather than argued: it
+  wraps a handle, forwards every call unchanged, and tallies it by name, so a
+  derived operation's cost is an exact number rather than a claim. Every
+  derived surface pins its count in `rust/tests/iobase_calls.rs` and reports it
+  in the `holder` benchmark, beside the timing; the S3 backend's `Stats` then
+  counts the requests one such call becomes. Adding a call to a derived path
+  means changing the assertion that names it, which is the review this rule
+  exists to force.
 - Every derived read and append names the core type it answers, because the
   same verbs also address rows: `read_all_bytes`, `read_range_bytes`,
   `write_all_bytes`, `append_bytes`, `read_scalar`, `read_arrow_reader`. A bare
@@ -417,7 +452,9 @@ Iceberg contract:
 - Parallel scans honor configured thresholds/width and emit plan order. The
   sequential and parallel paths differ only in speed.
 - Validate exchange formats both directions against an outside implementation;
-  a skipped half is not a pass.
+  a skipped half is not a pass. A wire protocol counts too: a hand-written
+  fake store is written from the same reading of the API as the client, so the
+  two can agree and both be wrong.
 
 ## Datatypes, fields, parsers, and errors
 
@@ -442,8 +479,10 @@ Iceberg contract:
   offsets. Bindings never split identifiers.
 - Parse credentials by splitting authority user info at the first `:` only, so
   passwords may contain `:`. S3 authority inference treats the first path part
-  ending in `.com` or `.io` as a hostname; otherwise it is the bucket. Infer
-  region lazily from recognized AWS hosts.
+  ending in `.com` or `.io`, carrying a port, spelled as an IP literal, or named
+  `localhost` as a hostname; otherwise it is the bucket. `key` is the path below
+  the bucket as spelled, escapes and trailing slash retained. Infer region
+  lazily from recognized AWS hosts.
 - `DataType::scalar` is the one value contract: it checks a value against the
   datatype and rewrites it into the exact representation that datatype
   declares - an integer narrowed, a decimal restated at its scale, a temporal
@@ -648,6 +687,7 @@ checks:
 - Rust 1.85 default and `--no-default-features --lib` checks;
 - rustdoc with warnings denied;
 - relevant parser, codec, text, I/O, Arrow, and interop benchmarks;
+- the `IOBase` call-count assertions for every derived surface touched;
 - Python native/codec/parity tests and release boundary benchmarks;
 - Node native/codec/type/parity tests and release boundary benchmarks;
 - docs examples and `python -m mkdocs build --strict`;

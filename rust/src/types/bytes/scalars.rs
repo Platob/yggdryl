@@ -360,3 +360,28 @@ define_scalar_type!(
     "binary_view",
     crate::DataType::BinaryView
 );
+
+/// The byte payload a value spells, shared rather than copied.
+///
+/// A byte column stores one payload per row and several kinds already hold
+/// one: the four binary layouts and a geospatial value share an `Arc<[u8]>`,
+/// and a UUID is its sixteen canonical bytes. An ASCII value at a declared
+/// width spells that many bytes, NUL-padded, because that is the payload the
+/// fixed column stores - the value keeps only the trimmed text - and every
+/// other value that spells text spells that text's bytes.
+pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Arc<[u8]>> {
+    match value {
+        Scalar::Bytes(bytes) => Some(Arc::clone(bytes.storage())),
+        Scalar::Geospatial(geospatial) => Some(Arc::clone(geospatial.storage())),
+        Scalar::Uuid(uuid) => Some(Arc::from(uuid.into_bytes().as_slice())),
+        Scalar::Ascii(ascii) => {
+            let Some(width) = ascii.dtype().ok().and_then(|dtype| dtype.ascii_width()) else {
+                return Some(Arc::from(ascii.as_str().as_bytes()));
+            };
+            let mut padded = vec![0_u8; usize::try_from(width).ok()?];
+            crate::types::ascii_padded(&mut padded, ascii.as_str());
+            Some(Arc::from(padded))
+        }
+        _ => value.as_str().map(|text| Arc::from(text.as_bytes())),
+    }
+}

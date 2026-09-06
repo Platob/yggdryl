@@ -5,7 +5,7 @@ ordinary :class:`yggdryl.Field`, so metadata, Arrow caching, equality, and
 dataclass schemas continue to have one native implementation.
 """
 
-from .._native import AsciiEnum, DataType, Field, ProtocolField, Timezone
+from .._native import ArrowCastPlan, AsciiEnum, DataType, Field, ProtocolField, Timezone
 from . import scalar as scalar
 from ._classes import field
 from ._typing import TypedDataType, TypedField
@@ -137,6 +137,7 @@ from .temporal import (
 from .version import VersionField, version
 
 __all__ = [
+    "ArrowCastPlan",
     "AsciiEnum",
     "DataType",
     "Field",

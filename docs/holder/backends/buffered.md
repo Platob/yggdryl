@@ -420,7 +420,7 @@ let _ = std::fs::remove_file(&path);
 - Bytes written behind the cache -> invisible; `handle_mut` and `clear_cache` drop every page first.
 - `Coded<Buffered<_>>` -> caches compressed bytes and still decodes on every read.
 - `handle.buffered(...)` in Python -> answers the cache and spends `handle`; the spent handle raises `ValueError: this handle was consumed by a conversion; use the handle it returned instead`.
-- `options` -> Rust only. Python inspects the cache with `cached_bytes`, `cached_pages`, and `has_cached_page`; JavaScript has no page inspection.
+- `options` -> Rust only as a value. Python reads the normalized settings off the handle (`page_size`, `max_bytes`, `ttl`, `page_index`, `page_start`) beside `cached_bytes`, `cached_pages`, and `has_cached_page`; JavaScript has no page inspection.
 
 ## Commands
 

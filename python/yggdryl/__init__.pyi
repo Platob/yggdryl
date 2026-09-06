@@ -1,10 +1,15 @@
 from ._native import (
+    DEFAULT_FETCH_BYTE_SIZE as DEFAULT_FETCH_BYTE_SIZE,
+    DEFAULT_STREAM_BATCH_SIZE as DEFAULT_STREAM_BATCH_SIZE,
+    IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
     ArrowValue as ArrowValue,
     __version__ as __version__,
     combined as combined,
+    refresh_logging as refresh_logging,
 )
 from .expression import (
     Bound as Bound,
+    Bounds as Bounds,
     BoundStatement as BoundStatement,
     Expression as Expression,
     Statement as Statement,
@@ -17,6 +22,7 @@ from .media import (
     TextOptions as TextOptions,
 )
 from .types import (
+    ArrowCastPlan as ArrowCastPlan,
     AsciiEnum as AsciiEnum,
     DataType as DataType,
     Field as Field,

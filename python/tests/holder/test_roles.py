@@ -23,6 +23,9 @@ from yggdryl.holder import (
     Buffer,
     Buffered,
     File,
+    S3File,
+    S3Folder,
+    S3Path,
     Folder,
     FsFile,
     FsFolder,
@@ -303,3 +306,90 @@ class TestTheCacheSurface:
         cached.clear_cache()
         assert cached.cached_pages == 0
         assert not cached.has_cached_page(0)
+
+
+class TestTheS3Roles:
+    """A bucket has the same three roles a disk does, and naming one is free.
+
+    None of this contacts a store: an S3 handle is described exactly as a
+    local one is, so every assertion here is about what the name alone says.
+    """
+
+    def test_each_role_commits_to_what_it_is(self) -> None:
+        assert isinstance(S3File("s3://trades/lake/part.parquet"), S3File)
+        assert isinstance(S3Folder("s3://trades/lake/"), S3Folder)
+        assert isinstance(S3Path("s3://trades/lake/part.parquet"), S3Path)
+
+        # A prefix always ends in the delimiter, whether or not one was written.
+        assert S3Folder("s3://trades/lake").name == "lake"
+        assert S3Folder("s3://trades/lake").is_dir()
+        # A leaf reports what its name says, without asking the store.
+        leaf = S3File("s3://trades/lake/part.parquet")
+        assert str(leaf.media_type) == "application/vnd.apache.parquet"
+        assert leaf.url is not None
+        assert leaf.url.bucket == "trades"
+        assert leaf.url.key == "lake/part.parquet"
+
+    def test_a_bucket_and_a_raw_key_name_an_object_a_url_cannot_spell(self) -> None:
+        # `a b/c.txt` is an ordinary key and not a URL, so the second argument
+        # takes the name a store uses and the escaping belongs to the handle.
+        handle = S3File("trades", "lake/a b/part.parquet")
+        assert handle.url is not None
+        assert str(handle.url) == "s3://trades/lake/a%20b/part.parquet"
+        assert handle.url.key == "lake/a%20b/part.parquet"
+
+        # The same name reaches the same object through the generic role.
+        assert str(S3Path("trades", "lake/a b/part.parquet").url) == str(handle.url)
+        assert str(S3Folder("trades", "lake/a b").url) == "s3://trades/lake/a%20b"
+
+    def test_an_s3_location_is_a_handle_like_any_other(self) -> None:
+        # The scheme is what selects the backend, so the ordinary constructor
+        # reaches the same storage; the record implementation the name
+        # declares still wraps it.
+        composed = IOBase("s3://trades/lake/part.parquet")
+        assert composed.url is not None
+        assert composed.url.scheme == "s3"
+        assert composed.partitions == ()
+
+        partitioned = IOBase("s3://trades/lake/year=2026/part.parquet")
+        assert partitioned.partitions == (("year", "2026"),)
+
+    def test_a_location_naming_no_bucket_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="naming a bucket"):
+            S3File("file:///tmp/part.parquet")
+
+    def test_options_are_read_in_whichever_vocabulary_they_are_written(self) -> None:
+        # A PyIceberg catalog's properties, handed over whole: what is not
+        # about a store is ignored, and nothing contacts one either way.
+        handle = S3File(
+            "s3://trades/lake/part.parquet",
+            options={
+                "warehouse": "s3://trades/lake",
+                "s3.endpoint": "http://localhost:9000",
+                "s3.access-key-id": "minioadmin",
+                "s3.secret-access-key": "minioadmin",
+                "s3.force-virtual-addressing": False,
+                "s3.request-timeout": 30,
+            },
+        )
+        assert str(handle.url) == "s3://trades/lake/part.parquet"
+
+        # PyArrow's argument names reach the same knobs, and a bucket and a
+        # raw key are named the same way with them.
+        prefix = S3Folder(
+            "trades",
+            "lake/a b",
+            options={"endpoint_override": "localhost:9000", "scheme": "http"},
+        )
+        assert str(prefix.url) == "s3://trades/lake/a%20b"
+
+        located = S3Path("s3://trades/lake/", options=None)
+        assert located.is_dir()
+
+    def test_an_option_that_will_not_parse_is_an_argument_error(self) -> None:
+        # Nothing is contacted, so every failure a constructor can report is
+        # about what it was handed.
+        with pytest.raises(ValueError, match="seconds"):
+            S3File("s3://trades/lake/part.parquet", options={"s3.request-timeout": "soon"})
+        with pytest.raises(ValueError, match="does not do"):
+            S3Folder("s3://trades/lake/", options={"s3.signer.uri": "https://signer"})

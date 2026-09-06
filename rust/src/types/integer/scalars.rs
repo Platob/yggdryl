@@ -879,3 +879,17 @@ const fn integer_kind_name(signed: bool, bits: u16) -> &'static str {
         _ => "integer",
     }
 }
+
+/// Read an integer out of its canonical spelling.
+///
+/// The spelling is the one every integer width prints, at the widest signed
+/// and unsigned storage this crate holds; the declared width then narrows it,
+/// so a magnitude the column cannot hold is refused by the width rather than
+/// wrapped here. Surrounding space is not part of the number.
+pub(crate) fn integer_from_text(text: &str) -> Option<Scalar> {
+    let text = text.trim();
+    text.parse::<i128>()
+        .ok()
+        .map(Scalar::from)
+        .or_else(|| text.parse::<u128>().ok().map(Scalar::from))
+}

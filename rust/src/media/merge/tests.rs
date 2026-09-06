@@ -149,6 +149,48 @@ fn a_matching_key_updates_the_row_it_names() {
 }
 
 #[test]
+fn a_key_resolves_the_way_every_other_name_resolves() {
+    // The layout validation folds case and the cast that shaped these rows
+    // matched their columns folded, so resolving the key exactly would refuse
+    // a spelling the layers around it already accepted.
+    let mut handle = handle("folded-key.arrows");
+    let options = handle
+        .record_options()
+        .unwrap()
+        .with_field(schema())
+        .with_merge_by_names(["ID"]);
+    handle
+        .merge_arrow_reader(
+            reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
+            &options,
+        )
+        .unwrap();
+    handle
+        .merge_arrow_reader(reader(vec![rows(vec![2], vec![Some("MSFT.O")])]), &options)
+        .unwrap();
+
+    assert_eq!(
+        stored(&handle, &options),
+        vec![(1, Some("AAPL".to_owned())), (2, Some("MSFT.O".to_owned()))]
+    );
+}
+
+#[test]
+fn a_key_naming_no_stored_column_is_still_refused() {
+    let mut handle = handle("absent-key.arrows");
+    let options = handle
+        .record_options()
+        .unwrap()
+        .with_field(schema())
+        .with_merge_by_names(["venue"]);
+    let error = handle
+        .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("venue"), "{error}");
+}
+
+#[test]
 fn a_key_that_matches_nothing_is_appended() {
     let mut handle = handle("append-key.arrows");
     let options = merging(&handle);

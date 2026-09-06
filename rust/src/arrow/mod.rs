@@ -666,6 +666,22 @@ impl arrow_array::RecordBatchReader for Cast {
     }
 }
 
+/// Return whether two schemas name the same columns, in the same order.
+///
+/// This is the question a stream asks of a batch that is not the shape it
+/// expected: same columns is a batch that reconciles - differing only in a
+/// nullable flag, an extension entry, or a storage width - and different
+/// columns is different data, which no reconciliation should invent its way
+/// past. Names fold the way every other lookup in the crate folds them.
+pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Schema) -> bool {
+    left.fields().len() == right.fields().len()
+        && left
+            .fields()
+            .iter()
+            .zip(right.fields())
+            .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
+}
+
 /// Return `reader`'s batches cast to `field`, one batch at a time.
 ///
 /// This is the cast half of a schema-directed read: the encoding has already
@@ -786,17 +802,12 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
         expected: SmolStr::new_static("a sequence of array values"),
         actual: SmolStr::new(values.kind()),
     })?;
-    let root = DataType::from_fields([field.clone()])?.required_field("row");
     let mut canonical = Vec::with_capacity(values.len());
     for value in values {
-        let row = Scalar::from_sequence([value.clone()]);
-        let row = root.canonicalize_value(row)?;
-        canonical.push(
-            row.as_sequence()
-                .and_then(|row| row.first())
-                .cloned()
-                .ok_or_else(|| Error::internal("arrow::array_from_value"))?,
-        );
+        // The field's own value contract, one value at a time: a synthetic row
+        // around each element would allocate a sequence per value and answer
+        // the same thing.
+        canonical.push(field.scalar(value.clone())?);
     }
     let borrowed = canonical.iter().collect::<Vec<_>>();
     value::array_from_values(field, &borrowed)

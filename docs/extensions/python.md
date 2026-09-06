@@ -21,6 +21,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
 | `xxhash` | [xxHash](../xxhash/index.md) |
+| `refresh_logging` | this page |
 
 ## Use
 
@@ -1103,6 +1104,63 @@ assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_has
 A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window ([xxHash](../xxhash/index.md)).
 
 Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
+
+## Watching what the core does
+
+The native core reports its work through `logging`, under this package's own logger. A record's name is the Rust module path it came from, so `yggdryl.media.iceberg.table` and its siblings all hang off `yggdryl` and one `setLevel` is the whole switch.
+
+Debug is an operation starting; info is one done, carrying the counts a monitor watches. Nothing is reported per row, per batch, or per file: a commit is the unit, so ten times the rows is the same handful of records. A dependency of the build reaches `logging` only at warning and above, so enabling debug narrates this project and nothing else.
+
+```python
+import logging
+import tempfile
+from pathlib import Path
+
+import pyarrow as pa
+
+from yggdryl import IOBase, refresh_logging
+from yggdryl.media.iceberg import Table, assign_field_ids
+
+records: list[logging.LogRecord] = []
+
+
+class Collect(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        records.append(record)
+
+
+watcher = logging.getLogger("yggdryl")
+watcher.addHandler(Collect())
+watcher.setLevel(logging.INFO)
+# The bridge caches each logger's effective level, so a level set after import
+# reaches it through this call.
+refresh_logging()
+
+schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+with tempfile.TemporaryDirectory() as folder:
+    table = Table.create(IOBase(Path(folder) / "trades"), assign_field_ids(schema))
+    table.append(pa.record_batch({"id": [1, 2, 3]}, schema=schema))
+    assert sum(batch.num_rows for batch in table.scan()) == 3
+
+said = [record.getMessage() for record in records]
+assert any(message.startswith("created iceberg table at") for message in said)
+assert any("wrote 3 rows as" in message for message in said)
+assert any("data files to open" in message for message in said)
+assert all(record.name.startswith("yggdryl") for record in records)
+```
+
+| Reported | Level | Carries |
+| --- | --- | --- |
+| a table created | info | location, format version, column count |
+| a table opened | debug | location, metadata version |
+| a scan planned | debug then info | manifests walked; files to open, files the filters excluded, manifests read and skipped |
+| a snapshot written | debug then info | operation and snapshot id; rows, data files, bytes |
+| a commit landed | info | metadata version and snapshot id |
+| a commit beaten | debug | the version that won, the retry count, the wait |
+| a compaction | debug then info | files and bytes rewritten, files produced |
+| a schema evolved | info | the new schema id |
+| snapshots expired | info | how many |
+| an Arrow write session | debug then info | cadences published |
 
 ## FIX registry at the boundary
 

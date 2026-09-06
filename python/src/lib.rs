@@ -1,6 +1,7 @@
 //! Thin native Python views over Yggdryl core values.
 
 use std::cmp::Ordering;
+use std::sync::OnceLock;
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyValueError;
@@ -267,12 +268,43 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
     listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
+    listing.set_item("io_write_modes", IOMode::WRITE.map(IOMode::as_str).to_vec())?;
+    listing.set_item(
+        "leading_fragments",
+        yggdryl::media::text::LeadingFragment::ALL
+            .map(yggdryl::media::text::LeadingFragment::as_str)
+            .to_vec(),
+    )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
     listing.set_item(
         "digest_algorithms",
         DigestAlgorithm::ALL.map(DigestAlgorithm::as_str).to_vec(),
     )?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
+    listing.set_item(
+        "edge_algorithms",
+        yggdryl::EdgeAlgorithm::ALL
+            .map(yggdryl::EdgeAlgorithm::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "formats",
+        yggdryl::text::Format::ALL
+            .map(yggdryl::text::Format::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "nullabilities",
+        yggdryl::Nullability::ALL
+            .map(yggdryl::Nullability::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "representations",
+        yggdryl::Representation::ALL
+            .map(yggdryl::Representation::as_str)
+            .to_vec(),
+    )?;
     listing.set_item(
         "compatibility_schemes",
         Scheme::COMPATIBILITY_TARGETS
@@ -293,8 +325,43 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     Ok(listing.into())
 }
 
+/// The bridge that carries the core's `log` records into Python `logging`.
+///
+/// Held because `pyo3-log` caches each Python logger's effective level, and a
+/// caller that changes a level after import needs that cache dropped.
+static LOGGING: OnceLock<pyo3_log::ResetHandle> = OnceLock::new();
+
+/// Drop the cached Python log levels, so a level changed after import applies.
+///
+/// `logging.getLogger("yggdryl").setLevel(...)` before the first record needs
+/// nothing; changing a level once records have flowed needs this.
+#[pyfunction]
+fn refresh_logging() {
+    if let Some(handle) = LOGGING.get() {
+        handle.reset();
+    }
+}
+
 #[pymodule]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    // Records travel under the Rust module path, so a core record from
+    // `yggdryl::media::iceberg::table` reaches `logging` as
+    // `yggdryl.media.iceberg.table` and the package's own logger is its root.
+    //
+    // The bridge is global, so every crate in the build would otherwise reach
+    // Python: the Avro reader alone narrates a schema parse per manifest, and
+    // that is the flood a caller enabling debug does not want. Only this
+    // project's own targets pass below `warn`, so a dependency still surfaces
+    // what went wrong and never what it did. `install` rather than `init`
+    // because an embedder may have installed a logger already, and an
+    // extension has no business replacing it.
+    let bridge = pyo3_log::Logger::default()
+        .filter(log::LevelFilter::Warn)
+        .filter_target("yggdryl".to_owned(), log::LevelFilter::Trace)
+        .install();
+    if let Ok(handle) = bridge {
+        let _ = LOGGING.set(handle);
+    }
     register_classes(module)?;
     register_functions(module)?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -303,6 +370,19 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
     module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
     module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
+    // The reserved Arrow schema metadata key that carries per-field dictionary
+    // IDs across the C Data Interface, which has no slot for them.
+    module.add(
+        "IPC_DICTIONARY_IDS_KEY",
+        yggdryl::arrow::IPC_DICTIONARY_IDS_KEY,
+    )?;
+    // The two byte-stream sizes every streamed read is shaped by: what one
+    // chunk hands out, and what one transport fetch asks the store for.
+    module.add(
+        "DEFAULT_STREAM_BATCH_SIZE",
+        yggdryl::DEFAULT_STREAM_BATCH_SIZE,
+    )?;
+    module.add("DEFAULT_FETCH_BYTE_SIZE", yggdryl::DEFAULT_FETCH_BYTE_SIZE)?;
     Ok(())
 }
 
@@ -323,11 +403,22 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<expression::PyBound>()?;
     module.add_class::<expression::PyStatement>()?;
     module.add_class::<expression::PyBoundStatement>()?;
+    module.add_class::<expression::PyBounds>()?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_needs_quoting,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_vocabularies,
+        module
+    )?)?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<types::cast::PyArrowCastPlan>()?;
+    module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
@@ -374,12 +465,14 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PySnapshot>()?;
     module.add_class::<media::iceberg::PyManifestFile>()?;
     module.add_class::<media::iceberg::PyDataFile>()?;
+    media::partition::register(module)?;
     xxhash::register(module)?;
     Ok(())
 }
 
 /// Register the native free functions.
 fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(refresh_logging, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zlib_loads, module)?)?;

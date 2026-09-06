@@ -171,12 +171,22 @@ mod widths {
     #[test]
     fn a_value_that_is_not_bytes_is_reported_and_not_silently_dropped() {
         // Reading through `as_bytes` alone turned every other kind into a
-        // null, so a string written into a binary column simply vanished.
+        // null, so a value written into a binary column simply vanished.
         let field = Field::new("payload", DataType::Binary, true);
-        let error = scalar_array(&field, &Scalar::from("AAPL")).unwrap_err();
-        let message = error.to_string();
-        assert!(message.contains("binary"), "{message}");
-        assert!(!message.is_empty());
+
+        // A string spells a payload, and the column stores those bytes - the
+        // same reading a text column takes into a binary one.
+        let stored = scalar_array(&field, &Scalar::from("AAPL")).unwrap();
+        assert_eq!(
+            crate::arrow::scalar_value(&field, stored.as_ref()).unwrap(),
+            Scalar::from(b"AAPL".to_vec())
+        );
+
+        // A value with no byte spelling is named rather than dropped.
+        let error = scalar_array(&field, &Scalar::from_sequence([Scalar::from(1_i64)]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("binary"), "{error}");
     }
 }
 

@@ -9,13 +9,14 @@ answer here cannot be self-consistent.
 from __future__ import annotations
 
 import copy
+import io
 import pickle
 
 import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import Scalar, xxhash
+from yggdryl import Field, Scalar, xxhash
 from yggdryl.enums import DIGEST_ALGORITHMS
 
 xxhash_c = pytest.importorskip(
@@ -423,3 +424,161 @@ class TestHandles:
         handle = yggdryl.IOBase(tmp_path)
         with pytest.raises(ValueError, match="directory"):
             handle.read_digest()
+
+
+def test_an_algorithm_answers_its_width_and_what_it_accepts() -> None:
+    assert xxhash.width("xxh32") == 4
+    assert xxhash.width("xxh64") == 8
+    assert xxhash.width("xxh3-64") == 8
+    assert xxhash.width("xxh3-128") == 16
+    assert xxhash.bits("xxh3-128") == 128
+    assert xxhash.bits("xxh32") == 32
+
+    # Only the XXH3 pair takes a custom secret; every algorithm takes a seed.
+    assert xxhash.is_secretable("xxh3-64")
+    assert xxhash.is_secretable("xxh3-128")
+    assert not xxhash.is_secretable("xxh32")
+    assert not xxhash.is_secretable("xxh64")
+    assert all(xxhash.is_seedable(name) for name in DIGEST_ALGORITHMS)
+
+    with pytest.raises(ValueError):
+        xxhash.width("md5")
+
+
+def test_a_digester_is_the_state_an_algorithm_token_selects() -> None:
+    state = xxhash.Digester("xxh3-64")
+    state.write_bytes(b"AAPL,187.23")
+
+    assert state.algorithm == "xxh3-64"
+    assert state.as_int() == xxhash.xxh3(b"AAPL,187.23")
+    assert state.as_digest() == xxhash.digest(b"AAPL,187.23", "xxh3-64")
+
+    # Answering never consumes it, and clear returns to the constructed seed.
+    assert state.as_digest() == state.as_digest()
+    state.clear()
+    state.write_bytes(b"AAPL,187.23")
+    assert state.as_int() == xxhash.xxh3(b"AAPL,187.23")
+
+    seeded = xxhash.Digester("xxh64", seed=7)
+    seeded.write_bytes(b"AAPL")
+    assert seeded.as_int() == xxhash.xxh64(b"AAPL", 7)
+
+    # A seed is one shape for four algorithms, so XXH32 uses its low half.
+    narrow = xxhash.Digester("xxh32", seed=7)
+    narrow.write_bytes(b"AAPL")
+    assert narrow.as_int() == xxhash.xxh32(b"AAPL", 7)
+
+    for algorithm in DIGEST_ALGORITHMS:
+        assert xxhash.Digester(algorithm).algorithm == algorithm
+    # An alias resolves to the canonical token the state answers with.
+    assert xxhash.Digester("xxh128").algorithm == "xxh3-128"
+    with pytest.raises(ValueError):
+        xxhash.Digester("md5")
+
+
+def test_a_state_feeds_a_stream_without_holding_it() -> None:
+    payload = b"symbol,price\nAAPL,187.23\n" * 500
+
+    state = xxhash.Xxh3()
+    assert state.write_reader(io.BytesIO(payload)) == len(payload)
+    assert state.as_int() == xxhash.xxh3(payload)
+    assert state.as_digest() == xxhash.digest(payload, "xxh3-64")
+
+    dispatched = xxhash.Digester("xxh64")
+    assert dispatched.write_reader(io.BytesIO(payload)) == len(payload)
+    assert dispatched.as_int() == xxhash.xxh64(payload)
+
+    # Feeding continues where the last feed stopped.
+    resumed = xxhash.Xxh64()
+    resumed.write_reader(io.BytesIO(b"symbol"))
+    resumed.write_reader(io.BytesIO(b",price"))
+    assert resumed.as_int() == xxhash.xxh64(b"symbol,price")
+
+    for state, one_shot in (
+        (xxhash.Xxh32(), xxhash.xxh32),
+        (xxhash.Xxh64(), xxhash.xxh64),
+        (xxhash.Xxh3(), xxhash.xxh3),
+        (xxhash.Xxh128(), xxhash.xxh128),
+    ):
+        state.write_reader(io.BytesIO(b"AAPL"))
+        assert state.as_int() == one_shot(b"AAPL")
+
+    # A reader whose failure is Python's is raised as itself.
+    class Broken:
+        def read(self, size: int = -1) -> bytes:
+            raise OSError("device is gone")
+
+    with pytest.raises(OSError, match="device is gone"):
+        xxhash.Xxh3().write_reader(Broken())
+
+
+def test_arrow_row_and_column_digests_answer_the_algorithm_width() -> None:
+    batch = pa.record_batch(
+        {"id": pa.array([1, 2], pa.int64()), "symbol": pa.array(["AAPL", "MSFT"])}
+    )
+
+    rows = xxhash.row_digests(batch, "xxh3-64")
+    assert rows.type == pa.uint64()
+    assert len(rows) == batch.num_rows
+    assert rows[0].as_py() != rows[1].as_py()
+    assert xxhash.row_digests(batch, "xxh32").type == pa.uint32()
+    assert xxhash.row_digests(batch, "xxh3-128").type == pa.binary(16)
+
+    # A row is its columns framed as a sequence, so a state fed the same way
+    # answers the same digest.
+    state = xxhash.Xxh3()
+    state.write_scalar(Scalar.from_py([1, "AAPL"]))
+    assert rows[0].as_py() == state.as_int()
+
+    columns = xxhash.column_digests(batch.column("symbol"), Field("symbol", "utf8"), "xxh3-64")
+    assert columns.type == pa.uint64()
+    assert columns[0].as_py() == Scalar.from_py("AAPL").digest("xxh3-64").__int__()
+
+    # A column carries no row framing, so it never equals the row digest.
+    assert columns[0].as_py() != rows[0].as_py()
+
+    # A null feeds the null tag, so it never collides with an empty string.
+    sparse = pa.array([None, ""], pa.string())
+    answers = xxhash.column_digests(sparse, Field("symbol", "utf8"), "xxh3-64")
+    assert answers[0].as_py() != answers[1].as_py()
+
+
+def test_the_digest_view_carries_the_holder_vocabulary_it_declares() -> None:
+    field = Field("checksum", "uint64")
+
+    assert not field.digest.is_holder()
+    field.digest.set_holder()
+    assert field.digest.is_holder()
+
+    field.digest.algorithm = "xxh3-64"
+    assert field.digest.algorithm == "xxh3-64"
+    field.digest.sources = ["id", "symbol"]
+    assert field.digest.sources == ["id", "symbol"]
+
+    assert field.digest.remove_sources() is not None
+    assert field.digest.sources is None
+    assert field.digest.remove_algorithm() == "xxh3-64"
+    assert field.digest.algorithm is None
+    assert field.digest.remove_role() == "holder"
+    assert not field.digest.is_holder()
+
+    # The two invariants the stored form cannot express: a holder role, and a
+    # datatype the algorithm's exact width fits.
+    with pytest.raises(ValueError):
+        Field("checksum", "uint64").digest.algorithm = "xxh3-64"
+    narrow = Field("checksum", "uint32")
+    narrow.digest.set_holder()
+    with pytest.raises(ValueError):
+        narrow.digest.algorithm = "xxh128"
+
+    # The vocabulary belongs to the digest view alone.
+    with pytest.raises(TypeError):
+        field.fix.is_holder()
+    with pytest.raises(TypeError):
+        field.http.remove_role()
+    # `sources` is the one property both declaring protocols answer.
+    partitioned = Field("year", "int32")
+    partitioned.partition.sources = ["timestamp"]
+    assert partitioned.partition.sources == ["timestamp"]
+    with pytest.raises(TypeError):
+        field.http.sources

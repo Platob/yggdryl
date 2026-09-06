@@ -95,6 +95,7 @@ use crate::arrow::{
     BatchReader, Error, Result, field_from_arrow_schema, from_reader_error, projection_indices,
 };
 use crate::media::{IORecordOptions, RecordOptions};
+use crate::types::cast::ArrowCast as _;
 use crate::{Error as CoreError, Field};
 
 mod geospatial;
@@ -475,19 +476,39 @@ where
     }
     let mut writer =
         ArrowWriter::try_new_with_options(&mut encoded, Arc::clone(&schema), writer_options)?;
+    // Arrow schema equality includes nullability and metadata, so comparing
+    // would refuse a batch differing from the writer's only in a nullable flag
+    // that holds no null, an `ARROW:extension:name`, or a schema-level entry -
+    // all of which are the same rows. A batch naming the same columns is
+    // reconciled instead, strictly; one naming different columns is different
+    // data and is still refused, because a cast would invent the columns it is
+    // missing. The plan is built once, and an exact batch never reaches it.
+    let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;
-        if batch.schema() != schema {
-            return Err(Error::SchemaMismatch {
-                index: Some(index),
-                path: smol_str::SmolStr::new_static("$"),
-                diff: format!(
-                    "\u{2260} batch {index} schema does not match the declared root\n  \u{2212} {}\n  + {}",
-                    crate::text::elide_display(&schema),
-                    crate::text::elide_display(&batch.schema())
-                ),
-            });
-        }
+        let stored = batch.schema();
+        let mismatch = |reason: &dyn std::fmt::Display| Error::SchemaMismatch {
+            index: Some(index),
+            path: smol_str::SmolStr::new_static("$"),
+            diff: format!(
+                "\u{2260} batch {index} {reason}\n  \u{2212} {}\n  + {}",
+                crate::text::elide_display(&schema),
+                crate::text::elide_display(&stored)
+            ),
+        };
+        let batch = if Arc::ptr_eq(&stored, &schema) {
+            batch
+        } else if crate::arrow::same_columns(&schema, &stored) {
+            root.cast_arrow_batch(
+                batch,
+                crate::ArrowCastOptions::new()
+                    .with_safe(false)
+                    .with_nullability(crate::Nullability::Strict),
+            )
+            .map_err(|error| mismatch(&error))?
+        } else {
+            return Err(mismatch(&"names different columns than the written root"));
+        };
         writer.write(&batch)?;
     }
     writer.close()?;

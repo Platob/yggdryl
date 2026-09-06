@@ -342,6 +342,32 @@ impl Read for Reader<'_> {
         self.offset += read as u64;
         Ok(read)
     }
+
+    /// Take the whole remainder in one call rather than in a ladder of them.
+    ///
+    /// [`Read::read_to_end`] grows its buffer by doubling and asks for what
+    /// fits each time, so draining a value costs a call per doubling - on a
+    /// store, a round trip per doubling, which for a four-megabyte object is
+    /// seventeen of them. The handle answers the remainder in one.
+    fn read_to_end(&mut self, into: &mut Vec<u8>) -> std::io::Result<usize> {
+        let rest = rest_of(self.source, self.offset)?;
+        self.offset += rest.len() as u64;
+        let read = rest.len();
+        into.extend_from_slice(&rest);
+        Ok(read)
+    }
+}
+
+/// Everything `source` holds from `offset`, in one call to it.
+pub(crate) fn rest_of(source: &dyn IOBase, offset: u64) -> std::io::Result<Vec<u8>> {
+    let rest = if offset == 0 {
+        source.read_all_bytes()
+    } else {
+        // Every implementation clamps a window to what is there, so asking
+        // for the largest one asks for the remainder.
+        source.read_range_bytes(offset, usize::MAX)
+    };
+    rest.map_err(std::io::Error::other)
 }
 
 /// A streaming writer over an [`IOBase`], advancing its own offset.

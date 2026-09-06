@@ -44,7 +44,8 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyType,
+    PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyTuple,
+    PyType,
 };
 
 use yggdryl::arrow::BatchReader;
@@ -53,6 +54,7 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
+use crate::expression::PyExpression;
 use crate::types::datatype::{PyDataType, core_dtype_from_value};
 use crate::types::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::types::timezone::{PyTimezone, core_timezone_from_value};
@@ -1643,6 +1645,120 @@ impl PyRecordOptions {
             .map_err(value_error)
     }
 
+    /// Shape one `PyArrow` `RecordBatch` through these options.
+    ///
+    /// The three layers run in order: the declared field says what the rows
+    /// are meant to be, `select_by_names` narrows and orders the columns, and
+    /// `existing` - a stored root - completes the result against what the
+    /// resource already holds. A layer whose target already matches costs
+    /// nothing.
+    ///
+    /// A field shapes rows by applying, not by casting: a declaration is a
+    /// cast *and* the `partition:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection in between only
+    /// narrows, because deriving there would restore what it was asked to
+    /// drop.
+    #[pyo3(signature = (batch, existing = None))]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+        existing: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let existing = existing.map(core_field_from_value).transpose()?;
+        let batch = RecordBatch::from_pyarrow_bound(batch)?;
+        let cast = self
+            .inner
+            .apply_arrow_batch(batch, existing.as_ref())
+            .map_err(value_error)?;
+        cast.into_pyarrow(py)
+    }
+
+    /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
+    ///
+    /// Streamed: nothing is collected, each batch is shaped as it is pulled.
+    #[pyo3(signature = (reader, existing = None))]
+    fn apply_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        reader: &Bound<'py, PyAny>,
+        existing: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let existing = existing.map(core_field_from_value).transpose()?;
+        let reader = batch_reader_from_arrow_reader(reader)?;
+        let cast = self
+            .inner
+            .apply_arrow_reader(reader, existing.as_ref())
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, cast)
+    }
+
+    /// Bound a reader by `max_row_size` and `max_byte_size`.
+    ///
+    /// This is the last transform of the shaping pipeline, so the limit counts
+    /// result rows rather than rows an earlier layer dropped. The wrapper
+    /// holds at most one batch and stops pulling the moment it is satisfied,
+    /// so the rest of the source is never decoded.
+    fn limit_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        reader: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = batch_reader_from_arrow_reader(reader)?;
+        let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
+        batch_reader_to_pyarrow(py, limited)
+    }
+
+    /// The expression `filter_partitions` spells about a path.
+    ///
+    /// This is what prunes a listing before anything is opened, because it
+    /// reads the partition values a location's own path carries.
+    #[getter]
+    fn partition_filter(&self) -> PyExpression {
+        PyExpression::from_core(self.inner.partition_filter())
+    }
+
+    /// The row-side counterpart, read through a schema's own datatypes.
+    ///
+    /// The same pairs become typed comparisons - `("price", "20")` is an
+    /// integer comparison on an `int32` column - so a residual filter runs
+    /// against rows rather than against text.
+    fn partition_predicate(&self, field: &Bound<'_, PyAny>) -> PyResult<PyExpression> {
+        let field = core_field_from_value(field)?;
+        Ok(PyExpression::from_core(
+            self.inner.partition_predicate(&field),
+        ))
+    }
+
+    /// The declared field, or a `ValueError` naming the builders that set one.
+    ///
+    /// Every write calls this, because a datatype is the one part with no
+    /// default.
+    fn require_field(&self) -> PyResult<PyField> {
+        self.inner
+            .require_field()
+            .map(PyField::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Remove and answer the declared field, keeping the root name.
+    ///
+    /// A write combinator uses this after casting a stream, so the delegated
+    /// overwrite cannot cast the same rows a second time.
+    fn remove_field(&mut self) -> PyResult<Option<PyField>> {
+        self.require_mutable()?;
+        Ok(self.inner.take_field().map(PyField::from_inner))
+    }
+
+    /// The row bound a native-record write materializes in one batch.
+    ///
+    /// The smaller of `batch_row_size` and `commit_row_size`, so a conversion
+    /// failure at row N+1 cannot erase a complete N-row commit.
+    #[getter]
+    fn write_batch_row_size(&self) -> Option<usize> {
+        self.inner.write_batch_row_size()
+    }
+
     /// Return the deterministic hash of the complete native configuration.
     fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
@@ -2048,6 +2164,129 @@ impl PyTextOptions {
         self.inner
             .set_timezone(value.map(core_timezone_from_value).transpose()?);
         Ok(())
+    }
+
+    /// Shape one `PyArrow` `RecordBatch` through these options.
+    ///
+    /// The three layers run in order: the declared field says what the rows
+    /// are meant to be, `select_by_names` narrows and orders the columns, and
+    /// `existing` - a stored root - completes the result against what the
+    /// resource already holds. A layer whose target already matches costs
+    /// nothing.
+    ///
+    /// A field shapes rows by applying, not by casting: a declaration is a
+    /// cast *and* the `partition:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection in between only
+    /// narrows, because deriving there would restore what it was asked to
+    /// drop.
+    #[pyo3(signature = (batch, existing = None))]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+        existing: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let existing = existing.map(core_field_from_value).transpose()?;
+        let batch = RecordBatch::from_pyarrow_bound(batch)?;
+        let cast = self
+            .inner
+            .apply_arrow_batch(batch, existing.as_ref())
+            .map_err(value_error)?;
+        cast.into_pyarrow(py)
+    }
+
+    /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
+    ///
+    /// Streamed: nothing is collected, each batch is shaped as it is pulled.
+    #[pyo3(signature = (reader, existing = None))]
+    fn apply_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        reader: &Bound<'py, PyAny>,
+        existing: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let existing = existing.map(core_field_from_value).transpose()?;
+        let reader = batch_reader_from_arrow_reader(reader)?;
+        let cast = self
+            .inner
+            .apply_arrow_reader(reader, existing.as_ref())
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, cast)
+    }
+
+    /// Bound a reader by `max_row_size` and `max_byte_size`.
+    ///
+    /// This is the last transform of the shaping pipeline, so the limit counts
+    /// result rows rather than rows an earlier layer dropped. The wrapper
+    /// holds at most one batch and stops pulling the moment it is satisfied,
+    /// so the rest of the source is never decoded.
+    fn limit_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        reader: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = batch_reader_from_arrow_reader(reader)?;
+        let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
+        batch_reader_to_pyarrow(py, limited)
+    }
+
+    /// The expression `filter_partitions` spells about a path.
+    ///
+    /// This is what prunes a listing before anything is opened, because it
+    /// reads the partition values a location's own path carries.
+    #[getter]
+    fn partition_filter(&self) -> PyExpression {
+        PyExpression::from_core(self.inner.partition_filter())
+    }
+
+    /// The row-side counterpart, read through a schema's own datatypes.
+    ///
+    /// The same pairs become typed comparisons - `("price", "20")` is an
+    /// integer comparison on an `int32` column - so a residual filter runs
+    /// against rows rather than against text.
+    fn partition_predicate(&self, field: &Bound<'_, PyAny>) -> PyResult<PyExpression> {
+        let field = core_field_from_value(field)?;
+        Ok(PyExpression::from_core(
+            self.inner.partition_predicate(&field),
+        ))
+    }
+
+    /// The declared field, or a `ValueError` naming the builders that set one.
+    ///
+    /// Every write calls this, because a datatype is the one part with no
+    /// default.
+    fn require_field(&self) -> PyResult<PyField> {
+        self.inner
+            .require_field()
+            .map(PyField::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Remove and answer the declared field, keeping the root name.
+    ///
+    /// A write combinator uses this after casting a stream, so the delegated
+    /// overwrite cannot cast the same rows a second time.
+    fn remove_field(&mut self) -> PyResult<Option<PyField>> {
+        self.require_mutable()?;
+        Ok(self.inner.take_field().map(PyField::from_inner))
+    }
+
+    /// The row bound a native-record write materializes in one batch.
+    ///
+    /// The smaller of `batch_row_size` and `commit_row_size`, so a conversion
+    /// failure at row N+1 cannot erase a complete N-row commit.
+    #[getter]
+    fn write_batch_row_size(&self) -> Option<usize> {
+        self.inner.write_batch_row_size()
+    }
+
+    /// The columns the compiled `rowheader` captures, in order.
+    ///
+    /// These are the fields a read produces between `url`/`rownum` and
+    /// `body`, so the full source field is known before any read runs.
+    #[getter]
+    fn capture_names<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.inner.capture_names())
     }
 
     fn stable_hash(&self) -> u64 {

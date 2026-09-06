@@ -67,6 +67,7 @@ mod lifecycle;
 #[cfg(feature = "arrow")]
 mod transfer;
 
+pub(crate) use bytes::rest_of;
 pub use bytes::{Reader, Writer};
 pub(crate) use hierarchy::container_is_tabular;
 use hierarchy::{descend, no_children};
