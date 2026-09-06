@@ -160,6 +160,62 @@ jobs:
       - name: Exchange objects with MinIO and boto3
         run: python scripts/check_s3_interop.py
 
+  zip-interop:
+    # The ZIP exchange with Python's `zipfile`, from the standard library.
+    #
+    # `rust/tests/interop/zip.rs` is not feature-gated, so every Rust lane
+    # already runs it - and its three reading tests report `ok` having
+    # asserted nothing, because the archive `zipfile` writes is not there and
+    # the halves print `SKIPPED` and return. Only this driver produces that
+    # archive, and only it fails on the word. Until this job existed, the
+    # reading side of the ZIP backend had never once executed under CI.
+    name: ZIP exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      # The driver builds the `interop` target on default features, which is
+      # what the default lane warms.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-default
+          save-if: false
+      - name: Exchange archives with zipfile
+        run: python scripts/check_zip_interop.py
+
+  avro-interop:
+    # The Avro exchange with fastavro, and - when the probe builds - with the
+    # `apache-avro` crate. Same shape as the ZIP job and the same reason:
+    # `rust/tests/interop/avro.rs` is ungated, so its reading half has been
+    # reporting `ok` in every lane while skipping for want of the container
+    # fastavro writes. The driver writes it and refuses the skip.
+    #
+    # fastavro is a checking tool of the script, never a dependency of the
+    # crate; the `apache-avro` probe is a scratch project the script writes
+    # outside the workspace, and a build failure there is reported and
+    # tolerated rather than failing the job.
+    name: Avro exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-default
+          save-if: false
+      - name: Install the reference implementation
+        run: python -m pip install fastavro
+      - name: Exchange containers with fastavro
+        run: python scripts/check_avro_interop.py
+
   python:
     name: Python binding (${{ matrix.pyarrow }})
     needs: python-wheel
