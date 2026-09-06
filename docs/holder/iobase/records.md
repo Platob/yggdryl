@@ -16,6 +16,7 @@ One Arrow batch read and three explicit write intents on every handle.
 | Lazy | reads stream batches; append chains stored then incoming; merge indexes only the stored side |
 | Feature flag | `arrow` (default): IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
 | Settings | one [RecordOptions](../../media/options.md) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
+| Shape-free | `read_arrow_value` / `write_arrow_value` answer an [ArrowValue](../../arrow/values.md) whatever the handle holds, structured text documents included |
 
 ## Use
 

@@ -10,11 +10,12 @@ reported per row, per batch, or per file. A level changed after import reaches
 the bridge through `refresh_logging`.
 """
 
-from . import coding, enums, expression, fix, holder, media, text, types, uri, xxhash
+from . import arrow, coding, enums, expression, fix, holder, media, text, types, uri, xxhash
 from ._native import (
     DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE,
     IPC_DICTIONARY_IDS_KEY,
+    ArrowValue,
     __version__,
     combined,
     refresh_logging,
@@ -37,6 +38,7 @@ from .uri import Parameters, Uri, Url, Urn
 
 __all__ = [
     "ArrowCastPlan",
+    "ArrowValue",
     "AsciiEnum",
     "Bound",
     "Bounds",
@@ -59,6 +61,7 @@ __all__ = [
     "Url",
     "Urn",
     "__version__",
+    "arrow",
     "coding",
     "DEFAULT_FETCH_BYTE_SIZE",
     "DEFAULT_STREAM_BATCH_SIZE",

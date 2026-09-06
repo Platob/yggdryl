@@ -11,6 +11,7 @@ Whole-value byte conveniences, digests, structured JSON, YAML, and TOML scalars,
 | Copy | `copy_into`, `copyInto` in JavaScript | chunked, so neither side is buffered whole; carries the media type across |
 | Digests | `read_digest`, `read_range_digest` | stream [`pstream_bytes`](bytes.md) and retain one bounded chunk |
 | Structured | `read_scalar`, `write_scalar` | the media type selects JSON, YAML, or TOML and any outer gzip, zlib, or zstd coding |
+| Arrow-shaped | `read_arrow_value`, `write_arrow_value` | the same documents as Arrow rows ([Values](../../arrow/values.md)); a record encoding answers its batch stream |
 | Field | optional on both scalar calls | directs native parsing and casting; omitted, it infers the natural value |
 | Struct row | Rust `Scalar::Sequence` | Python and JavaScript restore field names; `cls=Scalar` and `{ scalar: true }` return the core value |
 | Adapters | `reader_at`, `writer_at` | Rust only; each advances its own offset |

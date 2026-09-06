@@ -23,6 +23,7 @@ use crate::types::field::{
 use crate::types::scalar::PyScalar;
 use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
+mod arrow;
 mod coding;
 mod enums;
 mod expression;
@@ -391,6 +392,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyAsciiEnum>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
+    module.add_class::<crate::arrow::PyArrowValue>()?;
     module.add_class::<types::scalar::PyScalarIterator>()?;
     module.add_class::<types::scalar::PyScalarEntryIterator>()?;
     module.add_class::<media::avro::PyAvroSchema>()?;
@@ -438,6 +440,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     coding::handles::register(module)?;
     media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
+    module.add_function(wrap_pyfunction!(crate::arrow::arrow_shapes, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;
     module.add_class::<crate::iobase::PyByteIterator>()?;

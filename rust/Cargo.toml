@@ -140,6 +140,15 @@ name = "uri"
 path = "benchmarks/uri.rs"
 harness = false
 
+# The generic Arrow scalar family: construction per shape, the reader funnel
+# measured to the first batch and to the last, collapsing a stream, casting
+# against the bare call it wraps, and structured text against the native
+# `Scalar` pair. Every group needs Arrow, which the default feature carries.
+[[bench]]
+name = "arrow"
+path = "benchmarks/arrow.rs"
+harness = false
+
 [[bench]]
 name = "expression"
 path = "benchmarks/expression.rs"
