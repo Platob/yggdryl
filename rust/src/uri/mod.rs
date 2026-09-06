@@ -31,6 +31,8 @@ pub use authority::Authority;
 pub use extensions::Extensions;
 pub use parameters::Parameters;
 pub(crate) use parser::percent_decode;
+#[cfg(feature = "s3")]
+pub(crate) use parser::percent_encode_segment;
 pub use path::{Parents, PathSegments, UriParents, UriPath};
 pub use url::{Url, UrlParents};
 pub use urn::Urn;

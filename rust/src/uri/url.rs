@@ -104,7 +104,7 @@ impl Url {
     pub fn is_private(&self) -> bool {
         self.path()
             .segments()
-            .last()
+            .next_back()
             .is_some_and(|name| name.starts_with('.'))
     }
 

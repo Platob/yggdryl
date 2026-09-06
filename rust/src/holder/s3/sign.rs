@@ -13,7 +13,6 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
 /// The `x-amz-content-sha256` value that skips payload hashing (HTTPS only).
-pub(crate) const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
 /// SHA-256 of the empty payload, lowercase hex.
 pub(crate) const EMPTY_PAYLOAD_SHA256: &str =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -102,11 +101,19 @@ impl Signer {
     }
 
     /// The region every credential scope names.
+    ///
+    /// Only the tests read it back: the scope the signer builds is where it
+    /// otherwise appears.
+    #[cfg(test)]
     pub(crate) fn region(&self) -> &str {
         &self.region
     }
 
     /// The access key id every authorization header carries.
+    ///
+    /// Only the tests read it back: the header the signer builds is where it
+    /// otherwise appears.
+    #[cfg(test)]
     pub(crate) fn access_key_id(&self) -> &str {
         &self.access_key_id
     }
@@ -126,7 +133,9 @@ impl Signer {
     ///   sorts by name, and joins duplicate names with `,`. `host`, `x-amz-date`,
     ///   `x-amz-content-sha256` and (when present) `x-amz-security-token` are always signed even
     ///   when absent from `headers`, and the signer's values win over same-named entries.
-    /// * `payload_hash`: `sha256_hex(body)`, [`EMPTY_PAYLOAD_SHA256`], or [`UNSIGNED_PAYLOAD`].
+    /// * `payload_hash`: `sha256_hex(body)` or [`EMPTY_PAYLOAD_SHA256`]. S3 also
+    ///   accepts the literal `UNSIGNED-PAYLOAD` over TLS; this crate always signs
+    ///   the real hash, so a store can verify what it received.
     /// * `now`: the signing time (injectable for the gold-vector tests).
     ///
     /// Algorithm: AWS4-HMAC-SHA256, scope `{date}/{region}/s3/aws4_request`, canonical request =

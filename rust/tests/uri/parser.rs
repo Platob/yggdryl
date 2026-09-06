@@ -189,7 +189,9 @@ fn s3_keys_are_the_path_below_the_bucket_spelled_as_the_path_spells_it() {
         Some("market-data/key")
     );
     assert_eq!(
-        Url::from_str("s3://localhost:9000/archive/a/b").unwrap().key(),
+        Url::from_str("s3://localhost:9000/archive/a/b")
+            .unwrap()
+            .key(),
         Some("a/b")
     );
     assert_eq!(
@@ -214,15 +216,27 @@ fn a_trailing_slash_names_a_container_and_survives_canonicalization() {
 
     // The root can only hold others, and joining onto a container keeps the
     // slash on the child a caller spells with one.
-    assert!(Url::from_str("s3://market-data/").unwrap().has_trailing_slash());
+    assert!(
+        Url::from_str("s3://market-data/")
+            .unwrap()
+            .has_trailing_slash()
+    );
     assert!(Url::from_path("/tmp/lake/").unwrap().has_trailing_slash());
     assert!(!Url::from_path("/tmp/lake").unwrap().has_trailing_slash());
     assert!(leaf.joinpath("year=2026/").unwrap().has_trailing_slash());
     assert!(!leaf.joinpath("year=2026").unwrap().has_trailing_slash());
     // The last segment decides privacy, whether or not a slash follows it.
-    assert!(Url::from_str("s3://market-data/.git/").unwrap().is_private());
+    assert!(
+        Url::from_str("s3://market-data/.git/")
+            .unwrap()
+            .is_private()
+    );
     assert!(Url::from_str("s3://market-data/.git").unwrap().is_private());
-    assert!(!Url::from_str("s3://market-data/.git/head").unwrap().is_private());
+    assert!(
+        !Url::from_str("s3://market-data/.git/head")
+            .unwrap()
+            .is_private()
+    );
 }
 
 #[test]

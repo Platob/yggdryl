@@ -661,10 +661,7 @@ mod privacy {
         let path = root("trailing");
         let absent = path.join("not-yet");
         // Nothing exists, so a plain name is undecided...
-        assert_eq!(
-            Path::new(&absent).unwrap().kind(),
-            IOKind::Unknown
-        );
+        assert_eq!(Path::new(&absent).unwrap().kind(), IOKind::Unknown);
         // ...while the same name with a slash is a container, with no probe.
         let spelled = Path::new(format!("{}/", absent.display())).unwrap();
         assert_eq!(spelled.kind(), IOKind::Directory);

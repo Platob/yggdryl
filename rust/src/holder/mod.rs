@@ -8,6 +8,8 @@ mod buffer;
 pub mod buffered;
 pub mod fs;
 pub mod local;
+#[cfg(feature = "s3")]
+pub mod s3;
 
 pub use buffer::Buffer;
 
@@ -64,6 +66,15 @@ pub enum Holder {
     FsPath(crate::holder::fs::Path),
     /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::holder::fs::File),
+    /// A key prefix, or a bucket, on Amazon S3.
+    #[cfg(feature = "s3")]
+    S3Folder(crate::holder::s3::Folder),
+    /// An S3 location that resolves to whatever it turns out to be.
+    #[cfg(feature = "s3")]
+    S3Path(crate::holder::s3::Path),
+    /// One Amazon S3 object.
+    #[cfg(feature = "s3")]
+    S3File(crate::holder::s3::File),
     /// Any of the others, read through a page cache.
     ///
     /// The box is what keeps the enum a fixed size: this variant holds a
@@ -314,6 +325,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Coded(inner) => inner.as_io(),
             Self::Text(inner) => inner.as_ref(),
@@ -332,6 +349,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Coded(inner) => inner.as_io_mut(),
             Self::Text(inner) => inner.as_mut(),
@@ -351,6 +374,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::Buffered(inner) => inner.as_ref(),
             Self::Coded(inner) => inner.as_ref(),
             Self::Text(inner) => inner.as_ref(),
@@ -370,6 +399,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::Buffered(inner) => inner.as_mut(),
             Self::Coded(inner) => inner.as_mut(),
             Self::Text(inner) => inner.as_mut(),

@@ -79,7 +79,10 @@ fn section(text: &str, name: &str, prefixed: bool) -> Option<Vec<(String, String
         if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
             continue;
         }
-        if let Some(header) = trimmed.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')) {
+        if let Some(header) = trimmed
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
             if pairs.is_some() {
                 break;
             }
@@ -182,10 +185,7 @@ aws_secret_access_key = trading-secret
         assert_eq!(keys.session_token(), Some("default-token"));
 
         let trading = section(CREDENTIALS, "trading", false).unwrap();
-        assert_eq!(
-            credentials_of(&trading).unwrap().session_token(),
-            None
-        );
+        assert_eq!(credentials_of(&trading).unwrap().session_token(), None);
         // The bare spelling never matches a prefixed header, and vice versa.
         assert!(section(CREDENTIALS, "trading", true).is_some());
         assert!(section(CONFIG, "trading", false).is_none());

@@ -302,7 +302,8 @@ impl Uri {
                 .trim_start_matches('/')
         };
 
-        let authority = (self.has_authority && !self.authority.is_empty()).then(|| &self.authority);
+        let authority =
+            (self.has_authority && !self.authority.is_empty()).then_some(&self.authority);
         // A port is something no bucket name carries, so it names the endpoint
         // before any suffix rule runs.
         if let Some(authority) = authority.filter(|authority| authority.port().is_some()) {

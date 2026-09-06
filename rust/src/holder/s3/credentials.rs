@@ -106,7 +106,10 @@ impl std::fmt::Debug for Credentials {
             .debug_struct("Credentials")
             .field("access_key_id", &self.access_key_id)
             .field("secret_access_key", &"<redacted>")
-            .field("session_token", &self.session_token.as_ref().map(|_| "<redacted>"))
+            .field(
+                "session_token",
+                &self.session_token.as_ref().map(|_| "<redacted>"),
+            )
             .field("expires_at", &self.expires_at)
             .finish()
     }
@@ -233,7 +236,10 @@ fn from_container(agent: &ureq::Agent) -> Result<Option<Credentials>> {
             "ContainerCredentials",
             response.status().as_u16(),
             "CredentialsUnavailable",
-            format!("the container credential endpoint answered {}", response.status()),
+            format!(
+                "the container credential endpoint answered {}",
+                response.status()
+            ),
             url,
         ));
     }
@@ -250,8 +256,7 @@ fn from_container(agent: &ureq::Agent) -> Result<Option<Credentials>> {
 /// instance, and the chain ends without credentials. Anything the service does
 /// say that is not a credential set is a failure worth reporting.
 fn from_instance_metadata(agent: &ureq::Agent) -> Result<Option<Credentials>> {
-    if variable("AWS_EC2_METADATA_DISABLED")
-        .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    if variable("AWS_EC2_METADATA_DISABLED").is_some_and(|value| value.eq_ignore_ascii_case("true"))
     {
         return Ok(None);
     }
@@ -434,7 +439,9 @@ mod tests {
     #[test]
     fn an_empty_session_token_is_no_token() {
         assert_eq!(
-            Credentials::new("a", "b").with_session_token("").session_token(),
+            Credentials::new("a", "b")
+                .with_session_token("")
+                .session_token(),
             None
         );
     }
