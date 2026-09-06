@@ -3,6 +3,7 @@ mod common;
 pub mod codes;
 pub mod lineage;
 pub mod mutate;
+pub mod read;
 pub mod resolve;
 pub mod store;
 

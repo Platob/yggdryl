@@ -158,6 +158,7 @@ mod field;
 mod global;
 mod lineage;
 mod msg;
+mod project;
 mod reader;
 mod registry;
 mod store;

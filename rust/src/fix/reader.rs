@@ -31,6 +31,7 @@ use crate::mime_type::line;
 use crate::{Error, Result, Version};
 
 use super::build::{Builder, root_name};
+use super::project::Projections;
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
@@ -51,13 +52,32 @@ pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 /// re-does per message what is constant for the whole run. Pinning a branch
 /// and the two versions skips inference for every row - and a capture is one
 /// session, so pinning is the normal case rather than an optimization.
-#[derive(Clone)]
 pub struct FixReader {
     registry: Arc<FixRegistry>,
+    projections: Arc<Projections>,
     branch: Option<FixBranch>,
     source_version: Option<Version>,
     target_version: Option<Version>,
     null_values: Vec<String>,
+}
+
+/// A clone is a new reader, so it starts with a cache of its own.
+///
+/// The cache holds one version's projections, and two readers differing in
+/// version - which is why a reader is usually cloned - would otherwise clear
+/// each other's every row. Sharing the work across threads is `Arc<FixReader>`
+/// instead, which shares the cache as well.
+impl Clone for FixReader {
+    fn clone(&self) -> Self {
+        Self {
+            registry: Arc::clone(&self.registry),
+            projections: Arc::default(),
+            branch: self.branch.clone(),
+            source_version: self.source_version,
+            target_version: self.target_version,
+            null_values: self.null_values.clone(),
+        }
+    }
 }
 
 impl FixReader {
@@ -66,6 +86,7 @@ impl FixReader {
     pub fn new(registry: Arc<FixRegistry>) -> Self {
         Self {
             registry,
+            projections: Arc::default(),
             branch: None,
             source_version: None,
             target_version: None,
@@ -245,7 +266,13 @@ impl FixReader {
             .or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
-        let mut builder = Builder::new(&self.registry, branch.clone(), version, pairs.len());
+        let mut builder = Builder::new(
+            &self.registry,
+            &self.projections,
+            branch.clone(),
+            version,
+            pairs.len(),
+        );
         for (key, value) in pairs {
             // A stated absence produces no field and no entry: the key is read
             // as never having been sent. Filtering happens before typing, so

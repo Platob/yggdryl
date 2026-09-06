@@ -189,6 +189,8 @@ pub struct FixRegistry {
     positions_by_id: Vec<usize>,
     branches: BranchTable,
     branch_order: Vec<u32>,
+    newest: Option<FixPedigree>,
+    resettle_newest: bool,
 }
 
 impl FixRegistry {
@@ -392,13 +394,33 @@ impl FixRegistry {
     /// version, and never as [`Version::MAX`] - a sentinel compares wrongly
     /// against a field genuinely dated at the newest version and goes stale
     /// the moment an extension pack lands.
-    pub fn newest(&self) -> Option<FixPedigree> {
+    /// It is held rather than searched. Every reader that infers a version
+    /// asks for it once per row, and folding six thousand lineage documents
+    /// to answer took two milliseconds - three orders of magnitude more than
+    /// reading the row it was asked about. A maximum is a monotone fold, so
+    /// it is maintained where every other index is: one document walk as a
+    /// field lands, and a rescan only when the field holding the maximum
+    /// leaves, which is the one removal that can lower it.
+    #[must_use]
+    pub const fn newest(&self) -> Option<FixPedigree> {
+        self.newest
+    }
+
+    /// The greatest pedigree any lineage in `fields` carries.
+    fn scan_newest(fields: &[Field]) -> Option<FixPedigree> {
         let mut newest: Option<FixPedigree> = None;
-        for field in &self.fields {
-            let mut walk = field.as_fix().lineage();
-            while let Some(entry) = walk.next_ok() {
-                newest = newest.max(Some(entry.pedigree()));
-            }
+        for field in fields {
+            newest = newest.max(Self::field_newest(field));
+        }
+        newest
+    }
+
+    /// The greatest pedigree one field's lineage carries.
+    fn field_newest(field: &Field) -> Option<FixPedigree> {
+        let mut newest: Option<FixPedigree> = None;
+        let mut walk = field.as_fix().lineage();
+        while let Some(entry) = walk.next_ok() {
+            newest = newest.max(Some(entry.pedigree()));
         }
         newest
     }
@@ -474,9 +496,11 @@ impl FixRegistry {
         self.ensure_branch(branch);
         match replacing {
             Some(position) => {
+                self.departing(position);
                 self.unindex(position, position);
                 let prior = std::mem::replace(&mut self.fields[position], field);
                 self.index(position);
+                self.settle();
                 Ok(Some(prior))
             }
             None => {
@@ -528,9 +552,11 @@ impl FixRegistry {
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = alternate_ids(&merged, &branch)?;
         self.check_free(&merged, &branch, id, &alternate, Some(position))?;
+        self.departing(position);
         self.unindex(position, position);
         self.fields[position] = merged;
         self.index(position);
+        self.settle();
         Ok(())
     }
 
@@ -545,11 +571,13 @@ impl FixRegistry {
         if position != last {
             self.unindex(last, last);
         }
+        self.departing(position);
         self.unindex(position, position);
         let removed = self.fields.swap_remove(position);
         if position != last {
             self.index(position);
         }
+        self.settle();
         if let Ok(Some(id)) = removed.as_fix().id() {
             if !self.positions_by_id.iter().any(|held| {
                 self.fields
@@ -817,6 +845,7 @@ impl FixRegistry {
                 self.alternate_ids.insert(alternate, position);
             }
         }
+        self.newest = self.newest.max(Self::field_newest(field));
         self.names
             .insert(name_digest(&branch, field.name(), NAME_SEED), position);
         for alias in view.aliases() {
@@ -830,6 +859,33 @@ impl FixRegistry {
                 .is_some_and(|held| held < id)
         });
         self.positions_by_id.insert(ordered, position);
+    }
+
+    /// Notes that the field at `position` is leaving or being overwritten.
+    ///
+    /// Separate from [`Self::unindex`] because that also re-points a field
+    /// being *moved*, which is not a departure and must not cost a rescan.
+    fn departing(&mut self, position: usize) {
+        if self.newest.is_none() {
+            return;
+        }
+        if let Some(field) = self.fields.get(position) {
+            // A maximum cannot be un-maxed, so the field carrying the newest
+            // pedigree is the one departure that has to be rescanned for.
+            if Self::field_newest(field) == self.newest {
+                self.resettle_newest = true;
+            }
+        }
+    }
+
+    /// Restores the held maximum after a departure that could have lowered it.
+    ///
+    /// Called once a mutation is complete, so the rescan sees what the
+    /// dictionary now holds rather than what it held mid-edit.
+    fn settle(&mut self) {
+        if std::mem::take(&mut self.resettle_newest) {
+            self.newest = Self::scan_newest(&self.fields);
+        }
     }
 
     fn unindex(&mut self, position: usize, pointing_at: usize) {

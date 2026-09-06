@@ -28,6 +28,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
+use super::project::{Projections, is_binary};
 use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 use crate::{DataType, Field, Result, Scalar, Version};
 
@@ -95,6 +96,7 @@ struct Slot {
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
+    projections: &'registry Projections,
     branch: FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
@@ -105,12 +107,14 @@ impl<'registry> Builder<'registry> {
     /// Opens a build against one dictionary, dialect and version.
     pub(super) fn new(
         registry: &'registry FixRegistry,
+        projections: &'registry Projections,
         branch: FixBranch,
         version: Option<Version>,
         capacity: usize,
     ) -> Self {
         Self {
             registry,
+            projections,
             branch,
             version,
             slots: Vec::with_capacity(capacity),
@@ -177,22 +181,13 @@ impl<'registry> Builder<'registry> {
     }
 
     /// One registry field as the message's own version spells and types it.
+    ///
+    /// The rename and the retype are cached per field and version on the
+    /// reader, because they are the same answer for every row in a capture.
+    /// The nullability is not: it says this *message* carried the value, so
+    /// it is settled here, per message, on the projection's own copy.
     fn project(&self, known: &Field) -> Field {
-        let mut field = known.clone();
-        if let Some(at) = self.version {
-            let view = known.as_fix();
-            if let Some(name) = view.name_at(at) {
-                if name != known.name() {
-                    field.set_name(name);
-                }
-            }
-            if let Ok(Some(dtype)) = view.dtype_at(at) {
-                if dtype != *known.dtype() {
-                    field = Field::new(field.name(), dtype, field.is_nullable());
-                    let _ = field.set_metadata(known.as_metadata().iter());
-                }
-            }
-        }
+        let mut field = self.projections.field(known, self.version);
         // The value is there, so this message's schema says so.
         field.set_nullable(false);
         field
@@ -212,7 +207,7 @@ impl<'registry> Builder<'registry> {
         let spelling = translated.unwrap_or(text);
         // A `data` field's value is bytes, and the row is where they live:
         // the entry holds a lossy decode of them and this does not.
-        if matches!(field.dtype(), DataType::Binary | DataType::LargeBinary) {
+        if is_binary(field.dtype()) {
             return field
                 .scalar(Scalar::from(raw.to_vec()))
                 .unwrap_or(Scalar::Null);

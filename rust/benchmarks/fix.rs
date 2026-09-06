@@ -12,6 +12,7 @@ criterion_group!(
     fix_benches::lineage::benchmarks,
     fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,
+    fix_benches::read::benchmarks,
     fix_benches::store::benchmarks,
 );
 criterion_main!(fix);

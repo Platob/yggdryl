@@ -320,22 +320,28 @@ impl<'field> FixField<'field> {
     }
 
     /// The three tiers, optionally filtered to one version.
+    ///
+    /// The document is read once and the tiers share it. Each tier asking for
+    /// it separately is three metadata lookups, and every value a reader
+    /// types goes through here - including the overwhelming majority, which
+    /// have no code set at all and used to pay all three to learn it.
     fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
+        let stored = self.get(CODES)?;
         let visible = |code: &FixCode<'field>| at.is_none_or(|at| code.defined_at(at));
         // Tier 1: the text as a wire value, exactly. A spelling that is
         // already a legal code is never reinterpreted as somebody's name, and
         // the record a value opens is addressed rather than searched for.
-        if let Some(code) = self.code(text) {
+        if let Some(code) = FixCodes::seek_value(stored, text) {
             if visible(&code) {
                 return Some(code.value());
             }
         }
         // Tier 2: the folded symbolic name, then any alias.
-        if let Some(code) = self.one_matching(|code| visible(code) && code.is_spelled(text)) {
+        if let Some(code) = one_matching(stored, |code| visible(code) && code.is_spelled(text)) {
             return Some(code.value());
         }
         // Tier 3: the leading parenthesized abbreviation of the description.
-        self.one_matching(|code| {
+        one_matching(stored, |code| {
             visible(code)
                 && code
                     .abbreviation()
@@ -345,22 +351,8 @@ impl<'field> FixField<'field> {
     }
 
     /// The one code a predicate matches, or nothing when several do.
-    ///
-    /// Ambiguity answers nothing: two codes a caller's spelling reaches are
-    /// two answers, and picking one is a guess.
     fn one_matching(&self, matches: impl Fn(&FixCode<'field>) -> bool) -> Option<FixCode<'field>> {
-        let mut found = None;
-        let mut walk = self.codes();
-        while let Some(code) = walk.next_ok() {
-            if !matches(&code) {
-                continue;
-            }
-            if found.is_some_and(|held: FixCode<'field>| held.value() != code.value()) {
-                return None;
-            }
-            found = Some(code);
-        }
-        found
+        one_matching(self.get(CODES)?, matches)
     }
 
     /// Name the full key a stored value failed under, and what it should be.
@@ -955,4 +947,27 @@ fn derived_aliases(canonical: &str, lineage: &str) -> Vec<SmolStr> {
         aliases.push(SmolStr::new(name));
     }
     aliases
+}
+
+/// The one code in `stored` a predicate matches, or nothing when several do.
+///
+/// Ambiguity answers nothing: two codes a caller's spelling reaches are two
+/// answers, and picking one is a guess. Free rather than a method so the
+/// tiers can share one already-read document.
+fn one_matching<'field>(
+    stored: &'field str,
+    matches: impl Fn(&FixCode<'field>) -> bool,
+) -> Option<FixCode<'field>> {
+    let mut found = None;
+    let mut walk = FixCodes::over(Some(stored));
+    while let Some(code) = walk.next_ok() {
+        if !matches(&code) {
+            continue;
+        }
+        if found.is_some_and(|held: FixCode<'field>| held.value() != code.value()) {
+            return None;
+        }
+        found = Some(code);
+    }
+    found
 }
