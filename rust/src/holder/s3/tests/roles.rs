@@ -337,3 +337,126 @@ fn a_container_reads_as_the_table_beneath_it() {
     let error = lake.pwrite(0, b"x").expect_err("a refusal");
     assert!(error.to_string().contains("directory"), "{error}");
 }
+
+#[test]
+fn a_directory_marker_lists_once_as_the_container_it_names() {
+    let store = store();
+    // What a console or an older tool writes to make a prefix visible.
+    store.put(BUCKET, "lake/year=2026/", b"");
+    store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
+    let lake = folder(&store, "lake/");
+
+    let level: Vec<(String, bool)> = lake
+        .ls(false, false)
+        .map(|entry| entry.expect("an entry"))
+        .map(|entry| {
+            (
+                entry.url().expect("a location").to_string(),
+                entry.is_container(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        level,
+        vec![("s3://trades/lake/year=2026/".to_owned(), true)],
+        "one level, one container"
+    );
+
+    let subtree: Vec<(String, bool)> = lake
+        .ls(true, false)
+        .map(|entry| entry.expect("an entry"))
+        .map(|entry| {
+            (
+                entry.url().expect("a location").to_string(),
+                entry.is_container(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        subtree,
+        vec![
+            ("s3://trades/lake/year=2026/".to_owned(), true),
+            ("s3://trades/lake/year=2026/part.parquet".to_owned(), false),
+        ],
+        "the marker is the container, not a leaf beside it and not a second copy"
+    );
+}
+
+#[test]
+fn a_closed_handle_reads_what_is_there_now_rather_than_what_a_listing_saw() {
+    let store = store();
+    store.put(BUCKET, "lake/part.bin", &payload(16));
+    let listed = folder(&store, "lake/")
+        .ls(false, false)
+        .next()
+        .expect("an entry")
+        .expect("an entry");
+    assert!(!listed.opened(), "a listing opens nothing");
+    // A listing states the size, so asking for it costs nothing.
+    assert_eq!(listed.size(), 16);
+
+    // The object grows out of band, which is the ordinary case on a store.
+    store.put(BUCKET, "lake/part.bin", &payload(4096));
+    let window = listed.read_range_bytes(1000, 8).expect("a read");
+    assert_eq!(
+        window,
+        payload(4096)[1000..1008],
+        "a size a listing reported bounds nothing on a closed handle"
+    );
+}
+
+#[test]
+fn a_read_longer_than_the_object_allocates_the_object() {
+    let store = store();
+    store.put(BUCKET, "lake/part.bin", &payload(16));
+    let handle = file(&store, "lake/part.bin");
+    // Asking for the rest of an object whose length is unknown is ordinary,
+    // and the store's answer is what says how much there is to hold.
+    let bytes = handle
+        .read_range_bytes(0, 8 * 1024 * 1024 * 1024)
+        .expect("a read");
+    assert_eq!(bytes, payload(16));
+    assert_eq!(store.request_count(), 1, "still one ranged GET");
+}
+
+#[test]
+fn a_staged_write_is_what_the_location_streams_and_never_what_it_deletes() {
+    let store = store();
+    let mut handle = path(&store, "lake/part.csv");
+    handle.pwrite(0, b"AAPL,187.23\n").expect("a staged write");
+
+    let streamed: Vec<u8> = handle
+        .pstream_bytes(0, 4)
+        .expect("a stream")
+        .flat_map(|chunk| chunk.expect("bytes"))
+        .collect();
+    assert_eq!(
+        streamed, b"AAPL,187.23\n",
+        "a caller reads what it just wrote, published or not"
+    );
+
+    // Removing a location with a write still pending must not publish it on
+    // the way past: the delete would race its own resurrection.
+    handle.remove(false).expect("a removal");
+    drop(handle);
+    assert!(
+        store.keys(BUCKET).is_empty(),
+        "the staged write was abandoned, not published: {:?}",
+        store.keys(BUCKET)
+    );
+}
+
+#[test]
+fn reserving_space_creates_nothing_because_it_changes_no_length() {
+    let store = store();
+    {
+        let mut handle = file(&store, "lake/part.bin");
+        handle.reserve(4096).expect("a reservation");
+        assert_eq!(handle.size(), 0, "reserving never changes a length");
+    }
+    assert!(
+        store.keys(BUCKET).is_empty(),
+        "a hint about an allocation is not a write: {:?}",
+        store.keys(BUCKET)
+    );
+}

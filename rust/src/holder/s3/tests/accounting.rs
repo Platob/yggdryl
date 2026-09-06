@@ -110,14 +110,46 @@ fn a_whole_write_is_one_request_and_an_append_is_two() {
     );
     assert_eq!(store.requests()[0].method, "PUT");
 
-    // Appending through the handle that just wrote costs only the upload:
-    // it already holds what it published, so there is nothing to fetch.
+    // What a closed handle publishes belongs to the store, and the handle
+    // lets go of it: appending after that re-reads, because a value written
+    // through this handle a moment ago is not evidence about what is there
+    // now, and holding the payload would keep the whole object in memory for
+    // as long as the handle lived.
     store.clear_requests();
     let offset = handle.append_bytes(b"MSFT,410.10\n").expect("an append");
     assert_eq!(offset, 12);
-    assert_eq!(store.request_count(), 1, "a warm append is one PUT");
+    assert_eq!(
+        store.request_count(),
+        2,
+        "a closed handle re-reads before it appends"
+    );
     assert_eq!(
         store.get(BUCKET, "lake/part.parquet").expect("the object"),
+        b"AAPL,187.23\nMSFT,410.10\n"
+    );
+
+    // An *open* handle is a scope that asked for a coherent view, so it keeps
+    // what it wrote and the append is the upload alone.
+    let mut open = file(&store, "lake/warm.parquet");
+    open.open().expect("an open");
+    store.clear_requests();
+    open.write_all_bytes(b"AAPL,187.23\n").expect("a write");
+    open.append_bytes(b"MSFT,410.10\n").expect("an append");
+    assert_eq!(
+        store.request_count(),
+        2,
+        "one PUT each, and nothing read back"
+    );
+    assert!(
+        store
+            .requests()
+            .iter()
+            .all(|request| request.method == "PUT"),
+        "an open handle appends to what it holds"
+    );
+    open.close().expect("a close");
+    assert_eq!(
+        store.get(BUCKET, "lake/warm.parquet").expect("the object"),
         b"AAPL,187.23\nMSFT,410.10\n"
     );
 
@@ -417,5 +449,134 @@ fn a_large_write_uploads_in_parts_and_a_small_one_does_not() {
         store.open_uploads(),
         0,
         "the upload was completed, not left open"
+    );
+}
+
+#[test]
+fn resolving_a_location_costs_one_listing_or_two_when_a_sibling_hides_the_prefix() {
+    let store = store();
+    store.put(BUCKET, "lake/part.parquet", b"PAR1");
+    store.put(BUCKET, "lake/part/000.parquet", b"PAR1");
+    store.put(BUCKET, "lake/partial", b"x");
+
+    // An object at the location is the first key with that prefix, because a
+    // key is the smallest string starting with itself.
+    store.clear_requests();
+    assert_eq!(path(&store, "lake/part.parquet").kind(), IOKind::File);
+    assert_eq!(store.request_count(), 1, "an object settles in one listing");
+
+    // `.` is 0x2E and `/` is 0x2F, so `lake/part.parquet` sorts between
+    // `lake/part` and everything under `lake/part/`: the first answer names a
+    // sibling, and only asking for the prefix by name settles it.
+    store.clear_requests();
+    assert_eq!(path(&store, "lake/part").kind(), IOKind::Directory);
+    assert_eq!(
+        store.request_count(),
+        2,
+        "a sibling that sorts in between costs the second listing"
+    );
+
+    // A location nothing is at or under costs the same two.
+    store.clear_requests();
+    assert_eq!(path(&store, "lake/part").kind(), IOKind::Directory);
+    assert_eq!(store.request_count(), 2);
+    store.clear_requests();
+    assert_eq!(path(&store, "lake/parti").kind(), IOKind::Unknown);
+    assert_eq!(store.request_count(), 2);
+
+    // Nothing shares the name at all, so nothing is under it either.
+    store.clear_requests();
+    assert_eq!(path(&store, "ledger").kind(), IOKind::Unknown);
+    assert_eq!(store.request_count(), 1, "an unshared name settles in one");
+}
+
+#[test]
+fn naming_a_child_and_asking_whether_a_location_is_open_cost_nothing() {
+    let store = store();
+    store.put(BUCKET, "lake/year=2026/part.parquet", b"PAR1");
+    let handle = path(&store, "lake");
+
+    store.clear_requests();
+    let child = handle
+        .child_by_path("year=2026/part.parquet")
+        .expect("a child");
+    assert!(!handle.opened(), "nothing has opened this location");
+    assert_eq!(
+        store.request_count(),
+        0,
+        "naming a child settles nothing about either end of it"
+    );
+    assert_eq!(
+        child.url().expect("a location").to_string(),
+        "s3://trades/lake/year=2026/part.parquet"
+    );
+}
+
+#[test]
+fn opening_an_object_twice_asks_once() {
+    let store = store();
+    store.put(BUCKET, "lake/part.parquet", &payload(4096));
+    let mut handle = file(&store, "lake/part.parquet");
+
+    store.clear_requests();
+    handle.open().expect("an open");
+    handle.open().expect("an open");
+    handle.open().expect("an open");
+    assert_eq!(
+        store.request_count(),
+        1,
+        "opening what is already open asks nothing"
+    );
+    assert_eq!(handle.size(), 4096);
+    assert_eq!(store.request_count(), 1, "and the size is already known");
+}
+
+#[test]
+fn a_ranged_digest_asks_for_the_range_and_not_the_tail() {
+    let store = store();
+    store.put(BUCKET, "lake/part.parquet", &payload(256 * 1024));
+    let handle = file(&store, "lake/part.parquet");
+
+    store.clear_requests();
+    let digest = handle
+        .read_range_digest(0, 16, crate::DigestAlgorithm::Xxh3)
+        .expect("a digest");
+    assert_eq!(digest, crate::DigestAlgorithm::Xxh3.digest(&payload(16)));
+    assert_eq!(store.request_count(), 1, "one GET");
+    let range = store.requests()[0]
+        .headers
+        .iter()
+        .find(|(name, _)| name == "range")
+        .map(|(_, value)| value.clone());
+    assert_eq!(
+        range.as_deref(),
+        Some("bytes=0-15"),
+        "the window asked for is the window wanted"
+    );
+}
+
+#[test]
+fn a_scan_that_reads_a_header_out_of_each_object_keeps_one_connection() {
+    let store = store();
+    for part in 0..6 {
+        store.put(
+            BUCKET,
+            &format!("lake/{part:03}.parquet"),
+            &payload(64 * 1024),
+        );
+    }
+    let lake = folder(&store, "lake/");
+    for leaf in lake.ls(false, false) {
+        let leaf = leaf.expect("an entry");
+        let mut stream = leaf.pstream_bytes(0, 4096).expect("a stream");
+        let first = stream.next().expect("a chunk").expect("bytes");
+        assert_eq!(first.len(), 4096);
+        // The rest of the body is abandoned, which is what a header read does.
+        drop(stream);
+    }
+    assert_eq!(
+        store.connection_count(),
+        1,
+        "an abandoned body gives its connection back rather than burning it"
     );
 }

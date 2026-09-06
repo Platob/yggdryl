@@ -89,6 +89,22 @@ impl Folder {
         self.folder_exists()
     }
 
+    /// Whether anything lives under this prefix, or the store's refusal.
+    ///
+    /// [`IOFolder::folder_exists`] answers `bool` and so has to read a refusal
+    /// as a `false`. Anything that *acts* on the answer asks here instead: a
+    /// listing nobody was allowed to see must not read as an empty prefix and
+    /// turn a refused removal into a silent success.
+    fn populated(&self) -> Result<bool> {
+        if self.prefix.is_empty() {
+            return self.client.head_bucket(&self.bucket);
+        }
+        let page = self
+            .client
+            .list_objects(&self.bucket, &self.prefix, None, None, 1)?;
+        Ok(!page.objects.is_empty() || !page.prefixes.is_empty())
+    }
+
     /// Create the bucket when this is a bucket root, and nothing otherwise.
     ///
     /// A prefix comes into being when a key under it is written, so there is
@@ -196,9 +212,11 @@ impl Folder {
         let client = self.client.clone();
         let url = self.url.clone();
         let prefix = self.prefix.clone();
-        // The ancestors already emitted, bounded by the tree's depth rather
-        // than by the number of entries: one path is held, never the result.
-        let mut seen: Vec<String> = Vec::new();
+        // The ancestors already emitted, held as the path from this prefix
+        // down to the last key. Keys arrive in byte order, so a directory the
+        // walk has left never comes back: what is held is bounded by the
+        // tree's depth rather than by the number of entries.
+        let mut held: Vec<String> = Vec::new();
         let mut pending: std::vec::IntoIter<Result<Holder>> = Vec::new().into_iter();
         let mut entries = self.pages(None);
         Listing::new(std::iter::from_fn(move || {
@@ -221,17 +239,17 @@ impl Folder {
                 }
                 let mut batch: Vec<Result<Holder>> = Vec::new();
                 // Every directory this key implies, emitted before the key.
+                let segments: Vec<&str> = relative.split('/').collect();
+                let leaf = segments.len() - 1;
                 let mut walked = String::new();
-                for part in relative.split('/').filter(|part| !part.is_empty()) {
-                    if walked.len() + part.len() + 1 >= relative.len() {
-                        break;
-                    }
+                for (depth, part) in segments[..leaf].iter().enumerate() {
                     walked.push_str(part);
                     walked.push('/');
-                    if seen.iter().any(|held| held == &walked) {
+                    if held.get(depth).is_some_and(|seen| seen == &walked) {
                         continue;
                     }
-                    seen.push(walked.clone());
+                    held.truncate(depth);
+                    held.push(walked.clone());
                     batch.push(hold(
                         &client,
                         &url,
@@ -241,7 +259,17 @@ impl Folder {
                         },
                     ));
                 }
-                batch.push(hold(&client, &url, relative, &entry));
+                // A key spelled with a trailing delimiter is a directory
+                // marker - a console or an older tool wrote it so the prefix
+                // would show up - and it names the container the keys under it
+                // already imply. It is emitted once, as that container, never
+                // as a leaf holding zero bytes.
+                if !segments[leaf].is_empty() {
+                    batch.push(hold(&client, &url, relative, &entry));
+                } else if batch.is_empty() {
+                    // The container it names was emitted with an earlier key.
+                    continue;
+                }
                 pending = batch.into_iter();
             }
         }))
@@ -300,12 +328,7 @@ impl IOFolder for Folder {
     /// One listing bounded to a single key: a prefix exists exactly while a
     /// key starts with it, so one entry settles it and the page stops there.
     fn folder_exists(&self) -> bool {
-        if self.prefix.is_empty() {
-            return self.client.head_bucket(&self.bucket).unwrap_or(false);
-        }
-        self.client
-            .list_objects(&self.bucket, &self.prefix, None, None, 1)
-            .is_ok_and(|page| !page.objects.is_empty() || !page.prefixes.is_empty())
+        self.populated().unwrap_or(false)
     }
 
     fn create_folder(&self) -> Result<()> {
@@ -354,7 +377,7 @@ impl IOFolder for Folder {
     fn folder_remove(&mut self, recursive: bool) -> Result<()> {
         if recursive {
             self.folder_clear()?;
-        } else if self.folder_exists() && !self.prefix.is_empty() {
+        } else if !self.prefix.is_empty() && self.populated()? {
             return Err(crate::iobase::not_empty(&self.url));
         }
         self.delete_folder()

@@ -804,7 +804,82 @@ impl Client {
         if buffer.is_empty() {
             return Ok((0, None));
         }
-        let last = offset.saturating_add(buffer.len() as u64 - 1);
+        let length = buffer.len() as u64;
+        let Some((mut reader, window)) = self.open_range(bucket, key, offset, length)? else {
+            return Ok((0, Some(0)));
+        };
+        if !discard(&mut reader, window.skip)? {
+            return Ok((0, window.total));
+        }
+        let mut filled = 0;
+        while filled < buffer.len() {
+            let read = reader.read(&mut buffer[filled..]).map_err(Error::Io)?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+        }
+        drain(&mut reader);
+        Ok((filled, window.total))
+    }
+
+    /// Read the window `length` bytes wide at `offset` into a fresh buffer.
+    ///
+    /// One ranged `GET`, allocating what the answer says is coming rather than
+    /// what was asked for. That distinction is the whole point of this method:
+    /// a caller may legitimately ask for more than exists - the rest of an
+    /// object whose length it does not know, or a footer window larger than
+    /// the object - and sizing the buffer from the request would let a
+    /// four-word call allocate gigabytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's refusal, or a read failure part way through.
+    pub(super) fn get_range_vec(
+        &self,
+        bucket: &str,
+        key: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<(Vec<u8>, Option<u64>)> {
+        if length == 0 {
+            return Ok((Vec::new(), None));
+        }
+        let Some((mut reader, window)) = self.open_range(bucket, key, offset, length)? else {
+            return Ok((Vec::new(), Some(0)));
+        };
+        if !discard(&mut reader, window.skip)? {
+            return Ok((Vec::new(), window.total));
+        }
+        let coming = window.length.map_or(length, |answered| {
+            answered.saturating_sub(window.skip).min(length)
+        });
+        let capacity = usize::try_from(coming).map_err(|_| crate::iobase::oversized(coming))?;
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(capacity)
+            .map_err(|_| crate::iobase::oversized(coming))?;
+        (&mut reader)
+            .take(coming)
+            .read_to_end(&mut bytes)
+            .map_err(Error::Io)?;
+        drain(&mut reader);
+        Ok((bytes, window.total))
+    }
+
+    /// Issue one ranged `GET` and hand back the body the window is read from.
+    ///
+    /// `None` is absence, which reads as emptiness. A range wholly past the
+    /// end comes back as an empty body rather than as absence, because the
+    /// answer still states the object's length.
+    fn open_range(
+        &self,
+        bucket: &str,
+        key: &str,
+        offset: u64,
+        length: u64,
+    ) -> Result<Option<(Box<dyn Read + Send>, Window)>> {
+        let last = offset.saturating_add(length - 1);
         let request = Request::new("GET", "GetObject", bucket, key)
             .header("range", format!("bytes={offset}-{last}"));
         let (status, headers, mut reader) = self.stream(&request)?;
@@ -814,9 +889,17 @@ impl Client {
             body: Vec::new(),
         };
         match status {
-            // Absence is emptiness, and so is a range wholly past the end.
-            404 => return Ok((0, Some(0))),
-            416 => return Ok((0, total_of_content_range(answer.header("content-range")))),
+            404 => return Ok(None),
+            416 => {
+                return Ok(Some((
+                    Box::new(std::io::empty()),
+                    Window {
+                        total: total_of_content_range(answer.header("content-range")),
+                        skip: 0,
+                        length: Some(0),
+                    },
+                )));
+            }
             200..=299 => {}
             _ => {
                 // The body is the error document, which was not read above.
@@ -830,39 +913,22 @@ impl Client {
                 return Err(self.failure(&request, &answer));
             }
         }
-        let total = total_of_content_range(answer.header("content-range")).or_else(|| {
-            // A 200 answers the whole object, so its length is the total.
-            (status == 200)
-                .then(|| {
-                    answer
-                        .header("content-length")
-                        .and_then(|value| value.trim().parse::<u64>().ok())
-                })
-                .flatten()
-        });
-        // A store that ignored the range answered from zero, so the caller's
-        // window has to be found inside what arrived.
+        let stated = answer
+            .header("content-length")
+            .and_then(|value| value.trim().parse::<u64>().ok());
+        // A 200 answers the whole object, so its length is the total, and the
+        // caller's window has to be found inside what arrived.
+        let total = total_of_content_range(answer.header("content-range"))
+            .or_else(|| (status == 200).then_some(stated).flatten());
         let skip = if status == 200 { offset } else { 0 };
-        let mut discarded = 0_u64;
-        let mut sink = [0_u8; 8192];
-        while discarded < skip {
-            let want = usize::try_from((skip - discarded).min(sink.len() as u64)).unwrap_or(0);
-            let read = reader.read(&mut sink[..want]).map_err(Error::Io)?;
-            if read == 0 {
-                return Ok((0, total));
-            }
-            discarded += read as u64;
-        }
-        let mut filled = 0;
-        while filled < buffer.len() {
-            let read = reader.read(&mut buffer[filled..]).map_err(Error::Io)?;
-            if read == 0 {
-                break;
-            }
-            filled += read;
-        }
-        drain(&mut reader);
-        Ok((filled, total))
+        Ok(Some((
+            reader,
+            Window {
+                total,
+                skip,
+                length: stated,
+            },
+        )))
     }
 
     /// Read one object whole.
@@ -922,9 +988,34 @@ impl Client {
         key: &str,
         offset: u64,
     ) -> Result<Box<dyn Read + Send>> {
+        self.open_reader_range(bucket, key, offset, None)
+    }
+
+    /// Open one object as a reader over `offset ..= last`, or to its end.
+    ///
+    /// One `GET` that asks for exactly the window wanted. Bounding it matters
+    /// on a store: a caller hashing the first sixteen bytes of a gigabyte
+    /// object should not have the store start sending the gigabyte.
+    ///
+    /// The reader returns its connection to the pool when it is dropped part
+    /// way through, so a scan that reads a header out of each of a thousand
+    /// objects reuses one connection rather than opening a thousand.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store's refusal.
+    pub(super) fn open_reader_range(
+        &self,
+        bucket: &str,
+        key: &str,
+        offset: u64,
+        last: Option<u64>,
+    ) -> Result<Box<dyn Read + Send>> {
         let mut request = Request::new("GET", "GetObject", bucket, key);
-        if offset > 0 {
-            request = request.header("range", format!("bytes={offset}-"));
+        match last {
+            Some(last) => request = request.header("range", format!("bytes={offset}-{last}")),
+            None if offset > 0 => request = request.header("range", format!("bytes={offset}-")),
+            None => {}
         }
         let (status, headers, mut reader) = self.stream(&request)?;
         match status {
@@ -941,21 +1032,22 @@ impl Client {
                 return Err(self.failure(&request, &answer));
             }
         }
-        // A store that ignored the range answered from zero.
-        if status == 200 && offset > 0 {
-            let mut discarded = 0_u64;
-            let mut sink = [0_u8; 8192];
-            while discarded < offset {
-                let want =
-                    usize::try_from((offset - discarded).min(sink.len() as u64)).unwrap_or(0);
-                let read = reader.read(&mut sink[..want]).map_err(Error::Io)?;
-                if read == 0 {
-                    break;
-                }
-                discarded += read as u64;
-            }
+        let stated = Answer {
+            status,
+            headers,
+            body: Vec::new(),
         }
-        Ok(reader)
+        .header("content-length")
+        .and_then(|value| value.trim().parse::<u64>().ok());
+        // A store that ignored the range answered from zero.
+        let skip = if status == 200 { offset } else { 0 };
+        if !discard(&mut reader, skip)? {
+            return Ok(Box::new(std::io::empty()));
+        }
+        Ok(Box::new(Pooled {
+            inner: reader,
+            left: stated.map_or(u64::MAX, |stated| stated.saturating_sub(skip)),
+        }))
     }
 
     /// Replace one object with `bytes`.
@@ -1251,10 +1343,70 @@ impl Client {
 /// this normally reads the one zero that says so; a store that answered with
 /// more than was asked for is abandoned instead of drained, because reading
 /// past what a caller wanted is the larger waste.
+/// What a ranged answer says about the window it carries.
+struct Window {
+    /// The object's whole length, when the answer stated it.
+    total: Option<u64>,
+    /// Bytes to discard before the window, when the store ignored the range.
+    skip: u64,
+    /// The bytes the answer says are coming, including anything skipped.
+    length: Option<u64>,
+}
+
+/// A body that gives its connection back when it is dropped part way through.
+///
+/// Bytes left unread on the wire leave a connection unusable for the next
+/// request, so the pool discards it - and reconnecting costs a round trip and,
+/// over TLS, a handshake. Reading the remainder costs a copy of bytes already
+/// in flight, so the remainder wins up to [`DRAIN_LIMIT`], past which the
+/// connection is not worth what it would take to save it.
+struct Pooled {
+    inner: Box<dyn Read + Send>,
+    /// What is left before the body ends, or [`u64::MAX`] when unstated.
+    left: u64,
+}
+
+impl Read for Pooled {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.left = self.left.saturating_sub(read as u64);
+        Ok(read)
+    }
+}
+
+impl Drop for Pooled {
+    fn drop(&mut self) {
+        if self.left == 0 || self.left > POOLED_DRAIN_LIMIT as u64 {
+            return;
+        }
+        drain_upto(&mut self.inner, POOLED_DRAIN_LIMIT);
+    }
+}
+
+/// Read and throw away `count` bytes, reporting whether they were all there.
+fn discard(reader: &mut (impl Read + ?Sized), count: u64) -> Result<bool> {
+    let mut discarded = 0_u64;
+    let mut sink = [0_u8; 8192];
+    while discarded < count {
+        let want = usize::try_from((count - discarded).min(sink.len() as u64)).unwrap_or(0);
+        let read = reader.read(&mut sink[..want]).map_err(Error::Io)?;
+        if read == 0 {
+            return Ok(false);
+        }
+        discarded += read as u64;
+    }
+    Ok(true)
+}
+
 fn drain(reader: &mut (impl Read + ?Sized)) {
+    drain_upto(reader, DRAIN_LIMIT);
+}
+
+/// Read and throw away up to `limit` bytes, to keep a connection reusable.
+fn drain_upto(reader: &mut (impl Read + ?Sized), limit: usize) {
     let mut sink = [0_u8; 4096];
     let mut discarded = 0_usize;
-    while discarded < DRAIN_LIMIT {
+    while discarded < limit {
         match reader.read(&mut sink) {
             Ok(0) | Err(_) => return,
             Ok(read) => discarded += read,
@@ -1264,6 +1416,15 @@ fn drain(reader: &mut (impl Read + ?Sized)) {
 
 /// How much of an over-long body is drained before the connection is dropped.
 const DRAIN_LIMIT: usize = 64 * 1024;
+
+/// How much of an abandoned stream is drained to keep its connection.
+///
+/// Larger than [`DRAIN_LIMIT`] because the bytes were asked for: a caller that
+/// opens an object and stops after its header has the rest already on the way,
+/// and copying it out of the socket beats a fresh connection and, over TLS, a
+/// fresh handshake. Past this the transfer is the larger cost and the
+/// connection is let go.
+const POOLED_DRAIN_LIMIT: usize = 1024 * 1024;
 
 /// The largest document read into memory from a non-object answer.
 ///

@@ -575,3 +575,58 @@ fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
     assert!(S3Options::default().signs_payload("http"));
     assert!(over_tls.with_payload_signing(true).signs_payload("https"));
 }
+
+#[test]
+fn a_refusal_is_never_read_as_an_empty_prefix_or_an_absent_object() {
+    let store = store();
+    store.put(BUCKET, "lake/part.bin", b"AAPL,187.23");
+
+    // A listing nobody was allowed to see says nothing about what is there,
+    // so a non-recursive removal must refuse rather than report success.
+    let mut lake = folder(&store, "lake/");
+    store.fail_next(403, "AccessDenied", 1);
+    let refused = lake.remove(false).expect_err("a refusal");
+    assert!(!refused.is_absent(), "{refused}");
+    assert_eq!(
+        store.keys(BUCKET),
+        vec!["lake/part.bin".to_owned()],
+        "and nothing was deleted"
+    );
+
+    // The same for a location: absence reads as emptiness, a refusal does not.
+    let handle = path(&store, "lake/part.bin");
+    store.fail_next(403, "AccessDenied", 1);
+    let refused = handle.read_all_bytes().expect_err("a refusal");
+    assert!(
+        matches!(refused, Error::Remote { status: 403, .. }),
+        "{refused}"
+    );
+
+    let missing = path(&store, "lake/absent.bin");
+    assert_eq!(
+        missing.read_all_bytes().expect("absence reads empty"),
+        Vec::<u8>::new()
+    );
+}
+
+#[test]
+fn an_empty_value_is_one_put_however_low_the_multipart_threshold() {
+    let store = store();
+    let options = options(&store).with_multipart_threshold(0);
+    let url = location("lake/empty.bin");
+    let client = std::sync::Arc::new(
+        crate::holder::s3::client::Client::new(&url, options).expect("a client"),
+    );
+    let mut handle = File::new(client, url).expect("an object handle");
+
+    store.clear_requests();
+    handle.write_all_bytes(b"").expect("a write");
+    assert_eq!(
+        store.request_count(),
+        1,
+        "a multipart upload of no parts is not something S3 completes"
+    );
+    assert_eq!(store.requests()[0].method, "PUT");
+    assert_eq!(store.open_uploads(), 0, "and nothing was left open");
+    assert_eq!(store.get(BUCKET, "lake/empty.bin"), Some(Vec::new()));
+}

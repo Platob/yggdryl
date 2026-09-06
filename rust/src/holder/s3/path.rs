@@ -19,9 +19,11 @@ use crate::{Error, IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result,
 ///
 /// **A location spelled with a trailing slash costs nothing**: `lake/` is a
 /// container by its spelling, and nothing is asked. Anything else costs *one*
-/// listing of a single key, which settles both questions at once - S3 answers
-/// keys in byte order, so the first key at or after this one is the exact key
-/// when the object exists, and a key under it when a prefix does.
+/// listing of a single key, which settles it whenever the location is an
+/// object or the only thing sharing its name is under it - and a second one
+/// otherwise, because `.` sorts below `/`, so `lake/part.parquet` stands
+/// between `lake/part` and the keys under `lake/part/` and hides them from the
+/// first answer.
 ///
 /// Resolution follows the laziness contract: construction touches nothing, a
 /// read of a location that does not exist yields nothing, and a write creates
@@ -131,43 +133,55 @@ impl Path {
         Ok(file)
     }
 
-    /// Ask the store what is at this location, with one listing.
+    /// Ask the store what is at this location.
     ///
-    /// One request settles both questions. Keys come back in byte order, and
-    /// `lake/part` sorts before `lake/part/x`, which sorts before
-    /// `lake/part2`, so the single key at or after this one says which of the
-    /// three cases holds.
-    fn probe(&self) -> IOKind {
+    /// One listing bounded to a single key answers most of it: the key itself
+    /// is the smallest string that starts with the key, so an object there is
+    /// the first entry, and a key under `key/` coming back instead says this
+    /// is a prefix.
+    ///
+    /// A second listing is needed only when neither holds, and one case makes
+    /// that unavoidable rather than merely careful: `.` is `0x2E` and `/` is
+    /// `0x2F`, so `lake/part.parquet` sorts *between* `lake/part` and
+    /// `lake/part/000.parquet`. A sibling spelled that way is what comes back
+    /// first, and it says nothing about whether the prefix exists, so the
+    /// prefix is asked for by name.
+    ///
+    /// A refusal is not an answer: it propagates rather than reading as
+    /// absence, because a caller who cannot see a location must hear so.
+    fn probe(&self) -> Result<IOKind> {
         let page = self
             .client
-            .list_objects(&self.bucket, &self.key, None, None, 1);
-        let Ok(page) = page else {
-            return IOKind::Unknown;
-        };
-        let Some(first) = page.objects.first() else {
-            return IOKind::Unknown;
-        };
-        if first.key == self.key {
-            return IOKind::File;
-        }
+            .list_objects(&self.bucket, &self.key, None, None, 1)?;
         let under = format!("{}/", self.key);
-        if first.key.starts_with(&under) {
-            return IOKind::Directory;
+        match page.objects.first() {
+            Some(first) if first.key == self.key => return Ok(IOKind::File),
+            Some(first) if first.key.starts_with(&under) => return Ok(IOKind::Directory),
+            // Nothing shares the name at all, so nothing is under it either.
+            None => return Ok(IOKind::Unknown),
+            Some(_) => {}
         }
-        // The key merely shares a textual prefix, like `lake/partial` for
-        // `lake/part`: nothing is at this location.
-        IOKind::Unknown
+        let page = self
+            .client
+            .list_objects(&self.bucket, &under, None, None, 1)?;
+        if page.objects.is_empty() {
+            // A sibling merely shares a textual prefix, like `lake/partial`
+            // for `lake/part`: nothing is at this location.
+            Ok(IOKind::Unknown)
+        } else {
+            Ok(IOKind::Directory)
+        }
     }
 
     /// The role this location has, from what it already resolved to.
     ///
     /// Asking the store is the last resort, and a retained handle answers
     /// without asking at all.
-    fn current_kind(&self) -> IOKind {
+    fn current_kind(&self) -> Result<IOKind> {
         if let Ok(slot) = self.resolved.lock() {
             match slot.as_ref() {
-                Some(Resolved::Directory(_)) => return IOKind::Directory,
-                Some(Resolved::File(_)) => return IOKind::File,
+                Some(Resolved::Directory(_)) => return Ok(IOKind::Directory),
+                Some(Resolved::File(_)) => return Ok(IOKind::File),
                 None => {}
             }
         }
@@ -175,10 +189,10 @@ impl Path {
     }
 
     /// Resolve a role before a specialized handle has been retained.
-    fn unresolved_kind(&self) -> IOKind {
+    fn unresolved_kind(&self) -> Result<IOKind> {
         // A glob or a trailing slash says what this is, so nothing is asked.
         if self.url.is_glob() || self.url.has_trailing_slash() || self.key.is_empty() {
-            return IOKind::Directory;
+            return Ok(IOKind::Directory);
         }
         self.probe()
     }
@@ -187,7 +201,7 @@ impl Path {
     fn with_resolved<T>(&self, absent: T, read: impl FnOnce(&dyn IOBase) -> T) -> Result<T> {
         let mut slot = self.resolved.lock().map_err(|_| poisoned())?;
         if slot.is_none() {
-            *slot = match self.unresolved_kind() {
+            *slot = match self.unresolved_kind()? {
                 IOKind::Directory => Some(Resolved::Directory(self.as_directory()?)),
                 IOKind::File => Some(Resolved::File(self.as_file()?)),
                 _ => None,
@@ -206,7 +220,7 @@ impl Path {
     fn with_resolved_mut<T>(&self, write: impl FnOnce(&mut dyn IOBase) -> T) -> Result<T> {
         let mut slot = self.resolved.lock().map_err(|_| poisoned())?;
         if slot.is_none() {
-            *slot = Some(match self.unresolved_kind() {
+            *slot = Some(match self.unresolved_kind()? {
                 IOKind::Directory => Resolved::Directory(self.as_directory()?),
                 _ => Resolved::File(self.as_file()?),
             });
@@ -227,11 +241,12 @@ impl IOPath for Path {
     }
 
     fn is_folder(&self) -> bool {
-        self.current_kind() == IOKind::Directory
+        self.current_kind()
+            .is_ok_and(|kind| kind == IOKind::Directory)
     }
 
     fn is_file(&self) -> bool {
-        self.current_kind() == IOKind::File
+        self.current_kind().is_ok_and(|kind| kind == IOKind::File)
     }
 }
 
@@ -246,8 +261,23 @@ impl IOBase for Path {
 
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
         // A stream borrows the handle it reads from, and the resolved one
-        // lives behind a lock, so this reads through the leaf directly.
-        if self.unresolved_kind() == IOKind::Directory {
+        // lives behind a lock, so a pending write is copied out and anything
+        // else is read from the store directly. Copying is what makes a write
+        // this handle has not published yet visible to a read of it.
+        let staged = {
+            let slot = self.resolved.lock().map_err(|_| poisoned())?;
+            match slot.as_ref() {
+                Some(Resolved::Directory(_)) => {
+                    return crate::ByteStream::from_reader(std::io::empty(), batch_size);
+                }
+                Some(Resolved::File(file)) => file.staged_from(position)?,
+                None => None,
+            }
+        };
+        if let Some(bytes) = staged {
+            return crate::ByteStream::from_reader(std::io::Cursor::new(bytes), batch_size);
+        }
+        if self.unresolved_kind()? == IOKind::Directory {
             return crate::ByteStream::from_reader(std::io::empty(), batch_size);
         }
         let reader = self.client.open_reader(&self.bucket, &self.key, position)?;
@@ -290,9 +320,9 @@ impl IOBase for Path {
     }
 
     fn truncate(&mut self, size: u64) -> Result<()> {
-        if self.current_kind().is_container() {
-            return self.as_directory()?.truncate(size);
-        }
+        // One resolution, not two: `with_resolved_mut` already routes a
+        // container to the prefix handle, and asking the kind first would be
+        // a second listing for the same answer.
         self.with_resolved_mut(|handle| handle.truncate(size))?
     }
 
@@ -329,7 +359,7 @@ impl IOBase for Path {
     }
 
     fn kind(&self) -> IOKind {
-        self.current_kind()
+        self.current_kind().unwrap_or(IOKind::Unknown)
     }
 
     fn is_atomic(&self) -> bool {
@@ -348,9 +378,14 @@ impl IOBase for Path {
         self.with_resolved_mut(|handle| handle.open())?
     }
 
+    /// Whether this handle is open, which is a question about the handle.
+    ///
+    /// No request: a location nothing has resolved yet has opened nothing, and
+    /// asking the store what it is would not change that answer.
     fn opened(&self) -> bool {
-        self.with_resolved(false, |handle| handle.opened())
-            .unwrap_or(false)
+        self.resolved
+            .lock()
+            .is_ok_and(|slot| slot.as_ref().is_some_and(|held| held.as_io().opened()))
     }
 
     fn close(&mut self) -> Result<()> {
@@ -364,9 +399,17 @@ impl IOBase for Path {
             .map(Holder::S3Folder)
     }
 
+    /// Name a descendant without asking the store anything.
+    ///
+    /// A child of a location is a location, and naming one settles nothing
+    /// about either: the child resolves itself if and when it is used. Only a
+    /// handle that has *already* resolved answers through what it resolved to.
     fn child_by_path(&self, name: &str) -> Result<Holder> {
-        if self.current_kind() == IOKind::File {
-            return self.as_file()?.child_by_path(name);
+        {
+            let slot = self.resolved.lock().map_err(|_| poisoned())?;
+            if let Some(held) = slot.as_ref() {
+                return held.as_io().child_by_path(name);
+            }
         }
         self.as_directory()?.child_by_path(name)
     }
@@ -383,7 +426,7 @@ impl IOBase for Path {
                 return resolved.as_io_mut().clear();
             }
         }
-        match self.unresolved_kind() {
+        match self.unresolved_kind()? {
             IOKind::Directory => self.as_directory()?.clear(),
             IOKind::Unknown => Ok(()),
             _ => self.as_file()?.clear(),
@@ -392,12 +435,20 @@ impl IOBase for Path {
 
     /// Delete whichever of the two the resolved kind names.
     fn remove(&mut self, recursive: bool) -> Result<()> {
-        let kind = self.unresolved_kind();
-        // Drop what was resolved before deleting, so no staged write survives
-        // the removal and a later operation re-resolves from scratch.
-        if let Ok(mut slot) = self.resolved.lock() {
-            *slot = None;
-        }
+        // Abandon what was resolved before deleting: dropping a leaf publishes
+        // whatever it staged, so a pending write on its way to being deleted
+        // has to be discarded first or the removal would race its own
+        // resurrection. A later operation then re-resolves from scratch.
+        let held = self.resolved.lock().map_err(|_| poisoned())?.take();
+        let kind = match &held {
+            Some(Resolved::Directory(_)) => IOKind::Directory,
+            Some(Resolved::File(file)) => {
+                file.discard()?;
+                IOKind::File
+            }
+            None => self.unresolved_kind()?,
+        };
+        drop(held);
         match kind {
             IOKind::Directory => self.as_directory()?.remove(recursive),
             // An undecided location may still hold an object this handle has
@@ -407,9 +458,11 @@ impl IOBase for Path {
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
-        if !self.current_kind().is_container() {
+        match self.current_kind() {
             // A leaf contains nothing; that is not an error.
-            return Listing::empty();
+            Ok(kind) if !kind.is_container() => return Listing::empty(),
+            Err(error) => return Listing::failing(error),
+            Ok(_) => {}
         }
         match self.as_directory() {
             Ok(directory) => directory.ls(recursive, include_private),

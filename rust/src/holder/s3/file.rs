@@ -199,23 +199,34 @@ impl File {
     }
 
     /// Publish the staged value, as one upload or as a multipart one.
+    ///
+    /// What was published belongs to the store, so a closed handle lets go of
+    /// it: keeping it would hold the whole payload in memory for the life of
+    /// the handle and, worse, answer later reads from a copy the store may
+    /// have moved on from. An open handle keeps it, because a scope that
+    /// opened the object is a scope that asked for a coherent view of it.
     fn publish(&self, state: &mut State) -> Result<()> {
-        let Some(stage) = state.stage.as_mut() else {
+        let Some(stage) = state.stage.as_ref() else {
             return Ok(());
         };
         if !stage.dirty {
             return Ok(());
         }
         let content_type = self.media_type().to_string();
-        let etag = self.upload(&stage.bytes, &content_type)?;
-        stage.dirty = false;
         let size = stage.bytes.len() as u64;
+        let etag = self.upload(&stage.bytes, &content_type)?;
         if state.opened {
+            if let Some(stage) = state.stage.as_mut() {
+                stage.dirty = false;
+            }
             state.meta = Some(Some(ObjectMeta {
                 size,
                 etag,
                 content_type: Some(content_type),
             }));
+        } else {
+            state.stage = None;
+            state.meta = None;
         }
         Ok(())
     }
@@ -227,7 +238,9 @@ impl File {
     /// retried part re-sends one part rather than the whole object.
     fn upload(&self, bytes: &[u8], content_type: &str) -> Result<Option<String>> {
         let options = self.client.options();
-        if (bytes.len() as u64) < options.multipart_threshold() {
+        // A multipart upload of no parts is not a thing S3 will complete, so
+        // an empty value is one `PUT` whatever the threshold says.
+        if bytes.is_empty() || (bytes.len() as u64) < options.multipart_threshold() {
             return self
                 .client
                 .put_object(&self.bucket, &self.key, bytes, Some(content_type));
@@ -274,11 +287,27 @@ impl File {
     /// The lifecycle pair uses this: a pending write on its way to being
     /// deleted must not be flushed, or the removal would race its own
     /// resurrection.
-    fn discard(&self) -> Result<()> {
+    pub(super) fn discard(&self) -> Result<()> {
         let mut state = self.state()?;
         state.stage = None;
         state.meta = None;
         Ok(())
+    }
+
+    /// The staged value from `position`, when a write is waiting to publish.
+    ///
+    /// A caller must read what it just wrote, and a stream cannot borrow
+    /// through this handle's lock, so the pending bytes are copied out. `None`
+    /// says nothing is staged and the store is what to read.
+    pub(super) fn staged_from(&self, position: u64) -> Result<Option<Vec<u8>>> {
+        let state = self.state()?;
+        let Some(stage) = state.stage.as_ref() else {
+            return Ok(None);
+        };
+        let start = usize::try_from(position)
+            .unwrap_or(usize::MAX)
+            .min(stage.bytes.len());
+        Ok(Some(stage.bytes[start..].to_vec()))
     }
 }
 
@@ -330,31 +359,39 @@ impl IOBase for File {
     /// A staged write answers from memory instead, because it is what a later
     /// flush will publish and a caller must read what they just wrote.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        let mut state = self.state()?;
-        if let Some(stage) = state.stage.as_ref() {
-            let Ok(offset) = usize::try_from(offset) else {
-                return Ok(0);
-            };
-            if offset >= stage.bytes.len() {
-                return Ok(0);
+        {
+            let state = self.state()?;
+            if let Some(stage) = state.stage.as_ref() {
+                let Ok(offset) = usize::try_from(offset) else {
+                    return Ok(0);
+                };
+                if offset >= stage.bytes.len() {
+                    return Ok(0);
+                }
+                let available = &stage.bytes[offset..];
+                let count = available.len().min(buffer.len());
+                buffer[..count].copy_from_slice(&available[..count]);
+                return Ok(count);
             }
-            let available = &stage.bytes[offset..];
-            let count = available.len().min(buffer.len());
-            buffer[..count].copy_from_slice(&available[..count]);
-            return Ok(count);
-        }
-        // A size already known bounds the read without asking: a scan that
-        // runs off the end costs nothing rather than one refused request.
-        if let Some(Some(meta)) = state.meta.as_ref() {
-            if offset >= meta.size {
-                return Ok(0);
+            // A length this scope already established bounds the read without
+            // asking, so a scan that runs off the end costs nothing. Only
+            // while open: a closed handle keeps nothing, and a size a listing
+            // reported is what the store held then, not what it holds now.
+            if state.opened {
+                if let Some(Some(meta)) = state.meta.as_ref() {
+                    if offset >= meta.size {
+                        return Ok(0);
+                    }
+                }
             }
         }
+        // The lock is released across the request, so two threads reading one
+        // handle overlap on the wire instead of taking turns.
         let (read, total) = self
             .client
             .get_range(&self.bucket, &self.key, offset, buffer)?;
         if let Some(total) = total {
-            Self::learn_size(&mut state, total);
+            Self::learn_size(&mut *self.state()?, total);
         }
         Ok(read)
     }
@@ -388,24 +425,98 @@ impl IOBase for File {
     /// The inherited default would ask for the size first and then read it;
     /// here the one request answers both.
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        let mut state = self.state()?;
-        if let Some(stage) = state.stage.as_ref() {
+        if let Some(stage) = self.state()?.stage.as_ref() {
             return Ok(stage.bytes.clone());
         }
         let bytes = self.client.get_all(&self.bucket, &self.key)?;
-        Self::learn_size(&mut state, bytes.len() as u64);
+        Self::learn_size(&mut *self.state()?, bytes.len() as u64);
         Ok(bytes)
     }
 
     /// Read `length` bytes from `offset` with one ranged `GET`.
     ///
     /// The inherited default clamps against [`IOBase::size`] first, which on a
-    /// store is a second round trip; the range answers its own bound.
+    /// store is a second round trip; the range answers its own bound. Nothing
+    /// allocates `length` on the caller's word either - asking for the rest of
+    /// an object of unknown length is ordinary, and a store that holds sixteen
+    /// bytes must not be able to cost eight gigabytes of memory to read.
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        let mut bytes = vec![0_u8; length];
-        let read = self.pread(offset, &mut bytes)?;
-        bytes.truncate(read);
+        let bound = {
+            let state = self.state()?;
+            match state.stage.as_ref() {
+                Some(stage) => {
+                    let start = usize::try_from(offset)
+                        .unwrap_or(usize::MAX)
+                        .min(stage.bytes.len());
+                    let end = start.saturating_add(length).min(stage.bytes.len());
+                    return Ok(stage.bytes[start..end].to_vec());
+                }
+                None if state.opened => match state.meta.as_ref() {
+                    Some(Some(meta)) => Some(meta.size.saturating_sub(offset)),
+                    Some(None) => return Ok(Vec::new()),
+                    None => None,
+                },
+                None => None,
+            }
+        };
+        if let Some(bound) = bound {
+            let want = usize::try_from(bound).unwrap_or(usize::MAX).min(length);
+            if want == 0 {
+                return Ok(Vec::new());
+            }
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(want)
+                .map_err(|_| crate::iobase::oversized(want as u64))?;
+            bytes.resize(want, 0);
+            let (read, _) = self
+                .client
+                .get_range(&self.bucket, &self.key, offset, &mut bytes)?;
+            bytes.truncate(read);
+            return Ok(bytes);
+        }
+        let (bytes, total) =
+            self.client
+                .get_range_vec(&self.bucket, &self.key, offset, length as u64)?;
+        if let Some(total) = total {
+            Self::learn_size(&mut *self.state()?, total);
+        }
         Ok(bytes)
+    }
+
+    /// Hash `length` bytes from `offset` with one `GET` of exactly that range.
+    ///
+    /// The inherited default streams from `offset` to the end of the object
+    /// and stops reading once it has enough, which on a store means asking for
+    /// a gigabyte to hash sixteen bytes of it.
+    fn read_range_digest(
+        &self,
+        offset: u64,
+        length: usize,
+        algorithm: crate::DigestAlgorithm,
+    ) -> Result<crate::Digest> {
+        if self.state()?.stage.is_some() {
+            // A staged value is already in memory; the inherited walk reads it
+            // there, out of `pstream_bytes`, without asking the store.
+            return crate::xxhash::stream::read_range_digest(self, offset, length, algorithm);
+        }
+        let mut digester = algorithm.digester();
+        if length == 0 {
+            return Ok(digester.as_digest());
+        }
+        let last = offset.saturating_add(length as u64 - 1);
+        let mut reader =
+            self.client
+                .open_reader_range(&self.bucket, &self.key, offset, Some(last))?;
+        let mut window = vec![0_u8; crate::DEFAULT_STREAM_BATCH_SIZE.min(length)];
+        loop {
+            let read = std::io::Read::read(&mut reader, &mut window).map_err(Error::Io)?;
+            if read == 0 {
+                break;
+            }
+            digester.write_bytes(&window[..read]);
+        }
+        Ok(digester.as_digest())
     }
 
     /// Stage `bytes` at `offset`, loading the stored value once.
@@ -486,10 +597,17 @@ impl IOBase for File {
         }
     }
 
+    /// Grow the staged buffer so a later positional write does not have to.
+    ///
+    /// No request, and no object: a store has no allocation to reserve, and
+    /// reserving never changes a length, so nothing is staged that was not
+    /// staged already and nothing is published. Reserving on a handle that has
+    /// written nothing yet is a hint with nowhere to land, which is success.
     fn reserve(&mut self, capacity: u64) -> Result<()> {
-        let state = self.state()?;
-        let mut state = self.materialize(state)?;
-        let stage = state.stage.as_mut().ok_or_else(poisoned)?;
+        let mut state = self.state()?;
+        let Some(stage) = state.stage.as_mut() else {
+            return Ok(());
+        };
         let capacity = usize::try_from(capacity).map_err(|_| crate::iobase::oversized(capacity))?;
         if capacity > stage.bytes.capacity() {
             stage
@@ -497,8 +615,6 @@ impl IOBase for File {
                 .try_reserve_exact(capacity - stage.bytes.len())
                 .map_err(|_| crate::iobase::oversized(capacity as u64))?;
         }
-        // Reserving is a write: it creates the object on publication.
-        stage.dirty = true;
         Ok(())
     }
 
@@ -585,6 +701,11 @@ impl IOBase for File {
     /// succeeds without creating it.
     fn open(&mut self) -> Result<()> {
         let mut state = self.state()?;
+        // Opening what is already open asks nothing: a caller that opens
+        // defensively before each of a hundred reads pays for one `HEAD`.
+        if state.opened && state.meta.is_some() {
+            return Ok(());
+        }
         state.opened = true;
         let meta = self.client.head_object(&self.bucket, &self.key)?;
         state.meta = Some(meta);
