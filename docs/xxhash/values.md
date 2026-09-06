@@ -10,7 +10,7 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 | `as_value_bytes` | payload alone, no tag, no length; borrows, never allocates; `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `write_bytes` | total prefix-free feed: one [`DataTypeId`](../types/datatype.md) tag byte, then the family's canonical form; integers little-endian |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](../types/field.md), [`Uri`](../uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
-| `row_digests` | the selected values as one `Scalar::Sequence` through `write_bytes`, on every datatype family, nulls, nesting, dictionaries, unions, geospatial |
+| `row_digests` | the selected values as one `Scalar::Sequence` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial |
 | Selection | a holder's `digest:sources`, relative to its own Struct; `["*"]` and absence both mean every field except a `digest:role=holder` |
 | `apply_arrow_batch` | fills every holder in a batch under a non-null Struct root; the state's running digest is untouched |
 | Arrow column | `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
@@ -261,6 +261,8 @@ assert_ne!(digests.value(0), digests.value(1));
 - `as_value_bytes` on a decimal or temporal -> coefficient or stored count at storage width; scale, unit, and zone are type, not payload.
 - Subtree past `DataType::PARSE_RECURSION_LIMIT` -> one reserved `0xff` replaces it; no allocation, no panic; values differing only below that depth collide.
 - Null cell in `column_digests` -> feeds the null tag, so it never collides with an empty string.
+- A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
+- A `field` whose datatype does not describe the array given to `column_digests` -> `IncompatibleSchema`, never a panic.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
 - Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#filling-digest-holders) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.
