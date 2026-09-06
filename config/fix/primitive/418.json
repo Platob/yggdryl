@@ -1,0 +1,1104 @@
+[
+  {
+    "name": "underlyingstreamassetattributetype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
+      "display": "UnderlyingStreamAssetAttributeType",
+      "fix:tag": "41801"
+    }
+  },
+  {
+    "name": "underlyingstreamassetattributevalue",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the value of the attribute.",
+      "display": "UnderlyingStreamAssetAttributeValue",
+      "fix:tag": "41802"
+    }
+  },
+  {
+    "name": "underlyingstreamassetattributelimit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The limit or lower acceptable value of the attribute.",
+      "display": "UnderlyingStreamAssetAttributeLimit",
+      "fix:tag": "41803"
+    }
+  },
+  {
+    "name": "underlyingdeliverystreamcycledesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The delivery cycles during which the oil product will be transported in the pipeline.",
+      "display": "UnderlyingDeliveryStreamCycleDesc",
+      "fix:tag": "41805"
+    }
+  },
+  {
+    "name": "encodedunderlyingdeliverystreamcycledesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingDeliveryStreamCycleDesc(41807) field.",
+      "display": "EncodedUnderlyingDeliveryStreamCycleDescLen",
+      "fix:tag": "41806"
+    }
+  },
+  {
+    "name": "encodedunderlyingdeliverystreamcycledesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the UnderlyingDeliveryStreamCycleDesc(41805) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingDeliveryStreamCycleDesc(41805) field.",
+      "display": "EncodedUnderlyingDeliveryStreamCycleDesc",
+      "fix:tag": "41807"
+    }
+  },
+  {
+    "name": "underlyingdeliverystreamcommoditysource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The SCoTA coal cargo origin, mining region, mine(s), mining complex(es), loadout(s) or river dock(s) or other point(s) of origin that seller and buyer agree are acceptable origins for the coal product. For international coal transactions, this is the origin of the coal product. See https://fpml.org/coding-scheme/commodity-coal-product-source for values.",
+      "display": "UnderlyingDeliveryStreamCommoditySource",
+      "fix:tag": "41809"
+    }
+  },
+  {
+    "name": "underlyingexercisedesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "A description of the option exercise.",
+      "display": "UnderlyingExerciseDesc",
+      "fix:tag": "41810"
+    }
+  },
+  {
+    "name": "encodedunderlyingexercisedesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingExerciseDesc(41812) field.",
+      "display": "EncodedUnderlyingExerciseDescLen",
+      "fix:tag": "41811"
+    }
+  },
+  {
+    "name": "encodedunderlyingexercisedesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the UnderlyingExerciseDesc(41810) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingExerciseDesc(41810) field.",
+      "display": "EncodedUnderlyingExerciseDesc",
+      "fix:tag": "41812"
+    }
+  },
+  {
+    "name": "underlyingautomaticexerciseindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates (when 'Y') that exercise is automatic when the strike price is crossed or the underlying trade is in the money.",
+      "display": "UnderlyingAutomaticExerciseIndicator",
+      "fix:tag": "41813"
+    }
+  },
+  {
+    "name": "underlyingautomaticexercisethresholdrate",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The threshold rate for triggering automatic exercise.",
+      "display": "UnderlyingAutomaticExerciseThresholdRate",
+      "fix:tag": "41814"
+    }
+  },
+  {
+    "name": "underlyingexerciseconfirmationmethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
+      "display": "UnderlyingExerciseConfirmationMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotRequired\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Not required\"},{\"value\":\"1\",\"name\":\"NonElectronic\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Non-electronic\"},{\"value\":\"2\",\"name\":\"Electronic\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Electronic\"},{\"value\":\"3\",\"name\":\"Unknown\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Unknown at time of report\"}]}",
+      "fix:tag": "41815"
+    }
+  },
+  {
+    "name": "underlyingmanualnoticebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the business center used for adjusting the time for manual exercise notice. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingManualNoticeBusinessCenter",
+      "fix:tag": "41816"
+    }
+  },
+  {
+    "name": "underlyingfallbackexerciseindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the notional amount of the underlying swap, not previously exercised under the option, will be automatically exercised at the expiration time on the expiration date if at such time the buyer is in-the-money, provided that the difference between the settlement rate and the fixed rate under the relevant underlying swap is not less than one tenth of a percentage point (0.10% or 0.001).",
+      "display": "UnderlyingFallbackExerciseIndicator",
+      "fix:tag": "41817"
+    }
+  },
+  {
+    "name": "underlyinglimitedrighttoconfirmindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the Seller may request the Buyer to confirm its intent to exercise if not done on or before the expiration time on the Expiration date. If true (\"Y\") specific rules will apply in relation to the settlement mode.",
+      "display": "UnderlyingLimitedRightToConfirmIndicator",
+      "fix:tag": "41818"
+    }
+  },
+  {
+    "name": "underlyingexercisesplitticketindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates in physical settlement of bond and convertible bond options whether the party required to deliver the bonds will divide those to be delivered as notifying party desires to facilitate delivery obligations.",
+      "display": "UnderlyingExerciseSplitTicketIndicator",
+      "fix:tag": "41819"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the option exercise dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingOptionExerciseBusinessCenter",
+      "fix:tag": "41821"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
+      "display": "UnderlyingOptionExerciseBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:tag": "41822"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseearliestdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative earliest exercise date offset.",
+      "display": "UnderlyingOptionExerciseEarliestDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:tag": "41823"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseearliestdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative earliest exercise date offset.",
+      "display": "UnderlyingOptionExerciseEarliestDateOffsetPeriod",
+      "fix:tag": "41824"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseearliestdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative earliest exercise date offset.",
+      "display": "UnderlyingOptionExerciseEarliestDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41825"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisefrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of exercise dates.",
+      "display": "UnderlyingOptionExerciseFrequencyPeriod",
+      "fix:tag": "41826"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisefrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of exercise dates.",
+      "display": "UnderlyingOptionExerciseFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41827"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted start date for calculating periodic exercise dates.",
+      "display": "UnderlyingOptionExerciseStartDateUnadjusted",
+      "fix:tag": "41828"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "UnderlyingOptionExerciseStartDateRelativeTo",
+      "fix:tag": "41829"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative exercise start date offset.",
+      "display": "UnderlyingOptionExerciseStartDateOffsetPeriod",
+      "fix:tag": "41830"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative exercise start date offset.",
+      "display": "UnderlyingOptionExerciseStartDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41831"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative option exercise start date offset.",
+      "display": "UnderlyingOptionExerciseStartDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:tag": "41832"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisestartdateadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The adjusted start date for calculating periodic exercise dates.",
+      "display": "UnderlyingOptionExerciseStartDateAdjusted",
+      "fix:tag": "41833"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseskip",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
+      "display": "UnderlyingOptionExerciseSkip",
+      "fix:tag": "41834"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisenominationdeadline",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The last date (adjusted) for establishing the option exercise terms.",
+      "display": "UnderlyingOptionExerciseNominationDeadline",
+      "fix:tag": "41835"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisefirstdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted first exercise date.",
+      "display": "UnderlyingOptionExerciseFirstDateUnadjusted",
+      "fix:tag": "41836"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciselastdateunadjusted",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The unadjusted last exercise date.",
+      "display": "UnderlyingOptionExerciseLastDateUnadjusted",
+      "fix:tag": "41837"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseearliesttime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
+      "display": "UnderlyingOptionExerciseEarliestTime",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseearliesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciseearliesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41838"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciselatesttime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Latest exercise time. See also UnderlyingOptionExerciseEarliestTime(41838).",
+      "display": "UnderlyingOptionExerciseLatestTime",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciselatesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciselatesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41839"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisetimebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center used to determine the locale for option exercise time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values",
+      "display": "UnderlyingOptionExerciseTimeBusinessCenter",
+      "fix:tag": "41840"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisedate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The adjusted or unadjusted option exercise fixed date.",
+      "display": "UnderlyingOptionExerciseDate",
+      "fix:tag": "41842"
+    }
+  },
+  {
+    "name": "underlyingoptionexercisedatetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of option exercise date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "UnderlyingOptionExerciseDateType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Adjusted\"}]}",
+      "fix:tag": "41843"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdatebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center calendar used to adjust the option exercise expiration dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingOptionExerciseExpirationDateBusinessCenter",
+      "fix:tag": "41845"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdatebusinessdayconvention",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business day convention used to adjust the option exercise expiration dates. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
+      "display": "UnderlyingOptionExerciseExpirationDateBusinessDayConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:tag": "41846"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdaterelativeto",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the anchor date when the option exercise expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
+      "display": "UnderlyingOptionExerciseExpirationDateRelativeTo",
+      "fix:tag": "41847"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative exercise expiration date offset.",
+      "display": "UnderlyingOptionExerciseExpirationDateOffsetPeriod",
+      "fix:tag": "41848"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative exercise expiration date offset.",
+      "display": "UnderlyingOptionExerciseExpirationDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41849"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationfrequencyperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the frequency of exercise expiration dates.",
+      "display": "UnderlyingOptionExerciseExpirationFrequencyPeriod",
+      "fix:tag": "41850"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationfrequencyunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the frequency of exercise expiration dates.",
+      "display": "UnderlyingOptionExerciseExpirationFrequencyUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41851"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationrollconvention",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The convention for determining the sequence of exercise expiration dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument.",
+      "display": "UnderlyingOptionExerciseExpirationRollConvention",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
+      "fix:tag": "41852"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdateoffsetdaytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the day type of the relative option exercise expiration date offset.",
+      "display": "UnderlyingOptionExerciseExpirationDateOffsetDayType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:tag": "41853"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationtime",
+    "dtype": {
+      "type": "time32",
+      "unit": "second"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The option exercise expiration time.",
+      "display": "UnderlyingOptionExerciseExpirationTime",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciseexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:tag": "41854"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationtimebusinesscenter",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The business center used to determine the locale for option exercise expiration time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
+      "display": "UnderlyingOptionExerciseExpirationTimeBusinessCenter",
+      "fix:tag": "41855"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The adjusted or unadjusted option exercise expiration fixed date.",
+      "display": "UnderlyingOptionExerciseExpirationDate",
+      "fix:tag": "41857"
+    }
+  },
+  {
+    "name": "underlyingoptionexerciseexpirationdatetype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of option exercise expiration date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "UnderlyingOptionExerciseExpirationDateType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Adjusted\"}]}",
+      "fix:tag": "41858"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionprovision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The consequences of market disruption events.",
+      "display": "UnderlyingMarketDisruptionProvision",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"Applicable\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Applicable\"},{\"value\":\"2\",\"name\":\"AsInMasterAgreement\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"As specified in master agreement\"},{\"value\":\"3\",\"name\":\"AsInConfirmation\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"As specified in confirmation\"}]}",
+      "fix:tag": "41859"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackprovision",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the location of the fallback provision documentation.",
+      "display": "UnderlyingMarketDisruptionFallbackProvision",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MasterAgreement\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"As specified in master agreement\"},{\"value\":\"1\",\"name\":\"Confirmation\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"As specified in confirmation\"}]}",
+      "fix:tag": "41860"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionmaximumdays",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the maximum number of market disruption days (commodity or bullion business days) in a contract or confirmation. If none are specified, the maximum number of market disruption days is five (5).",
+      "display": "UnderlyingMarketDisruptionMaximumDays",
+      "fix:tag": "41861"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionmaterialitypercentage",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used when a price materiality percentage applies to the price source disruption event and this event has been specified.",
+      "display": "UnderlyingMarketDisruptionMaterialityPercentage",
+      "fix:tag": "41862"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionminimumfuturescontracts",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the minimum futures contracts level that dictates whether or not a 'De Minimis Trading' event has occurred.",
+      "display": "UnderlyingMarketDisruptionMinimumFuturesContracts",
+      "fix:tag": "41863"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionevent",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the market disruption event. For commodities see https://fpml.org/coding-scheme/commodity-market-disruption for values. For foreign exchange, see https://fixtrading.org/packages/market-disruption-event for code list of applicable event types.",
+      "display": "UnderlyingMarketDisruptionEvent",
+      "fix:tag": "41865"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbacktype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the type of disruption fallback. See https://fpml.org/coding-scheme/commodity-market-disruption-fallback for values.",
+      "display": "UnderlyingMarketDisruptionFallbackType",
+      "fix:tag": "41867"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackunderliertype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The type of reference price underlier.",
+      "display": "UnderlyingMarketDisruptionFallbackUnderlierType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Basket\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Basket\"},{\"value\":\"1\",\"name\":\"Bond\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Bond\"},{\"value\":\"10\",\"name\":\"Mortgage\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":10,\"doc\":\"Mortgage\"},{\"value\":\"11\",\"name\":\"MutualFund\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":11,\"doc\":\"Mutual fund\"},{\"value\":\"2\",\"name\":\"Cash\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Cash\"},{\"value\":\"3\",\"name\":\"Commodity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Commodity\"},{\"value\":\"4\",\"name\":\"ConvertibleBond\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Convertible bond\"},{\"value\":\"5\",\"name\":\"Equity\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Equity\"},{\"value\":\"6\",\"name\":\"ExchangeTradedFund\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Exchange traded fund\"},{\"value\":\"7\",\"name\":\"Future\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Future\"},{\"value\":\"8\",\"name\":\"Index\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"doc\":\"Index\"},{\"value\":\"9\",\"name\":\"Loan\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":9,\"doc\":\"Loan\"}]}",
+      "fix:tag": "41869"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackunderliersecurityid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the identifier value of the security.",
+      "display": "UnderlyingMarketDisruptionFallbackUnderlierSecurityID",
+      "fix:tag": "41870"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the class or source scheme of the security identifier.",
+      "display": "UnderlyingMarketDisruptionFallbackUnderlierSecurityIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0SP2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0SP2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0SP2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0SP2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0SP2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0SP2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:tag": "41871"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the description of underlying security.",
+      "display": "UnderlyingMarketDisruptionFallbackUnderlierSecurityDesc",
+      "fix:tag": "41872"
+    }
+  },
+  {
+    "name": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingMarketDisruptionFallbackUnderlierSecurityDesc(41874) field.",
+      "display": "EncodedUnderlyingMarketDisruptionFallbackUnderlierSecDescLen",
+      "fix:tag": "41873"
+    }
+  },
+  {
+    "name": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Encoded (non-ASCII characters) representation of the UnderlyingMarketDisruptionFallbackUnderlierSecurityDesc(41872) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingMarketDisruptionFallbackUnderlierSecurityDesc(41872).",
+      "display": "EncodedUnderlyingMarketDisruptionFallbackUnderlierSecurityDesc",
+      "fix:tag": "41874"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackopenunits",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "If there are multiple underlying assets, this specifies the number of units (index or securities) that constitute the underlier of the swap. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
+      "display": "UnderlyingMarketDisruptionFallbackOpenUnits",
+      "fix:tag": "41875"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackbasketcurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency if the underlier is a basket. Uses ISO 4217 currency codes.",
+      "display": "UnderlyingMarketDisruptionFallbackBasketCurrency",
+      "fix:tag": "41876"
+    }
+  },
+  {
+    "name": "underlyingmarketdisruptionfallbackbasketdivisor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
+      "display": "UnderlyingMarketDisruptionFallbackBasketDivisor",
+      "fix:tag": "41877"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingdayofweek",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The day of the week on which fixing takes place.",
+      "display": "UnderlyingPaymentScheduleFixingDayOfWeek",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"EveryDay\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Every day (the default if not specified)\"},{\"value\":\"1\",\"name\":\"Monday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Monday\"},{\"value\":\"2\",\"name\":\"Tuesday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Tuesday\"},{\"value\":\"3\",\"name\":\"Wednesday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Wednesday\"},{\"value\":\"4\",\"name\":\"Thursday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":4,\"doc\":\"Thursday\"},{\"value\":\"5\",\"name\":\"Friday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":5,\"doc\":\"Friday\"},{\"value\":\"6\",\"name\":\"Saturday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"doc\":\"Saturday\"},{\"value\":\"7\",\"name\":\"Sunday\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":7,\"doc\":\"Sunday\"}]}",
+      "fix:tag": "41879"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingdaynumber",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The occurrence of the day of week on which fixing takes place.",
+      "display": "UnderlyingPaymentScheduleFixingDayNumber",
+      "fix:tag": "41880"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulexid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of this UnderlyingPaymentSchedule for cross referencing elsewhere in the message.",
+      "display": "UnderlyingPaymentScheduleXID",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingpaymentschedulexid\",\"type\":\"XID\"}]}",
+      "fix:tag": "41881"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulexidref",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to payment schedule elsewhere in the message.",
+      "display": "UnderlyingPaymentScheduleXIDRef",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingpaymentschedulexidref\",\"type\":\"XIDREF\"}]}",
+      "fix:tag": "41882"
+    }
+  },
+  {
+    "name": "underlyingpaymentscheduleratecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the schedule rate. Uses ISO 4217 currency codes.",
+      "display": "UnderlyingPaymentScheduleRateCurrency",
+      "fix:tag": "41883"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulerateunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule rate unit of measure (UOM).",
+      "display": "UnderlyingPaymentScheduleRateUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "41884"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulerateconversionfactor",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number to be multiplied by the derived floating rate of the underlying's payment schedule in order to arrive at the payment rate. If omitted, the schedule rate conversion factor is 1.",
+      "display": "UnderlyingPaymentScheduleRateConversionFactor",
+      "fix:tag": "41885"
+    }
+  },
+  {
+    "name": "underlyingpaymentscheduleratespreadtype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
+      "display": "UnderlyingPaymentScheduleRateSpreadType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Absolute\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"Absolute\"},{\"value\":\"1\",\"name\":\"Percentage\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"Percentage\"}]}",
+      "fix:tag": "41886"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulesettlperiodprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule settlement period price.",
+      "display": "UnderlyingPaymentScheduleSettlPeriodPrice",
+      "fix:tag": "41887"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulesettlperiodpricecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The currency of the schedule settlement period price. Uses ISO 4217 currency codes.",
+      "display": "UnderlyingPaymentScheduleSettlPeriodPriceCurrency",
+      "fix:tag": "41888"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulesettlperiodpriceunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The settlement period price unit of measure (UOM).",
+      "display": "UnderlyingPaymentScheduleSettlPeriodPriceUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "41889"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulestepunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schedule step unit of measure (UOM).",
+      "display": "UnderlyingPaymentScheduleStepUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "41890"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingdaydistribution",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The distribution of fixing days.",
+      "display": "UnderlyingPaymentScheduleFixingDayDistribution",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"All\",\"since\":\"5.0SP2\",\"ep\":169,\"doc\":\"All\"},{\"value\":\"1\",\"name\":\"First\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":1,\"doc\":\"First\"},{\"value\":\"2\",\"name\":\"Last\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":2,\"doc\":\"Last\"},{\"value\":\"3\",\"name\":\"Penultimate\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":3,\"doc\":\"Penultimate\"}]}",
+      "fix:tag": "41891"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingdaycount",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of days over which fixing should take place.",
+      "display": "UnderlyingPaymentScheduleFixingDayCount",
+      "fix:tag": "41892"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixinglagperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the fixing lag duration.",
+      "display": "UnderlyingPaymentScheduleFixingLagPeriod",
+      "fix:tag": "41893"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixinglagunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the fixing lag duration.",
+      "display": "UnderlyingPaymentScheduleFixingLagUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41894"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingfirstobservationdateoffsetperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the relative first observation date offset.",
+      "display": "UnderlyingPaymentScheduleFixingFirstObservationDateOffsetPeriod",
+      "fix:tag": "41895"
+    }
+  },
+  {
+    "name": "underlyingpaymentschedulefixingfirstobservationdateoffsetunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the relative first observation date offset.",
+      "display": "UnderlyingPaymentScheduleFixingFirstObservationDateOffsetUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:tag": "41896"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamflatrateindicator",
+    "dtype": {
+      "type": "boolean"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When this element is specified and set to 'Y', the Flat Rate is the New Worldwide Tanker Nominal Freight Scale for the Freight Index Route taken at the Trade Date of the transaction \"Fixed\". If 'N' it is taken on each Pricing Date \"Floating\".",
+      "display": "UnderlyingPaymentStreamFlatRateIndicator",
+      "fix:tag": "41897"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamflatrateamount",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the actual monetary value of the flat rate when UnderlyingPaymentStreamFlatRateIndicator(41897) = 'Y'.",
+      "display": "UnderlyingPaymentStreamFlatRateAmount",
+      "fix:tag": "41898"
+    }
+  },
+  {
+    "name": "underlyingpaymentstreamflatratecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the currency of the actual flat rate. Uses ISO 4217 currency codes.",
+      "display": "UnderlyingPaymentStreamFlatRateCurrency",
+      "fix:tag": "41899"
+    }
+  }
+]

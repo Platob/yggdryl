@@ -30,6 +30,7 @@ pub(crate) fn reader<I, R>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
 ) -> Result<BatchReader>
@@ -45,6 +46,7 @@ where
         field: field.clone(),
         schema,
         batch_row_size: batch_row_size.unwrap_or(DEFAULT_BATCH_ROW_SIZE).max(1),
+        batch_byte_size,
         commit_row_size,
         rows_to_commit: commit_row_size,
         remaining_rows: max_row_size,
@@ -58,6 +60,7 @@ pub(crate) fn result_reader<I>(
     field: &Field,
     rows: I,
     batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
     max_row_size: Option<u64>,
 ) -> Result<BatchReader>
@@ -69,6 +72,7 @@ where
         field,
         rows.into_iter().map(FallibleScalar),
         batch_row_size,
+        batch_byte_size,
         commit_row_size,
         max_row_size,
     )
@@ -90,6 +94,7 @@ struct Rows<I> {
     field: Field,
     schema: SchemaRef,
     batch_row_size: usize,
+    batch_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
     rows_to_commit: Option<usize>,
     remaining_rows: Option<u64>,
@@ -136,7 +141,20 @@ where
         // enormous bound over a two-row iterator must not request an enormous
         // allocation. Vec's growth remains bounded by rows actually pulled.
         let mut values = Vec::new();
+        let mut appended = 0_u64;
         for _ in 0..row_size {
+            // A row bound is a count and a byte bound is a size, and whichever
+            // binds first closes the batch: batching by rows alone makes a
+            // heartbeat batch and a market-data batch differ by three orders of
+            // magnitude in memory for the same row count. A non-zero byte bound
+            // always yields at least one row, so one enormous value can never
+            // produce an empty batch.
+            if self
+                .batch_byte_size
+                .is_some_and(|bound| !values.is_empty() && appended >= bound)
+            {
+                break;
+            }
             let Some(row) = self.rows.next() else {
                 self.done = true;
                 break;
@@ -166,7 +184,12 @@ where
                 break;
             }
             match self.field.canonicalize_value(value) {
-                Ok(value) => values.push(value),
+                Ok(value) => {
+                    if self.batch_byte_size.is_some() {
+                        appended += appended_bytes(&value);
+                    }
+                    values.push(value);
+                }
                 Err(error) => {
                     let error = external(error);
                     if values.is_empty() {
@@ -242,6 +265,61 @@ fn external(error: crate::Error) -> ArrowError {
     ArrowError::ExternalError(Box::new(error))
 }
 
+/// A fixed per-row width, standing for the offsets and validity a row costs.
+///
+/// Every Arrow layout charges something per row beyond the payload - an
+/// offset, a validity bit, a null slot - and a running estimate that charged
+/// nothing would never close a batch of empty rows.
+const ROW_OVERHEAD: u64 = 16;
+
+/// What one canonicalized row is about to append, near enough to batch by.
+///
+/// The bound is a target rather than a ceiling. An in-progress builder cannot
+/// be measured the way a finished batch can, so this accumulates what was
+/// appended plus a fixed per-row width, and the finished batch's own
+/// accounting is what a caller measures against. Cheap and monotone beats
+/// exact and per-row: an exact measure would cost more than the parse that
+/// produced the row.
+fn appended_bytes(value: &Scalar) -> u64 {
+    ROW_OVERHEAD + payload_bytes(value)
+}
+
+/// The leaf payload one value carries, summed through nesting.
+fn payload_bytes(value: &Scalar) -> u64 {
+    // A null costs a validity bit, not a value. Charging it a leaf's width
+    // would make a wide mostly-null row - which a mixed capture's facet
+    // columns are - estimate several times what it actually occupies, and the
+    // bound would then cut batches far shorter than the caller asked for.
+    if value.is_null() {
+        return 0;
+    }
+    if let Some(text) = value.as_str() {
+        return text.len() as u64;
+    }
+    if let Some(bytes) = value.as_bytes() {
+        return bytes.len() as u64;
+    }
+    if let Some(held) = value.as_sequence() {
+        return held.iter().map(payload_bytes).sum::<u64>() + ROW_OVERHEAD;
+    }
+    if let Some(held) = value.as_mapping() {
+        return held
+            .iter()
+            .map(|(key, held)| payload_bytes(key) + payload_bytes(held))
+            .sum::<u64>()
+            + ROW_OVERHEAD;
+    }
+    if let Some(held) = value.as_record() {
+        return held
+            .iter()
+            .map(|(key, held)| key.len() as u64 + payload_bytes(held))
+            .sum::<u64>()
+            + ROW_OVERHEAD;
+    }
+    // Every remaining variant is a fixed-width leaf, and the widest is 16.
+    16
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::Infallible;
@@ -310,7 +388,7 @@ mod tests {
             end: 5,
             pulls: Arc::clone(&pulls),
         };
-        let mut batches = reader(&field(), rows, Some(2), None, None).unwrap();
+        let mut batches = reader(&field(), rows, Some(2), None, None, None).unwrap();
         assert_eq!(pulls.load(Ordering::Relaxed), 0);
 
         let first = batches.next().unwrap().unwrap();
@@ -333,7 +411,7 @@ mod tests {
 
     #[test]
     fn empty_rows_keep_the_declared_schema_without_a_pull() {
-        let mut batches = reader::<_, Scalar>(&field(), [], None, None, None).unwrap();
+        let mut batches = reader::<_, Scalar>(&field(), [], None, None, None, None).unwrap();
         assert_eq!(batches.schema(), field().into_arrow_schema().unwrap());
         assert!(batches.next().is_none());
     }
@@ -341,7 +419,7 @@ mod tests {
     #[test]
     fn zero_batch_row_size_still_makes_forward_progress() {
         let rows = [Row { id: 1, name: None }, Row { id: 2, name: None }];
-        let batches = reader(&field(), rows, Some(0), None, None).unwrap();
+        let batches = reader(&field(), rows, Some(0), None, None, None).unwrap();
         assert_eq!(
             batches
                 .map(|batch| batch.unwrap().num_rows())
@@ -357,7 +435,7 @@ mod tests {
             Scalar::from_sequence([Scalar::from("wrong"), Scalar::from("bad")]),
             Scalar::from_sequence([Scalar::from(3_i32), Scalar::from("unread")]),
         ];
-        let mut batches = reader(&field(), rows, Some(3), None, None).unwrap();
+        let mut batches = reader(&field(), rows, Some(3), None, None, None).unwrap();
         let prefix = batches.next().unwrap().unwrap();
         assert_eq!(prefix.num_rows(), 1);
         assert_eq!(
@@ -387,6 +465,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
         let batch = batches.next().unwrap().unwrap();
@@ -409,6 +488,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(batches.count(), 1);
@@ -422,7 +502,7 @@ mod tests {
             end: 10,
             pulls: Arc::clone(&pulls),
         };
-        let mut batches = reader(&field(), rows, Some(2), Some(3), Some(5)).unwrap();
+        let mut batches = reader(&field(), rows, Some(2), None, Some(3), Some(5)).unwrap();
 
         assert_eq!(batches.next().unwrap().unwrap().num_rows(), 2);
         assert_eq!(batches.next().unwrap().unwrap().num_rows(), 1);

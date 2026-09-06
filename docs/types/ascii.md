@@ -56,6 +56,11 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             // Six bytes: `cfi` stores what it is, not the eight some other
             // width would pad it to.
             ("cfi", DataType::Cfi, 6),
+            // Three FIX-facing codes, each at the width it needs rather than
+            // one width for all: a venue's message type is what runs long.
+            ("side", DataType::Side, 4),
+            ("msgtype", DataType::MsgType, 8),
+            ("msgdirection", DataType::MsgDirection, 4),
         ]
     );
 

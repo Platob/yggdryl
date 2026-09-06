@@ -23,6 +23,7 @@ pub(crate) use pairs::sorted_values;
 
 pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
+pub(crate) const DESCRIPTION_KEY: &str = "description";
 pub(crate) const DISPLAY_KEY: &str = "display";
 pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "http:accept-encoding";
 pub(crate) const HTTP_ACCEPT_KEY: &str = "http:accept";
@@ -484,6 +485,21 @@ impl Metadata {
     /// every catalog shows.
     pub fn display(&self) -> Option<&str> {
         self.get(DISPLAY_KEY)
+    }
+
+    /// Returns the shared description of what this field holds.
+    ///
+    /// What a specification, a catalog or a schema author says the field is
+    /// *for*, belonging to no protocol. A comment is a note somebody left; a
+    /// description is the field's own definition, and every protocol that
+    /// publishes one - FIX, Iceberg, a SQL dialect - is publishing this.
+    ///
+    /// One key rather than one per protocol, because a field has one meaning:
+    /// a dictionary that wrote `fix:description` and a catalog that read
+    /// `iceberg:doc` were carrying the same sentence twice and disagreeing
+    /// about it once.
+    pub fn description(&self) -> Option<&str> {
+        self.get(DESCRIPTION_KEY)
     }
 
     /// Consumes and serializes this snapshot as deterministic structural JSON.

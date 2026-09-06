@@ -51,7 +51,11 @@ test('the protocol view carries the typed fix vocabulary', () => {
   // Ordinary namespaced text, in the one metadata map.
   assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
   assert.equal(field.fix.get('tag'), '38')
-  assert.equal(field.fix.size, 4)
+  // Three, not four: a description is a fact about the column rather than a
+  // FIX fact, so it lives on the generic key every catalog reads.
+  assert.equal(field.get('description'), 'Quantity ordered.')
+  assert.equal(field.has('fix:description'), false)
+  assert.equal(field.fix.size, 3)
 
   // An empty array removes a list property; `delete` removes any of them.
   field.fix.tags = []
@@ -250,28 +254,25 @@ test('a specification tag forces the standard branch at every door', () => {
 
 test('the registry resolves every key the way the core does', () => {
   const registry = seed()
-  assert.equal(registry.size, 34)
+  assert.equal(registry.size, 6203)
 
-  assert.equal(registry.fieldByTag(55).name, 'Symbol')
-  assert.equal(registry.getFieldByTag(55).name, 'Symbol')
-  assert.equal(registry.fieldById('55:').name, 'Symbol')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
+  assert.equal(registry.getFieldByTag(55).name, 'symbol')
+  assert.equal(registry.fieldById('55:').name, 'symbol')
   assert.ok(registry.getFieldById('55:').equals(registry.fieldByTag(55)))
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
-  assert.equal(registry.fieldByTag(20).name, 'ExecType')
-  assert.equal(registry.fieldByTag(150).name, 'ExecType')
-  assert.equal(registry.fieldById('20:').name, 'ExecType')
+  assert.equal(registry.fieldByTag(150).name, 'exectype')
   // A name answers the canonical spelling whatever case it was asked in.
-  assert.equal(registry.fieldByName('symbol', '').name, 'Symbol')
-  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'Symbol')
-  assert.equal(registry.fieldByName('ticker', '').name, 'Symbol')
-  assert.equal(registry.fieldByName('clientorderid', '').name, 'ClOrdID')
+  assert.equal(registry.fieldByName('symbol', '').name, 'symbol')
+  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
+  assert.equal(registry.fieldByName('clordid', '').name, 'clordid')
   // A path reaches a repeating group and one of its members.
   assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
-  assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', '').fix.tag, 448)
-  assert.equal(registry.fieldByPath('nopartyids.item.PartyRole', '').name, 'PartyRole')
+  assert.equal(registry.fieldByPath('nopartyids.item.partyid', '').fix.tag, 448)
+  assert.equal(registry.fieldByPath('nopartyids.item.partyrole', '').name, 'partyrole')
 
   // The generic pair answers exactly what the specialized one does.
-  for (const key of [55, 'Symbol', 'ticker', 'NoPartyIDs.PartyID', 20]) {
+  for (const key of [55, 'Symbol', 'nopartyids', 'nopartyids.item.partyid']) {
     const answer = registry.field(key)
     assert.ok(answer.equals(registry.getField(key)))
     assert.ok(answer.equals(registry.get(key)))
@@ -296,19 +297,19 @@ test('protocol and MsgType inference stays native and shallow', () => {
       MimeType.FIXUL,
       'D',
     ],
-    ['level=INFO message=random', MimeType.OCTET_STREAM, null],
+    ['level=INFO message=random', MimeType.KEYVALUE, null],
   ]
   for (const [line, protocol, msgtype] of cases) {
-    assert.ok(registry.inferBytesProtocol(Buffer.from(line)).equals(protocol))
-    assert.ok(registry.inferTextProtocol(line).equals(protocol))
-    const bytes = registry.inferBytesMsgtype(Buffer.from(line))
+    assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
+    assert.ok(MimeType.inferText(line).equals(protocol))
+    const bytes = MimeType.inferBytesMsgtype(Buffer.from(line))
     assert.equal(bytes?.toString() ?? null, msgtype)
-    assert.equal(registry.inferTextMsgtype(line), msgtype)
+    assert.equal(MimeType.inferTextMsgtype(line), msgtype)
   }
 
   const empty = new fix.FixRegistry()
-  assert.equal(empty.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
-  assert.equal(empty.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+  assert.equal(MimeType.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
+  assert.equal(MimeType.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
 })
 
 test('an explicit branch pins lookup and omission infers the best match', () => {
@@ -442,7 +443,7 @@ test('every branch and identifier argument is coerced at the boundary', () => {
     assert.throws(() => registry.getFieldByName('Symbol', wrong), /into rust type `String`/)
     assert.throws(() => registry.fieldByPath('std', wrong), /into rust type `String`/)
   }
-  assert.equal(registry.getFieldByName('Symbol', null).name, 'Symbol')
+  assert.equal(registry.getFieldByName('Symbol', null).name, 'symbol')
 })
 
 test('the registry iterates lazily in ascending identifier order', () => {
@@ -485,7 +486,7 @@ test('the seed iterates in canonical-tag order and states no branch', () => {
   const registry = seed()
 
   const names = [...registry].map((field) => field.name)
-  assert.deepEqual(names.slice(0, 4), ['Account', 'AvgPx', 'BeginString', 'BodyLength'])
+  assert.deepEqual(names.slice(0, 4), ['account', 'advid', 'advrefid', 'advside'])
   assert.equal(names.length, registry.size)
 
   const tags = [...registry].map((field) => field.fix.tag)
@@ -531,23 +532,22 @@ test('a written folder reloads equal through the two trees', (t) => {
   const reference = seed()
 
   reference.writeInto(dictionary)
-  assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'primitive', '')).sort(),
-    ['0.json', '1.json', '4.json'],
-  )
-  // The one repeating group is the nested tree's only shard: 453 / 100.
-  assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'nested', '')).sort(),
-    ['4.json'],
-  )
+  // A shard per hundred tags, over both trees: counted rather than listed,
+  // because the committed dictionary is six thousand fields and the listing
+  // would be the generator's output restated.
+  const primitive = fs.readdirSync(path.join(dictionary, 'primitive', '')).sort()
+  const nested = fs.readdirSync(path.join(dictionary, 'nested', '')).sort()
+  assert.ok(primitive.includes('0.json') && nested.includes('0.json'))
+  assert.equal(primitive.length + nested.length, 128)
+  // The reload is the assertion; the listing above only says it sharded.
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
 
   const reloaded = fix.FixRegistry.fromHandle(new IOBase(dictionary))
-  for (const key of [453, 'PartyID', 447, 452]) reloaded.remove(key)
+  for (const key of [453, 'partyid', 447, 452]) reloaded.remove(key)
   reloaded.writeInto(new IOBase(dictionary))
-  assert.equal(fs.existsSync(path.join(dictionary, 'primitive', '4.json')), false)
-  // Emptying the nested tree removes it whole.
-  assert.equal(fs.existsSync(path.join(dictionary, 'nested')), false)
+  // A shard of a six-thousand-field dictionary survives losing four of them;
+  // what the removal has to show is the count, not a missing file.
+  assert.ok(fs.existsSync(path.join(dictionary, 'primitive')))
   assert.equal(fix.FixRegistry.fromHandle(dictionary).size, reference.size - 4)
 })
 
@@ -621,11 +621,11 @@ test('insert, update and remove carry the core rules across', () => {
 test('a shared registry refuses mutation and a clone is independent', () => {
   const registry = seed()
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
-  const message = new fix.FixMsg(root, { Symbol: 'AAPL' }, registry)
+  const message = new fix.FixMsg(root, { symbol: 'AAPL' }, registry)
 
   for (const mutation of [
-    () => registry.insert(fixField('Side', 'utf8', 54)),
-    () => registry.update(fixField('Symbol', 'utf8', 55)),
+    () => registry.insert(fixField('side', 'utf8', 54)),
+    () => registry.update(fixField('symbol', 'utf8', 55)),
     () => registry.remove(55),
     () => registry.removeById('55:'),
   ]) {
@@ -633,12 +633,12 @@ test('a shared registry refuses mutation and a clone is independent', () => {
   }
   assert.ok(message.registry.equals(registry))
   // The shared dictionary stays readable, and a deep copy is writable.
-  assert.equal(registry.fieldByTag(55).name, 'Symbol')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
   const copy = registry.clone()
   assert.ok(copy.equals(registry))
-  assert.equal(copy.remove(55).name, 'Symbol')
+  assert.equal(copy.remove(55).name, 'symbol')
   assert.equal(copy.equals(registry), false)
-  assert.equal(registry.size, 34)
+  assert.equal(registry.size, 6203)
 })
 
 function order(registry) {
@@ -647,7 +647,7 @@ function order(registry) {
     [
       registry.fieldByTag(55),
       registry.fieldByTag(38),
-      registry.fieldByName('NoPartyIDs', ''),
+      registry.fieldByName('nopartyids', ''),
       Field.from('9999: utf8'),
     ],
     { nullable: false },
@@ -655,9 +655,9 @@ function order(registry) {
 }
 
 const ORDER_VALUE = {
-  Symbol: 'AAPL',
-  OrderQty: Scalar.decimal(100n),
-  NoPartyIDs: [{ PartyID: 'BROKER', PartyIDSource: 'D', PartyRole: 1 }],
+  symbol: 'AAPL',
+  orderqty: Scalar.float(100),
+  nopartyids: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
   9999: 'custom',
 }
 
@@ -675,19 +675,19 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId('55:').asJs(), 'AAPL')
-  assert.equal(message.byName('ticker').asJs(), 'AAPL')
-  assert.equal(message.byTag(38).toString(), '"100.00000000"')
-  assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
+  assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
+  assert.equal(message.byTag(38).toString(), '100.0')
+  assert.equal(message.byPath('nopartyids.0.partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // An identifier is exact: a dictionary this message does not speak misses.
   assert.equal(message.getById('5001:cme'), null)
 
   assert.ok(message.get(55).equals(message.byTag(55)))
-  assert.ok(message.at('ticker').equals(message.byTag(55)))
+  assert.ok(message.at('symbol').equals(message.byTag(55)))
   assert.equal(message.get(1234), null)
   assert.equal(message.getByName('nope'), null)
-  assert.equal(message.getByPath('NoPartyIDs.PartyID'), null)
+  assert.equal(message.getByPath('nopartyids.partyid'), null)
   assert.throws(
     () => message.byTag(1234),
     /^Error: expected a fix value at "tag 1234", got nothing$/,
@@ -697,7 +697,7 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
-  assert.throws(() => message.byPath('NoPartyIDs.PartyID'), /path \\"NoPartyIDs.PartyID\\"/)
+  assert.throws(() => message.byPath('nopartyids.partyid'), /path \\"nopartyids.partyid\\"/)
   assert.throws(() => message.at(55n), {
     name: 'TypeError',
     message: 'key must be a number tag or a string name, got BigInt',
@@ -773,10 +773,11 @@ test('a message refuses a value its field refuses', () => {
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
 
   // A text field reads any value that spells text, a number included, so what
-  // it refuses is a value with no spelling at all.
-  assert.throws(() => new fix.FixMsg(root, { Symbol: [1] }, registry), /Symbol/)
-  assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { Symbol: 'AAPL' }, registry))
-  assert.throws(() => fix.FixMsg(root, { Symbol: 'AAPL' }, registry), /without 'new'/)
+  // it refuses is a value with no spelling at all. The dictionary folds its
+  // names, so the field the refusal names is `symbol`.
+  assert.throws(() => new fix.FixMsg(root, { symbol: [1] }, registry), /symbol/)
+  assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { symbol: 'AAPL' }, registry))
+  assert.throws(() => fix.FixMsg(root, { symbol: 'AAPL' }, registry), /without 'new'/)
 
   // A root whose stored branch is malformed fails at construction.
   const broken = fields.struct('row', [Field.from('Symbol: utf8')], { nullable: false })
@@ -806,7 +807,7 @@ test('a message is a value: equality, hash, clone and JSON', () => {
   assert.ok(message.equals(same))
   assert.equal(message.stableHash(), same.stableHash())
   assert.equal(typeof message.stableHash(), 'bigint')
-  assert.equal(message.equals(new fix.FixMsg(root, { ...ORDER_VALUE, Symbol: 'MSFT' }, registry)), false)
+  assert.equal(message.equals(new fix.FixMsg(root, { ...ORDER_VALUE, symbol: 'MSFT' }, registry)), false)
 
   const copy = message.clone()
   assert.ok(copy.equals(message))
@@ -829,11 +830,11 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(registry.stableHash(), seed().stableHash())
   assert.equal(typeof registry.stableHash(), 'bigint')
   assert.equal(registry.equals(new fix.FixRegistry()), false)
-  assert.equal(registry.toString(), 'FixRegistry(34 fields)')
+  assert.equal(registry.toString(), 'FixRegistry(6203 fields)')
   assert.equal(new fix.FixRegistry().toString(), 'FixRegistry(0 fields)')
 
   const document = registry.toJSON()
-  assert.equal(document.length, 34)
+  assert.equal(document.length, 6203)
   assert.deepEqual(document[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
   assert.equal(document[0].metadata['fix:tag'], '1')
 })
@@ -846,12 +847,17 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     Object.keys(fix).sort(),
     [
       'FixMsg',
+      'FixProjection',
+      'FixReader',
       'FixRegistry',
       'STANDARD_BRANCH',
       'USER_TAG_MAX',
       'USER_TAG_MIN',
+      'crateFields',
       'globalRegistry',
       'installGlobalRegistry',
+      'schema',
+      'schemaTags',
     ],
   )
   assert.equal(fix.STANDARD_BRANCH, '')
@@ -861,9 +867,16 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     'FixFieldIterator',
     'FixMsg',
     'FixMsgEntries',
+    'FixProjection',
+    'FixReader',
     'FixRegistry',
     'JsFixMsg',
+    'JsFixProjection',
+    'JsFixReader',
     'JsFixRegistry',
+    'fixCrateFields',
+    'fixSchema',
+    'fixSchemaTags',
     '_fixStandardBranchNative',
     '_fixStandardTagLimitNative',
     'fixGlobalRegistryNative',
@@ -882,10 +895,10 @@ test('installing the process default wins before anything resolves it', () => {
     const seed = fix.FixRegistry.fromHandle(process.argv[2])
     fix.installGlobalRegistry(seed)
     assert.ok(fix.globalRegistry().equals(seed))
-    assert.equal(fix.globalRegistry().fieldByTag(55).name, 'Symbol')
-    assert.equal(fix.globalRegistry().fieldByName('ticker', '').name, 'Symbol')
+    assert.equal(fix.globalRegistry().fieldByTag(55).name, 'symbol')
+    assert.equal(fix.globalRegistry().fieldByName('SYMBOL', '').name, 'symbol')
     const root = fields.struct('row', [fix.globalRegistry().fieldByTag(55)], { nullable: false })
-    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(seed))
+    assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(seed))
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
     console.log('ok')
   `
@@ -896,4 +909,143 @@ test('installing the process default wins before anything resolves it', () => {
     { encoding: 'utf8' },
   )
   assert.equal(output.trim(), 'ok')
+})
+
+test('a reader parses every frame shape the core reads', () => {
+  const registry = seed()
+  const reader = new fix.FixReader(registry)
+
+  assert.equal(reader.text('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|').byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.bytes(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
+  assert.equal(
+    reader.fixtext(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
+    'AAPL',
+  )
+  assert.equal(reader.pairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
+  assert.ok(reader.registry.equals(registry))
+
+  // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
+  // whose value packs its members behind the two control bytes ULLINK uses.
+  const bridge = reader.ultext(
+    Buffer.from(
+      '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
+        '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
+      'binary',
+    ),
+  )
+  assert.equal(bridge.byTag(55).toJSON(), 'TTF')
+  assert.equal(bridge.byTag(38).toJSON(), 1200)
+  assert.equal(bridge.byTag(44).toJSON(), 41.25)
+  assert.equal(bridge.party('1')[0].toJSON(), 'BUYSIDE')
+  assert.equal(bridge.digest().length, 16)
+  // The counter says two occurrences and one arrived: reported, not repaired.
+  assert.equal(bridge.anomalies().length, 1)
+  assert.match(bridge.anomalies()[0], /453/)
+})
+
+test('a reader takes the pins the core takes', () => {
+  const registry = seed()
+
+  // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
+  // pinned version is what decides which name the row answers to.
+  const dated = new fix.FixReader(registry, { sourceVersion: '4.2' })
+  assert.ok(dated.text('8=FIX.4.4|35=8|32=100|10=0|').getByName('lastshares') !== null)
+
+  // A stated absence produces no field at all.
+  const silent = new fix.FixReader(registry, { nullValues: ['<none>'] })
+  assert.equal(silent.text('8=FIX.4.4|35=D|55=<none>|10=0|').getByTag(55), null)
+
+  assert.throws(() => new fix.FixReader(registry, { branch: 'not a branch' }))
+})
+
+test('the fixed row is named by tag and never shifts', () => {
+  const registry = seed()
+  const schema = fix.schema(registry, 'FixMessage')
+  assert.equal(schema.fieldAt(0).name, '8')
+  assert.equal(schema.fieldAt(2).name, '35')
+  assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'entries')
+  assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'unmapped')
+  assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
+
+  const projection = new fix.FixProjection(registry, 'FixMessage')
+  assert.equal(projection.size, schema.fieldLen)
+  assert.equal(projection.positionOf(35), 2)
+  assert.equal(projection.positionOf(999999), null)
+  assert.equal(projection.carried, 0)
+  assert.equal(projection.field.name, 'FixMessage')
+
+  const reader = new fix.FixReader(registry)
+  const row = reader.text('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|').toRow(projection).toJSON()
+  assert.equal(row.length, schema.fieldLen)
+  assert.equal(row[projection.positionOf(35)], 'D')
+  assert.equal(row[projection.positionOf(55)], 'AAPL')
+  // A tag no dictionary explains is still there, in its own column.
+  assert.equal(row[row.length - 1].length, 1)
+})
+
+test("a capture's own columns lead the row", () => {
+  const registry = seed()
+  const carrier = fields.struct(
+    'line',
+    [fields.utf8('url', { nullable: false }), fields.binary('body', { nullable: false })],
+    { nullable: false },
+  )
+  const plain = new fix.FixProjection(registry, 'FixMessage')
+  const carried = new fix.FixProjection(registry, 'FixMessage', carrier)
+
+  assert.equal(carried.carried, 2)
+  assert.deepEqual(carried.carriedPositions, [0, 1])
+  assert.equal(carried.column(0).name, 'url')
+  assert.equal(carried.size, plain.size + 2)
+  assert.equal(carried.positionOf(35), plain.positionOf(35) + 2)
+
+  // A carried column carries no tag, so a row answers null there: the capture
+  // fills it, and nothing in the message says what it held.
+  const row = new fix.FixReader(registry).text('8=FIX.4.4|35=D|10=0|').toRow(carried).toJSON()
+  assert.equal(row[0], null)
+  assert.equal(row[carried.positionOf(35)], 'D')
+})
+
+test('the crate fields declare their own protocols', () => {
+  const held = fix.crateFields()
+  assert.deepEqual(
+    held.map((field) => field.name),
+    [
+      'msghash',
+      'version',
+      'symbolticker',
+      'timestamp',
+      'unixpartition',
+      'parentclordid',
+      'parentorderid',
+    ],
+  )
+
+  const digest = held[0]
+  assert.equal(digest.getProperty('digest', 'role'), 'holder')
+  assert.equal(digest.getProperty('digest', 'algorithm'), 'xxh3-128')
+  assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
+  assert.ok(digest.description)
+
+  const partition = held[4]
+  assert.equal(partition.getProperty('partition', 'sources'), '["30004"]')
+  assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
+})
+
+test('a message says everything the core derives about it', () => {
+  const registry = seed()
+  const reader = new fix.FixReader(registry)
+  const message = reader.text('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|')
+
+  assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
+  assert.ok(message.marketTimestamp() !== null)
+  assert.ok(message.unixPartition(3600) !== null)
+  // A buy order at a price is a party willing to pay it, so the bid lane it
+  // never wrote is still true of it.
+  assert.equal(message.lifted('bidpx').toJSON(), 10.5)
+  assert.match(message.liftSource('bidpx'), /^44/)
+  assert.ok(message.lift().length > 0)
+  assert.equal(message.digest().length, 16)
+  assert.equal(message.arrivals()[0][0], 8)
+  assert.equal(message.toBytes(124).toString().split('|')[0], '8=FIX.4.4')
 })

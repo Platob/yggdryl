@@ -168,7 +168,7 @@ docs' property table.
 
 ---
 
-## Phase 4 — code sets: `FixEnumValue`, `fix:codes`, spelling translation
+## Phase 4 — code sets: `FixCode`, `fix:codes`, spelling translation
 
 **Goal.** A field carries its FIX code set, and any spelling of a code
 reaches the wire value.
@@ -182,7 +182,7 @@ FIX benchmark group, the FIX page.
 ### Contract
 
 ```rust
-pub struct FixEnumValue {
+pub struct FixCode {
     name: SmolStr,                 // symbolic name, "Buy"
     value: SmolStr,                // wire value, "1"
     description: Option<SmolStr>,
@@ -196,17 +196,17 @@ pub struct FixEnumValue {
 
 impl FixField<'field> {
     pub fn codes(&self) -> FixCodes<'field>;
-    pub fn code(&self, value: &str) -> Option<FixCode<'field>>;
-    pub fn code_by_name(&self, name: &str) -> Option<FixCode<'field>>;
-    pub fn code_at(&self, at: &Version, value: &str) -> Option<FixCode<'field>>;
+    pub fn code(&self, value: &str) -> Option<FixCodeValue<'field>>;
+    pub fn code_by_name(&self, name: &str) -> Option<FixCodeValue<'field>>;
+    pub fn code_at(&self, at: &Version, value: &str) -> Option<FixCodeValue<'field>>;
     pub fn code_value(&self, text: &str) -> Option<&'field str>;
     pub fn code_name(&self, value: &str) -> Option<&'field str>;
     pub fn code_value_at(&self, at: &Version, text: &str) -> Option<&'field str>;
     pub fn code_name_at(&self, at: &Version, value: &str) -> Option<&'field str>;
 }
 impl FixFieldMut<'_> {
-    pub fn set_codes(&mut self, codes: &[FixEnumValue]) -> Result<()>;
-    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixEnumValue>>>;
+    pub fn set_codes(&mut self, codes: &[FixCode]) -> Result<()>;
+    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixCode>>>;
 }
 ```
 

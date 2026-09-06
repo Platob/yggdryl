@@ -1,0 +1,200 @@
+[
+  {
+    "name": "noassetattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "assetattributetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2305"
+              }
+            },
+            {
+              "name": "assetattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2306"
+              }
+            },
+            {
+              "name": "assetattributelimit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2307"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of asset attribute entries in the group.",
+      "display": "NoAssetAttributes",
+      "fix:tag": "2304"
+    }
+  },
+  {
+    "name": "nolegassetattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legassetattributetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2309"
+              }
+            },
+            {
+              "name": "legassetattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2310"
+              }
+            },
+            {
+              "name": "legassetattributelimit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2311"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of asset attribute entries in the group.",
+      "display": "NoLegAssetAttributes",
+      "fix:tag": "2308"
+    }
+  },
+  {
+    "name": "nounderlyingassetattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingassetattributetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2313"
+              }
+            },
+            {
+              "name": "underlyingassetattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2314"
+              }
+            },
+            {
+              "name": "underlyingassetattributelimit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2315"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of asset attribute entries in the group.",
+      "display": "NoUnderlyingAssetAttributes",
+      "fix:tag": "2312"
+    }
+  },
+  {
+    "name": "noentitlementtypes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "entitlementtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1775"
+              }
+            },
+            {
+              "name": "entitlementsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2402"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entitlement types in the repeating group.",
+      "display": "NoEntitlementTypes",
+      "fix:tag": "2345"
+    }
+  }
+]

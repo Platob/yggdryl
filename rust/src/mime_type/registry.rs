@@ -35,6 +35,7 @@ pub(super) fn known_from_mime(value: &str) -> Option<MimeType> {
         ("application/vnd.apache.orc", ORC),
         ("application/vnd.apache.puffin", PUFFIN),
         ("text/plain", PLAIN_TEXT),
+        ("text/key-value", KEYVALUE),
         ("text/ullink", ULLINK),
         ("text/fix", FIX),
         ("text/fixul", FIXUL),

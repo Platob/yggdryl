@@ -133,6 +133,382 @@ ascii_code_leaf!(Country, 2);
 ascii_code_leaf!(Currency, 3);
 ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
+ascii_code_leaf!(Side, 4);
+ascii_code_leaf!(MsgType, 8);
+ascii_code_leaf!(MsgDirection, 4);
+
+impl MsgType {
+    /// The alphabet a synthesized message type is rendered in.
+    ///
+    /// Digits and upper-case letters, minus the four that read as each other
+    /// in a log line - `I`/`1`, `O`/`0` - because a synthetic value is read
+    /// by people before it is read by anything else. Thirty-two symbols, so
+    /// each carries exactly five bits and the rendering is a shift rather
+    /// than a division.
+    const ALPHABET: &'static [u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+    /// How many symbols a synthesized value spends.
+    ///
+    /// Seven of the eight bytes, leaving the first to mark it as synthetic.
+    /// Seven symbols is thirty-five bits, so two distinct spellings collide
+    /// at around a quarter of a million of them - far past what a venue
+    /// declares, and the registration refuses a collision anyway rather than
+    /// letting one happen quietly.
+    const SYNTHETIC_SYMBOLS: usize = 7;
+
+    /// The byte a synthesized value opens with.
+    ///
+    /// `~` is outside the alphabet and outside every message type FIX
+    /// publishes, so a synthetic value is recognisable at a glance and can
+    /// never be confused with one a venue actually sent.
+    pub const SYNTHETIC_MARK: u8 = b'~';
+
+    /// This spelling as a message type, synthesizing one where it will not fit.
+    ///
+    /// FIX's own types are one or two characters and this datatype holds
+    /// eight, which is enough for every type the specification publishes and
+    /// for most a venue invents. It is not enough for the composite keys a
+    /// bridge writes - `P Report Ack` is twelve - and a value that does not
+    /// fit cannot simply be truncated, because two keys sharing a prefix
+    /// would become one message type.
+    ///
+    /// So a spelling that does not fit is *hashed* into one that does. The
+    /// mapping is stable across processes and versions, because it is this
+    /// crate's own digest over the exact bytes, and it is one-way: the
+    /// spelling it came from is kept by whoever registers it, not recovered
+    /// from the value.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgType;
+    ///
+    /// // What fits is itself, unchanged.
+    /// assert_eq!(MsgType::coerce("D").as_str(), "D");
+    /// assert_eq!(MsgType::coerce("AB").as_str(), "AB");
+    ///
+    /// // What does not is stable, marked, and never two things at once.
+    /// let held = MsgType::coerce("P Report Ack");
+    /// assert_eq!(held, MsgType::coerce("P Report Ack"));
+    /// assert_ne!(held, MsgType::coerce("P Report Nack"));
+    /// assert!(held.is_synthetic());
+    /// assert_eq!(held.as_str().len(), 8);
+    /// ```
+    #[must_use]
+    pub fn coerce(spelling: &str) -> Self {
+        if let Ok(held) = Self::new(spelling) {
+            return held;
+        }
+        Self::synthesized(spelling)
+    }
+
+    /// The synthetic value one spelling hashes to.
+    fn synthesized(spelling: &str) -> Self {
+        let digest = crate::digest::DigestAlgorithm::Xxh3
+            .digest(spelling.as_bytes())
+            .as_u64()
+            .unwrap_or_default();
+        let mut rendered = [0_u8; 8];
+        rendered[0] = Self::SYNTHETIC_MARK;
+        for (at, slot) in rendered[1..].iter_mut().enumerate() {
+            let shift = 5 * (Self::SYNTHETIC_SYMBOLS - 1 - at);
+            let symbol = (digest >> shift) & 0b1_1111;
+            *slot = Self::ALPHABET[symbol as usize];
+        }
+        // Every byte is from the alphabet or the mark, so the width and the
+        // ASCII rule both hold by construction.
+        Self(SmolStr::new(
+            std::str::from_utf8(&rendered).unwrap_or("~UNKNOWN"),
+        ))
+    }
+
+    /// Whether this value was synthesized rather than sent.
+    #[must_use]
+    pub fn is_synthetic(&self) -> bool {
+        self.as_str().as_bytes().first() == Some(&Self::SYNTHETIC_MARK)
+    }
+
+    /// Reads the message type one captured byte line declares.
+    ///
+    /// The same shallow scan [`MimeType::infer_bytes`](crate::MimeType) runs,
+    /// asked for a different answer: a raw `MSGTYPE=` anywhere in the line is
+    /// checked before numeric tag 35 and wins when both are present, because
+    /// a bridge writes its own type in front of a frame it relays. FIX's
+    /// user-defined `U*` range routes through one dictionary root.
+    ///
+    /// The answer is a slice of the caller's bytes: no message is parsed and
+    /// nothing is allocated. It is deliberately not validated to this type's
+    /// width, because a line may carry anything and a classifier must not
+    /// refuse what it was asked to read.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgType;
+    ///
+    /// let line = b"sending >> 8=FIX.4.2|9=176|35=D|10=203| << queued seq=1092";
+    /// assert_eq!(MsgType::infer_bytes(line), Some(&b"D"[..]));
+    /// // The user-defined range routes through one root.
+    /// assert_eq!(MsgType::infer_bytes(b"35=U7|"), Some(&b"UDF"[..]));
+    /// assert_eq!(MsgType::infer_bytes(b"no pairs here"), None);
+    /// ```
+    #[must_use]
+    pub fn infer_bytes(line: &[u8]) -> Option<&[u8]> {
+        crate::mime_type::line::inspect(line).msgtype()
+    }
+
+    /// Reads the message type one captured text line declares.
+    ///
+    /// Answers nothing where the bytes it found are not text, because a
+    /// message type that cannot be spelled is not one a caller can use.
+    #[must_use]
+    pub fn infer_text(line: &str) -> Option<&str> {
+        std::str::from_utf8(Self::infer_bytes(line.as_bytes())?).ok()
+    }
+}
+
+impl MsgDirection {
+    /// The direction a line moved when nothing in it says otherwise.
+    ///
+    /// A session's own log is written by the side doing the sending, so its
+    /// unmarked lines are the ones it sent and its inbound lines are the ones
+    /// it bothered to mark.
+    pub const SENT: &'static str = "SENT";
+
+    /// The direction of a line the transport marked as arriving.
+    pub const RECV: &'static str = "RECV";
+
+    /// Reads which way one captured byte line moved.
+    ///
+    /// The verb is read **in front of the payload**, never inside it. Where a
+    /// message starts is where the transport's own prose stops, so a `sent`
+    /// inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML
+    /// payload's own wording never becomes a direction.
+    ///
+    /// A prefix carrying both verbs, and one carrying neither, both answer
+    /// nothing: there is no verb the reading can prefer, and inventing one
+    /// would be a guess.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgDirection;
+    ///
+    /// assert_eq!(
+    ///     MsgDirection::infer_bytes(b"sending >> 8=FIX.4.2|35=D|10=203|"),
+    ///     Some(MsgDirection::SENT)
+    /// );
+    /// assert_eq!(
+    ///     MsgDirection::infer_bytes(b"recv 8=FIX.4.4|35=0|10=017|"),
+    ///     Some(MsgDirection::RECV)
+    /// );
+    /// // A verb only inside the payload is the payload's word, not a marker.
+    /// assert_eq!(
+    ///     MsgDirection::infer_bytes(b"8=FIX.4.4|35=8|58=sent earlier|10=1|"),
+    ///     None
+    /// );
+    /// // English that merely contains the letters is not a marker.
+    /// assert_eq!(MsgDirection::infer_bytes(b"sending in session 3"), None);
+    /// assert_eq!(MsgDirection::infer_bytes(b"received out of order"), None);
+    /// ```
+    #[must_use]
+    pub fn infer_bytes(line: &[u8]) -> Option<&'static str> {
+        Self::split_bytes(line).0
+    }
+
+    /// Reads which way one captured text line moved.
+    #[must_use]
+    pub fn infer_text(line: &str) -> Option<&'static str> {
+        Self::infer_bytes(line.as_bytes())
+    }
+
+    /// Reads the direction and answers the line with its marker removed.
+    ///
+    /// Stripping is what makes the reading free downstream: the verb is
+    /// transport prose rather than payload, so a body that keeps it carries a
+    /// word no protocol sent. What is removed is the marker and the
+    /// whitespace after it, never the payload.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgDirection;
+    ///
+    /// let (direction, body) = MsgDirection::split_bytes(b"sending >> 8=FIX.4.2|35=D|");
+    /// assert_eq!(direction, Some(MsgDirection::SENT));
+    /// assert_eq!(body, b">> 8=FIX.4.2|35=D|");
+    ///
+    /// // Nothing read is nothing removed.
+    /// let (none, whole) = MsgDirection::split_bytes(b"8=FIX.4.4|35=D|");
+    /// assert_eq!(none, None);
+    /// assert_eq!(whole, b"8=FIX.4.4|35=D|");
+    /// ```
+    #[must_use]
+    pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8]) {
+        let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
+        Self::split_within(line, bound)
+    }
+
+    /// Reads which way a line moved, given where its payload starts.
+    ///
+    /// The reading is the same; what this adds is that the caller already
+    /// knows the offset. A reader has located the frame to parse it, and
+    /// locating it twice is the only cost the bounded reading has.
+    ///
+    /// The default fills silence and never overrides a statement: a line
+    /// carrying a verb answers that verb, and only a line carrying none - or
+    /// carrying both, which is a line no reading can prefer one of - takes
+    /// the default. FIX parsing passes [`MsgDirection::SENT`], because a
+    /// session's own log is written by the side doing the sending and its
+    /// unmarked lines are the ones it sent.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgDirection;
+    ///
+    /// let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
+    /// let at = 11; // where the reader found the frame
+    /// assert_eq!(
+    ///     MsgDirection::at_payload(line, at, Some(MsgDirection::SENT)),
+    ///     Some(MsgDirection::SENT),
+    ///     "the verb inside Text(58) is payload, not prose",
+    /// );
+    ///
+    /// // A line the transport did not mark takes the default, and a line
+    /// // with no default takes nothing.
+    /// let bare = b"8=FIX.4.2|35=D|10=0|";
+    /// assert_eq!(MsgDirection::at_payload(bare, 0, Some(MsgDirection::SENT)), Some(MsgDirection::SENT));
+    /// assert_eq!(MsgDirection::at_payload(bare, 0, None), None);
+    /// ```
+    #[must_use]
+    pub fn at_payload(
+        line: &[u8],
+        payload_at: usize,
+        default: Option<&'static str>,
+    ) -> Option<&'static str> {
+        Self::split_within(line, payload_at.min(line.len()))
+            .0
+            .or(default)
+    }
+
+    /// The reading, over a prefix the caller has already bounded.
+    fn split_within(line: &[u8], bound: usize) -> (Option<&'static str>, &[u8]) {
+        let prefix = &line[..bound];
+        let mut found: Option<(&'static str, usize)> = None;
+        for (start, end, direction, selectable) in markers(prefix) {
+            // A bare `in` or `out` conflicts even where it could not be
+            // chosen: `sending in session 3` and `received out of order` are
+            // English, and a prefix carrying both verbs has none a reading
+            // can prefer.
+            if found.is_some_and(|(held, _)| held != direction) {
+                return (None, line);
+            }
+            if selectable {
+                // A bracketed marker owns its bracket, so the pair goes
+                // together; an unbracketed one owns only itself, which is why
+                // an arrow after it survives for an lstrip pattern to take.
+                let closed = matches!(
+                    (prefix.get(start.wrapping_sub(1)), line.get(end)),
+                    (Some(b'['), Some(b']')) | (Some(b'('), Some(b')')) | (Some(b'<'), Some(b'>'))
+                );
+                found.get_or_insert((direction, end + usize::from(closed)));
+            } else if found.is_none() {
+                found = Some((direction, usize::MAX));
+            }
+        }
+        match found {
+            Some((direction, end)) if end != usize::MAX => {
+                (Some(direction), trim_start(&line[end..]))
+            }
+            _ => (None, line),
+        }
+    }
+
+    /// Reads the direction and answers the text with its marker removed.
+    #[must_use]
+    pub fn split_text(line: &str) -> (Option<&'static str>, &str) {
+        let (direction, rest) = Self::split_bytes(line.as_bytes());
+        // The split lands after an ASCII verb, so the tail is still text.
+        (direction, std::str::from_utf8(rest).unwrap_or(line))
+    }
+}
+
+/// The verbs a transport marks a line with, longest first inside each
+/// direction so `received` is not read as `receive`.
+///
+/// Domain knowledge, written out where a reviewer can check it rather than
+/// inferred from spelling. The third element marks the two bare forms, which
+/// match under a stricter rule.
+const VERBS: [(&[u8], &str, bool); 13] = [
+    (b"sending", MsgDirection::SENT, false),
+    (b"sent", MsgDirection::SENT, false),
+    (b"send", MsgDirection::SENT, false),
+    (b"outbound", MsgDirection::SENT, false),
+    (b"outgoing", MsgDirection::SENT, false),
+    (b"out", MsgDirection::SENT, true),
+    (b"receiving", MsgDirection::RECV, false),
+    (b"received", MsgDirection::RECV, false),
+    (b"receive", MsgDirection::RECV, false),
+    (b"recv", MsgDirection::RECV, false),
+    (b"inbound", MsgDirection::RECV, false),
+    (b"incoming", MsgDirection::RECV, false),
+    (b"in", MsgDirection::RECV, true),
+];
+
+/// Every direction marker standing in one prefix, with its bounds.
+fn markers(prefix: &[u8]) -> impl Iterator<Item = (usize, usize, &'static str, bool)> + '_ {
+    (0..prefix.len()).filter_map(move |start| {
+        VERBS.iter().find_map(|(verb, direction, bare)| {
+            let end = start + verb.len();
+            if prefix.len() < end || !prefix[start..end].eq_ignore_ascii_case(verb) {
+                return None;
+            }
+            if !opens_marker(prefix, start) || !closes_marker(prefix, end) {
+                return None;
+            }
+            // A bare `in` or `out` is *chosen* only where a bracket opens it
+            // and a delimiter closes it, because that is the one shape a
+            // marker has and none of the shapes the same letters have
+            // otherwise: `direct:out` is a route endpoint and
+            // `MCFID-IN-XPAR` is a session name. It still counts against an
+            // opposite verb, which is what makes `sending in session 3`
+            // answer nothing rather than `SENT`.
+            Some((
+                start,
+                end,
+                *direction,
+                !*bare || bare_marker(prefix, start, end),
+            ))
+        })
+    })
+}
+
+/// Whether a marker may open at `start`.
+fn opens_marker(prefix: &[u8], start: usize) -> bool {
+    start == 0
+        || prefix
+            .get(start - 1)
+            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(byte, b'[' | b'(' | b'<'))
+}
+
+/// Whether a marker may close at `end`.
+fn closes_marker(prefix: &[u8], end: usize) -> bool {
+    prefix.get(end).is_none_or(|byte| {
+        byte.is_ascii_whitespace() || matches!(byte, b']' | b')' | b'>' | b':' | b',')
+    })
+}
+
+/// Whether a bare `in` or `out` stands as a marker rather than as English.
+fn bare_marker(prefix: &[u8], start: usize, end: usize) -> bool {
+    let opened = start == 0
+        || prefix
+            .get(start - 1)
+            .is_some_and(|byte| matches!(byte, b'[' | b'('));
+    let closed = prefix
+        .get(end)
+        .is_none_or(|byte| matches!(byte, b']' | b')' | b':'));
+    opened && closed
+}
+
+/// The bytes with leading ASCII whitespace removed.
+fn trim_start(line: &[u8]) -> &[u8] {
+    let mut start = 0;
+    while start < line.len() && line[start].is_ascii_whitespace() {
+        start += 1;
+    }
+    &line[start..]
+}
 
 /// One exact ASCII storage or registered-code representation.
 ///
@@ -153,6 +529,12 @@ pub enum AsciiFamily {
     Mic(Mic),
     /// ISO 10962 classification code.
     Cfi(Cfi),
+    /// FIX's side of a trade.
+    Side(Side),
+    /// FIX's message type, case-bearing.
+    MsgType(MsgType),
+    /// Which way a captured line moved.
+    MsgDirection(MsgDirection),
 }
 
 impl AsciiFamily {
@@ -165,6 +547,9 @@ impl AsciiFamily {
             Self::Currency(value) => value.as_str(),
             Self::Mic(value) => value.as_str(),
             Self::Cfi(value) => value.as_str(),
+            Self::Side(value) => value.as_str(),
+            Self::MsgType(value) => value.as_str(),
+            Self::MsgDirection(value) => value.as_str(),
         }
     }
 
@@ -180,6 +565,9 @@ impl AsciiFamily {
             Self::Currency(value) => value.storage(),
             Self::Mic(value) => value.storage(),
             Self::Cfi(value) => value.storage(),
+            Self::Side(value) => value.storage(),
+            Self::MsgType(value) => value.storage(),
+            Self::MsgDirection(value) => value.storage(),
         }
     }
 }
@@ -285,6 +673,23 @@ ascii_value!(
 );
 ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
 ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
+ascii_value!(Side, super::SideType, Side, Side, Side, Some(4));
+ascii_value!(
+    MsgType,
+    super::MsgTypeType,
+    MsgType,
+    MsgType,
+    MsgType,
+    Some(8)
+);
+ascii_value!(
+    MsgDirection,
+    super::MsgDirectionType,
+    MsgDirection,
+    MsgDirection,
+    MsgDirection,
+    Some(4)
+);
 
 impl ScalarValue for FixedAscii {
     type Family = AsciiFamily;
@@ -343,6 +748,9 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => DataTypeId::Currency,
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
+            Self::Side(_) => DataTypeId::Side,
+            Self::MsgType(_) => DataTypeId::MsgType,
+            Self::MsgDirection(_) => DataTypeId::MsgDirection,
         }
     }
 
@@ -354,6 +762,9 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => Ok(DataType::Currency),
             Self::Mic(_) => Ok(DataType::Mic),
             Self::Cfi(_) => Ok(DataType::Cfi),
+            Self::Side(_) => Ok(DataType::Side),
+            Self::MsgType(_) => Ok(DataType::MsgType),
+            Self::MsgDirection(_) => Ok(DataType::MsgDirection),
         }
     }
 
@@ -390,3 +801,16 @@ define_scalar_type!(
 );
 define_scalar_type!(MicScalar, super::MicType, "mic", crate::DataType::Mic);
 define_scalar_type!(CfiScalar, super::CfiType, "cfi", crate::DataType::Cfi);
+define_scalar_type!(SideScalar, super::SideType, "side", crate::DataType::Side);
+define_scalar_type!(
+    MsgTypeScalar,
+    super::MsgTypeType,
+    "msgtype",
+    crate::DataType::MsgType
+);
+define_scalar_type!(
+    MsgDirectionScalar,
+    super::MsgDirectionType,
+    "direction",
+    crate::DataType::MsgDirection
+);

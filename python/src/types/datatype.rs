@@ -434,6 +434,9 @@ impl PyDataType {
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
+            "side" => CoreDataType::Side,
+            "msgtype" => CoreDataType::MsgType,
+            "msgdirection" => CoreDataType::MsgDirection,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             _ => {

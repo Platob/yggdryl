@@ -1133,6 +1133,11 @@ impl PyField {
     }
 
     #[getter]
+    fn description(&self) -> Option<&str> {
+        self.inner.description()
+    }
+
+    #[getter]
     fn location(&self) -> PyResult<Option<PyUrl>> {
         self.inner
             .location()
@@ -1367,6 +1372,16 @@ impl PyField {
     fn remove_display(&mut self) -> PyResult<Option<String>> {
         self.require_mutable()?;
         Ok(self.inner.remove_display())
+    }
+
+    fn set_description(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_description(value).map_err(value_error)
+    }
+
+    fn remove_description(&mut self) -> PyResult<Option<String>> {
+        self.require_mutable()?;
+        Ok(self.inner.remove_description())
     }
 
     fn set_location(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {

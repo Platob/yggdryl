@@ -21,11 +21,16 @@ import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
+    FixMsg,
+    FixProjection,
+    FixReader,
+    FixRegistry,
     STANDARD_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
-    FixMsg,
-    FixRegistry,
+    fix_crate_fields,
+    fix_schema,
+    fix_schema_tags,
     global_registry,
     install_global_registry,
 )
@@ -77,7 +82,11 @@ def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
     # Ordinary namespaced text, in the one metadata map.
     assert field.metadata["fix:aliases"] == "Qty,Quantity"
     assert field.fix["tag"] == "38"
-    assert len(field.fix) == 4
+    # Three, not four: a description is a fact about the column rather than a
+    # FIX fact, so it lives on the generic key every catalog reads.
+    assert field.metadata["description"] == "Quantity ordered."
+    assert "fix:description" not in field.metadata
+    assert len(field.fix) == 3
 
     # An empty list removes the property; `del` removes any of them.
     field.fix.tags = []
@@ -245,29 +254,37 @@ def test_a_specification_tag_forces_the_standard_branch() -> None:
 
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
-    assert len(seed) == 34
+    assert len(seed) == 6203
     assert bool(seed)
 
-    assert seed.field_by_tag(55).name == "Symbol"
+    assert seed.field_by_tag(55).name == "symbol"
     assert seed.get_field_by_tag(55) == seed.field_by_tag(55)
-    assert seed.field_by_id("55:").name == "Symbol"
+    assert seed.field_by_id("55:").name == "symbol"
     assert seed.get_field_by_id("55:") == seed.field_by_tag(55)
-    # The alternate tag 20 reaches ExecType, which claims 150 canonically.
-    assert seed.field_by_tag(20).name == "ExecType"
-    assert seed.field_by_tag(150).name == "ExecType"
-    assert seed.field_by_id("20:").name == "ExecType"
+    assert seed.field_by_tag(150).name == "exectype"
+    # The published dictionary states no alternate tags, so the alternate
+    # tier is exercised where one is actually declared.
+    alternate = _field("exectype", "utf8", 150)
+    alternate.fix.tags = [20]
+    aliased = FixRegistry.from_fields([alternate])
+    assert aliased.field_by_tag(20).name == "exectype"
+    assert aliased.field_by_id("20:").name == "exectype"
     # A name answers the canonical spelling whatever case it was asked in.
-    assert seed.field_by_name("symbol", "").name == "Symbol"
-    assert seed.field_by_name("SYMBOL", STANDARD_BRANCH).name == "Symbol"
-    assert seed.field_by_name("ticker", "").name == "Symbol"
-    assert seed.field_by_name("clientorderid", "").name == "ClOrdID"
+    assert seed.field_by_name("symbol", "").name == "symbol"
+    assert seed.field_by_name("SYMBOL", STANDARD_BRANCH).name == "symbol"
+    # The published dictionary declares no aliases, so the alias tier is
+    # exercised where one is actually declared.
+    aliased = _field("symbol", "utf8", 55)
+    aliased.fix.aliases = ["ticker"]
+    named = FixRegistry.from_fields([aliased])
+    assert named.field_by_name("ticker", "").name == "symbol"
     # A path reaches a repeating group and one of its members.
     assert seed.field_by_path("NoPartyIDs", "").fix.tag == 453
-    assert seed.field_by_path("NoPartyIDs.PartyID", "").fix.tag == 448
-    assert seed.field_by_path("nopartyids.item.PartyRole", "").name == "PartyRole"
+    assert seed.field_by_path("nopartyids.item.partyid", "").fix.tag == 448
+    assert seed.field_by_path("nopartyids.item.partyrole", "").name == "partyrole"
 
     # The generic pair answers exactly what the specialized one does.
-    for key in (55, "Symbol", "ticker", "NoPartyIDs.PartyID", 20):
+    for key in (55, "Symbol", "nopartyids", "nopartyids.item.partyid"):
         assert seed.get_field(key) == seed[key]
         assert seed.field(key) == seed[key]
         assert key in seed
@@ -291,32 +308,32 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
             MimeType.FIXUL,
             b"D",
         ),
-        (b"level=INFO message=random", MimeType.OCTET_STREAM, None),
+        (b"level=INFO message=random", MimeType.KEYVALUE, None),
     )
     for line, protocol, msgtype in cases:
-        assert seed.infer_bytes_protocol(line) == protocol
-        assert seed.infer_bytes_protocol(bytearray(line)) == protocol
-        assert seed.infer_bytes_protocol(memoryview(line)) == protocol
-        assert seed.infer_bytes_msgtype(line) == msgtype
-        assert seed.infer_bytes_msgtype(bytearray(line)) == msgtype
-        assert seed.infer_bytes_msgtype(memoryview(line)) == msgtype
+        assert MimeType.infer_bytes(line) == protocol
+        assert MimeType.infer_bytes(bytearray(line)) == protocol
+        assert MimeType.infer_bytes(memoryview(line)) == protocol
+        assert MimeType.infer_bytes_msgtype(line) == msgtype
+        assert MimeType.infer_bytes_msgtype(bytearray(line)) == msgtype
+        assert MimeType.infer_bytes_msgtype(memoryview(line)) == msgtype
         text = line.decode()
-        assert seed.infer_text_protocol(text) == protocol
-        assert seed.infer_text_msgtype(text) == (
+        assert MimeType.infer_text(text) == protocol
+        assert MimeType.infer_text_msgtype(text) == (
             msgtype.decode() if msgtype is not None else None
         )
 
     empty = FixRegistry()
-    assert empty.infer_bytes_msgtype(b"35=AE|") == b"AE"
-    assert empty.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+    assert MimeType.infer_bytes_msgtype(b"35=AE|") == b"AE"
+    assert MimeType.infer_text_msgtype("MSGTYPE=AE|") == "AE"
 
 
 def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("Symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("symbol", "utf8", 55, aliases=["Ticker"]),
             # The venue dictionary reuses the name, which is the normal case.
-            _field("Symbol", "utf8", 5055, branch="cme", aliases=["VenueTicker"]),
+            _field("symbol", "utf8", 5055, branch="cme", aliases=["VenueTicker"]),
             _field("TradeID", "utf8", 5001, branch="cme"),
         ]
     )
@@ -324,7 +341,7 @@ def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> Non
     # A name is unique per branch, not registry-wide.
     assert registry.field_by_name("symbol", "").fix.id == "55:"
     assert registry.field_by_name("SYMBOL", "cme").fix.id == "5055:cme"
-    assert registry.field_by_name("venueticker", "CME").name == "Symbol"
+    assert registry.field_by_name("venueticker", "CME").name == "symbol"
     assert registry.get_field_by_name("venueticker", "") is None
     assert registry.get_field_by_name("ticker", "cme") is None
     assert registry.get_field_by_path("Symbol", "cme").fix.id == "5055:cme"
@@ -440,7 +457,7 @@ def test_registry_coerces_every_branch_and_identifier_argument(
 def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("Symbol", "utf8", 55),
+            _field("symbol", "utf8", 55),
             _field("TradeID", "utf8", 5001, branch="cme"),
             _field("Price", "decimal128(20, 8)", 44),
             _field("VenueQty", "int64", 5002, branch="cme"),
@@ -478,7 +495,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
 
 def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
     names = [field.name for field in seed]
-    assert names[:4] == ["Account", "AvgPx", "BeginString", "BodyLength"]
+    assert names[:4] == ["account", "advid", "advrefid", "advside"]
     assert len(names) == len(seed)
 
     tags = [field.fix.tag for field in seed]
@@ -522,11 +539,13 @@ def test_registry_round_trips_through_the_two_written_trees(
     root = tmp_path / "dictionary"
     seed.write_into(root)
 
+    # A shard per hundred tags, over both trees: counted rather than listed,
+    # because the committed dictionary is six thousand fields and the listing
+    # would be the generator's output restated.
     primitive = sorted(path.name for path in (root / "primitive").iterdir())
-    assert primitive == ["0.json", "1.json", "4.json"]
-    # The one repeating group is the nested tree's only shard: 453 / 100.
     nested = sorted(path.name for path in (root / "nested").iterdir())
-    assert nested == ["4.json"]
+    assert "0.json" in primitive and "0.json" in nested
+    assert len(primitive) + len(nested) == 128
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
@@ -535,9 +554,9 @@ def test_registry_round_trips_through_the_two_written_trees(
     reloaded.remove(447)
     reloaded.remove(452)
     reloaded.write_into(root)
-    assert not (root / "primitive" / "4.json").exists()
-    # Emptying the nested tree removes it whole.
-    assert not (root / "nested").exists()
+    # A shard of a six-thousand-field dictionary survives losing four of
+    # them; what the removal has to show is the count, not a missing file.
+    assert (root / "primitive").exists()
     assert len(FixRegistry.from_handle(root)) == len(seed) - 4
 
 
@@ -565,7 +584,7 @@ def test_a_vendor_branch_gets_its_own_folder(tmp_path: pathlib.Path) -> None:
 def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     registry = FixRegistry.from_fields(
         [
-            _field("Symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("symbol", "utf8", 55, aliases=["Ticker"]),
             _field("Price", "decimal128(20, 8)", 44, aliases=["Px"]),
         ]
     )
@@ -575,7 +594,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
 
     # A key another field holds is refused, naming both and the branch;
     # nothing changes.
-    with pytest.raises(ValueError, match="held by Symbol") as conflict:
+    with pytest.raises(ValueError, match="held by symbol") as conflict:
         registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
     assert 'branch \\"\\"' in str(conflict.value)
     assert len(registry) == 3
@@ -591,7 +610,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     assert merged.fix.aliases == ["Sym", "Ticker"]
     # A datatype disagreement is refused, never widened.
     with pytest.raises(ValueError):
-        registry.update(_field("Symbol", "large_utf8", 55))
+        registry.update(_field("symbol", "large_utf8", 55))
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
     removed = registry.remove("sym")
@@ -611,11 +630,11 @@ def test_registry_mutation_refuses_while_something_shares_it(
     root = Field(
         "row", DataType.from_fields([seed.field_by_tag(55)]), nullable=False
     )
-    message = FixMsg(root, {"Symbol": "AAPL"}, seed)
+    message = FixMsg(root, {"symbol": "AAPL"}, seed)
 
     for mutation in (
         lambda: seed.insert(_field("Side", "utf8", 54)),
-        lambda: seed.update(_field("Symbol", "utf8", 55)),
+        lambda: seed.update(_field("symbol", "utf8", 55)),
         lambda: seed.remove(55),
     ):
         with pytest.raises(ValueError, match="shared with a message"):
@@ -623,7 +642,7 @@ def test_registry_mutation_refuses_while_something_shares_it(
     assert message.registry == seed
 
     # The registry a message shares is still readable, and a copy is writable.
-    assert seed.field_by_tag(55).name == "Symbol"
+    assert seed.field_by_tag(55).name == "symbol"
     fresh = FixRegistry.from_handle(SEED)
     assert fresh.remove(55) is not None
 
@@ -645,9 +664,11 @@ def _order(seed: FixRegistry) -> Field:
 
 
 ORDER_VALUE: dict[str, Any] = {
-    "Symbol": "AAPL",
-    "OrderQty": decimal.Decimal("100"),
-    "NoPartyIDs": [{"PartyID": "BROKER", "PartyIDSource": "D", "PartyRole": 1}],
+    "symbol": "AAPL",
+    "orderqty": 100.0,
+    "nopartyids": [
+        {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1},
+    ],
     "9999": "custom",
 }
 
@@ -662,16 +683,16 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     assert len(message) == 4
     assert message.by_tag(55).as_py() == "AAPL"
     assert message.by_id("55:").as_py() == "AAPL"
-    assert message.by_name("ticker").as_py() == "AAPL"
-    assert message.by_tag(38).as_py() == decimal.Decimal("100")
-    assert message.by_path("NoPartyIDs.0.PartyID").as_py() == "BROKER"
+    assert message.by_name("symbol").as_py() == "AAPL"
+    assert message.by_tag(38).as_py() == 100.0
+    assert message.by_path("nopartyids.0.partyid").as_py() == "BROKER"
     # An unknown tag is retained under its rendered name, never dropped.
     assert message.by_tag(9999).as_py() == "custom"
     # An identifier is exact: a dictionary this message does not speak misses.
     assert message.get_by_id("5001:cme") is None
 
     assert message[55] == message.by_tag(55)
-    assert message["ticker"] == message.by_tag(55)
+    assert message["symbol"] == message.by_tag(55)
     assert message.get(55) == message.by_tag(55)
     assert message.get(1234) is None
     assert message.get(1234, "fallback") == "fallback"
@@ -705,7 +726,7 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     # The mapping input became the ordered row the root declares.
     pairs = [(name, value.as_py()) for name, value in message]
     assert [name for name, _ in pairs] == [child.name for child in root]
-    assert pairs[0] == ("Symbol", "AAPL")
+    assert pairs[0] == ("symbol", "AAPL")
 
     # A native Scalar names the same row.
     assert FixMsg(root, message.value, seed) == message
@@ -771,11 +792,12 @@ def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
         "row", DataType.from_fields([seed.field_by_tag(55)]), nullable=False
     )
     # A text field reads any value that spells text, a number included, so
-    # what it refuses is a value with no spelling at all.
-    with pytest.raises(ValueError, match="Symbol"):
-        FixMsg(root, {"Symbol": [1]})
+    # what it refuses is a value with no spelling at all. The dictionary folds
+    # its names, so the field the refusal names is `symbol`.
+    with pytest.raises(ValueError, match="symbol"):
+        FixMsg(root, {"symbol": [1]})
     with pytest.raises(ValueError):
-        FixMsg(Field("scalar", "utf8"), {"Symbol": "AAPL"})
+        FixMsg(Field("scalar", "utf8"), {"symbol": "AAPL"})
 
     # A root whose stored branch is malformed fails at construction.
     broken = Field(
@@ -785,7 +807,7 @@ def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
         metadata={"fix:branch": "2cme"},
     )
     with pytest.raises(ValueError, match="fix:branch"):
-        FixMsg(broken, {"Symbol": "AAPL"}, seed)
+        FixMsg(broken, {"symbol": "AAPL"}, seed)
 
 
 def test_message_links_the_process_default_when_none_is_named() -> None:
@@ -795,13 +817,13 @@ def test_message_links_the_process_default_when_none_is_named() -> None:
     assert default == global_registry()
 
     root = Field(
-        "row", DataType.from_fields([_field("Symbol", "utf8", 55)]), nullable=False
+        "row", DataType.from_fields([_field("symbol", "utf8", 55)]), nullable=False
     )
-    linked = FixMsg(root, {"Symbol": "AAPL"})
+    linked = FixMsg(root, {"symbol": "AAPL"})
     assert linked.registry == default
     # An explicit registry is kept instead.
-    explicit = FixRegistry.from_fields([_field("Symbol", "utf8", 55)])
-    assert FixMsg(root, {"Symbol": "AAPL"}, explicit).registry == explicit
+    explicit = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
+    assert FixMsg(root, {"symbol": "AAPL"}, explicit).registry == explicit
 
 
 def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
@@ -813,7 +835,7 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert hash(message) == hash(same)
     assert message.stable_hash() == same.stable_hash()
     assert len({message, same}) == 1
-    assert message != FixMsg(root, {**ORDER_VALUE, "Symbol": "MSFT"}, seed)
+    assert message != FixMsg(root, {**ORDER_VALUE, "symbol": "MSFT"}, seed)
     assert message != object()
 
     assert copy.copy(message) == message
@@ -821,10 +843,10 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     restored = pickle.loads(pickle.dumps(message))
     assert restored == message
     assert restored.registry == seed
-    assert restored.by_path("NoPartyIDs.0.PartyID").as_py() == "BROKER"
+    assert restored.by_path("nopartyids.0.partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
-    assert repr(seed) == "FixRegistry(34 fields)"
+    assert repr(seed) == "FixRegistry(6203 fields)"
     assert repr(FixRegistry()) == "FixRegistry(0 fields)"
 
 
@@ -838,15 +860,15 @@ from yggdryl.fix import FixMsg, FixRegistry, global_registry, install_global_reg
 seed = FixRegistry.from_handle(pathlib.Path(sys.argv[1]))
 install_global_registry(seed)
 assert global_registry() == seed
-assert global_registry().field_by_tag(55).name == "Symbol"
-assert global_registry().field_by_name("ticker", "").name == "Symbol"
+assert global_registry().field_by_tag(55).name == "symbol"
+assert global_registry().field_by_name("SYMBOL", "").name == "symbol"
 
 root = Field(
     "row",
     DataType.from_fields([global_registry().field_by_tag(55)]),
     nullable=False,
 )
-assert FixMsg(root, {"Symbol": "AAPL"}).registry == seed
+assert FixMsg(root, {"symbol": "AAPL"}).registry == seed
 
 try:
     install_global_registry(FixRegistry())
@@ -882,6 +904,127 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
     assert message.field.fix.tag is None
     assert message.field.fix.id is None
 
+
+def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
+    """One reader, five entry points, and each is the core's own."""
+    reader = FixReader(seed)
+
+    framed = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    assert framed.by_tag(55).as_py() == "AAPL"
+    assert reader.bytes(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert reader.fixtext(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+        55
+    ).as_py() == "AAPL"
+    assert reader.pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+
+    # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
+    # whose value packs its members behind the two control bytes ULLINK uses.
+    bridge = reader.ultext(
+        b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
+        b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
+    )
+    assert bridge.by_tag(55).as_py() == "TTF"
+    assert bridge.by_tag(38).as_py() == 1200.0
+    assert bridge.by_tag(44).as_py() == 41.25
+    party = bridge.party("1")
+    assert party is not None
+    assert party[0] is not None and party[0].as_py() == "BUYSIDE"
+    # The counter says two occurrences and one arrived: reported, not repaired.
+    assert len(bridge.anomalies()) == 1
+    assert "453" in bridge.anomalies()[0]
+
+
+def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
+    """A branch, a version and the spellings that mean nothing was sent."""
+    assert FixReader(seed).registry == seed
+
+    # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
+    # pinned version is what decides which name the row answers to.
+    dated = FixReader(seed, source_version="4.2")
+    assert dated.text("8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+
+    # A stated absence produces no field at all.
+    silent = FixReader(seed, null_values=["<none>"])
+    assert silent.text("8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+
+    with pytest.raises(ValueError):
+        FixReader(seed, branch="not a branch")
+
+
+def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
+    """The one shape a whole capture lands in."""
+    schema = fix_schema(seed, "FixMessage")
+    columns = [child.name for child in schema]
+    assert columns[:3] == ["8", "9", "35"], "named by tag, in message order"
+    assert columns[-2:] == ["entries", "unmapped"], "and the two lists close it"
+    assert fix_schema_tags()[:3] == [8, 9, 35]
+
+    projection = FixProjection(seed, "FixMessage")
+    assert len(projection) == len(columns)
+    assert projection.position_of(35) == 2
+    assert projection.position_of(999_999) is None
+    assert projection.carried == 0
+    assert projection.field.name == "FixMessage"
+
+    reader = FixReader(seed)
+    row = reader.text("8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    assert len(row) == len(columns)
+    assert row[projection.position_of(35)] == "D"
+    assert row[projection.position_of(55)] == "AAPL"
+    # A tag no dictionary explains is still there, in its own column.
+    assert len(row[-1]) == 1
+
+
+def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
+    """Where a line was read from is what a monitor orders and joins on."""
+    carrier = Field(
+        "line",
+        DataType.from_fields(
+            [
+                Field("url", DataType("utf8"), nullable=False),
+                Field("body", DataType("binary"), nullable=False),
+            ]
+        ),
+        nullable=False,
+    )
+    plain = FixProjection(seed, "FixMessage")
+    carried = FixProjection(seed, "FixMessage", carrier)
+
+    assert carried.carried == 2
+    assert carried.carried_positions == [0, 1]
+    assert carried.column(0).name == "url"
+    assert len(carried) == len(plain) + 2
+    assert carried.position_of(35) == plain.position_of(35) + 2
+
+    # A carried column carries no tag, so a row answers null there: the capture
+    # fills it, and nothing in the message says what it held.
+    row = FixReader(seed).text("8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    assert row[0] is None
+    assert row[carried.position_of(35)] == "D"
+
+
+def test_the_crate_fields_declare_their_own_protocols() -> None:
+    """The digest says how it was taken, the partition what it derives from."""
+    fields = {field.name: field for field in fix_crate_fields()}
+    assert list(fields) == [
+        "msghash",
+        "version",
+        "symbolticker",
+        "timestamp",
+        "unixpartition",
+        "parentclordid",
+        "parentorderid",
+    ]
+
+    held = fields["msghash"]
+    assert held.metadata["digest:role"] == "holder"
+    assert held.metadata["digest:algorithm"] == "xxh3-128"
+    assert held.metadata["digest:sources"] == '["entries"]'
+    assert held.description is not None
+
+    held = fields["unixpartition"]
+    assert held.metadata["partition:sources"] == '["30004"]'
+    assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
 def test_a_branch_declaration_carries_its_dialect_and_its_session() -> None:
     import copy

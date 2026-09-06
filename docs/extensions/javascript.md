@@ -707,10 +707,10 @@ const seed = path.resolve('config/fix')
 
 // One folder, named however JavaScript names one - the coercion `Catalog` uses.
 const url = Url.fromPath(seed)
-for (const location of [seed, url.toString(), url, new IOBase(seed)]) {
-  assert.equal(fix.FixRegistry.fromHandle(location).size, 34)
-}
 const registry = fix.FixRegistry.fromHandle(seed)
+for (const location of [seed, url.toString(), url, new IOBase(seed)]) {
+  assert.equal(fix.FixRegistry.fromHandle(location).size, registry.size)
+}
 
 // A key is a number tag or a string name, and a tag that would not fit i32 is
 // refused rather than narrowed into a different one.
@@ -726,10 +726,11 @@ assert.throws(() => registry.get(55n), {
 // malformed one throws rather than missing.
 assert.equal(fix.STANDARD_BRANCH, '')
 assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
-assert.equal(registry.fieldByName('ticker').name, 'Symbol')
+// Names are folded once, so a caller spells one however they have it.
+assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
 assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
 assert.equal(registry.fieldById('55:').fix.id, '55:')
-assert.throws(() => registry.fieldByName('Symbol', '2cme'), /fix branch/)
+assert.throws(() => registry.fieldByName('symbol', '2cme'), /fix branch/)
 assert.throws(() => registry.fieldById('55'), /fix identifier/)
 assert.throws(() => registry.fieldById(55), /into rust type `String`/)
 
@@ -746,6 +747,8 @@ assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
 const symbol = registry.fieldByTag(55)
 assert.equal(symbol.fix.tag, 55)
 assert.equal(symbol.fix.id, '55:')
+// The specification's own spelling stays on the generic display key.
+assert.equal(symbol.display, 'Symbol')
 assert.throws(() => symbol.iceberg.tag, { name: 'TypeError', message: /iceberg/ })
 const vendor = Field.from('TradeID: utf8')
 vendor.fix.id = '5001:CME'
@@ -758,9 +761,9 @@ assert.equal(vendor.fix.id, '5001:cme')
 
 // A message shares the dictionary it resolved against, so mutating it refuses.
 const root = fields.struct('row', [symbol], { nullable: false })
-const message = new fix.FixMsg(root, { Symbol: 'AAPL' }, registry)
+const message = new fix.FixMsg(root, { symbol: 'AAPL' }, registry)
 assert.throws(() => registry.remove(55), /shared with a message/)
-assert.equal(registry.clone().remove(55).name, 'Symbol')
+assert.equal(registry.clone().remove(55).name, 'symbol')
 
 // A vendor field leaves by its identifier: `remove` reads a string as a
 // standard-branch name.
@@ -770,9 +773,9 @@ assert.equal(venue.removeById('5001:cme').name, 'TradeID')
 assert.equal(venue.size, 0)
 
 // Both collections are lazy native iterators the loader gives the protocol.
-assert.equal([...registry].length, 34)
-assert.deepEqual([...message].map(([name]) => name), ['Symbol'])
-assert.equal(message.at('ticker').asJs(), 'AAPL')
+assert.equal([...registry].length, registry.size)
+assert.deepEqual([...message].map(([name]) => name), ['symbol'])
+assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.branch, fix.STANDARD_BRANCH)
 assert.equal(message.byId('55:').asJs(), 'AAPL')
 assert.equal(message.getById('5001:cme'), null)

@@ -509,6 +509,17 @@ impl JsField {
         self.inner.display().map(ToOwned::to_owned)
     }
 
+    /// Shared wording saying what this field holds.
+    ///
+    /// The one straight description of the column's content, belonging to no
+    /// protocol: a FIX field's specification wording and a capture column's
+    /// own sentence are the same key, because a catalog reading either wants
+    /// the same answer.
+    #[napi(getter)]
+    pub fn description(&self) -> Option<String> {
+        self.inner.description().map(ToOwned::to_owned)
+    }
+
     /// Arrow/Parquet signed 32-bit field identifier stored in metadata.
     #[napi(getter)]
     pub fn parquet_field_id(&self) -> Result<Option<i32>> {
@@ -768,6 +779,18 @@ impl JsField {
     #[napi]
     pub fn remove_display(&mut self) -> Option<String> {
         self.inner.remove_display()
+    }
+
+    /// Set the shared description.
+    #[napi]
+    pub fn set_description(&mut self, value: String) -> Result<()> {
+        self.inner.set_description(value).map_err(napi_error)
+    }
+
+    /// Remove and return the shared description.
+    #[napi]
+    pub fn remove_description(&mut self) -> Option<String> {
+        self.inner.remove_description()
     }
 
     /// Set the canonical Arrow/Parquet signed 32-bit field identifier.

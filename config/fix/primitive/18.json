@@ -1,0 +1,1117 @@
+[
+  {
+    "name": "ordereventqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity associated with the event.",
+      "display": "OrderEventQty",
+      "fix:tag": "1800"
+    }
+  },
+  {
+    "name": "ordereventliquidityindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity. Applicable only for OrderEventType(1796) values of 4(Partially Filled) or 5(Filled).",
+      "display": "OrderEventLiquidityIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NeitherAddedNorRemovedLiquidity\",\"since\":\"5.0SP2\",\"ep\":252,\"doc\":\"Neither added nor removed liquidity\"},{\"value\":\"1\",\"name\":\"AddedLiquidity\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Added Liquidity\"},{\"value\":\"10\",\"name\":\"Unknown\",\"ep\":278,\"sort\":10,\"doc\":\"Unknown\"},{\"value\":\"11\",\"name\":\"Other\",\"ep\":278,\"sort\":11,\"doc\":\"Other\"},{\"value\":\"2\",\"name\":\"RemovedLiquidity\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Removed Liquidity\"},{\"value\":\"3\",\"name\":\"LiquidityRoutedOut\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Liquidity Routed Out\"},{\"value\":\"4\",\"name\":\"Auction\",\"since\":\"5.0\",\"ep\":57,\"sort\":4,\"doc\":\"Auction execution\"},{\"value\":\"5\",\"name\":\"TriggeredStopOrder\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":5,\"doc\":\"Triggered stop order\"},{\"value\":\"6\",\"name\":\"TriggeredContingencyOrder\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":6,\"doc\":\"Triggered contingency order\"},{\"value\":\"7\",\"name\":\"TriggeredMarketOrder\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":7,\"doc\":\"Triggered market order\"},{\"value\":\"8\",\"name\":\"RemovedLiquidityAfterFirmOrderCommitment\",\"since\":\"5.0SP2\",\"ep\":252,\"sort\":8,\"doc\":\"Removed liquidity after firm order commitment\"},{\"value\":\"9\",\"name\":\"AuctionExecutionAfterFirmOrderCommitment\",\"since\":\"5.0SP2\",\"ep\":252,\"sort\":9,\"doc\":\"Auction execution after firm order commitment\"}]}",
+      "fix:tag": "1801"
+    }
+  },
+  {
+    "name": "ordereventtext",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Additional information about the event.",
+      "display": "OrderEventText",
+      "fix:tag": "1802"
+    }
+  },
+  {
+    "name": "auctiontype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of auction order.",
+      "display": "AuctionType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0SP2\",\"ep\":223,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"BlockOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Block order auction\"},{\"value\":\"2\",\"name\":\"DirectedOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Directed order auction\"},{\"value\":\"3\",\"name\":\"ExposureOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Exposure order auction\"},{\"value\":\"4\",\"name\":\"FlashOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"Flash order auction\"},{\"value\":\"5\",\"name\":\"FacilitationOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"Facilitation order auction\"},{\"value\":\"6\",\"name\":\"SolicitationOrderAuction\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Solicitation order auction\"},{\"value\":\"7\",\"name\":\"PriceImprovementMechanism\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"Price improvement mechanism (PIM)\"},{\"value\":\"8\",\"name\":\"DirectedOrderPriceImprovementMechanism\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":8,\"doc\":\"Directed Order price improvement mechanism (PIM)\"}]}",
+      "fix:tag": "1803"
+    }
+  },
+  {
+    "name": "auctionallocationpct",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Percentage of matched quantity to be allocated to the submitter of the response to an auction order.",
+      "display": "AuctionAllocationPct",
+      "fix:tag": "1804"
+    }
+  },
+  {
+    "name": "auctioninstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction related to system generated auctions, e.g. flash order auctions.",
+      "display": "AuctionInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AutomatedAuctionPermitted\",\"since\":\"5.0SP2\",\"ep\":131,\"doc\":\"Automatic auction permitted (default)\"},{\"value\":\"1\",\"name\":\"AutomatedAuctionNotPermitted\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Automatic auction not permitted\"}]}",
+      "fix:tag": "1805"
+    }
+  },
+  {
+    "name": "refclordid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to reference an order via ClOrdID(11).",
+      "display": "RefClOrdID",
+      "fix:tag": "1806"
+    }
+  },
+  {
+    "name": "locktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether an order is locked and for what reason.",
+      "display": "LockType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotLocked\",\"since\":\"5.0SP2\",\"ep\":131,\"doc\":\"Not locked\"},{\"value\":\"1\",\"name\":\"AwayMarketNetter\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Away market better\"},{\"value\":\"2\",\"name\":\"ThreeTickLocked\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Three tick locked\"},{\"value\":\"3\",\"name\":\"LockedByMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Locked by market maker\"},{\"value\":\"4\",\"name\":\"DirectedOrderLock\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"Directed order lock\"},{\"value\":\"5\",\"name\":\"MultilegLock\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"Multileg lock\"},{\"value\":\"6\",\"name\":\"MarketOrderLock\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Market order lock\"},{\"value\":\"7\",\"name\":\"PreAssignmentLock\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"Pre-assignment lock\"}]}",
+      "fix:tag": "1807"
+    }
+  },
+  {
+    "name": "lockedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Locked order quantity.",
+      "display": "LockedQty",
+      "fix:tag": "1808"
+    }
+  },
+  {
+    "name": "secondarylockedqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Locked order quantity in addition to LockedQty (1808), e.g. to distinguish total locked quantity from currently locked quantity.",
+      "display": "SecondaryLockedQty",
+      "fix:tag": "1809"
+    }
+  },
+  {
+    "name": "releaseinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction to define conditions under which to release a locked order or parts of it.",
+      "display": "ReleaseInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ISO\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Intermarket Sweep Order (ISO)\"},{\"value\":\"2\",\"name\":\"NoAwayMarketBetterCheck\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"No Away Market Better check\"}]}",
+      "fix:tag": "1810"
+    }
+  },
+  {
+    "name": "releaseqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity to be made available, i.e. released from a lock.",
+      "display": "ReleaseQty",
+      "fix:tag": "1811"
+    }
+  },
+  {
+    "name": "disclosuretype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Information subject to disclosure.",
+      "display": "DisclosureType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Volume\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Volume\"},{\"value\":\"2\",\"name\":\"Price\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Price\"},{\"value\":\"3\",\"name\":\"Side\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Side\"},{\"value\":\"4\",\"name\":\"AON\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"AON\"},{\"value\":\"5\",\"name\":\"General\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"General\"},{\"value\":\"6\",\"name\":\"ClearingAccount\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Clearing account\"},{\"value\":\"7\",\"name\":\"CMTAAccount\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"CMTA account\"}]}",
+      "fix:tag": "1813"
+    }
+  },
+  {
+    "name": "disclosureinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction to disclose information or to use default value of the receiver.",
+      "display": "DisclosureInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"No\",\"since\":\"5.0SP2\",\"ep\":131,\"doc\":\"No\"},{\"value\":\"1\",\"name\":\"Yes\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Yes\"},{\"value\":\"2\",\"name\":\"UseDefaultSetting\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Use default setting\"}]}",
+      "fix:tag": "1814"
+    }
+  },
+  {
+    "name": "tradingcapacity",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the capacity in which the order is submitted for trading by the market participant.",
+      "display": "TradingCapacity",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Customer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Customer\"},{\"value\":\"2\",\"name\":\"CustomerProfessional\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Customer professional\"},{\"value\":\"3\",\"name\":\"BrokerDealer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Broker-dealer\"},{\"value\":\"4\",\"name\":\"CustomerBrokerDealer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":4,\"doc\":\"Customer broker-dealer\"},{\"value\":\"5\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"doc\":\"Principal\"},{\"value\":\"6\",\"name\":\"MarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"doc\":\"Market maker\"},{\"value\":\"7\",\"name\":\"AwayMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":7,\"doc\":\"Away market maker\"},{\"value\":\"8\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":8,\"doc\":\"Systematic internaliser\"}]}",
+      "fix:tag": "1815"
+    }
+  },
+  {
+    "name": "clearingaccounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the account type to be used for the order when submitted to clearing.",
+      "display": "ClearingAccountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Customer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Customer\"},{\"value\":\"2\",\"name\":\"Firm\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Firm\"},{\"value\":\"3\",\"name\":\"MarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Market maker\"}]}",
+      "fix:tag": "1816"
+    }
+  },
+  {
+    "name": "legclearingaccounttype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Designates the capacity in which the order will be submitted to clearing.",
+      "display": "LegClearingAccountType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Customer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Customer\"},{\"value\":\"2\",\"name\":\"Firm\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Firm\"},{\"value\":\"3\",\"name\":\"MarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":3,\"doc\":\"Market maker\"}]}",
+      "fix:tag": "1817"
+    }
+  },
+  {
+    "name": "targetpartyrolequalifier",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Qualifies the value of TargetPartyRole (1464).",
+      "display": "TargetPartyRoleQualifier",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Agency\",\"since\":\"5.0SP2\",\"ep\":105,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Agency\"},{\"value\":\"1\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":1,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Principal\"},{\"value\":\"10\",\"name\":\"OrigTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":10,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Original trade repository\"},{\"value\":\"11\",\"name\":\"AddtnlIntlTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":11,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional international trade repository\"},{\"value\":\"12\",\"name\":\"AddtnlDomesticTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":12,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Additional domestic trade repository\"},{\"value\":\"13\",\"name\":\"RelatedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":13,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Related exchange\"},{\"value\":\"14\",\"name\":\"OptionsExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":14,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Options exchange\"},{\"value\":\"15\",\"name\":\"SpecifiedExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":15,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Specified exchange\"},{\"value\":\"16\",\"name\":\"ConstituentExchange\",\"since\":\"5.0SP2\",\"ep\":208,\"sort\":16,\"group\":\"For party role 22 (Exchange)\",\"doc\":\"Constituent exchange\"},{\"value\":\"17\",\"name\":\"ExemptFromTradeReporting\",\"since\":\"5.0SP2\",\"ep\":209,\"sort\":17,\"group\":\"For party role 73 (Execution Venue)\",\"doc\":\"Exempt from trade reporting\"},{\"value\":\"18\",\"name\":\"Current\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":18,\"group\":\"For all party roles\",\"doc\":\"Current\"},{\"value\":\"19\",\"name\":\"New\",\"since\":\"5.0SP2\",\"ep\":213,\"sort\":19,\"group\":\"For all party roles\",\"doc\":\"New\"},{\"value\":\"2\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":2,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Riskless principal\"},{\"value\":\"20\",\"name\":\"DesignatedSponsor\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":20,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Designated sponsor\"},{\"value\":\"21\",\"name\":\"Specialist\",\"since\":\"5.0SP2\",\"ep\":219,\"sort\":21,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Specialist\"},{\"value\":\"22\",\"name\":\"Algorithm\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":22,\"group\":\"For party role 12 (Executing trader) or 122 (Investment decision maker)\",\"doc\":\"Algorithm\"},{\"value\":\"23\",\"name\":\"FirmOrLegalEntity\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":23,\"group\":\"For all firm / broker type party roles\",\"doc\":\"Firm or legal entity\"},{\"value\":\"24\",\"name\":\"NaturalPerson\",\"since\":\"5.0SP2\",\"ep\":222,\"sort\":24,\"group\":\"For all trader / customer type party roles\",\"doc\":\"Natural person\"},{\"value\":\"25\",\"name\":\"RegularTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":25,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Regular trader\"},{\"value\":\"26\",\"name\":\"HeadTrader\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":26,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Head trader\"},{\"value\":\"27\",\"name\":\"Supervisor\",\"since\":\"5.0SP2\",\"ep\":223,\"sort\":27,\"group\":\"For party role 11 (Order Origination Trader), 12 (Executing Trader), 36 (Entering Trader), 37 (Contra Trader)\",\"doc\":\"Supervisor\"},{\"value\":\"28\",\"name\":\"TriParty\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":28,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Tri-party\"},{\"value\":\"29\",\"name\":\"Lender\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":29,\"group\":\"For party role 30 (Agent)\",\"doc\":\"Lender\"},{\"value\":\"3\",\"name\":\"GeneralClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":3,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"General clearing member\"},{\"value\":\"30\",\"name\":\"ExchangeOrderSubmitter\",\"ep\":279,\"sort\":3,\"group\":\"For party role 1 (Executing Firm)\",\"doc\":\"Exchange order submitter\"},{\"value\":\"4\",\"name\":\"IndividualClearingMember\",\"since\":\"5.0SP2\",\"ep\":105,\"sort\":4,\"group\":\"For party role 4 (Clearing Firm)\",\"doc\":\"Individual clearing member\"},{\"value\":\"5\",\"name\":\"PreferredMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":5,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Preferred market maker\"},{\"value\":\"6\",\"name\":\"DirectedMarketMaker\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":6,\"group\":\"For party role 66 (Market Maker)\",\"doc\":\"Directed market maker\"},{\"value\":\"7\",\"name\":\"Bank\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":7,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Bank\"},{\"value\":\"8\",\"name\":\"Hub\",\"since\":\"5.0SP2\",\"ep\":171,\"sort\":8,\"group\":\"For party role 29 (Intermediary), 32 (Beneficiary) and 107 (Correspondent)\",\"doc\":\"Hub\"},{\"value\":\"9\",\"name\":\"PrimaryTrdRepository\",\"since\":\"5.0SP2\",\"ep\":193,\"sort\":9,\"group\":\"For party role 102 (Data repository)\",\"doc\":\"Primary trade repository\"}]}",
+      "fix:tag": "1818"
+    }
+  },
+  {
+    "name": "relatedhighprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Upper boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
+      "display": "RelatedHighPrice",
+      "fix:tag": "1819"
+    }
+  },
+  {
+    "name": "relatedlowprice",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Lower boundary for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order.",
+      "display": "RelatedLowPrice",
+      "fix:tag": "1820"
+    }
+  },
+  {
+    "name": "relatedpricesource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Source for the price of a related entity, e.g. price of the underlying instrument in an Underlying Price Contingency (UPC) order. Can be used together with RelatedHighPrice (1819) and/or RelatedLowPrice (1820).",
+      "display": "RelatedPriceSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"NBBid\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"NBB (National Best Bid)\"},{\"value\":\"2\",\"name\":\"NBOffer\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"NBO (National Best Offer)\"}]}",
+      "fix:tag": "1821"
+    }
+  },
+  {
+    "name": "minqtymethod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates how the minimum quantity should be applied when executing the order.",
+      "display": "MinQtyMethod",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Once\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Once (applies only to first execution)\"},{\"value\":\"2\",\"name\":\"Multiple\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Multiple (applies to every execution)\"}]}",
+      "fix:tag": "1822"
+    }
+  },
+  {
+    "name": "triggered",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether order has been triggered during its lifetime. Applies to cases where original information, e.g. OrdType(40), is modified when the order is triggered.",
+      "display": "Triggered",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotTriggered\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":1,\"doc\":\"Not triggered (default)\"},{\"value\":\"1\",\"name\":\"Triggered\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":2,\"doc\":\"Triggered\"},{\"value\":\"2\",\"name\":\"StopOrderTriggered\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":3,\"doc\":\"Stop order triggered\"},{\"value\":\"3\",\"name\":\"OCOOrderTriggered\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":4,\"doc\":\"One Cancels the Other (OCO) order triggered\"},{\"value\":\"4\",\"name\":\"OTOOrderTriggered\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":5,\"doc\":\"One Triggers the Other (OTO) order triggered\"},{\"value\":\"5\",\"name\":\"OUOOrderTriggered\",\"since\":\"5.0SP2\",\"ep\":188,\"sort\":6,\"doc\":\"One Updates the Other (OUO) order triggered\"}]}",
+      "fix:tag": "1823"
+    }
+  },
+  {
+    "name": "affectedorigclordid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "OrigClOrdID(41) of an order affected by a mass cancel or mass action request.",
+      "display": "AffectedOrigClOrdID",
+      "fix:tag": "1824"
+    }
+  },
+  {
+    "name": "notaffsecondaryorderid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "SecondaryOrderID (198) of an order not affected by a mass cancel or mass action request.",
+      "display": "NotAffSecondaryOrderID",
+      "fix:tag": "1825"
+    }
+  },
+  {
+    "name": "eventtimeperiod",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit multiplier for the event.",
+      "display": "EventTimePeriod",
+      "fix:tag": "1826"
+    }
+  },
+  {
+    "name": "eventtimeunit",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Time unit associated with the event.",
+      "display": "EventTimeUnit",
+      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":3,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0SP2\",\"ep\":132,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":5,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0SP2\",\"ep\":132,\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:tag": "1827"
+    }
+  },
+  {
+    "name": "lastqtyvariance",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "When LastQty is an estimated value, e.g. for a Repo \"circled\" trade, LastQtyVariance specifies the absolute amount that the size may vary up or down when finalized. Omitted when LastQty(32) is already final.",
+      "display": "LastQtyVariance",
+      "fix:tag": "1828"
+    }
+  },
+  {
+    "name": "settlpriceincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Settlement price increment for stated price range.",
+      "display": "SettlPriceIncrement",
+      "fix:tag": "1830"
+    }
+  },
+  {
+    "name": "settlpricesecondaryincrement",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Secondary settlement price increment for stated price range. The meaning of secondary is left to bilateral agreement, e.g. it may refer to final settlement for a contract.",
+      "display": "SettlPriceSecondaryIncrement",
+      "fix:tag": "1831"
+    }
+  },
+  {
+    "name": "clearedindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates whether the trade or position being reported was cleared through a clearing organization.",
+      "display": "ClearedIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotCleared\",\"since\":\"5.0SP2\",\"ep\":140,\"doc\":\"Not cleared\"},{\"value\":\"1\",\"name\":\"Cleared\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":1,\"doc\":\"Cleared\"},{\"value\":\"2\",\"name\":\"Submitted\",\"since\":\"5.0SP2\",\"ep\":196,\"sort\":2,\"doc\":\"Submitted\"},{\"value\":\"3\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":196,\"sort\":3,\"doc\":\"Rejected\"}]}",
+      "fix:tag": "1832"
+    }
+  },
+  {
+    "name": "contractrefpostype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Additional information related to the pricing of a commodity swaps position, specifically an indicator referring to the position type.",
+      "display": "ContractRefPosType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"TwoComponentIntercommoditySpread\",\"since\":\"5.0SP2\",\"ep\":140,\"doc\":\"Two component intercommodity spread\"},{\"value\":\"1\",\"name\":\"IndexOrBasket\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":1,\"doc\":\"Index or basket\"},{\"value\":\"2\",\"name\":\"TwoComponentLocationBasis\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":2,\"doc\":\"Two component locational basis\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1833"
+    }
+  },
+  {
+    "name": "positioncapacity",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to describe the ownership of the position.",
+      "display": "PositionCapacity",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Principal\",\"since\":\"5.0SP2\",\"ep\":140,\"doc\":\"Principal\"},{\"value\":\"1\",\"name\":\"Agent\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":1,\"doc\":\"Agent\"},{\"value\":\"2\",\"name\":\"Customer\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":2,\"doc\":\"Customer\"},{\"value\":\"3\",\"name\":\"Counterparty\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":3,\"doc\":\"Counterparty\"}]}",
+      "fix:tag": "1834"
+    }
+  },
+  {
+    "name": "posqtyunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the unit of measure if position quantity is expressed in valuation rather than contracts. Conditionally required when PosQtyUnitOfMeasure(1836)=Ccy.",
+      "display": "PosQtyUnitOfMeasureCurrency",
+      "fix:tag": "1835"
+    }
+  },
+  {
+    "name": "posqtyunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the unit of measure of the position quantity when not expressed in contracts.",
+      "display": "PosQtyUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "1836"
+    }
+  },
+  {
+    "name": "underlyingcontractpricerefmonth",
+    "dtype": {
+      "type": "fixed_ascii",
+      "width": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference month if there is no applicable UnderlyingMaturityMonth(313) value for the contract or security.",
+      "display": "UnderlyingContractPriceRefMonth",
+      "fix:tag": "1837"
+    }
+  },
+  {
+    "name": "tradepricecondition",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Price conditions in effect at the time of the trade. Multiple price conditions can be in effect at the same time. Price conditions are usually required to be reported in markets that have regulations on price execution at a market or national best bid or offer, and the trade price differs from the best bid or offer.",
+      "display": "TradePriceCondition",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"SpecialCumDividend\",\"since\":\"5.0SP2\",\"ep\":141,\"doc\":\"Special cum dividend (CD)\"},{\"value\":\"1\",\"name\":\"SpecialCumRights\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":1,\"doc\":\"Special cum rights (CR)\"},{\"value\":\"10\",\"name\":\"SpecialPrice\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":10,\"doc\":\"Special price (SP)\"},{\"value\":\"11\",\"name\":\"SpecialExBonus\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":11,\"doc\":\"Special ex bonus (XB)\"},{\"value\":\"12\",\"name\":\"GuaranteedDelivery\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":12,\"doc\":\"Guaranteed delivery (GD)\"},{\"value\":\"13\",\"name\":\"SpecialDividend\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":13,\"doc\":\"Special dividend\"},{\"value\":\"14\",\"name\":\"PriceImprovement\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":14,\"doc\":\"Price improvement\"},{\"value\":\"15\",\"name\":\"NonPriceFormingTrade\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":15,\"doc\":\"Non-price forming trade\"},{\"value\":\"16\",\"name\":\"TradeExemptedFromTradingObligation\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":16,\"doc\":\"Trade exempted from trading obligation\"},{\"value\":\"17\",\"name\":\"PricePending\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":17,\"doc\":\"Price or strike price is pending\"},{\"value\":\"18\",\"name\":\"PriceNotApplicable\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":18,\"doc\":\"Price is not applicable\"},{\"value\":\"2\",\"name\":\"SpecialExDividend\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":2,\"doc\":\"Special ex dividend (XD)\"},{\"value\":\"3\",\"name\":\"SpecialExRights\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":3,\"doc\":\"Special ex rights (XR)\"},{\"value\":\"4\",\"name\":\"SpecialCumCoupon\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":4,\"doc\":\"Special cum coupon (CC)\"},{\"value\":\"5\",\"name\":\"SpecialCumCapitalRepayments\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":5,\"doc\":\"Special cum capital repayments (CP)\"},{\"value\":\"6\",\"name\":\"SpecialExCoupon\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":6,\"doc\":\"Special ex coupon (XC)\"},{\"value\":\"7\",\"name\":\"SpecialExCapitalRepayments\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":7,\"doc\":\"Special ex capital repayments (XP)\"},{\"value\":\"8\",\"name\":\"CashSettlement\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":8,\"doc\":\"Cash settlement (CS)\"},{\"value\":\"9\",\"name\":\"SpecialCumBonus\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":9,\"doc\":\"Special cum bonus (CB)\"}]}",
+      "fix:tag": "1839"
+    }
+  },
+  {
+    "name": "tradeallocstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the status of an allocation when using a pre-clear workflow.",
+      "display": "TradeAllocStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PendingClear\",\"since\":\"5.0SP2\",\"ep\":141,\"doc\":\"Pending clear\"},{\"value\":\"1\",\"name\":\"Claimed\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":1,\"doc\":\"Claimed\"},{\"value\":\"2\",\"name\":\"Cleared\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":2,\"doc\":\"Cleared\"},{\"value\":\"3\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":3,\"doc\":\"Rejected\"}]}",
+      "fix:tag": "1840"
+    }
+  },
+  {
+    "name": "tradeqtytype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the type of trade quantity in TradeQty(1843).",
+      "display": "TradeQtyType",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ClearedQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"doc\":\"Cleared quantity\"},{\"value\":\"1\",\"name\":\"LongSideClaimedQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":1,\"doc\":\"Long side claimed quantity\"},{\"value\":\"2\",\"name\":\"ShortSideClaimedQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":2,\"doc\":\"Short side claimed quantity\"},{\"value\":\"3\",\"name\":\"LongSideRejectedQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":3,\"doc\":\"Long side rejected quantity\"},{\"value\":\"4\",\"name\":\"ShortSideRejectedQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":4,\"doc\":\"Short side rejected quantity\"},{\"value\":\"5\",\"name\":\"PendingQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":5,\"doc\":\"Pending quantity\"},{\"value\":\"6\",\"name\":\"TransactionQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":6,\"doc\":\"Transaction quantity\"},{\"value\":\"7\",\"name\":\"RemainingQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":7,\"doc\":\"Remaining trade quantity\"},{\"value\":\"8\",\"name\":\"PreviousRemainingQuantity\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":8,\"doc\":\"Previous remaining trade quantity\"}]}",
+      "fix:tag": "1842"
+    }
+  },
+  {
+    "name": "tradeqty",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Trade quantity.",
+      "display": "TradeQty",
+      "fix:tag": "1843"
+    }
+  },
+  {
+    "name": "tradeallocamttype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of the amount associated with a trade allocation.",
+      "display": "TradeAllocAmtType",
+      "fix:codes": "{\"codes\":[{\"value\":\"5YREN\",\"name\":\"FiveYearEquivalentNotional\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":26,\"doc\":\"The five year equivalent notional amount\"},{\"value\":\"ACPN\",\"name\":\"AccruedCouponAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":10,\"doc\":\"Accrued coupon amount\"},{\"value\":\"BANK\",\"name\":\"TotalBankedAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":16,\"doc\":\"Total banked amount\"},{\"value\":\"CASH\",\"name\":\"CashAmount\",\"since\":\"4.4\",\"doc\":\"Cash amount (corporate event)\"},{\"value\":\"CMTM\",\"name\":\"CollateralizedMarkToMarket\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":13,\"doc\":\"Collateralized mark-to-market\"},{\"value\":\"COLAT\",\"name\":\"TotalCollateralizedAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":17,\"doc\":\"Total collateralized amount\"},{\"value\":\"CPN\",\"name\":\"CouponAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":11,\"doc\":\"Coupon amount\"},{\"value\":\"CRES\",\"name\":\"CashResidualAmount\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Cash residual amount\"},{\"value\":\"DLV\",\"name\":\"CompensationAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":15,\"doc\":\"Compensation amount\"},{\"value\":\"ENDV\",\"name\":\"EndVale\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":32,\"doc\":\"End value\"},{\"value\":\"FMTM\",\"name\":\"FinalMarkToMarketAmount\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Final mark-to-market amount\"},{\"value\":\"IACPN\",\"name\":\"IncrementalAccruedCoupon\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":12,\"doc\":\"Incremental accrued coupon\"},{\"value\":\"ICMTM\",\"name\":\"IncrementalCollateralizedMarkToMarket\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":14,\"doc\":\"Incremental collateralized mark-to-market\"},{\"value\":\"ICPN\",\"name\":\"InitialTradeCouponAmount\",\"since\":\"5.0SP1\",\"ep\":83,\"sort\":9,\"doc\":\"Initial trade coupon amount\"},{\"value\":\"IMTM\",\"name\":\"IncrementalMarkToMarketAmount\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Incremental mark-to-market\"},{\"value\":\"LNVL\",\"name\":\"LoanValue\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":34,\"doc\":\"Loan value\"},{\"value\":\"LSNV\",\"name\":\"LongPairedSwapNotionalValue\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":18,\"doc\":\"Long paired swap or swaption notional value\"},{\"value\":\"MGNLN\",\"name\":\"OutstandingMarginLoan\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":33,\"doc\":\"Outstanding margin loan\"},{\"value\":\"MTD\",\"name\":\"MarkToModel\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":28,\"doc\":\"Mark-to-model\"},{\"value\":\"NCF\",\"name\":\"NetCashFlow\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":23,\"doc\":\"Net cash flow\"},{\"value\":\"NPV\",\"name\":\"NetPresentValue\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":21,\"doc\":\"Net present value\"},{\"value\":\"PREM\",\"name\":\"PremiumAmount\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Premium amount\"},{\"value\":\"PV01\",\"name\":\"PresentValueOneBasisPoints\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":25,\"doc\":\"Present value of one basis points\"},{\"value\":\"PVFEES\",\"name\":\"PresentValueOfFees\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":24,\"doc\":\"Present value of all fees\"},{\"value\":\"SACPN\",\"name\":\"StartOfDayAccruedCoupon\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":20,\"doc\":\"Start-of-day accrued coupon\"},{\"value\":\"SETL\",\"name\":\"SettlementValue\",\"since\":\"4.4\",\"ep\":4,\"sort\":8,\"doc\":\"Settlement value\"},{\"value\":\"SMTM\",\"name\":\"StartOfDayMarkToMarketAmount\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Start of day mark-to-market\"},{\"value\":\"SNPV\",\"name\":\"StartOfDayNetPresentValue\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":22,\"doc\":\"Start-of-day net present value\"},{\"value\":\"SSNV\",\"name\":\"ShortPairedSwapNotionalValue\",\"since\":\"5.0SP2\",\"ep\":140,\"sort\":19,\"doc\":\"Short paired swap or swaption notional value\"},{\"value\":\"TVAR\",\"name\":\"TradeVariationAmount\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Trade variation amount\"},{\"value\":\"UMTM\",\"name\":\"UndiscountedMarkToMarket\",\"since\":\"5.0SP2\",\"ep\":162,\"sort\":27,\"doc\":\"Undiscounted mark-to-market\"},{\"value\":\"UPFRNT\",\"name\":\"UpfrontPayment\",\"since\":\"5.0SP2\",\"ep\":192,\"sort\":31,\"doc\":\"Upfront payment\"},{\"value\":\"VADJ\",\"name\":\"ValueAdjustedAmount\",\"since\":\"4.4\",\"sort\":7,\"doc\":\"Value adjusted amount\"},{\"value\":\"VMTD\",\"name\":\"MarkToModelVariance\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":30,\"doc\":\"Mark-to-model variance\"},{\"value\":\"VMTM\",\"name\":\"MarkToMarketVariance\",\"since\":\"5.0SP2\",\"ep\":179,\"sort\":29,\"doc\":\"Mark-to-market variance\"}]}",
+      "fix:tag": "1845"
+    }
+  },
+  {
+    "name": "tradeallocamt",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The amount associated with a trade allocation.",
+      "display": "TradeAllocAmt",
+      "fix:tag": "1846"
+    }
+  },
+  {
+    "name": "tradealloccurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Currency denomination of the trade allocation amount.",
+      "display": "TradeAllocCurrency",
+      "fix:tag": "1847"
+    }
+  },
+  {
+    "name": "tradeallocgroupinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Instruction on how to add a trade to an allocation group when it is being given-up.",
+      "display": "TradeAllocGroupInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Add\",\"since\":\"5.0SP2\",\"ep\":141,\"doc\":\"Add to an existing allocation group if one exists.\"},{\"value\":\"1\",\"name\":\"DoNotAdd\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":1,\"doc\":\"Do not add the trade to an allocation group.\"}]}",
+      "fix:tag": "1848"
+    }
+  },
+  {
+    "name": "offsetinstruction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the trade is a result of an offset or onset.",
+      "display": "OffsetInstruction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Offset\",\"since\":\"5.0SP2\",\"ep\":141,\"doc\":\"Offset\"},{\"value\":\"1\",\"name\":\"Onset\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":1,\"doc\":\"Onset\"}]}",
+      "fix:tag": "1849"
+    }
+  },
+  {
+    "name": "tradeallocamtreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the reason for an amount type when reported on an allocation. Useful when multiple instances of the same amount type are reported.",
+      "display": "TradeAllocAmtReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"OptionsSettlement\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":1,\"doc\":\"Options settlement\"},{\"value\":\"1\",\"name\":\"PendingErosionAdjustment\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"doc\":\"Pending erosion adjustment\"},{\"value\":\"2\",\"name\":\"FinalErosionAdjustment\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":3,\"doc\":\"Final erosion adjustment\"},{\"value\":\"3\",\"name\":\"TearUpCouponAmount\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":4,\"doc\":\"Tear-up coupon amount\"},{\"value\":\"4\",\"name\":\"PriceAlignmentInterest\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":5,\"doc\":\"Price alignment interest\"},{\"value\":\"5\",\"name\":\"DeliveryInvoiceCharges\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":6,\"doc\":\"Delivery invoice charges\"},{\"value\":\"6\",\"name\":\"DeliveryStorageCharges\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"doc\":\"Delivery storage charges\"}]}",
+      "fix:tag": "1850"
+    }
+  },
+  {
+    "name": "strategylinkid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the multileg strategy (e.g. spread) to which the trade belongs. This links together trade legs executed as part of a strategy during a single match event.",
+      "display": "StrategyLinkID",
+      "fix:tag": "1851"
+    }
+  },
+  {
+    "name": "sideavgpx",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Calculated average price for this side of the trade.",
+      "display": "SideAvgPx",
+      "fix:tag": "1852"
+    }
+  },
+  {
+    "name": "sideavgpxindicator",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate whether a trade or a sub-allocation should be allocated at the trade price (e.g. no average pricing), or whether it should be grouped with other trades/sub-allocations and allocated at the average price of the group.",
+      "display": "SideAvgPxIndicator",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoAveragePricing\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"No average pricing\"},{\"value\":\"1\",\"name\":\"Trade\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Trade is part of an average price group identified by the AvgPxGroupID(1731)\"},{\"value\":\"2\",\"name\":\"LastTrade\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Last trade of the average price group identified by the AvgPxGroupID(1731)\"},{\"value\":\"3\",\"name\":\"NotionalValueAveragePxGroupTrade\",\"since\":\"5.0SP2\",\"ep\":239,\"sort\":4,\"doc\":\"Trade is part of a notional value average price group\"},{\"value\":\"4\",\"name\":\"AveragePricedTrade\",\"since\":\"5.0SP2\",\"ep\":240,\"sort\":5,\"doc\":\"Trade is average priced\"}]}",
+      "fix:tag": "1853"
+    }
+  },
+  {
+    "name": "sideavgpxgroupid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The identifier for the average price group for the trade side. See also AvgPxGroupID(1731).",
+      "display": "SideAvgPxGroupID",
+      "fix:tag": "1854"
+    }
+  },
+  {
+    "name": "relatedtradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of a related trade.",
+      "display": "RelatedTradeID",
+      "fix:tag": "1856"
+    }
+  },
+  {
+    "name": "relatedtradeidsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the source of the identifier that RelatedTradeID(1856) represents.",
+      "display": "RelatedTradeIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NonFIXSource\",\"since\":\"5.0SP2\",\"ep\":142,\"doc\":\"Non-FIX source\"},{\"value\":\"1\",\"name\":\"TradeID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":1,\"doc\":\"Trade ID\"},{\"value\":\"2\",\"name\":\"SecondaryTradeID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":2,\"doc\":\"Secondary trade ID\"},{\"value\":\"3\",\"name\":\"TradeReportID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":3,\"doc\":\"Trade report ID\"},{\"value\":\"4\",\"name\":\"FirmTradeID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":4,\"doc\":\"Firm trade ID\"},{\"value\":\"5\",\"name\":\"SecondaryFirmTradeID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":5,\"doc\":\"Secondary firm Trade ID\"},{\"value\":\"6\",\"name\":\"RegulatoryTradeID\",\"since\":\"5.0SP2\",\"ep\":165,\"sort\":6,\"doc\":\"Regulatory trade ID\"}]}",
+      "fix:tag": "1857"
+    }
+  },
+  {
+    "name": "relatedtradedate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Date of a related trade.",
+      "display": "RelatedTradeDate",
+      "fix:tag": "1858"
+    }
+  },
+  {
+    "name": "relatedtrademarketid",
+    "dtype": {
+      "type": "mic"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Market of execution of related trade.",
+      "display": "RelatedTradeMarketID",
+      "fix:tag": "1859"
+    }
+  },
+  {
+    "name": "relatedtradequantity",
+    "dtype": {
+      "type": "float64"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Quantity of the related trade which can be less than or equal to the actual quantity of the related trade. For example, when one trade offsets another across asset classes.",
+      "display": "RelatedTradeQuantity",
+      "fix:tag": "1860"
+    }
+  },
+  {
+    "name": "relatedpositionid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifier of a related position.",
+      "display": "RelatedPositionID",
+      "fix:tag": "1862"
+    }
+  },
+  {
+    "name": "relatedpositionidsource",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Describes the source of the identifier that RelatedPositionID(1862) represents.",
+      "display": "RelatedPositionIDSource",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PosMaintRptID\",\"since\":\"5.0SP2\",\"ep\":142,\"sort\":1,\"doc\":\"Position maintenance report ID - PosMaintRptID(721)\"},{\"value\":\"2\",\"name\":\"TransferID\",\"since\":\"5.0SP2\",\"ep\":189,\"sort\":2,\"doc\":\"Position transfer ID - TransferID(2437)\"},{\"value\":\"3\",\"name\":\"PositionEntityID\",\"since\":\"5.0SP2\",\"ep\":199,\"sort\":3,\"doc\":\"Position entity ID - PositionID(2618)\"}]}",
+      "fix:tag": "1863"
+    }
+  },
+  {
+    "name": "relatedpositiondate",
+    "dtype": {
+      "type": "date32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to help identify the position when RelatedPositionID(1862) is not unique across multiple days. This date is generally the creation date of the identifier.",
+      "display": "RelatedPositionDate",
+      "fix:tag": "1864"
+    }
+  },
+  {
+    "name": "quoteackstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Acknowledgement status of a Quote(35=S) or QuoteCancel(35=Z) message submission.",
+      "display": "QuoteAckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ReceivedNotYetProcessed\",\"since\":\"5.0SP2\",\"ep\":143,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":143,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":143,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:tag": "1865"
+    }
+  },
+  {
+    "name": "strikeindex",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Specifies the index used to calculate the strike price.",
+      "display": "StrikeIndex",
+      "fix:tag": "1866"
+    }
+  },
+  {
+    "name": "offerid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique identifier for the ask side of the quote assigned by the quote issuer.",
+      "display": "OfferID",
+      "fix:tag": "1867"
+    }
+  },
+  {
+    "name": "valuechecktype",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Type of value to be checked.",
+      "display": "ValueCheckType",
+      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PriceCheck\",\"since\":\"5.0SP2\",\"ep\":144,\"sort\":1,\"doc\":\"Price check\"},{\"value\":\"2\",\"name\":\"NotionalValueCheck\",\"since\":\"5.0SP2\",\"ep\":144,\"sort\":2,\"doc\":\"Notional value check\"},{\"value\":\"3\",\"name\":\"QuantityCheck\",\"since\":\"5.0SP2\",\"ep\":229,\"sort\":3,\"doc\":\"Quantity check\"}]}",
+      "fix:tag": "1869"
+    }
+  },
+  {
+    "name": "valuecheckaction",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Action to be taken for the ValueCheckType(1869).",
+      "display": "ValueCheckAction",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"DoNotCheck\",\"since\":\"5.0SP2\",\"ep\":144,\"doc\":\"Do not check\"},{\"value\":\"1\",\"name\":\"Check\",\"since\":\"5.0SP2\",\"ep\":144,\"sort\":1,\"doc\":\"Check\"},{\"value\":\"2\",\"name\":\"BestEffort\",\"since\":\"5.0SP2\",\"ep\":144,\"sort\":2,\"doc\":\"Best effort\"}]}",
+      "fix:tag": "1870"
+    }
+  },
+  {
+    "name": "legsecurityxmllen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The length of the LegSecurityXML(1872) data block.",
+      "display": "LegSecurityXMLLen",
+      "fix:tag": "1871"
+    }
+  },
+  {
+    "name": "legsecurityxml",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "XML definition for the leg security.",
+      "display": "LegSecurityXML",
+      "fix:tag": "1872"
+    }
+  },
+  {
+    "name": "legsecurityxmlschema",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schema used to validate the contents of LegSecurityXML(1872).",
+      "display": "LegSecurityXMLSchema",
+      "fix:tag": "1873"
+    }
+  },
+  {
+    "name": "underlyingsecurityxmllen",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The length of the UnderlyingSecurityXML(1875) data block.",
+      "display": "UnderlyingSecurityXMLLen",
+      "fix:tag": "1874"
+    }
+  },
+  {
+    "name": "underlyingsecurityxml",
+    "dtype": {
+      "type": "binary"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "XML definition for the underlying security.",
+      "display": "UnderlyingSecurityXML",
+      "fix:tag": "1875"
+    }
+  },
+  {
+    "name": "underlyingsecurityxmlschema",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The schema used to validate the contents of UnderlyingSecurityXML(1875).",
+      "display": "UnderlyingSecurityXMLSchema",
+      "fix:tag": "1876"
+    }
+  },
+  {
+    "name": "partydetailrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result party detail definition request.",
+      "display": "PartyDetailRequestResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidPartyStatus\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Invalid party status(es)\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1877"
+    }
+  },
+  {
+    "name": "partydetailrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party details definition request.",
+      "display": "PartyDetailRequestStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"AcceptancePending\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Acceptance pending\"}]}",
+      "fix:tag": "1878"
+    }
+  },
+  {
+    "name": "partydetaildefinitionstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party detail definition for one party.",
+      "display": "PartyDetailDefinitionStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:tag": "1879"
+    }
+  },
+  {
+    "name": "partydetaildefinitionresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of party detail definition for one party.",
+      "display": "PartyDetailDefinitionResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidPartyStatus\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Invalid party status(es)\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1880"
+    }
+  },
+  {
+    "name": "entitlementrequestresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of risk limit definition request.",
+      "display": "EntitlementRequestResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"10\",\"name\":\"InstrumentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":10,\"doc\":\"Instrument scope not supported\"},{\"value\":\"11\",\"name\":\"MarketSegmentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":11,\"doc\":\"Market segment scope not supported\"},{\"value\":\"12\",\"name\":\"EntitlementNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":12,\"doc\":\"Entitlement not approved for party(-ies)\"},{\"value\":\"13\",\"name\":\"EntitlementAlreadyDefinedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":13,\"doc\":\"Entitlement already defined for party(-ies)\"},{\"value\":\"14\",\"name\":\"InstrumentNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":14,\"doc\":\"Instrument not approved for party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidEntitlementType\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Invalid entitlement type(s)\"},{\"value\":\"4\",\"name\":\"InvalidEntitlementID\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":4,\"doc\":\"Invalid entitlement ID(s) / ref ID(s)\"},{\"value\":\"5\",\"name\":\"InvalidEntitlementAttribute\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":5,\"doc\":\"Invalid entitlement attribute(s)\"},{\"value\":\"6\",\"name\":\"InvalidInstrumentScope\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":6,\"doc\":\"Invalid instrument scope(s)\"},{\"value\":\"7\",\"name\":\"InvalidMarketSegmentScope\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":7,\"doc\":\"Invalid market segment scope(s)\"},{\"value\":\"8\",\"name\":\"InvalidStartDate\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":8,\"doc\":\"Invalid start date\"},{\"value\":\"9\",\"name\":\"InvalidEndDate\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":9,\"doc\":\"Invalid end date\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1881"
+    }
+  },
+  {
+    "name": "entitlementrequeststatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of party entitlements definition request.",
+      "display": "EntitlementRequestStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"AcceptancePending\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Acceptance pending\"}]}",
+      "fix:tag": "1882"
+    }
+  },
+  {
+    "name": "entitlementstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Status of entitlement definition for one party.",
+      "display": "EntitlementStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":173,\"doc\":\"Accepted\"},{\"value\":\"1\",\"name\":\"AcceptedWithChanges\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":1,\"doc\":\"Accepted with changes\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"Pending\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":3,\"doc\":\"Pending\"},{\"value\":\"4\",\"name\":\"Requested\",\"since\":\"5.0SP2\",\"ep\":173,\"sort\":4,\"doc\":\"Requested\"},{\"value\":\"5\",\"name\":\"Deferred\",\"since\":\"5.0SP2\",\"ep\":183,\"sort\":5,\"doc\":\"Deferred\"}]}",
+      "fix:tag": "1883"
+    }
+  },
+  {
+    "name": "entitlementresult",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Result of entitlement definition for one party.",
+      "display": "EntitlementResult",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":146,\"doc\":\"Successful (default)\"},{\"value\":\"1\",\"name\":\"InvalidParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":1,\"doc\":\"Invalid party(-ies)\"},{\"value\":\"10\",\"name\":\"InstrumentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":10,\"doc\":\"Instrument scope not supported\"},{\"value\":\"11\",\"name\":\"MarketSegmentScopeNotSupported\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":11,\"doc\":\"Market segment scope not supported\"},{\"value\":\"12\",\"name\":\"EntitlementNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":12,\"doc\":\"Entitlement not approved for party(-ies)\"},{\"value\":\"13\",\"name\":\"EntitlementAlreadyDefinedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":13,\"doc\":\"Entitlement already defined for party(-ies)\"},{\"value\":\"14\",\"name\":\"InstrumentNotApprovedForParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":14,\"doc\":\"Instrument not approved for party(-ies)\"},{\"value\":\"2\",\"name\":\"InvalidRelatedParty\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":2,\"doc\":\"Invalid related party(-ies)\"},{\"value\":\"3\",\"name\":\"InvalidEntitlementType\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":3,\"doc\":\"Invalid entitlement type(s)\"},{\"value\":\"4\",\"name\":\"InvalidEntitlementID\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":4,\"doc\":\"Invalid entitlement ID(s) / ref ID(s)\"},{\"value\":\"5\",\"name\":\"InvalidEntitlementAttribute\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":5,\"doc\":\"Invalid entitlement attribute(s)\"},{\"value\":\"6\",\"name\":\"InvalidInstrumentScope\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":6,\"doc\":\"Invalid instrument scope(s)\"},{\"value\":\"7\",\"name\":\"InvalidMarketSegmentScope\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":7,\"doc\":\"Invalid market segment scope(s)\"},{\"value\":\"8\",\"name\":\"InvalidStartDate\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":8,\"doc\":\"Invalid start date\"},{\"value\":\"9\",\"name\":\"InvalidEndDate\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":9,\"doc\":\"Invalid end date\"},{\"value\":\"98\",\"name\":\"NotAuthorized\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":98,\"doc\":\"Not authorized\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":146,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1884"
+    }
+  },
+  {
+    "name": "entitlementrefid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reference to an EntitlementID(1776). Used for modification or deletion of an entitlement.",
+      "display": "EntitlementRefID",
+      "fix:tag": "1885"
+    }
+  },
+  {
+    "name": "settlpriceunitofmeasure",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to express the unit of measure of the settlement price if different from the contract.",
+      "display": "SettlPriceUnitOfMeasure",
+      "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0SP1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0SP2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0SP2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0SP1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0SP2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0SP2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0SP2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0SP2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0SP2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0SP2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0SP2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0SP2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
+      "fix:tag": "1886"
+    }
+  },
+  {
+    "name": "settlpriceunitofmeasurecurrency",
+    "dtype": {
+      "type": "currency"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the currency of the settlement price unit of measure if expressed in another currency than the base currency.",
+      "display": "SettlPriceUnitOfMeasureCurrency",
+      "fix:tag": "1887"
+    }
+  },
+  {
+    "name": "tradematchtimestamp",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Timestamp of the match event. For off-exchange trades the time at which the deal was matched by the exchange.",
+      "display": "TradeMatchTimestamp",
+      "fix:tag": "1888"
+    }
+  },
+  {
+    "name": "trdmatchsubid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to identify each price level, step or clip within a match event.",
+      "display": "TrdMatchSubID",
+      "fix:tag": "1891"
+    }
+  },
+  {
+    "name": "legexecid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The ExecID(17) value corresponding to a trade leg.",
+      "display": "LegExecID",
+      "fix:tag": "1893"
+    }
+  },
+  {
+    "name": "legtradeid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The TradeID(1003) value corresponding to a trade leg.",
+      "display": "LegTradeID",
+      "fix:tag": "1894"
+    }
+  },
+  {
+    "name": "legtradereportid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The TradeReportID(571) value corresponding to a trade leg.",
+      "display": "LegTradeReportID",
+      "fix:tag": "1895"
+    }
+  },
+  {
+    "name": "tradematchackstatus",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Used to indicate the status of the trade match report submission.",
+      "display": "TradeMatchAckStatus",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ReceivedNotProcessed\",\"since\":\"5.0SP2\",\"ep\":150,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:tag": "1896"
+    }
+  },
+  {
+    "name": "tradematchrejectreason",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Reason the trade match report submission was rejected.",
+      "display": "TradeMatchRejectReason",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Successful\",\"since\":\"5.0SP2\",\"ep\":150,\"doc\":\"Successful\"},{\"value\":\"1\",\"name\":\"InvalidPartyInformation\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":1,\"doc\":\"Invalid party information\"},{\"value\":\"2\",\"name\":\"UnknownInstrument\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":2,\"doc\":\"Unknown instrument\"},{\"value\":\"3\",\"name\":\"Unauthorized\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":3,\"doc\":\"Not authorized to report trades\"},{\"value\":\"4\",\"name\":\"InvalidTradeType\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":4,\"doc\":\"Invalid trade type\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP2\",\"ep\":150,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:tag": "1897"
+    }
+  },
+  {
+    "name": "sidemarketsegmentid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the market segment of the side.",
+      "display": "SideMarketSegmentID",
+      "fix:tag": "1898"
+    }
+  },
+  {
+    "name": "sidevenuetype",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Identifies the type of venue where the trade was executed for the side.",
+      "display": "SideVenueType",
+      "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"AuctionDrivenMarket\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":9,\"doc\":\"Auction driven market\"},{\"value\":\"B\",\"name\":\"CentralLimitOrderBook\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":6,\"doc\":\"Central limit order book\"},{\"value\":\"C\",\"name\":\"ClearingHouse\",\"since\":\"5.0SP2\",\"ep\":141,\"sort\":3,\"doc\":\"Clearinghouse\"},{\"value\":\"D\",\"name\":\"DarkOrderBook\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":8,\"doc\":\"Dark order book\"},{\"value\":\"E\",\"name\":\"Electronic\",\"since\":\"5.0SP1\",\"ep\":77,\"doc\":\"Electronic exchange\"},{\"value\":\"H\",\"name\":\"HybridMarket\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":12,\"doc\":\"Hybrid market\"},{\"value\":\"N\",\"name\":\"QuoteNegotiation\",\"since\":\"5.0SP2\",\"ep\":216,\"sort\":10,\"doc\":\"Quote negotiation\"},{\"value\":\"O\",\"name\":\"OffMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":5,\"doc\":\"Off-market\"},{\"value\":\"P\",\"name\":\"Pit\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":1,\"doc\":\"Pit\"},{\"value\":\"Q\",\"name\":\"QuoteDrivenMarket\",\"since\":\"5.0SP2\",\"ep\":163,\"sort\":7,\"doc\":\"Quote driven market\"},{\"value\":\"R\",\"name\":\"RegisteredMarket\",\"since\":\"5.0SP2\",\"ep\":161,\"sort\":4,\"doc\":\"Registered market\"},{\"value\":\"V\",\"name\":\"VoiceNegotiation\",\"since\":\"5.0SP2\",\"ep\":228,\"sort\":11,\"doc\":\"Voice negotiation\"},{\"value\":\"X\",\"name\":\"ExPit\",\"since\":\"5.0SP1\",\"ep\":77,\"sort\":2,\"doc\":\"Ex-pit\"},{\"value\":\"z\",\"name\":\"OtherMarket\",\"ep\":277,\"sort\":13,\"doc\":\"Other market (lowercase \\\"z\\\")\"}]}",
+      "fix:tag": "1899"
+    }
+  }
+]

@@ -1007,6 +1007,9 @@ fn feed_cell(
         | DataType::Currency
         | DataType::Mic
         | DataType::Cfi
+        | DataType::Side
+        | DataType::MsgType
+        | DataType::MsgDirection
         | DataType::Uuid
         | DataType::Version
         | DataType::List(_)

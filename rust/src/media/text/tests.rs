@@ -3,7 +3,7 @@ use arrow_array::{Array as _, BinaryArray, Int64Array, StringArray, UInt64Array}
 use crate::holder::Buffer;
 use crate::media::text::{LeadingFragment, LineSep, Text, TextOptions};
 use crate::media::{IORecordOptions as _, RecordOptions};
-use crate::{Codec, DataType, Timezone};
+use crate::{Codec, DataType, Field, Timezone};
 use crate::{IOBase as _, IOMedia as _};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
@@ -114,9 +114,9 @@ fn options_are_flat_and_validate_rowheader_names() {
     let mut options = TextOptions::new()
         .try_with_rowheader(r"\[(?<level>[A-Z]+)\] (?<id>\d+)")
         .unwrap()
-        .try_with_lstrip(r"^\s+")
+        .try_with_lstrip([r"^\s+"])
         .unwrap()
-        .try_with_rstrip(r"\s+$")
+        .try_with_rstrip([r"\s+$"])
         .unwrap()
         .with_linesep(LineSep::CRLF)
         .with_framing(true)
@@ -131,8 +131,8 @@ fn options_are_flat_and_validate_rowheader_names() {
         options.rowheader(),
         Some(r"\[(?<level>[A-Z]+)\] (?<id>\d+)")
     );
-    assert_eq!(options.lstrip(), Some(r"^\s+"));
-    assert_eq!(options.rstrip(), Some(r"\s+$"));
+    assert_eq!(options.lstrip().collect::<Vec<_>>(), [r"^\s+"]);
+    assert_eq!(options.rstrip().collect::<Vec<_>>(), [r"\s+$"]);
     assert_eq!(options.linesep(), Some(&LineSep::CRLF));
     assert!(options.framing());
     assert_eq!(options.leading_fragment(), LeadingFragment::Drop);
@@ -782,6 +782,234 @@ fn generic_record_writes_use_only_the_binary_body() {
     ];
     target.overwrite_records(rows, &options).unwrap();
     assert_eq!(target.read_all_bytes().unwrap(), b"first\nsecond\n");
+}
+
+#[test]
+fn a_strip_sequence_takes_one_layer_off_at_a_time() {
+    // A capture line routinely carries several layers of prose in front of
+    // its payload, and one expression matching all of them at once is the
+    // expression nobody can read. Each pattern strips from the edge the one
+    // before it left.
+    let cases: &[(&[&str], &[u8], &[u8])] = &[
+        // An arrow alone.
+        (&[r"^-->\s*"], b"--> 8=FIX.4.4|35=D|", b"8=FIX.4.4|35=D|"),
+        // A stage label, then an arrow.
+        (
+            &[r"^After \w+\s*", r"^-->\s*"],
+            b"After Enrichment --> ACCOUNT=A1|SIDE=1",
+            b"ACCOUNT=A1|SIDE=1",
+        ),
+        // The same two in the other spelling: a label ending in a colon.
+        (
+            &[r"^After [\w ]+:\s*", r"^-->\s*"],
+            b"After the bridge: --> ACCOUNT=A1",
+            b"ACCOUNT=A1",
+        ),
+        // A timestamp, a level, a plugin name, then the arrow.
+        (
+            &[
+                r"^\d{4}-\d{2}-\d{2} ",
+                r"^[A-Z]+ ",
+                r"^\[\w+\]\s*",
+                r"^-->\s*",
+            ],
+            b"2026-09-04 INFO [XmlApi] --> 8=FIX.4.2|35=8|",
+            b"8=FIX.4.2|35=8|",
+        ),
+        // A pattern that matches nothing leaves the edge where it was, so a
+        // sequence written for the general case still reads the specific one.
+        (
+            &[r"^After \w+\s*", r"^-->\s*"],
+            b"--> ACCOUNT=A1",
+            b"ACCOUNT=A1",
+        ),
+        // A pattern that does not match leaves the edge for the next one, so
+        // the sequence is tried in order rather than abandoned at the first
+        // miss - which is what lets one listing serve every shape a capture
+        // mixes. Here the arrow does not lead, so only the label comes off.
+        (
+            &[r"^-->\s*", r"^After \w+\s*"],
+            b"After Enrichment --> ACCOUNT=A1",
+            b"--> ACCOUNT=A1",
+        ),
+    ];
+
+    for (patterns, line, expected) in cases {
+        let options = TextOptions::new()
+            .try_with_lstrip(patterns.iter().copied())
+            .unwrap();
+        let source = Buffer::from_bytes([*line, b"\n"].concat());
+        assert_eq!(
+            bodies(&collect(&source, options)),
+            [expected.to_vec()],
+            "{patterns:?}"
+        );
+    }
+}
+
+#[test]
+fn a_right_edge_sequence_strips_in_order_too() {
+    let options = TextOptions::new()
+        .try_with_rstrip([r"\s+$", r"<< queued seq=\d+$", r"\s+$"])
+        .unwrap();
+    let source = Buffer::from_bytes(b"8=FIX.4.2|35=D|10=203| << queued seq=1092  \n".to_vec());
+    assert_eq!(
+        bodies(&collect(&source, options)),
+        [b"8=FIX.4.2|35=D|10=203|".to_vec()]
+    );
+}
+
+#[test]
+fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() {
+    let source = Buffer::from_bytes(
+        [
+            b"sending >> 8=FIX.4.2|9=176|35=D|10=203|
+"
+            .as_slice(),
+            b"recv ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL
+"
+            .as_slice(),
+            b"level=INFO worker=3 took=12ms
+"
+            .as_slice(),
+            b"<Order ClOrdID='XML-1'/>
+"
+            .as_slice(),
+            b"no level printed by this plugin
+"
+            .as_slice(),
+        ]
+        .concat(),
+    );
+    let mut options = TextOptions::new();
+    options.with_mimetype = true;
+    options.with_msgtype = true;
+    options.with_direction = true;
+
+    // The columns a classifying read declares, in order.
+    let field = options.source_field().unwrap();
+    let names: Vec<&str> = field
+        .dtype()
+        .as_fields()
+        .unwrap()
+        .iter()
+        .map(Field::name)
+        .collect();
+    assert_eq!(names, ["url", "direction", "mimetype", "msgtype", "body"]);
+
+    let batches = collect(&source, options);
+    assert_eq!(
+        codes(&batches, "direction"),
+        [Some("SENT"), Some("RECV"), None, None, None]
+    );
+    assert_eq!(
+        texts(&batches, "mimetype"),
+        [
+            Some("text/fix"),
+            Some("text/ullink"),
+            Some("text/key-value"),
+            Some("application/xml"),
+            Some("application/octet-stream"),
+        ]
+    );
+    assert_eq!(
+        codes(&batches, "msgtype"),
+        [Some("D"), Some("8"), None, None, None]
+    );
+    // Reading the verb takes exactly the verb off the body: a body that kept
+    // it would carry a word no protocol sent. What it does *not* take is the
+    // rest of the transport's punctuation - the arrow here - because that was
+    // not used to read anything, and removing it is what an lstrip sequence
+    // is for.
+    assert_eq!(
+        bodies(&batches)[..2],
+        [
+            b">> 8=FIX.4.2|9=176|35=D|10=203|".to_vec(),
+            b"ACCOUNT=A1|MSGTYPE=8|SYMBOL=AAPL".to_vec(),
+        ]
+    );
+    assert_eq!(
+        bodies(&batches)[4],
+        b"no level printed by this plugin".to_vec()
+    );
+}
+
+/// One packed-ASCII column, read back with its padding gone.
+fn codes<'a>(batches: &'a [arrow_array::RecordBatch], name: &str) -> Vec<Option<&'a str>> {
+    batches
+        .iter()
+        .flat_map(|batch| {
+            let index = batch.schema().index_of(name).unwrap();
+            batch
+                .column(index)
+                .as_any()
+                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+                .unwrap()
+                .iter()
+                .map(|value| {
+                    value.map(|bytes| std::str::from_utf8(bytes).unwrap().trim_end_matches(' '))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// One text column.
+fn texts<'a>(batches: &'a [arrow_array::RecordBatch], name: &str) -> Vec<Option<&'a str>> {
+    batches
+        .iter()
+        .flat_map(|batch| {
+            let index = batch.schema().index_of(name).unwrap();
+            batch
+                .column(index)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .iter()
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
+    // `A A B A`: the trailing `A` survives, which is what proves this is one
+    // previous digest rather than a set of every body seen.
+    let source = Buffer::from_bytes(
+        b"8=FIX.4.4|35=D|10=1|\n8=FIX.4.4|35=D|10=1|\n8=FIX.4.4|35=8|10=2|\n8=FIX.4.4|35=D|10=1|\n"
+            .to_vec(),
+    );
+
+    // Off by default: a row in is a row out.
+    assert_eq!(bodies(&collect(&source, TextOptions::new())).len(), 4);
+
+    let mut options = TextOptions::new();
+    options.dedup_adjacent = true;
+    assert_eq!(
+        bodies(&collect(&source, options)),
+        [
+            b"8=FIX.4.4|35=D|10=1|".to_vec(),
+            b"8=FIX.4.4|35=8|10=2|".to_vec(),
+            b"8=FIX.4.4|35=D|10=1|".to_vec(),
+        ]
+    );
+
+    // An empty source drops nothing, and a single row is never its own
+    // predecessor.
+    let single = Buffer::from_bytes(b"8=FIX.4.4|35=D|10=1|\n".to_vec());
+    let mut options = TextOptions::new();
+    options.dedup_adjacent = true;
+    assert_eq!(bodies(&collect(&single, options)).len(), 1);
+
+    // The digest is of the body after stripping, so two rows differing only
+    // in prose a strip removes are one row.
+    let prefixed = Buffer::from_bytes(
+        b"sending >> 8=FIX.4.4|35=D|10=1|\nrecv >> 8=FIX.4.4|35=D|10=1|\n".to_vec(),
+    );
+    let mut options = TextOptions::new().try_with_lstrip([r"^>>\s*"]).unwrap();
+    options.with_direction = true;
+    options.dedup_adjacent = true;
+    assert_eq!(bodies(&collect(&prefixed, options)).len(), 1);
 }
 
 /// What one text read costs the store underneath it.

@@ -4,7 +4,7 @@
 # lints live here so the core and the bindings cannot drift apart.
 [workspace]
 resolver = "3"
-members = ["rust", "python", "node"]
+members = ["rust", "python", "node", "cli"]
 # Root commands target the Rust source of truth. Bindings remain explicit
 # workspace members and are selected with `--workspace` or their own tools.
 default-members = ["rust"]

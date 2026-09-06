@@ -1140,10 +1140,10 @@ fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty", "")
 fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
     "OrderQty", ""
 )
-fix_bytes_protocol: MimeType = fix_registry_from_fields.infer_bytes_protocol(b"35=D|")
-fix_text_protocol: MimeType = fix_registry_from_fields.infer_text_protocol("35=D|")
-fix_bytes_msgtype: bytes | None = fix_registry_from_fields.infer_bytes_msgtype(b"35=D|")
-fix_text_msgtype: str | None = fix_registry_from_fields.infer_text_msgtype("35=D|")
+fix_bytes_protocol: MimeType = MimeType.infer_bytes(b"35=D|")
+fix_text_protocol: MimeType = MimeType.infer_text("35=D|")
+fix_bytes_msgtype: bytes | None = MimeType.infer_bytes_msgtype(b"35=D|")
+fix_text_msgtype: str | None = MimeType.infer_text_msgtype("35=D|")
 fix_generic: Field = fix_registry_from_fields.field(38)
 fix_maybe_generic: Field | None = fix_registry_from_fields.get_field("OrderQty")
 fix_item: Field = fix_registry_from_fields[38]
@@ -1181,6 +1181,56 @@ fix_message_default: object = fix_message.get(9999, None)
 fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
+fix_message_digest: bytes = fix_message.digest()
+fix_message_ticker: Scalar | None = fix_message.symbol_ticker()
+fix_message_clock: Scalar | None = fix_message.market_timestamp()
+fix_message_partition: Scalar | None = fix_message.unix_partition(3600)
+fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
+fix_message_lift_source: str | None = fix_message.lift_source("bidpx")
+fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
+fix_message_party: list[Scalar | None] | None = fix_message.party("1")
+fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
+fix_message_anomalies: list[str] = fix_message.anomalies()
+fix_message_arrivals: list[tuple[int, str | None, str, str]] = fix_message.entries()
+fix_message_wire: bytes = fix_message.to_bytes(124)
+
+fix_reader: fix.FixReader = fix.FixReader(fix_registry_from_fields)
+fix_reader_pinned: fix.FixReader = fix.FixReader(
+    fix_registry_from_fields,
+    branch="cme",
+    source_version="4.2",
+    target_version="4.4",
+    null_values=["<none>"],
+)
+fix_reader_registry: fix.FixRegistry = fix_reader.registry
+fix_read_text: fix.FixMsg = fix_reader.text("8=FIX.4.4|35=D|10=0|")
+fix_read_bytes: fix.FixMsg = fix_reader.bytes(b"8=FIX.4.4|35=D|10=0|")
+fix_read_frame: fix.FixMsg = fix_reader.fixtext(b"8=FIX.4.4", 1)
+fix_read_bridge: fix.FixMsg = fix_reader.ultext(b"#SYMBOL=TTF")
+fix_read_pairs: fix.FixMsg = fix_reader.pairs([("55", "AAPL")])
+
+fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
+fix_fixed_tags: list[int] = fix.fix_schema_tags()
+fix_crated: list[Field] = fix.fix_crate_fields()
+fix_projection: fix.FixProjection = fix.FixProjection(
+    fix_registry_from_fields, "FixMessage"
+)
+fix_projection_carried: fix.FixProjection = fix.FixProjection(
+    fix_registry_from_fields, "FixMessage", fix_root
+)
+fix_projection_wrapped: fix.FixProjection = fix.FixProjection.from_field(
+    fix_fixed_schema
+)
+fix_projection_field: Field = fix_projection.field
+fix_projection_tags: list[int] = fix_projection.tags
+fix_projection_carry: int = fix_projection.carried
+fix_projection_positions: list[int] = fix_projection.carried_positions
+fix_projection_values: int = fix_projection.value_columns
+fix_projection_column: Field | None = fix_projection.column(0)
+fix_projection_at: int | None = fix_projection.position_of(35)
+fix_projection_len: int = len(fix_projection)
+fix_fixed_row: Scalar = fix_read_text.to_row(fix_projection)
+
 fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
 
@@ -1198,6 +1248,26 @@ assert fix_bytes_msgtype is None or fix_bytes_msgtype
 assert fix_text_msgtype is None or fix_text_msgtype
 assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
+assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
+assert fix_message_ticker is None or fix_message_ticker
+assert fix_message_clock is None or fix_message_clock
+assert fix_message_partition is None or fix_message_partition
+assert fix_message_lifted is None or fix_message_lifted
+assert fix_message_lift_source is None or fix_message_lift_source
+assert isinstance(fix_message_lift, list) and isinstance(fix_message_anomalies, list)
+assert fix_message_party is None or fix_message_party
+assert fix_message_regulatory is None or fix_message_regulatory
+assert isinstance(fix_message_arrivals, list)
+assert fix_reader_registry is not None and fix_reader_pinned is not None
+assert fix_read_text and fix_read_bytes and fix_read_frame
+assert fix_read_bridge is not None and fix_read_pairs is not None
+assert fix_fixed_schema and fix_fixed_tags and fix_crated
+assert fix_projection_field and fix_projection_tags
+assert fix_projection_carry == 0 and fix_projection_positions == []
+assert fix_projection_values and fix_projection_len
+assert fix_projection_column is not None and fix_projection_at is not None
+assert fix_projection_carried is not None and fix_projection_wrapped is not None
+assert fix_fixed_row is not None
 assert fix_removed is None or fix_removed
 assert fix_removed_by_id is None or fix_removed_by_id
 assert fix_size >= 0 and fix_has or not fix_has

@@ -222,6 +222,18 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
         ),
         (
+            Field::new("side", DataType::Side, true),
+            Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
+        ),
+        (
+            Field::new("msgtype", DataType::MsgType, true),
+            Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
+        ),
+        (
+            Field::new("msgdirection", DataType::MsgDirection, true),
+            Scalar::from_sequence([Scalar::from("SENT"), Scalar::from("RECV"), Scalar::Null]),
+        ),
+        (
             Field::new("uuid", DataType::Uuid, true),
             Scalar::from_sequence([
                 DataType::Uuid

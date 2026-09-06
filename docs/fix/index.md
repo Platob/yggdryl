@@ -1,6 +1,6 @@
 # FIX
 
-FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, and a [message](message.md) typed against one.
+FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, a [message](message.md) typed against one, a [capture](capture.md) landing in one fixed row, and a [tool](cli.md) to manage all of it.
 
 ## Pages
 
@@ -10,13 +10,15 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
 | [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
+| [Capture](capture.md) | `FixReader`, `fix_schema`, `FixProjection`: a day of session log as one table |
+| [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixBranch`, `FixId`; no second field class |
-| Keys | `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`, `fix:description`; name, datatype and `display` stay the field's own |
+| Keys | `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`; name, datatype, `display` and `description` stay the field's own |
 | Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
 | Standard branch | Empty name, digest zero, `Version::default()`, empty sender and target component IDs; an absent key means it, and setting it removes the key |
 | Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest, `Version`, `target_comp_id`, `sender_comp_id`, and the registry stores that value |
@@ -49,7 +51,10 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
     assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
     // Stored as ordinary namespaced text, in the one metadata map.
     assert_eq!(field.get_metadata("fix:aliases"), Some("Qty,Quantity"));
-    assert_eq!(field.as_fix().len(), 3);
+    // Two, not three: a description is a fact about the column rather than a
+    // FIX fact, so it lives on the generic key beside `display`.
+    assert_eq!(field.get_metadata("description"), Some("Quantity ordered."));
+    assert_eq!(field.as_fix().len(), 2);
 
     // A refusal names the full key and leaves the field unchanged.
     let error = field.as_fix_mut().set_tags(&[152, 152]).unwrap_err();
@@ -79,7 +84,10 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
     assert field.fix.description == "Quantity ordered."
     # Stored as ordinary namespaced text, in the one metadata map.
     assert field.metadata["fix:aliases"] == "Qty,Quantity"
-    assert len(field.fix) == 3
+    # Two, not three: a description is a fact about the column rather than a
+    # FIX fact, so it lives on the generic key beside `display`.
+    assert field.metadata["description"] == "Quantity ordered."
+    assert len(field.fix) == 2
 
     # A refusal names the full key and leaves the field unchanged.
     with pytest.raises(ValueError, match="fix:tags"):
@@ -120,7 +128,10 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
     assert.equal(field.fix.description, 'Quantity ordered.')
     // Stored as ordinary namespaced text, in the one metadata map.
     assert.equal(field.get('fix:aliases'), 'Qty,Quantity')
-    assert.equal(field.fix.size, 3)
+    // Two, not three: a description is a fact about the column rather than a
+    // FIX fact, so it lives on the generic key beside `display`.
+    assert.equal(field.get('description'), 'Quantity ordered.')
+    assert.equal(field.fix.size, 2)
 
     // A refusal names the full key and leaves the field unchanged.
     assert.throws(() => {
@@ -156,7 +167,9 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `tag` | `fix:tag` | `i32` | canonical tag, never negative |
 | `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
-| `description` | `fix:description` | text | the specification's wording |
+| `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
+| `codes` | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from; see [Registry](registry.md#a-field-carries-its-code-set) |
+| `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
 
 ## Identity is a branch and a tag
 

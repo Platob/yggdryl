@@ -3,7 +3,8 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyTuple};
+use pyo3::types::{PyAny, PyBytes, PyTuple};
+use yggdryl::types::{MsgDirection as CoreMsgDirection, MsgType as CoreMsgType};
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::uri::path_string_from_value;
@@ -85,6 +86,57 @@ impl PyMimeType {
 
 #[pymethods]
 impl PyMimeType {
+    /// Classify one captured byte line, without a dictionary.
+    #[staticmethod]
+    fn infer_bytes(line: &Bound<'_, PyAny>) -> PyResult<Self> {
+        crate::text::codec::with_python_bytes(
+            line,
+            "a captured line must be bytes, bytearray, or memoryview",
+            |line| Ok(Self::from_core(CoreMimeType::infer_bytes(line))),
+        )
+    }
+
+    /// Read the message type one captured byte line declares.
+    #[staticmethod]
+    fn infer_bytes_msgtype(py: Python<'_>, line: &Bound<'_, PyAny>) -> PyResult<Option<Py<PyAny>>> {
+        crate::text::codec::with_python_bytes(
+            line,
+            "a captured line must be bytes, bytearray, or memoryview",
+            |line| {
+                Ok(CoreMsgType::infer_bytes(line)
+                    .map(|value| PyBytes::new(py, value).unbind().into_any()))
+            },
+        )
+    }
+
+    /// Read the message type one captured text line declares.
+    #[staticmethod]
+    fn infer_text_msgtype(line: &str) -> Option<String> {
+        CoreMsgType::infer_text(line).map(ToOwned::to_owned)
+    }
+
+    /// Read which way one captured byte line moved.
+    #[staticmethod]
+    fn infer_bytes_direction(line: &Bound<'_, PyAny>) -> PyResult<Option<&'static str>> {
+        crate::text::codec::with_python_bytes(
+            line,
+            "a captured line must be bytes, bytearray, or memoryview",
+            |line| Ok(CoreMsgDirection::infer_bytes(line)),
+        )
+    }
+
+    /// Read which way one captured text line moved.
+    #[staticmethod]
+    fn infer_text_direction(line: &str) -> Option<&'static str> {
+        CoreMsgDirection::infer_text(line)
+    }
+
+    /// Classify one captured text line, without a dictionary.
+    #[staticmethod]
+    fn infer_text(line: &str) -> Self {
+        Self::from_core(CoreMimeType::infer_text(line))
+    }
+
     #[classattr]
     #[pyo3(name = "OCTET_STREAM")]
     fn octet_stream_constant() -> Self {
@@ -199,6 +251,12 @@ impl PyMimeType {
     #[pyo3(name = "FIXUL")]
     fn fixul_constant() -> Self {
         Self::from_core(CoreMimeType::FIXUL)
+    }
+
+    #[classattr]
+    #[pyo3(name = "KEYVALUE")]
+    fn keyvalue_constant() -> Self {
+        Self::from_core(CoreMimeType::KEYVALUE)
     }
 
     #[classattr]

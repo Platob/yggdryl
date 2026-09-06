@@ -48,8 +48,9 @@ def options() -> TextOptions:
     value = TextOptions()
     value.rowheader = ROWHEADER
     value.with_rownum = 1
-    value.lstrip = r"^\s+"
-    value.rstrip = r"\s+$"
+    # A sequence, applied in order: one pattern is the one-element case.
+    value.lstrip = [r"^\s+"]
+    value.rstrip = [r"\s+$"]
     return value
 
 

@@ -1,7 +1,9 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, FixBranch, FixRegistry};
+use yggdryl::{
+    DataType, Field, FixBranch, FixCode, FixLineageEntry, FixPedigree, FixRegistry, Version,
+};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -138,5 +140,61 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    // The one FIX-aware merge, over two realistic definitions of one tag: a
+    // generator folds several sources into every field it writes, so this is
+    // what a regeneration costs per tag.
+    let stored = merge_source("the stored wording", "2.7", "the stored reading");
+    let incoming = merge_source("the incoming wording", "5.0SP2", "the incoming reading");
+    group.bench_function("merge_with", |bencher| {
+        bencher.iter_batched(
+            || incoming.clone(),
+            |mut field| {
+                field
+                    .as_fix_mut()
+                    .merge_with(&stored.as_fix())
+                    .expect("two definitions of one tag");
+                field
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    // The same fold through the registry, which adds the generic metadata
+    // half and the reindexing a stored field needs.
+    let mut merging = FixRegistry::from_fields([stored.clone()]).expect("one field");
+    group.bench_function("update_merging", |bencher| {
+        bencher.iter(|| {
+            black_box(&mut merging)
+                .update(black_box(incoming.clone()))
+                .expect("the same identity")
+        });
+    });
+
     group.finish();
+}
+
+/// One realistic definition of tag 32: dated, coded, described, aliased.
+fn merge_source(wording: &str, dated: &str, reading: &str) -> Field {
+    let version: Version = dated.parse().expect("a valid version");
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).expect("a static tag");
+    field
+        .as_fix_mut()
+        .set_tags(&[65, 66])
+        .expect("static alternate tags");
+    field
+        .as_fix_mut()
+        .set_description(wording)
+        .expect("a description");
+    field
+        .as_fix_mut()
+        .set_lineage(&[FixLineageEntry::new(FixPedigree::new(version, None)).with_name("LastQty")])
+        .expect("a lineage agreeing with its field");
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Shared", "1").with_description(reading),
+            FixCode::new("Other", "2"),
+        ])
+        .expect("a valid code set");
+    field
 }

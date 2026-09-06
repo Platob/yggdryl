@@ -10,9 +10,10 @@ use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
 use crate::holder::local::Folder;
+use crate::types::MsgType;
 use crate::{
-    DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, MimeType, Scalar,
-    Version,
+    DataType, Error, Field, FixBranch, FixCode, FixId, FixKey, FixLineageEntry, FixMsg,
+    FixPedigree, FixRegistry, MimeType, Scalar, Version,
 };
 
 /// The venue dictionary every branched case is written against.
@@ -123,13 +124,6 @@ fn name_indexes_fold_ascii_without_crossing_branches() {
 fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
     type Case = (&'static [u8], MimeType, Option<&'static [u8]>);
 
-    let registry = FixRegistry::from_fields([
-        tagged("Account", 1),
-        tagged("BeginString", 8),
-        tagged("MsgType", 35),
-        tagged("Symbol", 55),
-    ])
-    .unwrap();
     let cases: &[Case] = &[
         (
             b"2025-01-01 INFO 8=FIX.4.4|35=D|55=AAPL|",
@@ -198,7 +192,9 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         ),
         (
             b"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR",
-            MimeType::ULLINK,
+            // No marker and no `MSGTYPE=`: with no dictionary to resolve
+            // these names against, an attribute run is what it looks like.
+            MimeType::KEYVALUE,
             None,
         ),
         (
@@ -208,24 +204,26 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         ),
         (
             b"<Order ClOrdID='XML-1'>body</Order>",
-            MimeType::OCTET_STREAM,
+            // A document is what it opens as, before any pair rule runs: an
+            // attribute inside a tag is not a field.
+            MimeType::XML,
             None,
         ),
         (
             b"level=INFO timestamp=2025-01-01 message=random",
-            MimeType::OCTET_STREAM,
+            MimeType::KEYVALUE,
             None,
         ),
         (b"35=", MimeType::OCTET_STREAM, None),
         (b"not a protocol line", MimeType::OCTET_STREAM, None),
     ];
     for (line, protocol, msgtype) in cases {
-        assert_eq!(&registry.infer_bytes_protocol(line), protocol, "{line:?}");
-        assert_eq!(registry.infer_bytes_msgtype(line), *msgtype, "{line:?}");
+        assert_eq!(&MimeType::infer_bytes(line), protocol, "{line:?}");
+        assert_eq!(MsgType::infer_bytes(line), *msgtype, "{line:?}");
         let text = std::str::from_utf8(line).unwrap();
-        assert_eq!(&registry.infer_text_protocol(text), protocol, "{text}");
+        assert_eq!(&MimeType::infer_text(text), protocol, "{text}");
         assert_eq!(
-            registry.infer_text_msgtype(text),
+            MsgType::infer_text(text),
             msgtype.and_then(|value| std::str::from_utf8(value).ok()),
             "{text}"
         );
@@ -234,22 +232,18 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
     // An overflowing numeric key is one bad candidate, not a reason to stop
     // before a later valid frame in the same log line.
     let overflow = b"999999999999999999999=x 8=FIX.4.4|35=D|";
-    assert_eq!(registry.infer_bytes_protocol(overflow), MimeType::FIX);
-    assert_eq!(
-        registry.infer_bytes_msgtype(overflow),
-        Some(b"D".as_slice())
-    );
+    assert_eq!(MimeType::infer_bytes(overflow), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(overflow), Some(b"D".as_slice()));
 
-    // The protocol constants are enough for MsgType inference; a dictionary
-    // enriches aliases but is not required to find canonical wire spellings.
-    let empty = FixRegistry::new();
-    assert_eq!(empty.infer_bytes_protocol(b"35=D|55=AAPL|"), MimeType::FIX);
-    assert_eq!(empty.infer_bytes_msgtype(b"35=D|55=AAPL|"), Some(&b"D"[..]));
+    // Classification needs no dictionary at all: it is transport, and every
+    // captured line has a shape whatever protocol it carried.
+    assert_eq!(MimeType::infer_bytes(b"35=D|55=AAPL|"), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(b"35=D|55=AAPL|"), Some(&b"D"[..]));
     assert_eq!(
-        empty.infer_text_protocol("ACCOUNT=A1|MSGTYPE=8|"),
+        MimeType::infer_text("ACCOUNT=A1|MSGTYPE=8|"),
         MimeType::ULLINK
     );
-    assert_eq!(empty.infer_text_msgtype("ACCOUNT=A1|MSGTYPE=8|"), Some("8"));
+    assert_eq!(MsgType::infer_text("ACCOUNT=A1|MSGTYPE=8|"), Some("8"));
 
     assert_eq!(MimeType::ULLINK.as_str(), "text/ullink");
     assert_eq!(MimeType::FIX.as_str(), "text/fix");
@@ -258,9 +252,9 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
 
     for value in ["U1", "UABC", "UL"] {
         let line = format!("8=FIX.4.4|35={value}|10=000|");
-        assert_eq!(registry.infer_text_msgtype(&line), Some("UDF"));
+        assert_eq!(MsgType::infer_text(&line), Some("UDF"));
     }
-    assert_eq!(registry.infer_text_msgtype("35=U|"), Some("U"));
+    assert_eq!(MsgType::infer_text("35=U|"), Some("U"));
 }
 
 #[test]
@@ -1418,16 +1412,25 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert!(registry.contains("NoPartyIDs.PartyID"));
     // A member is reached through its parent only: the registry does not
-    // index it, and the remainder of a path is an exact child name.
+    // index it.
     assert!(
         registry
             .get_field_by_name("PartyID", Some(&FixBranch::STANDARD))
             .is_none()
     );
-    assert!(
+    // The remainder of a path folds like the head does. One function that
+    // folded its first segment and matched the rest exactly would refuse
+    // `NoPartyIDs.PartyID` on a dictionary that stores its members folded,
+    // which is every dictionary this crate writes.
+    assert_eq!(
+        registry.get_field_by_path("NoPartyIDs.partyid", Some(&FixBranch::STANDARD)),
+        registry.get_field_by_path("NoPartyIDs.PartyID", Some(&FixBranch::STANDARD)),
+    );
+    assert_eq!(
         registry
-            .get_field_by_path("NoPartyIDs.partyid", Some(&FixBranch::STANDARD))
-            .is_none()
+            .get_field_by_path("NoPartyIDs.PARTY_ID", Some(&FixBranch::STANDARD))
+            .map(Field::name),
+        Some("PartyID"),
     );
     assert!(
         registry
@@ -2076,4 +2079,755 @@ fn a_message_rejects_a_root_whose_branch_is_corrupt() {
         matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:branch"),
         "{error}"
     );
+}
+
+/// The worked case: tag 32 is `LastShares` typed `int` in 4.0, `LastShares`
+/// typed `Qty` from 4.2, and `LastQty` from 4.3 on.
+fn last_qty() -> Field {
+    let mut field = DataType::Float64.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).unwrap();
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
+                .with_name("LastShares")
+                .with_dtype("int"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_name("LastShares")
+                .with_dtype("Qty"),
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None))
+                .with_name("LastQty")
+                .with_dtype("Qty"),
+        ])
+        .unwrap();
+    field
+}
+
+fn version(text: &str) -> Version {
+    text.parse().unwrap()
+}
+
+#[test]
+fn a_lineage_answers_the_name_and_datatype_of_every_version_it_holds() {
+    let field = last_qty();
+    let view = field.as_fix();
+
+    assert_eq!(view.since(), Some(version("2.7")));
+    assert_eq!(view.until(), None);
+    assert_eq!(view.name_at(version("4.2")), Some("LastShares"));
+    assert_eq!(view.name_at(version("4.3")), Some("LastQty"));
+    assert_eq!(view.name_at(version("5.0SP2")), Some("LastQty"));
+    // A version older than the first entry states nothing, so the caller
+    // falls back to the field's own name.
+    assert_eq!(view.name_at(version("2.6")), None);
+
+    assert_eq!(
+        view.dtype_at(version("4.0")).unwrap(),
+        Some(DataType::Int32)
+    );
+    // `Qty` is a FIX `float`, and the logical-name table says so.
+    assert_eq!(
+        view.dtype_at(version("4.4")).unwrap(),
+        Some(DataType::Float64)
+    );
+}
+
+#[test]
+fn two_entries_at_one_version_order_by_extension_pack() {
+    let mut field = DataType::Utf8.nullable_field("BasisPoints");
+    field.as_fix_mut().set_tag(9999).unwrap();
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), Some(309)))
+                .with_name("BasisPoints"),
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), Some(204)))
+                .with_name("Superseded"),
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None)).with_name("Base"),
+        ])
+        .unwrap();
+
+    let dated: Vec<_> = field
+        .as_fix()
+        .lineage()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            (entry.ep(), entry.name().unwrap())
+        })
+        .collect();
+    assert_eq!(
+        dated,
+        [
+            (None, "Base"),
+            (Some(204), "Superseded"),
+            (Some(309), "BasisPoints"),
+        ]
+    );
+    // The newest reading is the last written, so resolution is a scan that
+    // stops rather than a sort.
+    assert_eq!(
+        field.as_fix().name_at(version("5.0SP2")),
+        Some("BasisPoints")
+    );
+}
+
+#[test]
+fn a_lineage_rewrites_the_aliases_it_implies_and_a_query_by_either_answers() {
+    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
+
+    let aliases: Vec<_> = registry
+        .field_by_tag(32)
+        .unwrap()
+        .as_fix()
+        .aliases()
+        .collect();
+    assert_eq!(aliases, ["LastShares"]);
+    assert_eq!(registry.field("LastShares").unwrap().name(), "LastQty");
+    assert_eq!(registry.field("LastQty").unwrap().name(), "LastQty");
+}
+
+#[test]
+fn a_version_filters_the_read_and_the_registry_stays_version_agnostic() {
+    let registry = FixRegistry::from_fields([last_qty()]).unwrap();
+
+    // The dictionary holds the tag whatever version is asked for; only the
+    // read is filtered.
+    assert_eq!(
+        registry.field_at(version("4.2"), 32).unwrap().name(),
+        "LastQty"
+    );
+    let refused = registry.field_at(version("2.6"), 32).unwrap_err();
+    assert!(refused.to_string().contains("2.6"), "{refused}");
+    assert!(registry.get_field_at(version("2.6"), 32).is_none());
+
+    assert_eq!(
+        registry.versions(),
+        [version("2.7"), version("4.2"), version("4.3")]
+    );
+    assert_eq!(
+        registry.newest(),
+        Some(FixPedigree::new(version("4.3"), None))
+    );
+    // "FIX Latest" is the real pedigree the dictionary carries, never a
+    // sentinel at the top of the value space.
+    assert_ne!(registry.newest().unwrap().version(), Version::MAX);
+}
+
+#[test]
+fn a_removed_entry_ends_the_field_and_a_field_with_no_lineage_answers_everywhere() {
+    let mut retired = DataType::Utf8.nullable_field("Retired");
+    retired.as_fix_mut().set_tag(9998).unwrap();
+    retired
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.0"), None)).with_name("Retired"),
+            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).remove(),
+        ])
+        .unwrap();
+    let view = retired.as_fix();
+    assert_eq!(view.until(), Some(version("4.4")));
+    assert!(view.defined_at(version("4.3")));
+    assert!(!view.defined_at(version("4.4")));
+    assert!(!view.defined_at(version("5.0SP2")));
+
+    let undated = tagged("Symbol", 55);
+    let view = undated.as_fix();
+    assert_eq!(view.since(), None);
+    assert_eq!(view.until(), None);
+    assert_eq!(view.name_at(version("4.2")), None);
+    assert_eq!(view.dtype_at(version("4.2")).unwrap(), None);
+    // No history is no filter, so an undated dictionary resolves as before.
+    assert!(view.defined_at(version("4.2")));
+    assert!(view.defined_at(Version::MIN));
+}
+
+#[test]
+fn a_lineage_disagreeing_with_its_own_field_is_refused_naming_both_sides() {
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).unwrap();
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastShares")
+        ])
+        .unwrap_err();
+    let rendered = error.to_string();
+    assert!(rendered.contains("LastShares"), "{rendered}");
+    assert!(rendered.contains("LastQty"), "{rendered}");
+    // A refusal leaves the field exactly as it was.
+    assert_eq!(field.as_fix().lineage().count(), 0);
+    assert_eq!(field.as_fix().aliases().count(), 0);
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_dtype("int")
+        ])
+        .unwrap_err();
+    let rendered = error.to_string();
+    assert!(rendered.contains("int32"), "{rendered}");
+    assert!(rendered.contains("utf8"), "{rendered}");
+}
+
+#[test]
+fn two_entries_sharing_one_pedigree_are_refused() {
+    let mut field = DataType::Utf8.nullable_field("Twice");
+    field.as_fix_mut().set_tag(9997).unwrap();
+
+    let error = field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), Some(1))),
+        ])
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, .. } if *target == "fix lineage"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("EP1"), "{error}");
+}
+
+#[test]
+fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
+    let field = last_qty();
+    let stored = field
+        .as_metadata()
+        .get("fix:lineage")
+        .expect("the lineage is stored")
+        .to_owned();
+    assert_eq!(
+        stored,
+        concat!(
+            r#"{"entries":["#,
+            r#"{"since":"2.7","name":"LastShares","type":"int"},"#,
+            r#"{"since":"4.2","name":"LastShares","type":"Qty"},"#,
+            r#"{"since":"4.3","name":"LastQty","type":"Qty"}]}"#,
+        )
+    );
+
+    // Rewriting what was read back produces the same text.
+    let entries: Vec<_> = field
+        .as_fix()
+        .lineage()
+        .map(|entry| entry.unwrap())
+        .collect();
+    let mut rebuilt = DataType::Float64.nullable_field("LastQty");
+    rebuilt.as_fix_mut().set_tag(32).unwrap();
+    rebuilt.as_fix_mut().set_lineage(&entries).unwrap();
+    assert_eq!(
+        rebuilt.as_metadata().get("fix:lineage"),
+        Some(stored.as_str())
+    );
+
+    // Keys follow the document's declared order, so a reordered one is
+    // refused rather than mis-scanned.
+    let reordered = r#"{"entries":[{"name":"LastShares","since":"2.7"}]}"#;
+    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    edited.set_metadata([("fix:lineage", reordered)]).unwrap();
+    let error = edited.as_fix().dtype_at(version("4.2")).unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, position, .. }
+            if *target == "fix lineage" && *position == reordered.find(r#""since""#).unwrap()),
+        "{error}"
+    );
+    // A read that cannot parse answers nothing rather than a wrong answer.
+    assert_eq!(edited.as_fix().name_at(version("4.2")), None);
+    assert_eq!(edited.as_fix().since(), None);
+}
+
+#[test]
+fn an_empty_lineage_removes_the_document_and_the_aliases_it_derived() {
+    let mut field = last_qty();
+    assert_eq!(field.as_fix().aliases().count(), 1);
+
+    field.as_fix_mut().set_lineage(&[]).unwrap();
+    assert_eq!(field.as_metadata().get("fix:lineage"), None);
+    assert_eq!(field.as_metadata().get("fix:aliases"), None);
+    assert_eq!(field.as_fix().since(), None);
+}
+
+/// Fixture A: the standard `SideCodeSet`, dated as the specification dates it.
+fn side() -> Field {
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Buy", "1").with_since(version("2.7"), Some(254)),
+            FixCode::new("Sell", "2").with_since(version("2.7"), Some(254)),
+            FixCode::new("Undisclosed", "7").with_since(version("4.1"), None),
+            FixCode::new("CrossShort", "9").with_since(version("4.2"), None),
+            FixCode::new("CrossShortExempt", "A").with_since(version("4.3"), None),
+        ])
+        .unwrap();
+    field
+}
+
+/// Fixture B: `CommTypeCodeSet`, whose long names are what tier 2 folds.
+fn comm_type() -> Field {
+    let mut field = DataType::Utf8.nullable_field("CommType");
+    field.as_fix_mut().set_tag(13).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("PerUnit", "1"),
+            FixCode::new("Percent", "2"),
+            FixCode::new("Absolute", "3"),
+            FixCode::new("PercentageWaivedCashDiscount", "4"),
+            FixCode::new("PercentageWaivedEnhancedUnits", "5"),
+            FixCode::new("PointsPerBondOrContract", "6")
+                .with_description("Good Till Date (GTD) points per bond"),
+            FixCode::new("BasisPoints", "7").with_since(version("5.0SP2"), Some(208)),
+            FixCode::new("AmountPerContract", "8"),
+        ])
+        .unwrap();
+    field
+}
+
+#[test]
+fn a_code_set_resolves_by_value_by_name_and_by_every_folding_of_a_name() {
+    let field = comm_type();
+    let view = field.as_fix();
+
+    // Tier 1: a spelling that is already a legal code is never reinterpreted.
+    assert_eq!(view.code_value("4"), Some("4"));
+    assert_eq!(
+        view.code("4").unwrap().name(),
+        "PercentageWaivedCashDiscount"
+    );
+    assert_eq!(view.code_name("4"), Some("PercentageWaivedCashDiscount"));
+
+    // Tier 2: the crate's one fold, so four spellings are one.
+    for spelling in [
+        "PercentageWaivedCashDiscount",
+        "percentage_waived_cash_discount",
+        "PERCENTAGE WAIVED CASH DISCOUNT",
+        "percentage-waived-cash-discount",
+    ] {
+        assert_eq!(view.code_value(spelling), Some("4"), "{spelling}");
+    }
+    // A shared prefix does not collide.
+    assert_eq!(view.code_value("PercentageWaivedEnhancedUnits"), Some("5"));
+    assert_eq!(view.code_by_name("basispoints").unwrap().value(), "7");
+}
+
+#[test]
+fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Buy", "1").with_aliases(["Bought", "BUYSIDE"]),
+            FixCode::new("Sell", "2"),
+        ])
+        .unwrap();
+    let view = field.as_fix();
+
+    assert_eq!(view.code_value("Buy"), Some("1"));
+    assert_eq!(view.code_value("bought"), Some("1"));
+    assert_eq!(view.code_value("buy_side"), Some("1"));
+    let buy = view.code("1").unwrap();
+    assert_eq!(buy.aliases().collect::<Vec<_>>(), ["Bought", "BUYSIDE"]);
+
+    // A venue sends codes no dictionary lists, so an unresolved spelling is
+    // answered as nothing and the caller keeps its own text.
+    assert_eq!(view.code_value("VenueOwnSide"), None);
+    assert_eq!(view.code_name("Z"), None);
+}
+
+#[test]
+fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Cross", "8"),
+            FixCode::new("CrossOther", "9").with_aliases(["cross"]),
+        ])
+        .unwrap();
+    let view = field.as_fix();
+
+    // Two codes reach one spelling, so picking either would be a guess.
+    assert_eq!(view.code_value("Cross"), None);
+    assert_eq!(view.code_by_name("cross"), None);
+    // Tier 1 still answers, because a legal wire value is never a spelling.
+    assert_eq!(view.code_value("8"), Some("8"));
+    // Two names sharing one value are an alias, not an ambiguity.
+    let mut aliased = DataType::Utf8.nullable_field("Side");
+    aliased.as_fix_mut().set_tag(54).unwrap();
+    aliased
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Cross", "8"),
+            FixCode::new("CrossSame", "8").with_aliases(["cross"]),
+        ])
+        .unwrap();
+    assert_eq!(aliased.as_fix().code_value("cross"), Some("8"));
+}
+
+#[test]
+fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
+    let mut field = DataType::Utf8.nullable_field("TimeInForce");
+    field.as_fix_mut().set_tag(59).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("GoodTillDate", "6").with_description("Good Till Date (GTD)"),
+            FixCode::new("BrokenDate", "7")
+                .with_description("Broken date; SettlDate (64) is required"),
+            FixCode::new("SwapValueFactor", "8")
+                .with_description("Swap Value Factor (SVP) through a central counterparty (CCP)"),
+        ])
+        .unwrap();
+    let view = field.as_fix();
+
+    assert_eq!(view.code_value("gtd"), Some("6"));
+    assert_eq!(view.code_value("GTD"), Some("6"));
+    // A numeric parenthesization is a tag cross-reference, never a spelling.
+    assert_eq!(view.code_value("64"), None);
+    // Only the abbreviation on the leading phrase counts.
+    assert_eq!(view.code_value("svp"), Some("8"));
+    assert_eq!(view.code_value("ccp"), None);
+}
+
+#[test]
+fn a_version_prefers_the_codes_it_knows_and_still_reads_the_rest() {
+    let field = side();
+    let view = field.as_fix();
+
+    assert_eq!(view.code_value_at(version("4.2"), "CrossShort"), Some("9"));
+    // A capture whose frame says 4.1 routinely carries values added in 4.2 -
+    // a venue upgrades one side, a bridge relabels a session - and refusing
+    // them drops exactly the traffic someone is trying to explain. The
+    // version prefers, it does not gate.
+    assert_eq!(view.code_value_at(version("4.1"), "CrossShort"), Some("9"));
+    assert_eq!(view.code_name_at(version("4.1"), "9"), Some("CrossShort"));
+    assert_eq!(view.code_name_at(version("4.2"), "9"), Some("CrossShort"));
+
+    // A code dated by extension pack alone reads the same way, and its
+    // pedigree stays readable beside the value it resolved to.
+    let comm = comm_type();
+    let comm = comm.as_fix();
+    assert_eq!(comm.code_value_at(version("4.4"), "BasisPoints"), Some("7"));
+    assert_eq!(
+        comm.code_value_at(version("5.0SP2"), "BasisPoints"),
+        Some("7")
+    );
+    assert_eq!(comm.code("7").unwrap().ep(), Some(208));
+
+    let mut retired = DataType::Utf8.nullable_field("OldFlag");
+    retired.as_fix_mut().set_tag(9996).unwrap();
+    retired
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Retired", "R")
+            .with_since(version("4.0"), None)
+            .with_deprecated(version("4.4"))])
+        .unwrap();
+    let retired = retired.as_fix();
+    // Deprecation reads the same way: a venue that never stopped sending a
+    // retired code is a venue whose traffic still has to be read, and the
+    // code's own `deprecated` pedigree is what says it should not be sent.
+    assert_eq!(retired.code_value_at(version("4.3"), "Retired"), Some("R"));
+    assert_eq!(retired.code_value_at(version("4.4"), "Retired"), Some("R"));
+    assert_eq!(retired.code_value("Retired"), Some("R"));
+    assert_eq!(
+        retired.code("R").and_then(super::FixCodeValue::deprecated),
+        Some(version("4.4")),
+        "what the version knows is still readable beside the value",
+    );
+}
+
+#[test]
+fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
+    let field = side();
+    let stored = field
+        .as_metadata()
+        .get("fix:codes")
+        .expect("the code set is stored")
+        .to_owned();
+    assert_eq!(
+        stored,
+        concat!(
+            r#"{"codes":["#,
+            r#"{"value":"1","name":"Buy","since":"2.7","ep":254},"#,
+            r#"{"value":"2","name":"Sell","since":"2.7","ep":254},"#,
+            r#"{"value":"7","name":"Undisclosed","since":"4.1"},"#,
+            r#"{"value":"9","name":"CrossShort","since":"4.2"},"#,
+            r#"{"value":"A","name":"CrossShortExempt","since":"4.3"}]}"#,
+        )
+    );
+
+    // Taking the set away and putting it back produces the same text.
+    let mut rebuilt = field.clone();
+    let taken = rebuilt.as_fix_mut().remove_codes().unwrap().unwrap();
+    assert_eq!(rebuilt.as_metadata().get("fix:codes"), None);
+    rebuilt.as_fix_mut().set_codes(&taken).unwrap();
+    assert_eq!(
+        rebuilt.as_metadata().get("fix:codes"),
+        Some(stored.as_str())
+    );
+
+    // Keys follow the document's declared order, so a reordered one is
+    // refused rather than mis-scanned.
+    let reordered = r#"{"codes":[{"name":"Buy","value":"1"}]}"#;
+    let mut edited = DataType::Utf8.nullable_field("Side");
+    edited.set_metadata([("fix:codes", reordered)]).unwrap();
+    let error = edited.as_fix().codes().next().unwrap().unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, position, .. }
+            if *target == "fix codes" && *position == reordered.find(r#""value""#).unwrap()),
+        "{error}"
+    );
+    // A read that cannot parse answers nothing rather than a wrong answer.
+    assert_eq!(edited.as_fix().code_value("Buy"), None);
+    assert_eq!(edited.as_fix().code("1"), None);
+}
+
+#[test]
+fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+
+    let error = field
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("BUY", "2")])
+        .unwrap_err();
+    assert!(error.to_string().contains("BUY"), "{error}");
+    assert_eq!(field.as_metadata().get("fix:codes"), None, "atomic");
+
+    let error = field
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Buy", "")])
+        .unwrap_err();
+    assert!(error.to_string().contains("value"), "{error}");
+
+    // Two names on one value is an alias, which is legal.
+    field
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Bought", "1")])
+        .unwrap();
+    assert_eq!(field.as_fix().codes().count(), 2);
+    assert_eq!(field.as_fix().code_value("Bought"), Some("1"));
+}
+
+#[test]
+fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Buy", "1")
+            .with_description(r#"Buy; the "long" side"#)
+            .with_aliases(["Bought"])
+            .with_since(version("2.7"), Some(254))
+            .with_deprecated(version("5.0SP2"))
+            .with_sort(10)
+            .with_group("Directional")])
+        .unwrap();
+
+    let view = field.as_fix();
+    let code = view.code("1").unwrap();
+    assert_eq!(code.name(), "Buy");
+    assert_eq!(code.since(), Some(version("2.7")));
+    assert_eq!(code.ep(), Some(254));
+    assert_eq!(code.deprecated(), Some(version("5.0SP2")));
+    assert_eq!(code.sort(), Some(10));
+    assert_eq!(code.group(), Some("Directional"));
+    // A description holding a quote survives the round trip through the one
+    // codec that escaped it.
+    assert_eq!(
+        code.parse_doc().unwrap().as_deref(),
+        Some(r#"Buy; the "long" side"#)
+    );
+    assert_eq!(code.aliases().collect::<Vec<_>>(), ["Bought"]);
+    // An empty set removes the property rather than storing an empty one.
+    let mut cleared = field.clone();
+    cleared.as_fix_mut().set_codes(&[]).unwrap();
+    assert_eq!(cleared.as_metadata().get("fix:codes"), None);
+    assert_eq!(cleared.as_fix().codes().count(), 0);
+}
+
+#[test]
+fn a_field_merge_folds_every_key_by_its_own_rule() {
+    // Stored: the older, lower-priority source.
+    let mut stored = DataType::Utf8.nullable_field("LastQty");
+    stored.as_fix_mut().set_tag(32).unwrap();
+    stored.as_fix_mut().set_tags(&[65, 66]).unwrap();
+    stored
+        .as_fix_mut()
+        .set_description("the stored wording")
+        .unwrap();
+    stored
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_name("LastShares"),
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
+        ])
+        .unwrap();
+    stored
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("StoredOnly", "9"),
+            FixCode::new("Shared", "1").with_description("the stored reading"),
+        ])
+        .unwrap();
+
+    // Incoming: the newer, higher-priority source.
+    let mut incoming = DataType::Utf8.nullable_field("LastQty");
+    incoming.as_fix_mut().set_tag(32).unwrap();
+    incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
+    incoming
+        .as_fix_mut()
+        .set_description("the incoming wording")
+        .unwrap();
+    incoming
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None)).with_name("LastQty"),
+        ])
+        .unwrap();
+    incoming
+        .as_fix_mut()
+        .set_codes(&[
+            FixCode::new("IncomingOnly", "5"),
+            FixCode::new("Shared", "1").with_description("the incoming reading"),
+        ])
+        .unwrap();
+
+    incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    let merged = incoming.as_fix();
+
+    // Identity is not merged, it is agreed.
+    assert_eq!(merged.tag().unwrap(), Some(32));
+    // Lists union, incoming first, deduplicated.
+    assert_eq!(merged.tags().unwrap(), [67, 66, 65]);
+    // The description is never compared: incoming has one, so it wins.
+    assert_eq!(merged.description(), Some("the incoming wording"));
+    // Lineages merge by pedigree and re-sort oldest first.
+    let dated: Vec<_> = merged
+        .lineage()
+        .map(|entry| entry.unwrap().since())
+        .collect();
+    assert_eq!(dated, [version("2.7"), version("4.3"), version("5.0SP2")]);
+    // Codes merge by wire value; the incoming wins a shared one and the
+    // stored keeps a value only it has.
+    assert_eq!(merged.code_name("1"), Some("Shared"));
+    assert_eq!(
+        merged.code("1").unwrap().parse_doc().unwrap().as_deref(),
+        Some("the incoming reading")
+    );
+    assert_eq!(merged.code_name("5"), Some("IncomingOnly"));
+    assert_eq!(merged.code_name("9"), Some("StoredOnly"));
+    // The aliases are rewritten from the merged lineage, never left as the
+    // union, so the derivation stays the writer's.
+    assert_eq!(merged.aliases().collect::<Vec<_>>(), ["LastShares"]);
+}
+
+#[test]
+fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
+    let mut stored = DataType::Utf8.nullable_field("Symbol");
+    stored.as_fix_mut().set_tag(55).unwrap();
+    stored
+        .as_fix_mut()
+        .set_description("a very long stored wording nobody wants compared")
+        .unwrap();
+
+    let mut incoming = DataType::Utf8.nullable_field("Symbol");
+    incoming.as_fix_mut().set_tag(55).unwrap();
+    incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+
+    // The FIX half folds the `fix:` keys and nothing else, so on its own it
+    // leaves a description alone in both directions: it is not FIX's key.
+    incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
+    assert_eq!(incoming.as_fix().description(), None);
+    assert_eq!(incoming.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+
+    // The whole merge is two halves, and the generic one carries it: a
+    // description the incoming definition does not state is kept from what
+    // was stored, because a field's meaning does not disappear when a
+    // dictionary that never wrote it down is folded in.
+    let mut registry = FixRegistry::from_fields([stored.clone()]).unwrap();
+    registry.update(incoming.clone()).unwrap();
+    let held = registry.field_by_tag(55).unwrap();
+    assert_eq!(
+        held.description(),
+        Some("a very long stored wording nobody wants compared")
+    );
+    assert_eq!(held.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
+
+    // And one the incoming definition does state wins, because the caller's
+    // ordering is the precedence.
+    let mut restated = incoming;
+    restated
+        .set_description("the wording this source publishes")
+        .unwrap();
+    registry.update(restated).unwrap();
+    assert_eq!(
+        registry.field_by_tag(55).unwrap().description(),
+        Some("the wording this source publishes")
+    );
+}
+
+#[test]
+fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
+    let mut incoming = DataType::Utf8.nullable_field("Symbol");
+    incoming.as_fix_mut().set_tag(55).unwrap();
+    incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+    let before = incoming.clone();
+
+    let mut other = DataType::Utf8.nullable_field("Symbol");
+    other.as_fix_mut().set_tag(56).unwrap();
+    let error = incoming
+        .as_fix_mut()
+        .merge_with(&other.as_fix())
+        .unwrap_err();
+    assert!(error.is_conflict(), "{error}");
+    let message = error.to_string();
+    assert!(
+        message.contains("55") && message.contains("56"),
+        "{message}"
+    );
+    assert_eq!(incoming, before, "a refusal leaves the field as it was");
+
+    let mut vendor = DataType::Utf8.nullable_field("Symbol");
+    vendor.as_fix_mut().set_id(&cme(), 5055).unwrap();
+    let mut mine = DataType::Utf8.nullable_field("Symbol");
+    mine.as_fix_mut().set_tag(5055).unwrap();
+    let error = mine.as_fix_mut().merge_with(&vendor.as_fix()).unwrap_err();
+    assert!(error.is_conflict(), "{error}");
+    assert!(error.to_string().contains("cme"), "{error}");
+}
+
+#[test]
+fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).unwrap();
+    field.as_fix_mut().set_tags(&[65]).unwrap();
+    field.as_fix_mut().set_description("wording").unwrap();
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_name("LastShares"),
+            FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
+        ])
+        .unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[FixCode::new("Shared", "1")])
+        .unwrap();
+
+    let before = field.clone();
+    let other = field.clone();
+    field.as_fix_mut().merge_with(&other.as_fix()).unwrap();
+    assert_eq!(field, before);
+    // Merging a bare field into a full one is also a no-op.
+    let mut bare = DataType::Utf8.nullable_field("LastQty");
+    bare.as_fix_mut().set_tag(32).unwrap();
+    field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
+    assert_eq!(field, before);
 }

@@ -1,0 +1,444 @@
+[
+  {
+    "name": "nounderlyingpaymentstreampricingbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreampricingbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41910"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamPricingBusinessCenters",
+      "fix:tag": "41909"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreampaymentdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreampaymentdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41938"
+              }
+            },
+            {
+              "name": "underlyingpaymentstreampaymentdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41939"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of payment dates in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamPaymentDates",
+      "fix:tag": "41937"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreampricingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreampricingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41942"
+              }
+            },
+            {
+              "name": "underlyingpaymentstreampricingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41943"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of pricing dates in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamPricingDates",
+      "fix:tag": "41941"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentstreampricingdays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstreampricingdayofweek",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41945"
+              }
+            },
+            {
+              "name": "underlyingpaymentstreampricingdaynumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41946"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of pricing days in the repeating group.",
+      "display": "NoUnderlyingPaymentStreamPricingDays",
+      "fix:tag": "41944"
+    }
+  },
+  {
+    "name": "nounderlyingpricingdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpricingdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41948"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPricingDateBusinessCenters",
+      "fix:tag": "41947"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcalculationperioddates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcalculationperioddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41955"
+              }
+            },
+            {
+              "name": "underlyingstreamcalculationperioddatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41956"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of calculation period dates in the repeating group.",
+      "display": "NoUnderlyingStreamCalculationPeriodDates",
+      "fix:tag": "41954"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcommoditysettlbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcommoditysettlbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41963"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingStreamCommoditySettlBusinessCenters",
+      "fix:tag": "41962"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcommodityaltids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcommodityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41991"
+              }
+            },
+            {
+              "name": "underlyingstreamcommodityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41992"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of alternate security identifers.",
+      "display": "NoUnderlyingStreamCommodityAltIDs",
+      "fix:tag": "41990"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcommoditydatasources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcommoditydatasourceid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41994"
+              }
+            },
+            {
+              "name": "underlyingstreamcommoditydatasourceidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41995"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of commodity data sources in the repeating group.",
+      "display": "NoUnderlyingStreamCommodityDataSources",
+      "fix:tag": "41993"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcommoditysettldays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcommoditysettlday",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41997"
+              }
+            },
+            {
+              "name": "underlyingstreamcommoditysettltotalhours",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41998"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of days in the repeating group.",
+      "display": "NoUnderlyingStreamCommoditySettlDays",
+      "fix:tag": "41996"
+    }
+  },
+  {
+    "name": "nounderlyingstreamcommoditysettltimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingstreamcommoditysettlstart",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42000"
+              }
+            },
+            {
+              "name": "underlyingstreamcommoditysettlend",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42001"
+              }
+            },
+            {
+              "name": "underlyingstreamcommoditysettltimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41936"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
+      "display": "NoUnderlyingStreamCommoditySettlTimes",
+      "fix:tag": "41999"
+    }
+  }
+]

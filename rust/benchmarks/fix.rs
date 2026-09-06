@@ -9,7 +9,13 @@ mod fix_benches;
 criterion_group!(
     fix,
     fix_benches::resolve::benchmarks,
+    fix_benches::lift::benchmarks,
+    fix_benches::lineage::benchmarks,
+    fix_benches::batch::benchmarks,
+    fix_benches::cblock::benchmarks,
+    fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,
+    fix_benches::read::benchmarks,
     fix_benches::store::benchmarks,
 );
 criterion_main!(fix);

@@ -26,9 +26,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::types::MsgType;
 use yggdryl::{
-    DataType, Field, FixBranch, FixId, FixMsg, FixRegistry, MediaType, MimeType, Scalar, Timezone,
-    Version,
+    DataType, Field, FixBranch, FixCode, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
+    MediaType, MimeType, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -345,19 +346,137 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(registry.contains("Symbol"));
     });
     free("infer_bytes_protocol FIXML", || {
-        let _ = black_box(registry.infer_bytes_protocol(black_box(b"35=D|Symbol=AAPL|")));
+        let _ = black_box(MimeType::infer_bytes(black_box(b"35=D|Symbol=AAPL|")));
     });
     free("infer_text_protocol UL", || {
-        let _ = black_box(registry.infer_text_protocol(black_box("MsgType=D Symbol=AAPL")));
+        let _ = black_box(MimeType::infer_text(black_box("MsgType=D Symbol=AAPL")));
     });
     free("infer_bytes_msgtype FIX", || {
-        let _ = black_box(registry.infer_bytes_msgtype(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
+        let _ = black_box(MsgType::infer_bytes(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
     });
     free("infer_text_msgtype UL", || {
-        let _ = black_box(registry.infer_text_msgtype(black_box("MsgType=D Symbol=AAPL")));
+        let _ = black_box(MsgType::infer_text(black_box("MsgType=D Symbol=AAPL")));
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());
+    });
+}
+
+#[test]
+fn a_fix_lineage_read_allocates_nothing() {
+    // Every spelling a lineage answers is a slice of the field's own stored
+    // document, so a version filter costs the walk and nothing else. Only
+    // `dtype_at` allocates, because building a `DataType` is what it answers.
+    let mut field = DataType::Utf8.nullable_field("LastQty");
+    field.as_fix_mut().set_tag(32).expect("a static tag");
+    let entries = [
+        FixLineageEntry::new(FixPedigree::new(
+            "2.7".parse::<Version>().expect("a version"),
+            None,
+        ))
+        .with_name("LastShares")
+        .with_dtype("int"),
+        FixLineageEntry::new(FixPedigree::new(
+            "4.2".parse::<Version>().expect("a version"),
+            Some(204),
+        ))
+        .with_name("LastShares")
+        .with_dtype("Qty")
+        .with_doc("Quantity of shares bought or sold on this fill."),
+        FixLineageEntry::new(FixPedigree::new(
+            "4.3".parse::<Version>().expect("a version"),
+            None,
+        ))
+        .with_name("LastQty")
+        .with_dtype("utf8"),
+    ];
+    field
+        .as_fix_mut()
+        .set_lineage(&entries)
+        .expect("a lineage agreeing with its field");
+
+    let view = field.as_fix();
+    let newest = "5.0SP2".parse::<Version>().expect("a version");
+    let old = "4.2".parse::<Version>().expect("a version");
+
+    free("lineage walk", || {
+        let _ = black_box(view.lineage().count());
+    });
+    free("since", || {
+        let _ = black_box(view.since());
+    });
+    free("until", || {
+        let _ = black_box(view.until());
+    });
+    free("defined_at", || {
+        let _ = black_box(view.defined_at(old));
+    });
+    free("name_at old", || {
+        let _ = black_box(view.name_at(old));
+    });
+    free("name_at newest", || {
+        let _ = black_box(view.name_at(newest));
+    });
+    // A document the scan refuses costs no allocation either: the byte
+    // position is carried by the borrowed cursor, not by a rendered copy.
+    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    edited
+        .set_metadata([("fix:lineage", r#"{"entries":[{"name":"x","since":"2.7"}]}"#)])
+        .expect("a hand-edited document");
+    let refused = edited.as_fix();
+    free("name_at refused", || {
+        let _ = black_box(refused.name_at(old));
+    });
+}
+
+#[test]
+fn a_fix_code_lookup_allocates_nothing() {
+    // A 300-code set: a lookup must cost the codes it walks past and no
+    // allocation, whichever tier answers it.
+    let codes: Vec<FixCode> = (0..300)
+        .map(|index| {
+            FixCode::new(format!("Member{index:04}"), format!("{index:04}"))
+                .with_description(format!("Member number {index} (M{index:04})"))
+        })
+        .collect();
+    let mut field = DataType::Utf8.nullable_field("Vocabulary");
+    field.as_fix_mut().set_tag(9995).expect("a static tag");
+    field
+        .as_fix_mut()
+        .set_codes(&codes)
+        .expect("a valid code set");
+    let view = field.as_fix();
+
+    free("codes walk", || {
+        let _ = black_box(view.codes().count());
+    });
+    // Tier 1 stops at the match; the last code is the worst case.
+    free("code first", || {
+        let _ = black_box(view.code(black_box("0000")));
+    });
+    free("code last", || {
+        let _ = black_box(view.code(black_box("0299")));
+    });
+    free("code miss", || {
+        let _ = black_box(view.code(black_box("absent")));
+    });
+    // Tier 2 runs the whole set, because ambiguity must answer nothing.
+    free("code_by_name folded", || {
+        let _ = black_box(view.code_by_name(black_box("member_0299")));
+    });
+    free("code_value tier one", || {
+        let _ = black_box(view.code_value(black_box("0150")));
+    });
+    free("code_value tier two", || {
+        let _ = black_box(view.code_value(black_box("MEMBER 0150")));
+    });
+    // Tier 3 reads a description it never decodes, so it allocates nothing
+    // either.
+    free("code_value tier three", || {
+        let _ = black_box(view.code_value(black_box("m0150")));
+    });
+    free("code_value_at", || {
+        let _ = black_box(view.code_value_at(black_box(Version::MAX), black_box("0150")));
     });
 }
 

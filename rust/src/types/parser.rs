@@ -86,6 +86,9 @@ impl fmt::Display for DataType {
             D::Currency => formatter.write_str("currency"),
             D::Mic => formatter.write_str("mic"),
             D::Cfi => formatter.write_str("cfi"),
+            D::Side => formatter.write_str("side"),
+            D::MsgType => formatter.write_str("msgtype"),
+            D::MsgDirection => formatter.write_str("msgdirection"),
             D::Uuid => formatter.write_str("uuid"),
             D::Version => formatter.write_str("version"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
@@ -1166,12 +1169,57 @@ pub(crate) fn is_closing_or_separator(symbol: char) -> bool {
     matches!(symbol, '>' | ')' | ']' | '}' | ',' | ';')
 }
 
-pub(crate) fn normalized(value: &str) -> String {
+/// The crate's one fold: case folded, and `_`, `-` and space dropped.
+///
+/// One rule serves every spelling a caller may write for something this crate
+/// names - a datatype word, a logical name, a FIX field name, a FIX code's
+/// symbolic name - so `UTCTimestamp`, `utc_timestamp`, `utc-timestamp` and
+/// `UTC TIMESTAMP` are one spelling everywhere rather than one spelling per
+/// layer.
+pub(crate) fn folded(value: &str) -> impl Iterator<Item = char> + '_ {
     value
         .chars()
         .filter(|character| !matches!(character, '_' | '-' | ' '))
         .flat_map(char::to_lowercase)
-        .collect()
+}
+
+/// Whether one byte is a separator the fold drops.
+const fn is_dropped(byte: u8) -> bool {
+    matches!(byte, b'_' | b'-' | b' ')
+}
+
+/// Whether two spellings are one under [`folded`].
+///
+/// Compares the two folds as they are produced, so a caller holding neither
+/// spelling folded allocates nothing to find out.
+///
+/// Almost every spelling this crate compares is ASCII - a datatype word, a
+/// FIX field name, a code's symbolic name - and ASCII folds one byte to one
+/// byte, so those walk the bytes directly. `char::to_lowercase` answers an
+/// iterator because one character can fold to several, which is real but rare
+/// enough that paying for it on every comparison would be the wrong trade.
+pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
+    if left.is_ascii() && right.is_ascii() {
+        let mut left = left.bytes().filter(|byte| !is_dropped(*byte));
+        let mut right = right.bytes().filter(|byte| !is_dropped(*byte));
+        loop {
+            return match (left.next(), right.next()) {
+                (Some(left), Some(right)) => {
+                    if left.eq_ignore_ascii_case(&right) {
+                        continue;
+                    }
+                    false
+                }
+                (None, None) => true,
+                _ => false,
+            };
+        }
+    }
+    folded(left).eq(folded(right))
+}
+
+pub(crate) fn normalized(value: &str) -> String {
+    folded(value).collect()
 }
 
 pub(crate) fn precision_to_unit(precision: i64, position: usize) -> Result<TimeUnit> {

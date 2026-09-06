@@ -1,0 +1,336 @@
+[
+  {
+    "name": "noquoteattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "quoteattributetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2707"
+              }
+            },
+            {
+              "name": "quoteattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2708"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of quote attributes entries.",
+      "display": "NoQuoteAttributes",
+      "fix:tag": "2706"
+    }
+  },
+  {
+    "name": "nopricequalifiers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "pricequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2710"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of price qualifiers in the repeating group.",
+      "display": "NoPriceQualifiers",
+      "fix:tag": "2709"
+    }
+  },
+  {
+    "name": "noindexrollmonths",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "indexrollmonth",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2733"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of the index roll month.",
+      "display": "NoIndexRollMonths",
+      "fix:tag": "2734"
+    }
+  },
+  {
+    "name": "noreferencedatadates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "referencedatadate",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2747"
+              }
+            },
+            {
+              "name": "referencedatadatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2748"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of reference data dates.",
+      "display": "NoReferenceDataDates",
+      "fix:tag": "2746"
+    }
+  },
+  {
+    "name": "nomatchexceptions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "matchexceptiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2773"
+              }
+            },
+            {
+              "name": "matchexceptionelementtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2774"
+              }
+            },
+            {
+              "name": "matchexceptionelementname",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2775"
+              }
+            },
+            {
+              "name": "matchexceptionallocvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2776"
+              }
+            },
+            {
+              "name": "matchexceptionconfirmvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2777"
+              }
+            },
+            {
+              "name": "matchexceptiontolerancevalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2778"
+              }
+            },
+            {
+              "name": "matchexceptiontolerancevaluetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2779"
+              }
+            },
+            {
+              "name": "matchexceptiontext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2780"
+              }
+            },
+            {
+              "name": "encodedmatchexceptiontextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2797"
+              }
+            },
+            {
+              "name": "encodedmatchexceptiontext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2798"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of match exceptions in the repeating group.",
+      "display": "NoMatchExceptions",
+      "fix:tag": "2772"
+    }
+  },
+  {
+    "name": "nomatchingdatapoints",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "matchingdatapointindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2782"
+              }
+            },
+            {
+              "name": "matchingdatapointvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2783"
+              }
+            },
+            {
+              "name": "matchingdatapointtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2784"
+              }
+            },
+            {
+              "name": "matchingdatapointname",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2785"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of matching data points in the repeating group.",
+      "display": "NoMatchingDataPoints",
+      "fix:tag": "2781"
+    }
+  }
+]

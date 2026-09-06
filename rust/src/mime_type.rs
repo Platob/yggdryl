@@ -27,6 +27,7 @@ enum MimeTypeValue {
     Orc,
     Puffin,
     PlainText,
+    KeyValue,
     Ullink,
     Fix,
     Fixul,
@@ -79,6 +80,7 @@ enum MimeTypeValue {
     Custom(SmolStr),
 }
 
+pub(crate) mod line;
 mod registry;
 
 use registry::{known_from_extension, known_from_mime};
@@ -120,6 +122,68 @@ impl MimeType {
     pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
     /// Unformatted plain text.
     pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
+    /// Infers what one captured byte line is, without a dictionary.
+    ///
+    /// A capture is millions of lines and most are not the protocol a reader
+    /// is after. One shallow scan decides: numeric `tag=value` entries prove
+    /// [`Self::FIX`], `#`-marked or `MSGTYPE=` keys prove [`Self::ULLINK`],
+    /// both prove [`Self::FIXUL`], and an `XmlData(213)` payload opening with
+    /// a tag proves [`Self::FIXML`]. A line that is no frame but opens as a
+    /// document is [`Self::XML`] or [`Self::JSON`]; one that is still
+    /// `key=value` throughout is [`Self::KEYVALUE`]; anything else is
+    /// [`Self::OCTET_STREAM`].
+    ///
+    /// The scan reads no message and allocates nothing.
+    ///
+    /// ```
+    /// use yggdryl::MimeType;
+    ///
+    /// let framed = b"sending 8=FIX.4.4|35=D|55=AAPL|10=001| queued seq=7";
+    /// assert_eq!(MimeType::infer_bytes(framed), MimeType::FIX);
+    /// assert_eq!(
+    ///     MimeType::infer_bytes(b"#MSGTYPE=D|#SYMBOL=AAPL"),
+    ///     MimeType::ULLINK
+    /// );
+    /// // No frame, but pairs throughout.
+    /// assert_eq!(
+    ///     MimeType::infer_bytes(b"level=INFO worker=3 took=12ms"),
+    ///     MimeType::KEYVALUE
+    /// );
+    /// // A document wins over the pair rules.
+    /// assert_eq!(MimeType::infer_bytes(b"<Order id='1'/>"), MimeType::XML);
+    /// assert_eq!(MimeType::infer_bytes(br#"{"a":1}"#), MimeType::JSON);
+    /// assert_eq!(
+    ///     MimeType::infer_bytes(b"no level printed by this plugin"),
+    ///     MimeType::OCTET_STREAM
+    /// );
+    /// ```
+    #[must_use]
+    pub fn infer_bytes(line: &[u8]) -> Self {
+        let inferred = line::inspect(line);
+        let shape = inferred.mime_type();
+        // A frame beats a document, because an `XmlData` payload is part of a
+        // frame rather than a document of its own; a document beats the bare
+        // pair rules, because an attribute inside a tag is not a field.
+        if shape == Self::OCTET_STREAM || shape == Self::KEYVALUE {
+            if let Some(document) = line::document_type(line) {
+                return document;
+            }
+        }
+        shape
+    }
+
+    /// Infers what one captured text line is.
+    #[must_use]
+    pub fn infer_text(line: &str) -> Self {
+        Self::infer_bytes(line.as_bytes())
+    }
+
+    /// A line of plain `key=value` pairs, with no frame around them.
+    ///
+    /// The generic shape a log attribute run has: no numeric tags, no
+    /// `#`-marked keys, no envelope. It is what a line still is when every
+    /// frame rule declined it and it is nevertheless pairs throughout.
+    pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
     /// A symbolic-key Ullink text frame.
     pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
     /// A numeric-tag FIX text frame.
@@ -378,6 +442,7 @@ impl MimeType {
             MimeTypeValue::Orc => "application/vnd.apache.orc",
             MimeTypeValue::Puffin => "application/vnd.apache.puffin",
             MimeTypeValue::PlainText => "text/plain",
+            MimeTypeValue::KeyValue => "text/key-value",
             MimeTypeValue::Ullink => "text/ullink",
             MimeTypeValue::Fix => "text/fix",
             MimeTypeValue::Fixul => "text/fixul",
@@ -477,7 +542,8 @@ impl MimeType {
             MimeTypeValue::Puffin => Some("puffin"),
             MimeTypeValue::PlainText => Some("txt"),
             // These classify embedded frame syntax, not a filename format.
-            MimeTypeValue::Ullink
+            MimeTypeValue::KeyValue
+            | MimeTypeValue::Ullink
             | MimeTypeValue::Fix
             | MimeTypeValue::Fixul
             | MimeTypeValue::Fixml => None,

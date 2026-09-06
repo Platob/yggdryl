@@ -688,6 +688,7 @@ pub trait IOMedia: Send {
             &field,
             records,
             options.write_batch_row_size(),
+            options.batch_byte_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;
@@ -724,6 +725,7 @@ pub trait IOMedia: Send {
             &field,
             records,
             options.write_batch_row_size(),
+            options.batch_byte_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;
@@ -760,6 +762,7 @@ pub trait IOMedia: Send {
             &field,
             records,
             options.write_batch_row_size(),
+            options.batch_byte_size(),
             options.commit_row_size(),
             options.max_row_size(),
         )?;

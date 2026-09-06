@@ -1,15 +1,16 @@
 //! The logical names: one more spelling for the closest core datatype.
 //!
-//! A registration is a *name*, never a type. `price` parses to
-//! `decimal64(18,8)` and displays as `decimal64(18,8)`, so the grammar keeps
+//! A registration is a *name*, never a type. `price` parses to `float64` and
+//! displays as `float64`, so the grammar keeps
 //! one canonical spelling per datatype and nothing downstream learns a new
 //! variant. That is what makes the registry cheap: it is a lookup table in
 //! front of the parser, and every path after it sees an ordinary
 //! [`DataType`].
 //!
-//! Four of the names resolve to a datatype spelled the same way - `currency`
-//! to [`DataType::Currency`], `country`, `mic` and `cfi` likewise - because
-//! those four registered codes are types rather than widths. That is not
+//! Seven of the names resolve to a datatype spelled the same way - `currency`
+//! to [`DataType::Currency`], `country`, `mic`, `cfi`, `side`, `msgtype` and
+//! `direction` likewise - because those registered codes are types rather
+//! than widths. That is not
 //! a second rule: the registry still answers a datatype, and the canonical
 //! spelling of that datatype still happens to be what was asked for.
 //!
@@ -30,6 +31,9 @@
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
+//! | `Side` | char | `side` | a code set the standard declares, 4 bytes |
+//! | `MsgType` | String | `msgtype` | a code set the standard declares, 8 bytes |
+//! | `direction` | - | `direction` | which way a captured line moved, 4 bytes |
 //! | `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
 //! | `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 //! | `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
@@ -42,11 +46,11 @@
 //! | `Reserved100Plus` | Pattern | `int32` | a user-defined enumeration value |
 //! | `Reserved1000Plus` | Pattern | `int32` | as above |
 //! | `Reserved4000Plus` | Pattern | `int32` | as above |
-//! | `Qty` | float | `decimal64(18,8)` | exact, 8 bytes |
-//! | `Price` | float | `decimal64(18,8)` | exact, 8 bytes |
-//! | `PriceOffset` | float | `decimal64(18,8)` | exact and signed |
-//! | `Percentage` | float | `decimal64(18,8)` | `0.0525` is 5.25% |
-//! | `Amt` | float | `decimal128(38,8)` | a notional outgrows 10 integer digits |
+//! | `Qty` | float | `float64` | the specification states no scale |
+//! | `Price` | float | `float64` | as above |
+//! | `PriceOffset` | float | `float64` | as above, signed |
+//! | `Percentage` | float | `float64` | `0.0525` is 5.25% |
+//! | `Amt` | float | `float64` | one width, so the family is arithmetic |
 //! | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
 //! | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 //! | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
@@ -61,13 +65,22 @@
 //! | `data` | - | `binary` | opaque bytes |
 //! | `XMLData` | data | `binary` | an XML document, opaque here |
 //!
-//! The float family is exact rather than binary floating point because a
-//! price that does not round-trip is a broken trade. `decimal64` holds 18
-//! digits in 8 bytes, which is 10 integer digits beside the 8 fractional ones
-//! every listed venue's tick fits in; a notional needs more integer room, so
-//! `Amt` widens to `decimal128`. A venue outside those bounds declares its own
-//! `decimal(precision,scale)`, which is why these are names over the ordinary
-//! constructors and not a second numeric model.
+//! The float family is `float64` because the specification declares all five
+//! as `float` subtypes and states no scale for any of them anywhere. A table
+//! whose job is to say what a FIX datatype *is* must not improve on the
+//! specification, and a pinned scale is wrong in both directions: it truncates
+//! a venue quoting finer than eight places and pads every value that does not,
+//! and which venues quote how is a fact about a counterparty rather than about
+//! a datatype. One width also keeps the family arithmetic - `Amt` at 128 bits
+//! beside `Qty` at 64 would make every consumer multiplying a quantity by a
+//! price cast first, per row, forever.
+//!
+//! The cost, plainly: binary floating point does not hold `0.1`, and a column
+//! of `float64` is not where a book's notional should be accumulated over a
+//! day. It is 53 bits of mantissa, exact for every integer quantity below
+//! `2^53` and for the price grids venues actually quote. A venue needing exact
+//! decimal declares its own `decimal(precision,scale)`, which is why these are
+//! names over the ordinary constructors and not a second numeric model.
 //!
 //! `TZTimestamp` keeps the instant and drops the local offset, because an
 //! Arrow column carries one zone for every row. Read it under
@@ -95,6 +108,15 @@ impl DataType {
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
+        // Three more that resolve to themselves. `side` and `msgtype` are FIX
+        // code sets the standard itself declares, addressed constantly enough
+        // to earn a packed datatype; `direction` is transport rather than FIX,
+        // because every captured line has one whatever protocol it carried.
+        ("side", DataType::Side),
+        ("msgtype", DataType::MsgType),
+        ("msgdirection", DataType::MsgDirection),
+        // The spelling this datatype was first published under.
+        ("direction", DataType::MsgDirection),
         // The rest are names over an ASCII width, which is all they need.
         ("language", DataType::FixedAscii(2)),
         ("monthyear", DataType::FixedAscii(8)),
@@ -109,42 +131,31 @@ impl DataType {
         ("reserved100plus", DataType::Int32),
         ("reserved1000plus", DataType::Int32),
         ("reserved4000plus", DataType::Int32),
-        // The float family, exact because a price is money.
-        (
-            "qty",
-            DataType::Decimal64 {
-                precision: 18,
-                scale: 8,
-            },
-        ),
-        (
-            "price",
-            DataType::Decimal64 {
-                precision: 18,
-                scale: 8,
-            },
-        ),
-        (
-            "priceoffset",
-            DataType::Decimal64 {
-                precision: 18,
-                scale: 8,
-            },
-        ),
-        (
-            "percentage",
-            DataType::Decimal64 {
-                precision: 18,
-                scale: 8,
-            },
-        ),
-        (
-            "amt",
-            DataType::Decimal128 {
-                precision: 38,
-                scale: 8,
-            },
-        ),
+        // The float family, which the specification declares as `float` and
+        // states no scale for anywhere.
+        //
+        // A table whose job is to say what a FIX datatype *is* must not
+        // improve on the specification, and a pinned scale is wrong in both
+        // directions: it truncates a venue quoting finer than eight places and
+        // pads every value that does not, and which venues quote how is a fact
+        // about a counterparty rather than about a datatype. Two widths in one
+        // family cannot be arithmetic either - `Amt` at 128 bits beside `Qty`
+        // at 64 would make every consumer multiplying a quantity by a price
+        // cast first, per row, forever.
+        //
+        // The cost, said plainly: binary floating point does not hold `0.1`,
+        // and a column of `float64` is not where a book's notional should be
+        // accumulated over a day. It is 53 bits of mantissa - exact for every
+        // integer quantity below `2^53` and for the price grids venues
+        // actually quote - and nothing is lost by the choice, because the
+        // authority for a value is the entry as it arrived: the typed column
+        // is a view for arithmetic, and a consumer needing exact decimal reads
+        // the entry or casts the column.
+        ("qty", DataType::Float64),
+        ("price", DataType::Float64),
+        ("priceoffset", DataType::Float64),
+        ("percentage", DataType::Float64),
+        ("amt", DataType::Float64),
         // The temporals.
         (
             "utctimestamp",
@@ -162,6 +173,7 @@ impl DataType {
         ),
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
         ("localmkttime", DataType::Time32(TimeUnit::Second)),
+        ("utcdate", DataType::Date32),
         ("utcdateonly", DataType::Date32),
         ("localmktdate", DataType::Date32),
         ("tztimeonly", DataType::FixedAscii(16)),
@@ -188,8 +200,8 @@ impl DataType {
     /// // One canonical spelling: a name resolves to a datatype and displays
     /// // as that datatype.
     /// let price = DataType::from_logical_name("Price")?;
-    /// assert_eq!(price, DataType::decimal64(18, 8)?);
-    /// assert_eq!(price.to_string(), "decimal64(18,8)");
+    /// assert_eq!(price, DataType::Float64);
+    /// assert_eq!(price.to_string(), "float64");
     ///
     /// // The same lookup backs the grammar, so a name types a column. Four
     /// // of the names answer a datatype of their own rather than a width.

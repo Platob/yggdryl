@@ -208,8 +208,8 @@ def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
     options.leading_fragment = "error"
     options.max_record_byte_size = 2048
     options.rowheader = r"(?<id>\d+)"
-    options.lstrip = r"^\s+"
-    options.rstrip = r"\s+$"
+    options.lstrip = [r"^\s+"]
+    options.rstrip = [r"\s+$"]
     options.linesep = r"\r\n"
     options.autotype = False
     options.timezone = "+02:00"

@@ -23,8 +23,9 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
             // each storing the width its standard fixes.
             ("ccy", &ArrowDataType::FixedSizeBinary(3)),
             ("venue", &ArrowDataType::FixedSizeBinary(4)),
-            ("px", &ArrowDataType::Decimal64(18, 8)),
-            ("qty", &ArrowDataType::Decimal64(18, 8)),
+            // The float family is FIX `float`, which states no scale.
+            ("px", &ArrowDataType::Float64),
+            ("qty", &ArrowDataType::Float64),
             (
                 "at",
                 &ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
@@ -68,10 +69,11 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     assert_eq!(columns[0].as_str(), Some("USD"));
     assert_eq!(columns[1].id(), DataTypeId::Mic);
     assert_eq!(columns[1].as_str(), Some("XCME"));
-    // The price keeps eight fractional digits exactly, which is the whole
-    // reason the float family resolves to a decimal.
-    assert_eq!(columns[2], Scalar::d128(10_125_000_000, 8));
-    assert_eq!(columns[3], Scalar::d128(700_000_000, 8));
+    // The specification declares the float family as `float` and states no
+    // scale, so a price reads as a double and the exact characters stay in
+    // the message the row was typed from.
+    assert_eq!(columns[2], Scalar::from(101.25_f64));
+    assert_eq!(columns[3], Scalar::from(7.0_f64));
     assert_eq!(columns[6], Scalar::from(9_i64));
 
     // The instant reads at nanoseconds, so the fraction survives.

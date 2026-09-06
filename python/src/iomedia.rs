@@ -1167,8 +1167,8 @@ impl PyRecordOptions {
             state.set_item("max_record_byte_size", options.max_record_byte_size())?;
             state.set_item("with_rownum", options.with_rownum)?;
             state.set_item("rowheader", options.rowheader())?;
-            state.set_item("lstrip", options.lstrip())?;
-            state.set_item("rstrip", options.rstrip())?;
+            state.set_item("lstrip", options.lstrip().collect::<Vec<_>>())?;
+            state.set_item("rstrip", options.rstrip().collect::<Vec<_>>())?;
             state.set_item(
                 "linesep",
                 options
@@ -1291,16 +1291,12 @@ impl PyRecordOptions {
             text.set_rowheader(value.as_deref()).map_err(value_error)?;
 
             let value = required_record_pickle_item(state, "lstrip")?;
-            let value = (!value.is_none())
-                .then(|| value.extract::<String>())
-                .transpose()?;
-            text.set_lstrip(value.as_deref()).map_err(value_error)?;
+            text.set_lstrip(value.extract::<Vec<String>>()?)
+                .map_err(value_error)?;
 
             let value = required_record_pickle_item(state, "rstrip")?;
-            let value = (!value.is_none())
-                .then(|| value.extract::<String>())
-                .transpose()?;
-            text.set_rstrip(value.as_deref()).map_err(value_error)?;
+            text.set_rstrip(value.extract::<Vec<String>>()?)
+                .map_err(value_error)?;
 
             let value = required_record_pickle_item(state, "linesep")?;
             let linesep = (!value.is_none())
@@ -2105,23 +2101,23 @@ impl PyTextOptions {
     }
 
     #[getter]
-    fn lstrip(&self) -> Option<&str> {
-        self.inner.lstrip()
+    fn lstrip(&self) -> Vec<&str> {
+        self.inner.lstrip().collect()
     }
 
     #[setter]
-    fn set_lstrip(&mut self, lstrip: Option<&str>) -> PyResult<()> {
+    fn set_lstrip(&mut self, lstrip: Vec<String>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_lstrip(lstrip).map_err(value_error)
     }
 
     #[getter]
-    fn rstrip(&self) -> Option<&str> {
-        self.inner.rstrip()
+    fn rstrip(&self) -> Vec<&str> {
+        self.inner.rstrip().collect()
     }
 
     #[setter]
-    fn set_rstrip(&mut self, rstrip: Option<&str>) -> PyResult<()> {
+    fn set_rstrip(&mut self, rstrip: Vec<String>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_rstrip(rstrip).map_err(value_error)
     }

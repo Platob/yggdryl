@@ -1,0 +1,594 @@
+[
+  {
+    "name": "nolegcomplexevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2219"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutpayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2220"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutreceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2221"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutunderlier",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2222"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2223"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutpercentage",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2224"
+              }
+            },
+            {
+              "name": "legcomplexoptpayouttime",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2225"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2226"
+              }
+            },
+            {
+              "name": "legcomplexoptpayoutcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2944"
+              }
+            },
+            {
+              "name": "legcomplexeventprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2227"
+              }
+            },
+            {
+              "name": "legcomplexeventpricepercentage",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2228"
+              }
+            },
+            {
+              "name": "legcomplexeventpriceboundarymethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2229"
+              }
+            },
+            {
+              "name": "legcomplexeventpriceboundaryprecision",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2230"
+              }
+            },
+            {
+              "name": "legcomplexeventpricetimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2231"
+              }
+            },
+            {
+              "name": "legcomplexeventcondition",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2232"
+              }
+            },
+            {
+              "name": "legcomplexeventcurrencyone",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2233"
+              }
+            },
+            {
+              "name": "legcomplexeventcurrencyonecodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2945"
+              }
+            },
+            {
+              "name": "legcomplexeventcurrencytwo",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2234"
+              }
+            },
+            {
+              "name": "legcomplexeventcurrencytwocodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2946"
+              }
+            },
+            {
+              "name": "legcomplexeventquotebasis",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2235"
+              }
+            },
+            {
+              "name": "legcomplexeventfixedfxrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2236"
+              }
+            },
+            {
+              "name": "legcomplexeventspotrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2409"
+              }
+            },
+            {
+              "name": "legcomplexeventforwardpoints",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2410"
+              }
+            },
+            {
+              "name": "legcomplexeventdeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2237"
+              }
+            },
+            {
+              "name": "legcomplexeventcalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2238"
+              }
+            },
+            {
+              "name": "legcomplexeventstrikeprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2239"
+              }
+            },
+            {
+              "name": "legcomplexeventstrikefactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2240"
+              }
+            },
+            {
+              "name": "legcomplexeventstrikenumberofoptions",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2241"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventsxidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2242"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventnotifyingparty",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2243"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2244"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventstandardsources",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2245"
+              }
+            },
+            {
+              "name": "legcomplexeventcrediteventminimumsources",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2246"
+              }
+            },
+            {
+              "name": "legcomplexeventfuturespricevaluation",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2608"
+              }
+            },
+            {
+              "name": "legcomplexeventoptionspricevaluation",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2609"
+              }
+            },
+            {
+              "name": "legcomplexeventpvfinalpriceelectionfallback",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2610"
+              }
+            },
+            {
+              "name": "legcomplexeventxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2248"
+              }
+            },
+            {
+              "name": "legcomplexeventxidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2249"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex events in the repeating group.",
+      "display": "NoLegComplexEvents",
+      "fix:tag": "2218"
+    }
+  },
+  {
+    "name": "nolegcomplexeventdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventstartdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2251"
+              }
+            },
+            {
+              "name": "legcomplexeventenddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2252"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex event dates in the repeating group.",
+      "display": "NoLegComplexEventDates",
+      "fix:tag": "2250"
+    }
+  },
+  {
+    "name": "nolegcomplexeventtimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legcomplexeventstarttime",
+              "dtype": {
+                "type": "time64",
+                "unit": "nanosecond"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2204"
+              }
+            },
+            {
+              "name": "legcomplexeventendtime",
+              "dtype": {
+                "type": "time64",
+                "unit": "nanosecond"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2247"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of complex event times in the repeating group.",
+      "display": "NoLegComplexEventTimes",
+      "fix:tag": "2253"
+    }
+  },
+  {
+    "name": "noleginstrumentparties",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "leginstrumentpartyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2255"
+              }
+            },
+            {
+              "name": "leginstrumentpartyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2256"
+              }
+            },
+            {
+              "name": "leginstrumentpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2257"
+              }
+            },
+            {
+              "name": "leginstrumentpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2379"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of parties in the repeating group.",
+      "display": "NoLegInstrumentParties",
+      "fix:tag": "2254"
+    }
+  },
+  {
+    "name": "noleginstrumentpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "leginstrumentpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2259"
+              }
+            },
+            {
+              "name": "leginstrumentpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2260"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of parties sub-IDs in the repeating group.",
+      "display": "NoLegInstrumentPartySubIDs",
+      "fix:tag": "2258"
+    }
+  }
+]

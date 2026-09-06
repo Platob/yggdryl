@@ -136,13 +136,19 @@ pub enum DataTypeId {
     Geography,
     /// A canonical, numerically ordered software or protocol version.
     ///
-    /// Appended last because [`Self::as_u8`] is a wire contract.
+    /// Appended because [`Self::as_u8`] is a wire contract.
     Version,
+    /// FIX's side of a trade, four ASCII bytes.
+    Side,
+    /// FIX's message type, eight ASCII bytes.
+    MsgType,
+    /// Which way a captured line moved, four ASCII bytes.
+    MsgDirection,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 55] = [
+    pub const ALL: [Self; 58] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -198,6 +204,9 @@ impl DataTypeId {
         Self::Geometry,
         Self::Geography,
         Self::Version,
+        Self::Side,
+        Self::MsgType,
+        Self::MsgDirection,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -253,6 +262,9 @@ impl DataTypeId {
             Self::Currency => "currency",
             Self::Mic => "mic",
             Self::Cfi => "cfi",
+            Self::Side => "side",
+            Self::MsgType => "msgtype",
+            Self::MsgDirection => "msgdirection",
             Self::Uuid => "uuid",
             Self::List => "list",
             Self::ListView => "list_view",
@@ -333,7 +345,10 @@ impl DataTypeId {
             | Self::Country
             | Self::Currency
             | Self::Mic
-            | Self::Cfi => DataTypeKind::Ascii,
+            | Self::Cfi
+            | Self::Side
+            | Self::MsgType
+            | Self::MsgDirection => DataTypeKind::Ascii,
             Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
@@ -474,6 +489,8 @@ impl DataTypeId {
             Self::Country => Some(2),
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
+            Self::Side | Self::MsgDirection => Some(4),
+            Self::MsgType => Some(8),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
@@ -559,7 +576,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 55);
+        assert_eq!(DataTypeId::ALL.len(), 58);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,

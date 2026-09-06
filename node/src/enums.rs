@@ -2,8 +2,9 @@
 
 mod vocabulary;
 
-use napi::bindgen_prelude::{ClassInstance, Either, Either3, Result};
+use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Either3, Result};
 use napi_derive::napi;
+use yggdryl::types::{MsgDirection as CoreMsgDirection, MsgType as CoreMsgType};
 use yggdryl::{MediaType as CoreMediaType, MimeType as CoreMimeType};
 
 use crate::{napi_error, ordering_value};
@@ -53,6 +54,42 @@ impl JsMimeType {
 
 #[napi]
 impl JsMimeType {
+    /// Classify one captured byte line, without a dictionary.
+    #[napi(factory)]
+    pub fn infer_bytes(line: Buffer) -> Self {
+        Self::from_core(CoreMimeType::infer_bytes(line.as_ref()))
+    }
+
+    /// Classify one captured text line, without a dictionary.
+    #[napi(factory)]
+    pub fn infer_text(line: String) -> Self {
+        Self::from_core(CoreMimeType::infer_text(&line))
+    }
+
+    /// Read the message type one captured byte line declares.
+    #[napi]
+    pub fn infer_bytes_msgtype(line: Buffer) -> Option<Buffer> {
+        CoreMsgType::infer_bytes(line.as_ref()).map(|value| Buffer::from(value.to_vec()))
+    }
+
+    /// Read the message type one captured text line declares.
+    #[napi]
+    pub fn infer_text_msgtype(line: String) -> Option<String> {
+        CoreMsgType::infer_text(&line).map(ToOwned::to_owned)
+    }
+
+    /// Read which way one captured byte line moved.
+    #[napi]
+    pub fn infer_bytes_direction(line: Buffer) -> Option<String> {
+        CoreMsgDirection::infer_bytes(line.as_ref()).map(ToOwned::to_owned)
+    }
+
+    /// Read which way one captured text line moved.
+    #[napi]
+    pub fn infer_text_direction(line: String) -> Option<String> {
+        CoreMsgDirection::infer_text(&line).map(ToOwned::to_owned)
+    }
+
     /// Parse a MIME/extension string or cheaply clone another native value.
     #[napi(constructor)]
     pub fn new(value: Option<MimeTypeInput<'_>>) -> Result<Self> {
@@ -89,6 +126,7 @@ impl JsMimeType {
             "ULLINK" => CoreMimeType::ULLINK,
             "FIX" => CoreMimeType::FIX,
             "FIXUL" => CoreMimeType::FIXUL,
+            "KEYVALUE" => CoreMimeType::KEYVALUE,
             "FIXML" => CoreMimeType::FIXML,
             "MARKDOWN" => CoreMimeType::MARKDOWN,
             "HTML" => CoreMimeType::HTML,

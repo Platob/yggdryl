@@ -240,7 +240,7 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         return Err(Error::EmptyMetadataKey);
     }
     let value = match key.as_str() {
-        ALIAS_KEY | COMMENT_KEY | DISPLAY_KEY => {
+        ALIAS_KEY | COMMENT_KEY | DESCRIPTION_KEY | DISPLAY_KEY => {
             validate_reserved_text(&key, &value)?;
             value
         }

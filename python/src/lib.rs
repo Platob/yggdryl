@@ -423,6 +423,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
+    module.add_class::<fix::PyFixReader>()?;
+    module.add_class::<fix::PyFixProjection>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -483,6 +485,9 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
     module.add_function(wrap_pyfunction!(
         media::iceberg::iceberg_assign_field_ids,
         module

@@ -414,7 +414,7 @@ def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
     # A name is one more spelling of a datatype, and it folds case, `_`, `-`,
     # and spaces the way the grammar folds them.
     names = DataType.logical_names()
-    assert names["price"] == DataType("decimal64(18,8)")
+    assert names["price"] == DataType("float64")
     assert DataType("Price") == names["price"]
     assert DataType.from_logical_name("UTC_Timestamp") == DataType('datetime64(ns,"UTC")')
     # The base-type spellings the Arrow/SQL grammar owns keep their meaning.
@@ -581,7 +581,14 @@ def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
 
 def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     prebuilt = AsciiEnum.prebuilt()
-    assert set(prebuilt) == {"currency", "country", "mic", "exchange"}
+    assert set(prebuilt) == {
+        "currency",
+        "country",
+        "mic",
+        "exchange",
+        "side",
+        "msgdirection",
+    }
     # `exchange` is FIX's name for the ISO 10383 code, so it is one list.
     assert prebuilt["mic"] == prebuilt["exchange"]
 

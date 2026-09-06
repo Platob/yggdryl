@@ -128,7 +128,7 @@ test('ASCII is one variable form and one fixed width', () => {
 
   // A name folds case, `_`, `-`, and spaces the way the grammar folds them.
   const names = DataType.logicalNames()
-  assert.equal(names.price.toString(), 'decimal64(18,8)')
+  assert.equal(names.price.toString(), 'float64')
   assert.ok(DataType.from('Price').equals(names.price))
   assert.equal(DataType.fromLogicalName('UTC_Timestamp').toString(), 'datetime64(ns,"UTC")')
   // The base-type spellings the Arrow/SQL grammar owns keep their meaning.
@@ -280,7 +280,14 @@ test('malformed recursive datatypes never use a permissive fallback', () => {
 
 test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   const prebuilt = AsciiEnum.prebuilt()
-  assert.deepEqual(Object.keys(prebuilt).sort(), ['country', 'currency', 'exchange', 'mic'])
+  assert.deepEqual(Object.keys(prebuilt).sort(), [
+    'country',
+    'currency',
+    'exchange',
+    'mic',
+    'msgdirection',
+    'side',
+  ])
   // `exchange` is FIX's name for the ISO 10383 code, so it is one list.
   assert.deepEqual(prebuilt.mic, prebuilt.exchange)
 

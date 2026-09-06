@@ -400,8 +400,8 @@ test('text options value protocols include every flat text setting', () => {
     .withBatchRowSize(32)
     .withSelectByNames(['body'])
   options.rowheader = '(?<id>\\d+)'
-  options.lstrip = '^\\s+'
-  options.rstrip = '\\s+$'
+  options.lstrip = ['^\\s+']
+  options.rstrip = ['\\s+$']
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'

@@ -10,9 +10,9 @@ use arrow_schema::Field as ArrowField;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::{
-    ALIAS_KEY, COMMENT_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY, LOCATION_KEY,
-    MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol, parse_field_id,
-    parse_reserved_bool, property_key, write_json_string as write_quoted,
+    ALIAS_KEY, COMMENT_KEY, DESCRIPTION_KEY, DISPLAY_KEY, FIELD_INIT_KEY, FIELD_PARTITION_KEY,
+    LOCATION_KEY, MetadataIter, PARQUET_FIELD_ID_KEY, PropertyIter, for_each_well_known_protocol,
+    parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::types::{DataType, preflight_schema_shape};
 use crate::{Error, Metadata, Result, Scheme, Url};
@@ -205,6 +205,16 @@ impl Field {
     /// [`Metadata::display`] carries what it is and who reads it.
     pub fn display(&self) -> Option<&str> {
         self.metadata.display()
+    }
+
+    /// Returns the shared description of what this field holds.
+    ///
+    /// [`Metadata::description`] carries what it is and who reads it. A
+    /// protocol that publishes a definition - FIX's own wording, an Iceberg
+    /// doc, a column comment in a SQL dialect - publishes this one, because a
+    /// field has one meaning however many catalogs quote it.
+    pub fn description(&self) -> Option<&str> {
+        self.metadata.description()
     }
 
     /// Parses the Arrow/Parquet field identifier stored in metadata.
@@ -650,6 +660,32 @@ impl Field {
     /// Removes and returns the display name.
     pub fn remove_display(&mut self) -> Option<String> {
         self.remove_metadata(DISPLAY_KEY)
+    }
+
+    /// Sets a validated description of what this field holds.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value fails the validation reserved text
+    /// goes through.
+    pub fn set_description(&mut self, value: impl Into<String>) -> Result<()> {
+        self.insert_metadata(DESCRIPTION_KEY, value)?;
+        Ok(())
+    }
+
+    /// Returns a persistent field with a validated description.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Self::set_description`] raises.
+    pub fn try_with_description(mut self, value: impl Into<String>) -> Result<Self> {
+        self.set_description(value)?;
+        Ok(self)
+    }
+
+    /// Removes and returns the description.
+    pub fn remove_description(&mut self) -> Option<String> {
+        self.remove_metadata(DESCRIPTION_KEY)
     }
 
     /// Sets the canonical Arrow/Parquet signed 32-bit field identifier.

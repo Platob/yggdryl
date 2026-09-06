@@ -9,23 +9,19 @@
 //! built rarely and resolved constantly, so that `O(n)` insertion trade is
 //! deliberate.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::iter::FusedIterator;
 
 use smol_str::format_smolstr;
 
-use super::{FixBranch, FixId, FixKey};
+use super::{FixBranch, FixId, FixKey, FixPedigree};
 use crate::xxhash::Xxh64;
-use crate::{Error, Field, MimeType, Result};
+use crate::{Error, Field, Result, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
-/// FIX's official `XmlData` payload tag.
-const XML_DATA_TAG: i32 = 213;
-/// The one routing name for FIX user-defined MsgTypes (`U` plus a suffix).
-const UDF_MSGTYPE: &[u8] = b"UDF";
 
 /// Finalize integer keys before hashbrown selects a control byte.
 #[derive(Clone, Copy, Debug, Default)]
@@ -38,6 +34,45 @@ impl Mix {
         value ^= value >> 33;
         value
     }
+}
+
+/// The field a dotted path reaches under one resolved head, folding as it goes.
+///
+/// The generic walk matches a child's name exactly, which is right for a schema
+/// a caller wrote and wrong for a dictionary: the head already folded, so
+/// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
+/// one function disagreeing with itself. The exact walk is still tried first,
+/// because it is the cheap answer and the common one.
+fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+    if let Some(held) = field.get_field_by_path(path) {
+        return Some(held);
+    }
+    let (head, rest) = match path.split_once('.') {
+        None => (path, None),
+        Some((head, rest)) => (head, Some(rest)),
+    };
+    let child = folded_child(field, head)?;
+    match rest {
+        None => Some(child),
+        Some(rest) => descend(child, rest),
+    }
+}
+
+/// One child by folded name, reaching through a group's item where it has one.
+///
+/// A repeating group is a List of one `item` Struct, so a member is the item's
+/// child and not the list's - and nobody spelling a path says `item`.
+fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        if crate::types::folds_equal(item.name(), name) {
+            return Some(item);
+        }
+        return folded_child(item, name);
+    }
+    field
+        .fields()
+        .iter()
+        .find(|held| crate::types::folds_equal(held.name(), name))
 }
 
 #[cfg(test)]
@@ -81,15 +116,31 @@ type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
 type BranchTable = HashMap<u32, FixBranch, BuildHasherDefault<Mix>>;
 
 /// Fold a name directly into a seeded streaming state.
+///
+/// The crate's one fold: ASCII case folded, and `_`, `-` and space dropped.
+/// A renderer emitting `msg_type`, `msg-type` or `Msg Type` therefore finds
+/// the field `MsgType` names, which is what makes storing the folded name
+/// cost no caller the spelling it was written with. No two FIX fields differ
+/// only by a separator or by case, which is what lets the fold in at all.
+///
+/// It folds into the hash state in stack-sized chunks, so no length of name
+/// allocates.
 fn name_digest(branch: &FixBranch, name: &str, domain: u64) -> u64 {
     let mut state = Xxh64::with_seed(domain ^ u64::from(branch.digest()));
     let mut folded = [0_u8; 64];
-    for bytes in name.as_bytes().chunks(folded.len()) {
-        for (target, source) in folded.iter_mut().zip(bytes) {
-            *target = source.to_ascii_lowercase();
+    let mut held = 0;
+    for byte in name.as_bytes() {
+        if matches!(byte, b'_' | b'-' | b' ') {
+            continue;
         }
-        state.write(&folded[..bytes.len()]);
+        folded[held] = byte.to_ascii_lowercase();
+        held += 1;
+        if held == folded.len() {
+            state.write(&folded);
+            held = 0;
+        }
     }
+    state.write(&folded[..held]);
     state.finish()
 }
 
@@ -177,6 +228,8 @@ pub struct FixRegistry {
     positions_by_id: Vec<usize>,
     branches: BranchTable,
     branch_order: Vec<u32>,
+    newest: Option<FixPedigree>,
+    resettle_newest: bool,
 }
 
 impl FixRegistry {
@@ -254,8 +307,7 @@ impl FixRegistry {
             return Some(field);
         }
         let (head, rest) = path.split_once('.')?;
-        self.get_field_by_name(head, branch)?
-            .get_field_by_path(rest)
+        descend(self.get_field_by_name(head, branch)?, rest)
     }
 
     /// Returns the field a dotted path reaches, raising absence.
@@ -285,6 +337,130 @@ impl FixRegistry {
     /// Returns whether a generic key reaches a field.
     pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool {
         self.get_field(key).is_some()
+    }
+
+    /// Returns the field a key reaches, when that field holds one scalar.
+    ///
+    /// A transcriber resolving a wire tag wants a value, not a subtree, and
+    /// this is what says so: the same tiers, filtered to the half a scalar
+    /// can be in. A counter tag reaches its group through
+    /// [`Self::get_nested_field`] instead, so neither half can answer for the
+    /// other and [`Self::get_field`] answers exactly what it always did.
+    pub fn get_primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key).filter(|field| !is_nested(field))
+    }
+
+    /// Returns the scalar field a key reaches, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence [`Self::field`] raises when no field reaches the
+    /// key, and when the one that does carries a subtree.
+    pub fn primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_primitive_field(key).ok_or_else(|| absent(key))
+    }
+
+    /// Returns the field a key reaches, when that field carries a subtree.
+    pub fn get_nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key).filter(|field| is_nested(field))
+    }
+
+    /// Returns the nested field a key reaches, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence [`Self::field`] raises when no field reaches the
+    /// key, and when the one that does holds a single scalar.
+    pub fn nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_nested_field(key).ok_or_else(|| absent(key))
+    }
+
+    /// Returns the field a key reaches, filtered to one FIX version.
+    ///
+    /// The registry itself stays version-agnostic: it holds every tag ever
+    /// defined, and a version is a filter on the read, which is what "defined
+    /// in one version, available in the others" means. There is no
+    /// registry-wide default version; a caller who wants one holds a
+    /// [`Version`] beside the registry.
+    ///
+    /// A field with no lineage answers exactly as [`Self::get_field`] does,
+    /// so an undated dictionary behaves as it always has. A field the lineage
+    /// says did not exist at `at` answers nothing, including one a later
+    /// version removed.
+    pub fn get_field_at<'key>(&self, at: Version, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key)
+            .filter(|field| field.as_fix().defined_at(at))
+    }
+
+    /// Returns the field a key reaches at one FIX version, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same absence [`Self::field`] raises, naming the version,
+    /// when no field reaches the key or the one that does is not defined at
+    /// `at`.
+    pub fn field_at<'key>(&self, at: Version, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_field_at(at, key)
+            .ok_or_else(|| absent(format_args!("{key} at FIX {at}")))
+    }
+
+    /// Returns every FIX version some field in this dictionary is dated at,
+    /// ascending.
+    ///
+    /// Derived rather than stored, so a dictionary cannot claim a version no
+    /// field is dated in.
+    pub fn versions(&self) -> Vec<Version> {
+        let mut versions: BTreeSet<Version> = BTreeSet::new();
+        for field in &self.fields {
+            let mut walk = field.as_fix().lineage();
+            while let Some(entry) = walk.next_ok() {
+                versions.insert(entry.since());
+            }
+        }
+        versions.into_iter().collect()
+    }
+
+    /// Returns the newest pedigree this dictionary holds.
+    ///
+    /// This is the whole of what "FIX Latest" means for a given dictionary:
+    /// the greatest version-and-extension-pack pair any lineage carries.
+    /// "Latest" is a moving label for the newest published version plus the
+    /// extension packs since, so it is resolved here rather than stored as a
+    /// version, and never as [`Version::MAX`] - a sentinel compares wrongly
+    /// against a field genuinely dated at the newest version and goes stale
+    /// the moment an extension pack lands.
+    /// It is held rather than searched. Every reader that infers a version
+    /// asks for it once per row, and folding six thousand lineage documents
+    /// to answer took two milliseconds - three orders of magnitude more than
+    /// reading the row it was asked about. A maximum is a monotone fold, so
+    /// it is maintained where every other index is: one document walk as a
+    /// field lands, and a rescan only when the field holding the maximum
+    /// leaves, which is the one removal that can lower it.
+    #[must_use]
+    pub const fn newest(&self) -> Option<FixPedigree> {
+        self.newest
+    }
+
+    /// The greatest pedigree any lineage in `fields` carries.
+    fn scan_newest(fields: &[Field]) -> Option<FixPedigree> {
+        let mut newest: Option<FixPedigree> = None;
+        for field in fields {
+            newest = newest.max(Self::field_newest(field));
+        }
+        newest
+    }
+
+    /// The greatest pedigree one field's lineage carries.
+    fn field_newest(field: &Field) -> Option<FixPedigree> {
+        let mut newest: Option<FixPedigree> = None;
+        let mut walk = field.as_fix().lineage();
+        while let Some(entry) = walk.next_ok() {
+            newest = newest.max(Some(entry.pedigree()));
+        }
+        newest
     }
 
     /// Returns the branch for `id`.
@@ -340,120 +516,6 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Infers the FIX-shaped media type embedded in an arbitrary byte line.
-    ///
-    /// Numeric `tag=value` entries prove [`MimeType::FIX`], symbolic keys that
-    /// this registry resolves prove [`MimeType::ULLINK`], both prove
-    /// [`MimeType::FIXUL`], and an XML payload proves [`MimeType::FIXML`].
-    /// Unrelated log attributes therefore do not turn an otherwise random
-    /// line into Ullink. Unknown input answers
-    /// [`MimeType::OCTET_STREAM`]. The scan is shallow and allocates nothing.
-    pub fn infer_bytes_protocol(&self, line: &[u8]) -> MimeType {
-        self.inspect_line(line).mime_type()
-    }
-
-    /// Infers the FIX-shaped media type embedded in an arbitrary text line.
-    pub fn infer_text_protocol(&self, line: &str) -> MimeType {
-        self.infer_bytes_protocol(line.as_bytes())
-    }
-
-    /// Extracts the raw MsgType value from a FIX-shaped frame in a log line.
-    ///
-    /// The same shallow scan used by protocol inference handles numeric FIX,
-    /// symbolic Ullink, mixed FIXUL, and FIXML entries. A raw `MSGTYPE=` pair
-    /// is checked across the whole line before numeric tag 35 and therefore
-    /// wins when both are present. It neither parses nor allocates the message
-    /// and returns a slice of the caller's bytes.
-    pub fn infer_bytes_msgtype<'line>(&self, line: &'line [u8]) -> Option<&'line [u8]> {
-        let inferred = self.inspect_line_with(line, true);
-        inferred
-            .name_msgtype
-            .or(inferred.tag_msgtype)
-            .map(route_msgtype)
-    }
-
-    /// Extracts the raw MsgType text from a FIX frame embedded in a log line.
-    pub fn infer_text_msgtype<'line>(&self, line: &'line str) -> Option<&'line str> {
-        let value = self.infer_bytes_msgtype(line.as_bytes())?;
-        std::str::from_utf8(value).ok()
-    }
-
-    fn inspect_line<'line>(&self, line: &'line [u8]) -> LineInference<'line> {
-        self.inspect_line_with(line, false)
-    }
-
-    fn inspect_line_with<'line>(
-        &self,
-        line: &'line [u8],
-        infer_msgtype: bool,
-    ) -> LineInference<'line> {
-        let raw_msgtype = find_named_value(line, b"MSGTYPE");
-        let mut inferred = LineInference {
-            has_name: raw_msgtype.is_some(),
-            name_msgtype: infer_msgtype.then_some(raw_msgtype).flatten(),
-            ..LineInference::default()
-        };
-        let Some(frame) = locate_frame(line) else {
-            return inferred;
-        };
-        let msgtype = infer_msgtype
-            .then(|| {
-                self.get_field_by_tag(35)
-                    .or_else(|| self.get_field_by_name("MsgType", Some(&FixBranch::STANDARD)))
-            })
-            .flatten();
-        let mut offset = frame.start;
-        while let Some(entry) = next_entry(line, &mut offset, frame.separator) {
-            let mut checksum = false;
-            match entry.key {
-                LineKey::Tag(tag) => {
-                    inferred.has_tag = true;
-                    if tag == XML_DATA_TAG {
-                        if entry.value.starts_with(b"<") {
-                            inferred.has_xml = true;
-                        } else if memchr::memchr(b'=', entry.value).is_some() {
-                            inferred.has_name = true;
-                        }
-                    }
-                    checksum = tag == 10;
-                    let resolves_to_msgtype = msgtype.is_some_and(|wanted| {
-                        self.get_field_by_tag(tag)
-                            .is_some_and(|field| std::ptr::eq(wanted, field))
-                    });
-                    if infer_msgtype
-                        && (tag == 35 || resolves_to_msgtype)
-                        && inferred.tag_msgtype.is_none()
-                    {
-                        inferred.tag_msgtype = Some(entry.value);
-                    }
-                }
-                LineKey::Name(name) => {
-                    let named_msgtype = name.eq_ignore_ascii_case(b"MSGTYPE");
-                    let Ok(name) = std::str::from_utf8(name) else {
-                        continue;
-                    };
-                    let field = self.get_field_by_name(name, Some(&FixBranch::STANDARD));
-                    if frame.numeric || named_msgtype || field.is_some() {
-                        inferred.has_name = true;
-                    }
-                    let resolves_to_msgtype = msgtype.is_some_and(|wanted| {
-                        field.is_some_and(|field| std::ptr::eq(wanted, field))
-                    });
-                    if infer_msgtype
-                        && (named_msgtype || resolves_to_msgtype)
-                        && inferred.name_msgtype.is_none()
-                    {
-                        inferred.name_msgtype = Some(entry.value);
-                    }
-                }
-            }
-            if checksum || (!infer_msgtype && inferred.has_tag && inferred.has_name) {
-                break;
-            }
-        }
-        inferred
-    }
-
     /// Adds a field, replacing only an equal canonical identity and name.
     pub fn insert(&mut self, field: Field) -> Result<Option<Field>> {
         let branch = field.as_fix().branch()?;
@@ -472,9 +534,11 @@ impl FixRegistry {
         self.ensure_branch(branch);
         match replacing {
             Some(position) => {
+                self.departing(position);
                 self.unindex(position, position);
                 let prior = std::mem::replace(&mut self.fields[position], field);
                 self.index(position);
+                self.settle();
                 Ok(Some(prior))
             }
             None => {
@@ -513,12 +577,24 @@ impl FixRegistry {
                 ),
             });
         }
-        let merged = merge(stored, &field)?;
+        // The incoming definition is what the merge folds the stored one
+        // into, so the caller's ordering is the precedence: a generator
+        // merging its lowest-priority source first leaves the highest as the
+        // last `update`, which wins.
+        //
+        // Two halves, because the `fix:` view reaches only its own namespace
+        // by design. The generic keys fold through the metadata merge every
+        // protocol shares, and the `fix:` keys through the rule each one has.
+        let mut merged = field.clone();
+        merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
+        merged.as_fix_mut().merge_with(&stored.as_fix())?;
         let alternate = alternate_ids(&merged, &branch)?;
         self.check_free(&merged, &branch, id, &alternate, Some(position))?;
+        self.departing(position);
         self.unindex(position, position);
         self.fields[position] = merged;
         self.index(position);
+        self.settle();
         Ok(())
     }
 
@@ -533,11 +609,13 @@ impl FixRegistry {
         if position != last {
             self.unindex(last, last);
         }
+        self.departing(position);
         self.unindex(position, position);
         let removed = self.fields.swap_remove(position);
         if position != last {
             self.index(position);
         }
+        self.settle();
         if let Ok(Some(id)) = removed.as_fix().id() {
             if !self.positions_by_id.iter().any(|held| {
                 self.fields
@@ -805,6 +883,7 @@ impl FixRegistry {
                 self.alternate_ids.insert(alternate, position);
             }
         }
+        self.newest = self.newest.max(Self::field_newest(field));
         self.names
             .insert(name_digest(&branch, field.name(), NAME_SEED), position);
         for alias in view.aliases() {
@@ -818,6 +897,33 @@ impl FixRegistry {
                 .is_some_and(|held| held < id)
         });
         self.positions_by_id.insert(ordered, position);
+    }
+
+    /// Notes that the field at `position` is leaving or being overwritten.
+    ///
+    /// Separate from [`Self::unindex`] because that also re-points a field
+    /// being *moved*, which is not a departure and must not cost a rescan.
+    fn departing(&mut self, position: usize) {
+        if self.newest.is_none() {
+            return;
+        }
+        if let Some(field) = self.fields.get(position) {
+            // A maximum cannot be un-maxed, so the field carrying the newest
+            // pedigree is the one departure that has to be rescanned for.
+            if Self::field_newest(field) == self.newest {
+                self.resettle_newest = true;
+            }
+        }
+    }
+
+    /// Restores the held maximum after a departure that could have lowered it.
+    ///
+    /// Called once a mutation is complete, so the rescan sees what the
+    /// dictionary now holds rather than what it held mid-edit.
+    fn settle(&mut self) {
+        if std::mem::take(&mut self.resettle_newest) {
+            self.newest = Self::scan_newest(&self.fields);
+        }
     }
 
     fn unindex(&mut self, position: usize, pointing_at: usize) {
@@ -859,326 +965,6 @@ impl FixRegistry {
             self.positions_by_id.remove(index);
         }
     }
-}
-
-#[derive(Clone, Copy)]
-enum LineKey<'line> {
-    Tag(i32),
-    Name(&'line [u8]),
-}
-
-#[derive(Clone, Copy)]
-struct LineEntry<'line> {
-    key: LineKey<'line>,
-    value: &'line [u8],
-}
-
-#[derive(Clone, Copy)]
-struct LineFrame {
-    start: usize,
-    numeric: bool,
-    separator: LineSeparator,
-}
-
-#[derive(Clone, Copy)]
-enum LineSeparator {
-    Byte(u8),
-    Marker(&'static [u8]),
-    Whitespace,
-}
-
-#[derive(Default)]
-struct LineInference<'line> {
-    has_tag: bool,
-    has_name: bool,
-    has_xml: bool,
-    tag_msgtype: Option<&'line [u8]>,
-    name_msgtype: Option<&'line [u8]>,
-}
-
-impl LineInference<'_> {
-    const fn mime_type(&self) -> MimeType {
-        if self.has_xml {
-            return MimeType::FIXML;
-        }
-        match (self.has_tag, self.has_name) {
-            (false, false) => MimeType::OCTET_STREAM,
-            (false, true) => MimeType::ULLINK,
-            (true, false) => MimeType::FIX,
-            (true, true) => MimeType::FIXUL,
-        }
-    }
-}
-
-/// Find a raw symbolic key/value pair anywhere in a log line.
-///
-/// This intentionally runs before numeric-frame location: log prefixes can
-/// carry Ullink `MSGTYPE=` before an embedded `8=FIX...` frame. The returned
-/// value is borrowed and bounded by the first common entry separator.
-fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u8]> {
-    for start in 0..line.len() {
-        let Some((LineKey::Name(name), equals)) = pair_at(line, start) else {
-            continue;
-        };
-        if !name.eq_ignore_ascii_case(wanted) {
-            continue;
-        }
-        let value_start = equals + 1;
-        let mut end = value_start;
-        while end < line.len()
-            && !matches!(
-                line[end],
-                0x01 | b'|'
-                    | b' '
-                    | b'\t'
-                    | b'\r'
-                    | b'\n'
-                    | b','
-                    | b';'
-                    | b']'
-                    | b')'
-                    | b'}'
-                    | b'^'
-                    | b'<'
-                    | b'{'
-                    | b'\\'
-            )
-        {
-            end += 1;
-        }
-        if end > value_start {
-            return Some(&line[value_start..end]);
-        }
-    }
-    None
-}
-
-/// Route the standard's `U*` user-defined range through one dictionary root.
-fn route_msgtype(value: &[u8]) -> &[u8] {
-    if value.len() > 1 && value[0] == b'U' && value[1..].iter().all(u8::is_ascii_alphanumeric) {
-        UDF_MSGTYPE
-    } else {
-        value
-    }
-}
-
-fn locate_frame(line: &[u8]) -> Option<LineFrame> {
-    let mut first = None;
-    let mut msgtype = None;
-    for start in 0..line.len() {
-        let Some((key, _)) = pair_at(line, start) else {
-            continue;
-        };
-        let candidate = (start, matches!(key, LineKey::Tag(_)));
-        first.get_or_insert(candidate);
-        match key {
-            LineKey::Tag(8) => return Some(frame(line, candidate)),
-            LineKey::Tag(35) if msgtype.is_none() => msgtype = Some(candidate),
-            LineKey::Tag(_) | LineKey::Name(_) => {}
-        }
-    }
-    msgtype.or(first).map(|candidate| frame(line, candidate))
-}
-
-fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
-    LineFrame {
-        start,
-        numeric,
-        separator: LineSeparator::for_line(line, start, numeric),
-    }
-}
-
-impl LineSeparator {
-    fn for_line(line: &[u8], start: usize, numeric: bool) -> Self {
-        let tail = &line[start..];
-        if !numeric {
-            return if memchr::memchr(b'|', tail).is_some() {
-                Self::Byte(b'|')
-            } else {
-                Self::Whitespace
-            };
-        }
-
-        let mut found: Option<(usize, Self)> = None;
-        for separator in [
-            Self::Byte(0x01),
-            Self::Byte(b'|'),
-            Self::Marker(b"^A"),
-            Self::Marker(b"\\x01"),
-            Self::Marker(b"<SOH>"),
-            Self::Marker(b"{SOH}"),
-        ] {
-            let position = match separator {
-                Self::Byte(byte) => memchr::memchr(byte, tail),
-                Self::Marker(marker) => memchr::memmem::find(tail, marker),
-                Self::Whitespace => None,
-            };
-            if let Some(position) = position {
-                if found.is_none_or(|(held, _)| position < held) {
-                    found = Some((position, separator));
-                }
-            }
-        }
-        found.map_or(Self::Whitespace, |(_, separator)| separator)
-    }
-
-    fn segment(self, line: &[u8], start: usize) -> (usize, usize) {
-        match self {
-            Self::Byte(byte) => match memchr::memchr(byte, &line[start..]) {
-                Some(relative) => (start + relative, start + relative + 1),
-                None => (line.len(), line.len()),
-            },
-            Self::Marker(marker) => match memchr::memmem::find(&line[start..], marker) {
-                Some(relative) => (start + relative, start + relative + marker.len()),
-                None => (line.len(), line.len()),
-            },
-            Self::Whitespace => {
-                let mut end = start;
-                while end < line.len() && !line[end].is_ascii_whitespace() {
-                    end += 1;
-                }
-                let mut next = end;
-                while next < line.len() && line[next].is_ascii_whitespace() {
-                    next += 1;
-                }
-                (end, next)
-            }
-        }
-    }
-}
-
-fn next_entry<'line>(
-    line: &'line [u8],
-    offset: &mut usize,
-    separator: LineSeparator,
-) -> Option<LineEntry<'line>> {
-    while *offset < line.len() {
-        while *offset < line.len() && line[*offset].is_ascii_whitespace() {
-            *offset += 1;
-        }
-        let start = *offset;
-        let (end, next) = separator.segment(line, start);
-        *offset = next;
-        let Some((key, equals)) = pair_at(line, start) else {
-            if next == line.len() {
-                return None;
-            }
-            continue;
-        };
-        if equals >= end {
-            continue;
-        }
-        let mut value_end = end;
-        while value_end > equals + 1
-            && matches!(
-                line[value_end - 1],
-                b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
-            )
-        {
-            value_end -= 1;
-        }
-        if value_end > equals + 1 {
-            return Some(LineEntry {
-                key,
-                value: &line[equals + 1..value_end],
-            });
-        }
-    }
-    None
-}
-
-fn pair_at(line: &[u8], start: usize) -> Option<(LineKey<'_>, usize)> {
-    if !is_field_start(line, start) {
-        return None;
-    }
-    let mut key_start = start;
-    if line.get(key_start) == Some(&b'#') {
-        key_start += 1;
-    }
-    let first = *line.get(key_start)?;
-    let (key, equals) = if first.is_ascii_digit() {
-        let mut position = key_start;
-        let mut tag = Some(0_i32);
-        while position < line.len() && line[position].is_ascii_digit() {
-            tag = tag.and_then(|tag| {
-                tag.checked_mul(10)
-                    .and_then(|tag| tag.checked_add(i32::from(line[position] - b'0')))
-            });
-            position += 1;
-        }
-        (LineKey::Tag(tag?), position)
-    } else if is_name_start(first) {
-        let mut position = key_start + 1;
-        while position < line.len() && is_name_continue(line[position]) {
-            position += 1;
-        }
-        (LineKey::Name(&line[key_start..position]), position)
-    } else {
-        return None;
-    };
-    if line.get(equals) != Some(&b'=') {
-        return None;
-    }
-    let first_value = *line.get(equals + 1)?;
-    if matches!(first_value, b'\'' | b'"') || is_field_end(line, equals + 1) {
-        return None;
-    }
-    Some((key, equals))
-}
-
-const fn is_name_start(byte: u8) -> bool {
-    byte.is_ascii_alphabetic() || byte == b'_'
-}
-
-const fn is_name_continue(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.')
-}
-
-fn is_field_start(line: &[u8], position: usize) -> bool {
-    position == 0
-        || matches!(
-            line[position - 1],
-            0x01 | b'|' | b' ' | b'\t' | b'[' | b'(' | b'{' | b'>'
-        )
-        || (position >= 2 && &line[position - 2..position] == b"^A")
-        || (position >= 4 && &line[position - 4..position] == b"\\x01")
-        || (position >= 5 && &line[position - 5..position] == b"<SOH>")
-        || (position >= 5 && &line[position - 5..position] == b"{SOH}")
-}
-
-fn is_field_end(line: &[u8], position: usize) -> bool {
-    matches!(
-        line[position],
-        0x01 | b'|' | b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
-    ) || line[position..].starts_with(b"^A")
-        || line[position..].starts_with(b"\\x01")
-        || line[position..].starts_with(b"<SOH>")
-        || line[position..].starts_with(b"{SOH}")
-}
-
-fn merge(stored: &Field, incoming: &Field) -> Result<Field> {
-    let mut merged = incoming.clone();
-    merged.set_metadata(
-        incoming
-            .as_metadata()
-            .merge_with(stored.as_metadata())?
-            .iter(),
-    )?;
-    let mut tags = incoming.as_fix().tags()?;
-    for tag in stored.as_fix().tags()? {
-        if !tags.contains(&tag) {
-            tags.push(tag);
-        }
-    }
-    merged.as_fix_mut().set_tags(&tags)?;
-    let mut aliases: Vec<&str> = incoming.as_fix().aliases().collect();
-    for alias in stored.as_fix().aliases() {
-        if !aliases.iter().any(|held| held.eq_ignore_ascii_case(alias)) {
-            aliases.push(alias);
-        }
-    }
-    merged.as_fix_mut().set_aliases(&aliases)?;
-    Ok(merged)
 }
 
 impl fmt::Debug for FixRegistry {

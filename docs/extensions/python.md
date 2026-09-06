@@ -1191,8 +1191,9 @@ from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixMsg, Fix
 seed = pathlib.Path("config/fix").resolve()
 
 # One folder, named however Python names one - the coercion `Catalog` uses.
+held = len(FixRegistry.from_handle(seed))
 for location in (seed, str(seed), seed.as_uri(), Url(seed), IOBase(seed)):
-    assert len(FixRegistry.from_handle(location)) == 34
+    assert len(FixRegistry.from_handle(location)) == held
 registry = FixRegistry.from_handle(seed)
 
 # A key is an int tag or a str name; a bool is neither, and a tag that would
@@ -1209,11 +1210,11 @@ with pytest.raises(TypeError, match="int tag or a str name"):
 # the name it qualifies, an identifier is the tag then the branch, and a
 # malformed one is a ValueError rather than a miss.
 assert STANDARD_BRANCH == "" and (USER_TAG_MIN, USER_TAG_MAX) == (5000, 40000)
-assert registry.field_by_name("ticker").name == "Symbol"
+assert registry.field_by_name("SYMBOL").name == "symbol"
 assert registry.field_by_path("NoPartyIDs.PartyID").fix.tag == 448
 assert registry.field_by_id("55:").fix.id == "55:"
 with pytest.raises(ValueError, match="fix branch"):
-    registry.field_by_name("Symbol", "2cme")
+    registry.field_by_name("symbol", "2cme")
 with pytest.raises(ValueError, match="fix identifier"):
     registry.field_by_id("55")
 with pytest.raises(TypeError):
@@ -1237,7 +1238,7 @@ assert vendor.fix.id == "5001:cme"
 
 # A message shares the dictionary it resolved against, so mutating it refuses.
 root = Field("row", DataType.from_fields([registry.field_by_tag(55)]), nullable=False)
-message = FixMsg(root, {"Symbol": "AAPL"}, registry)
+message = FixMsg(root, {"symbol": "AAPL"}, registry)
 with pytest.raises(ValueError, match="shared with a message"):
     registry.remove(55)
 

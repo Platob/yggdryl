@@ -1,0 +1,230 @@
+[
+  {
+    "name": "nocollateralreinvestments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "collateralreinvestmenttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2844"
+              }
+            },
+            {
+              "name": "collateralreinvestmentamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2842"
+              }
+            },
+            {
+              "name": "collateralreinvestmentcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2843"
+              }
+            },
+            {
+              "name": "collateralreinvestmentcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2931"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of CollateralReinvestmentType(2844) in the repeating group.",
+      "display": "NoCollateralReinvestments",
+      "fix:tag": "2845"
+    }
+  },
+  {
+    "name": "nofundingsources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "fundingsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2846"
+              }
+            },
+            {
+              "name": "fundingsourcemarketvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2848"
+              }
+            },
+            {
+              "name": "fundingsourcecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2847"
+              }
+            },
+            {
+              "name": "fundingsourcecurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2954"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of FundingSource(2846) in the repeating group.",
+      "display": "NoFundingSources",
+      "fix:tag": "2849"
+    }
+  },
+  {
+    "name": "nosidecollateralreinvestments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "sidecollateralreinvestmenttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2867"
+              }
+            },
+            {
+              "name": "sidecollateralreinvestmentamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2865"
+              }
+            },
+            {
+              "name": "sidecollateralreinvestmentcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2866"
+              }
+            },
+            {
+              "name": "sidecollateralreinvestmentcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2932"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of SideCollateralReinvestmentType(2867) in the repeating group.",
+      "display": "NoSideCollateralReinvestments",
+      "fix:tag": "2864"
+    }
+  },
+  {
+    "name": "notransactionattributes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "transactionattributetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2872"
+              }
+            },
+            {
+              "name": "transactionattributevalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2873"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instances of TransactionAttributeType(2872) in the repeating group.",
+      "display": "NoTransactionAttributes",
+      "fix:tag": "2871"
+    }
+  }
+]

@@ -1,0 +1,854 @@
+[
+  {
+    "name": "nounderlyingpaymentstubstartdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentstubstartdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43001"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingPaymentStubStartDateBusinessCenters",
+      "fix:tag": "43000"
+    }
+  },
+  {
+    "name": "nounderlyingratespreadsteps",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingratespreadstepdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43006"
+              }
+            },
+            {
+              "name": "underlyingratespreadstepvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43007"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entries in the repeating group.",
+      "display": "NoUnderlyingRateSpreadSteps",
+      "fix:tag": "43005"
+    }
+  },
+  {
+    "name": "nounderlyingreturnratedates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratedatemode",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43009"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43010"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43011"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43012"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43013"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43014"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43015"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43016"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43017"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43018"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationstartdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43019"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43020"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43021"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43022"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43023"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43024"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationenddateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43025"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43026"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43027"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationfrequencyrollconvention",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43028"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdatebusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43029"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate date repeating group.",
+      "display": "NoUnderlyingReturnRateDates",
+      "fix:tag": "43008"
+    }
+  },
+  {
+    "name": "nounderlyingreturnratefxconversions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratefxcurrencysymbol",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43031"
+              }
+            },
+            {
+              "name": "underlyingreturnratefxrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43032"
+              }
+            },
+            {
+              "name": "underlyingreturnratefxratecalc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43033"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate FX conversion repeating group.",
+      "display": "NoUnderlyingReturnRateFXConversions",
+      "fix:tag": "43030"
+    }
+  },
+  {
+    "name": "nounderlyingreturnrates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratepricesequence",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43035"
+              }
+            },
+            {
+              "name": "underlyingreturnratecommissionbasis",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43036"
+              }
+            },
+            {
+              "name": "underlyingreturnratecommissionamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43037"
+              }
+            },
+            {
+              "name": "underlyingreturnratecommissioncurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43038"
+              }
+            },
+            {
+              "name": "underlyingreturnratetotalcommissionpertrade",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43039"
+              }
+            },
+            {
+              "name": "underlyingreturnratedeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43040"
+              }
+            },
+            {
+              "name": "underlyingreturnrateamountrelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43041"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotemeasuretype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43042"
+              }
+            },
+            {
+              "name": "underlyingreturnratequoteunits",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43043"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotemethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43044"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43045"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotecurrencytype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43046"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotetimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43047"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotetime",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43048"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43049"
+              }
+            },
+            {
+              "name": "underlyingreturnratequoteexpirationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43050"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43051"
+              }
+            },
+            {
+              "name": "underlyingreturnratequoteexchange",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43052"
+              }
+            },
+            {
+              "name": "underlyingreturnratequotepricingmodel",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43053"
+              }
+            },
+            {
+              "name": "underlyingreturnratecashflowtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43054"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationtimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43055"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43056"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationtimebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43057"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationpriceoption",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43058"
+              }
+            },
+            {
+              "name": "underlyingreturnratefinalpricefallback",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43059"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate repeating group.",
+      "display": "NoUnderlyingReturnRates",
+      "fix:tag": "43034"
+    }
+  },
+  {
+    "name": "nounderlyingreturnrateinformationsources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnrateinformationsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43061"
+              }
+            },
+            {
+              "name": "underlyingreturnratereferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43062"
+              }
+            },
+            {
+              "name": "underlyingreturnratereferencepageheading",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43063"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate information source repeating group.",
+      "display": "NoUnderlyingReturnRateInformationSources",
+      "fix:tag": "43060"
+    }
+  },
+  {
+    "name": "nounderlyingreturnrateprices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratepricebasis",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43065"
+              }
+            },
+            {
+              "name": "underlyingreturnrateprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43066"
+              }
+            },
+            {
+              "name": "underlyingreturnratepricecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43067"
+              }
+            },
+            {
+              "name": "underlyingreturnratepricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43068"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate price repeating group.",
+      "display": "NoUnderlyingReturnRatePrices",
+      "fix:tag": "43064"
+    }
+  },
+  {
+    "name": "nounderlyingreturnratevaluationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratevaluationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43070"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate valuation date business center repeating group.",
+      "display": "NoUnderlyingReturnRateValuationDateBusinessCenters",
+      "fix:tag": "43069"
+    }
+  },
+  {
+    "name": "nounderlyingreturnratevaluationdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingreturnratevaluationdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43072"
+              }
+            },
+            {
+              "name": "underlyingreturnratevaluationdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43073"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate valuation date repeating group.",
+      "display": "NoUnderlyingReturnRateValuationDates",
+      "fix:tag": "43071"
+    }
+  },
+  {
+    "name": "nounderlyingsettlmethodelectiondatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingsettlmethodelectiondatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43075"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoUnderlyingSettlMethodElectionDateBusinessCenters",
+      "fix:tag": "43074"
+    }
+  }
+]

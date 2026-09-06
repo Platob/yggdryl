@@ -51,8 +51,8 @@ def test_text_options_are_flat_validated_values() -> None:
     options.leading_fragment = "drop"
     options.max_record_byte_size = 4096
     options.rowheader = ROWHEADER
-    options.lstrip = r"^\s+"
-    options.rstrip = r"\s+$"
+    options.lstrip = [r"^\s+"]
+    options.rstrip = [r"\s+$"]
     options.linesep = r"\r\n"
     options.autotype = False
     options.timezone = "+02:00"
@@ -63,8 +63,8 @@ def test_text_options_are_flat_validated_values() -> None:
     assert options.leading_fragment == "drop"
     assert options.max_record_byte_size == 4096
     assert options.rowheader == ROWHEADER
-    assert options.lstrip == r"^\s+"
-    assert options.rstrip == r"\s+$"
+    assert options.lstrip == [r"^\s+"]
+    assert options.rstrip == [r"\s+$"]
     assert options.linesep == b"\r\n"
     assert options.autotype is False
     assert options.timezone == Timezone("+02:00")
@@ -95,7 +95,7 @@ def test_text_options_are_flat_validated_values() -> None:
         options.leading_fragment = "merge"
     assert options.leading_fragment == "drop"
     with pytest.raises(ValueError, match="valid byte regex"):
-        options.lstrip = "("
+        options.lstrip = ["("]
     with pytest.raises(TypeError, match="not bool"):
         options.with_rownum = True
     with pytest.raises(OverflowError):
@@ -130,8 +130,8 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
     options = text_options()
     options.rowheader = ROWHEADER
     options.with_rownum = 10
-    options.lstrip = r"^\s+"
-    options.rstrip = r"\s+$"
+    options.lstrip = [r"^\s+"]
+    options.rstrip = [r"\s+$"]
 
     reader = source.read_arrow_reader(options=options)
     assert isinstance(reader, pa.RecordBatchReader)
@@ -180,8 +180,8 @@ def test_rowheader_removal_and_stripping_are_independent_edge_operations(
     source = handle(tmp_path, b"left [INFO] id=7 right --\n")
     options = text_options()
     options.rowheader = ROWHEADER
-    options.lstrip = r"^left\s+"
-    options.rstrip = r"\s+--$"
+    options.lstrip = [r"^left\s+"]
+    options.rstrip = [r"\s+--$"]
 
     row = next(source.read_records(options=options))
     assert row["body"] == b"right"
@@ -408,7 +408,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     options = text_options()
     options.rowheader = ROWHEADER
     options.with_rownum = 1
-    options.lstrip = r"^\s+"
+    options.lstrip = [r"^\s+"]
 
     rows = list(IOBase(root).read_records(options=options))
     assert [row["rownum"] for row in rows] == [1, 1]
@@ -444,7 +444,7 @@ def test_declared_text_field_uses_the_shared_projection_and_cast(
     source = handle(tmp_path, b"[INFO] id=7 body\n")
     options = text_options()
     options.rowheader = ROWHEADER
-    options.lstrip = r"^\s+"
+    options.lstrip = [r"^\s+"]
     options.dtype = "struct<body: binary not null, id: int64>"
 
     field = source.read_arrow_field(options=options)

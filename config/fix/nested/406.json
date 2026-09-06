@@ -1,0 +1,649 @@
+[
+  {
+    "name": "nounderlyingnondeliverablefixingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingnondeliverablefixingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40657"
+              }
+            },
+            {
+              "name": "underlyingnondeliverablefixingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40658"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of Fixing dates in the repeating group",
+      "display": "NoUnderlyingNonDeliverableFixingDates",
+      "fix:tag": "40656"
+    }
+  },
+  {
+    "name": "nounderlyingsettlratefallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingsettlratepostponementmaximumdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40660"
+              }
+            },
+            {
+              "name": "underlyingsettlratepostponementsurvey",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40662"
+              }
+            },
+            {
+              "name": "underlyingsettlratepostponementcalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40663"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
+      "display": "NoUnderlyingSettlRateFallbacks",
+      "fix:tag": "40659"
+    }
+  },
+  {
+    "name": "nounderlyingpaymentschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingpaymentscheduletype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40665"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulexid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41881"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulexidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41882"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40666"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40667"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40668"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulepayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40669"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulereceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40670"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40671"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40672"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulerate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40673"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratemultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40674"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratespread",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40675"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41883"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulerateunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41884"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulerateconversionfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41885"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratespreadtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41886"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratespreadpositiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40676"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleratetreatment",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40677"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40678"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixedcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40679"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulesettlperiodprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41887"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulesettlperiodpricecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41888"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulesettlperiodpriceunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41889"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestepunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41890"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestepfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40680"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestepfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40681"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestepoffsetvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40682"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulesteprate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40683"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulestepoffsetrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40684"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulesteprelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40685"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40686"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleweight",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40687"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40688"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdatebusinessdaycnvtn",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40689"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40691"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40692"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40693"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdaydistribution",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41891"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdaycount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41892"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40694"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixinglagperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41893"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixinglagunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41894"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingfirstobservationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41895"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingfirstobservationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41896"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40695"
+              }
+            },
+            {
+              "name": "underlyingpaymentschedulefixingtimebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40696"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangepaymentdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40697"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedatesbizdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40698"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedatesoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40700"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedatesoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40701"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedatesoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40702"
+              }
+            },
+            {
+              "name": "underlyingpaymentscheduleinterimexchangedateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40703"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of swap schedules in the repeating group",
+      "display": "NoUnderlyingPaymentSchedules",
+      "fix:tag": "40664"
+    }
+  }
+]

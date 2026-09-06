@@ -102,6 +102,18 @@ pub enum DataType {
     Mic,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
     Cfi,
+    /// FIX's side of a trade, four ASCII bytes.
+    Side,
+    /// FIX's message type, eight ASCII bytes.
+    ///
+    /// Case-bearing: `A` is Logon and `a` is QuoteStatusRequest.
+    MsgType,
+    /// Which way a captured line moved, four ASCII bytes: `SENT` or `RECV`.
+    ///
+    /// Transport rather than FIX - every captured line has a direction
+    /// whatever protocol it carried - so it is named here beside the other
+    /// coded types and no part of it lives in the FIX layer.
+    MsgDirection,
     /// One 128-bit universally unique identifier.
     Uuid,
     /// A canonical, numerically ordered software or protocol version.
@@ -237,6 +249,9 @@ impl DataType {
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,
             Self::Cfi => DataTypeId::Cfi,
+            Self::Side => DataTypeId::Side,
+            Self::MsgType => DataTypeId::MsgType,
+            Self::MsgDirection => DataTypeId::MsgDirection,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::List(_) => DataTypeId::List,
@@ -527,6 +542,12 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Variant => 50,
         DataType::Geometry(_) => 51,
         DataType::Geography(_) => 52,
+        // Appended rather than grouped with the other codes so no existing
+        // rank moves: this ordering is total, not a wire contract, and a
+        // renumbering would change how every unrelated pair sorts.
+        DataType::Side => 53,
+        DataType::MsgType => 54,
+        DataType::MsgDirection => 55,
     }
 }
 

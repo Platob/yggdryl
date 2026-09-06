@@ -129,6 +129,11 @@ pub struct ParquetOptions {
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
+    /// Bytes per batch, whichever of this and `batch_row_size` binds first.
+    ///
+    /// A target rather than a ceiling, and a non-zero bound always yields at
+    /// least one row.
+    pub batch_byte_size: Option<u64>,
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
@@ -161,6 +166,7 @@ struct ParquetOptionsIdentity<'a> {
     dtype: &'a Option<crate::DataType>,
     metadata: &'a crate::Metadata,
     safe: bool,
+    batch_byte_size: Option<u64>,
     batch_row_size: Option<usize>,
     max_row_size: Option<u64>,
     max_byte_size: Option<u64>,
@@ -181,6 +187,7 @@ impl ParquetOptions {
             dtype: &self.dtype,
             metadata: &self.metadata,
             safe: self.safe,
+            batch_byte_size: self.batch_byte_size,
             batch_row_size: self.batch_row_size,
             max_row_size: self.max_row_size,
             max_byte_size: self.max_byte_size,
@@ -202,6 +209,7 @@ impl ParquetOptions {
             dtype: None,
             metadata: crate::Metadata::new(),
             safe: false,
+            batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,

@@ -16,6 +16,13 @@ pub(crate) mod position;
 mod structured;
 pub mod toml;
 pub(crate) mod typed;
+/// Read one natural text value under one field, coerced and validated.
+///
+/// The FIX layer holds a wire spelling and a resolved member field and wants
+/// the value that field declares - a price as a number, a timestamp as an
+/// instant. That is exactly [`typed::with_field`]: the byte substitution a
+/// document needs, then the value contract every reading goes through.
+pub(crate) use typed::with_field as prepare_text;
 pub(crate) mod wire;
 pub mod yaml;
 

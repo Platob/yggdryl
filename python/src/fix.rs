@@ -22,13 +22,12 @@ use pyo3::types::{PyBool, PyBytes, PyInt};
 
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
-    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
+    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixProjection as CoreFixProjection,
+    FixReader as CoreFixReader, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
     from_json_scalar_with_field, into_json_scalar,
 };
 
-use crate::enums::PyMimeType;
 use crate::media::iceberg::folder_holder_from_value;
-use crate::text::codec::with_python_bytes;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::value_error;
@@ -206,6 +205,48 @@ impl PyFixRegistry {
             .map_err(value_error)
     }
 
+    /// Read an Ullink `CBlock` into the vocabulary and roots it declares.
+    ///
+    /// Answers the dictionary its `vocabulary` states and the message roots
+    /// its `grammar-binding`s describe. `branch` names the dialect its
+    /// user-range tags belong to; the standard tags always land in the
+    /// standard branch, because a dialect redefines its own tags and never
+    /// FIX's.
+    #[staticmethod]
+    #[pyo3(signature = (location, branch=None))]
+    fn from_cfb(
+        location: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+    ) -> PyResult<(Self, Vec<PyField>)> {
+        let holder = folder_holder_from_value(location)?;
+        let dialect = branch.map(branch_from_py).transpose()?;
+        let (registry, roots) =
+            CoreFixRegistry::from_cfb(&holder, dialect.as_ref()).map_err(value_error)?;
+        Ok((
+            Self::from_arc(Arc::new(registry)),
+            roots.into_iter().map(PyField::from_inner).collect(),
+        ))
+    }
+
+    /// Add this crate's own fields, so they resolve by tag and by name.
+    fn with_crate_fields(&mut self) -> PyResult<()> {
+        let held = std::mem::take(self.inner_mut()?);
+        *self.inner_mut()? = held.with_crate_fields().map_err(value_error)?;
+        Ok(())
+    }
+
+    /// Register one message type, answering the value it takes.
+    ///
+    /// A type the code set does not have is added rather than refused, and a
+    /// spelling too long for the datatype takes a stable synthesized value.
+    /// Idempotent, so a reader may call it per row.
+    fn register_msgtype(&mut self, spelling: &str) -> PyResult<String> {
+        self.inner_mut()?
+            .register_msgtype(spelling)
+            .map(|held| held.as_str().to_owned())
+            .map_err(value_error)
+    }
+
     /// Write every populated shard under `<location>/<tree>/<branch>`,
     /// removing the shards, branch folders and trees no field populates any
     /// more.
@@ -298,43 +339,6 @@ impl PyFixRegistry {
             .field_by_path(path, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
-    }
-
-    /// Infer the native MIME classifier for a byte log line.
-    fn infer_bytes_protocol(&self, line: &Bound<'_, PyAny>) -> PyResult<PyMimeType> {
-        with_python_bytes(
-            line,
-            "a FIX line must be bytes, bytearray, or memoryview",
-            |line| Ok(PyMimeType::from_core(self.inner.infer_bytes_protocol(line))),
-        )
-    }
-
-    /// Infer the native MIME classifier for a text log line.
-    fn infer_text_protocol(&self, line: &str) -> PyMimeType {
-        PyMimeType::from_core(self.inner.infer_text_protocol(line))
-    }
-
-    /// Infer `MsgType` from a byte log line without parsing its FIX frame.
-    fn infer_bytes_msgtype<'py>(
-        &self,
-        py: Python<'py>,
-        line: &Bound<'_, PyAny>,
-    ) -> PyResult<Option<Bound<'py, PyBytes>>> {
-        with_python_bytes(
-            line,
-            "a FIX line must be bytes, bytearray, or memoryview",
-            |line| {
-                Ok(self
-                    .inner
-                    .infer_bytes_msgtype(line)
-                    .map(|value| PyBytes::new(py, value)))
-            },
-        )
-    }
-
-    /// Infer `MsgType` from a text log line without parsing its FIX frame.
-    fn infer_text_msgtype(&self, line: &str) -> Option<String> {
-        self.inner.infer_text_msgtype(line).map(str::to_owned)
     }
 
     /// The field a tag or name reaches by deterministic best match, or `None`.
@@ -644,6 +648,11 @@ pub(crate) struct PyFixMsg {
 }
 
 impl PyFixMsg {
+    /// Wrap a message the core built.
+    pub(crate) const fn from_inner(inner: CoreFixMsg) -> Self {
+        Self { inner }
+    }
+
     /// The value both the hash and the equality read.
     fn identity_value(&self) -> Scalar {
         Scalar::from_sequence([
@@ -868,6 +877,112 @@ impl PyFixMsg {
         Ok((callable, (field, value, registry)))
     }
 
+    /// This message's value digest, as sixteen big-endian bytes.
+    ///
+    /// Over what the message says: the whole session envelope is excluded,
+    /// so the same order relayed through two sessions or replayed on a
+    /// resend is one message. Computed on every call and stored nowhere.
+    fn digest<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.digest().to_be_bytes())
+    }
+
+    /// One instrument symbol that is the same across venues.
+    fn symbol_ticker(&self) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.symbol_ticker()))
+    }
+
+    /// The timestamp a capture is ordered and partitioned by.
+    fn market_timestamp(&self) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.market_timestamp()))
+    }
+
+    /// The partition that timestamp falls in, in whole seconds.
+    #[pyo3(signature = (seconds=3600))]
+    fn unix_partition(&self, seconds: i64) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.unix_partition(seconds)))
+    }
+
+    /// The one value a facet names, or `None` where it is not unambiguous.
+    fn lifted(&self, facet: &str) -> Option<PyScalar> {
+        Self::answered(self.inner.lifted(facet))
+    }
+
+    /// Which tag answered a facet, so a fallback is visible.
+    fn lift_source(&self, facet: &str) -> Option<String> {
+        self.inner.lift_source(facet).map(|id| id.to_string())
+    }
+
+    /// Every facet this message answers, in the table's own order.
+    fn lift(&self) -> Vec<(String, PyScalar)> {
+        self.inner
+            .lift()
+            .map(|(facet, value)| (facet.to_owned(), PyScalar::from_inner(value.clone())))
+            .collect()
+    }
+
+    /// The party bearing one role, matched through the code translation.
+    fn party(&self, role: &str) -> Option<Vec<Option<PyScalar>>> {
+        let held = self.inner.party(role)?;
+        Some(vec![
+            Self::answered(held.id()),
+            Self::answered(held.source()),
+            Self::answered(held.role()),
+            Self::answered(held.qualifier()),
+        ])
+    }
+
+    /// One regulatory timestamp by its type.
+    fn trd_reg_timestamp(&self, kind: &str) -> Option<PyScalar> {
+        Self::answered(self.inner.trd_reg_timestamp(kind))
+    }
+
+    /// What this message says about itself that does not add up.
+    ///
+    /// Derived by comparing the row against the arrival record, so a caller
+    /// who never asks pays nothing.
+    fn anomalies(&self) -> Vec<String> {
+        self.inner
+            .anomalies()
+            .map(|held| held.to_string())
+            .collect()
+    }
+
+    /// What arrived, in arrival order, untranslated.
+    fn entries(&self) -> Vec<(i32, Option<String>, String, String)> {
+        self.inner
+            .entries()
+            .iter()
+            .map(|entry| {
+                (
+                    entry.tag(),
+                    entry.branch().map(ToOwned::to_owned),
+                    entry.key().to_owned(),
+                    entry.value().to_owned(),
+                )
+            })
+            .collect()
+    }
+
+    /// This message as the fixed row a table holds.
+    ///
+    /// Every column is filled from the message's own values by tag, so a
+    /// message that carried nothing at a column answers null there rather than
+    /// shifting its neighbours - which is what makes two rows of one capture
+    /// comparable at all. A carried column answers null: it is the capture's,
+    /// and nothing in the message says what it held.
+    fn to_row(&self, projection: &PyFixProjection) -> PyScalar {
+        PyScalar::from_inner(self.inner.to_row(&projection.inner))
+    }
+
+    /// Re-emit this message on the wire, separated by `separator`.
+    ///
+    /// Named for what it answers rather than for consuming the message: the
+    /// bytes come from the arrival record, which the message keeps.
+    #[pyo3(signature = (separator=1))]
+    fn to_bytes<'py>(&self, py: Python<'py>, separator: u8) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.into_bytes(separator))
+    }
+
     fn __copy__(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -885,6 +1000,285 @@ impl PyFixMsg {
             self.inner.as_field().fields().len()
         )
     }
+}
+
+/// One dictionary, reading lines into messages.
+///
+/// The reader is the whole parse surface: a captured line with a verb in front
+/// of it, a bare frame, a numeric frame with a stated separator, a bridge's
+/// name/value text, or pairs a caller already has. Each redirects to the core
+/// method of the same name, so nothing here decides a dialect, a version or a
+/// separator - it only carries what Python said across.
+///
+/// A reader caches the projection of whichever version it was last asked for,
+/// so a capture read at one version pays the resolution once rather than once
+/// per row. Copying one gives it a cache of its own, exactly as the core does,
+/// because two readers differing in version would otherwise clear each other's
+/// every row.
+#[pyclass(name = "FixReader", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyFixReader {
+    inner: CoreFixReader,
+    registry: Arc<CoreFixRegistry>,
+}
+
+#[pymethods]
+impl PyFixReader {
+    /// Open a reader over one dictionary, or over the process default.
+    #[new]
+    #[pyo3(signature = (registry=None, *, branch=None, source_version=None, target_version=None, null_values=None))]
+    fn new(
+        registry: Option<PyRef<'_, PyFixRegistry>>,
+        branch: Option<&str>,
+        source_version: Option<&str>,
+        target_version: Option<&str>,
+        null_values: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+        };
+        let mut inner = CoreFixReader::new(Arc::clone(&registry));
+        if let Some(held) = branch {
+            inner = inner.branch(&branch_from_py(held)?);
+        }
+        if let Some(held) = source_version {
+            inner = inner.source_version(version_from_py(held)?);
+        }
+        if let Some(held) = target_version {
+            inner = inner.target_version(version_from_py(held)?);
+        }
+        if let Some(held) = null_values {
+            inner = inner.null_values(held);
+        }
+        Ok(Self { inner, registry })
+    }
+
+    /// The dictionary this reader resolves against, sharing it.
+    #[getter]
+    fn registry(&self) -> PyFixRegistry {
+        PyFixRegistry::from_arc(Arc::clone(&self.registry))
+    }
+
+    /// One captured line, whatever it is wrapped in.
+    fn text(&self, row: &str) -> PyResult<PyFixMsg> {
+        self.inner
+            .text(row)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// One captured line as bytes, whatever it is wrapped in.
+    fn bytes(&self, row: &[u8]) -> PyResult<PyFixMsg> {
+        self.inner
+            .bytes(row)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// One numeric frame with the separator stated rather than inferred.
+    #[pyo3(signature = (body, separator=1))]
+    fn fixtext(&self, body: &[u8], separator: u8) -> PyResult<PyFixMsg> {
+        self.inner
+            .fixtext(body, separator)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// One bridge frame, whose keys are names rather than tags.
+    fn ultext(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+        self.inner
+            .ultext(body)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Pairs a caller already holds, in the order they arrived.
+    ///
+    /// Taken by value because the borrowed pairs the core reads point into
+    /// these strings, so they have to outlive the call rather than the caller.
+    #[allow(clippy::needless_pass_by_value)]
+    fn pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
+        let borrowed: Vec<(&[u8], &[u8])> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
+            .collect();
+        self.inner
+            .pairs(borrowed)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    fn __copy__(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            registry: Arc::clone(&self.registry),
+        }
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.__copy__()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("FixReader({} fields)", self.registry.len())
+    }
+}
+
+/// Read one FIX version, or report the native parse failure as a `ValueError`.
+///
+/// A version crosses as text and becomes a `Version` here, once, so the
+/// grammar - `4.4`, `FIX.4.4`, `5.0SP2` - stays the core's and no second class
+/// exists in Python.
+fn version_from_py(text: &str) -> PyResult<CoreVersion> {
+    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
+    spelling.parse::<CoreVersion>().map_err(value_error)
+}
+
+/// Where each fixed column sits, resolved once against one dictionary.
+///
+/// A row projection asks for the same tags in the same order for every message
+/// in a capture, and each ask through the ordinary tiers is a hash, a
+/// verification and a branch walk. Building one turns the per-row cost into an
+/// indexed read, which is the whole reason a fixed schema is worth having.
+#[pyclass(
+    name = "FixProjection",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
+pub(crate) struct PyFixProjection {
+    pub(crate) inner: CoreFixProjection,
+}
+
+#[pymethods]
+impl PyFixProjection {
+    /// Resolve every fixed column against one dictionary.
+    ///
+    /// `carrier` is a capture's own root - where a line was read from, which
+    /// line it was, what stamped it - whose columns lead the row where one is
+    /// given, because that is what a monitor orders and joins on.
+    #[new]
+    #[pyo3(signature = (registry=None, name="fix", carrier=None))]
+    fn new(
+        registry: Option<PyRef<'_, PyFixRegistry>>,
+        name: &str,
+        carrier: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+        };
+        let read = yggdryl::fix_schema(&registry, name.to_owned()).map_err(value_error)?;
+        let inner = match carrier {
+            None => CoreFixProjection::from_field(read),
+            Some(held) => {
+                let carrier = core_field_from_value(held)?;
+                CoreFixProjection::carrying(&carrier, read).map_err(value_error)?
+            }
+        };
+        Ok(Self { inner })
+    }
+
+    /// Wrap a root that is already the fixed schema.
+    #[staticmethod]
+    fn from_field(field: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self {
+            inner: CoreFixProjection::from_field(core_field_from_value(field)?),
+        })
+    }
+
+    /// The root this projection fills.
+    #[getter]
+    fn field(&self) -> PyField {
+        PyField::from_inner(self.inner.field().clone())
+    }
+
+    /// The tag each column carries, in column order; 0 where it carries none.
+    #[getter]
+    fn tags(&self) -> Vec<i32> {
+        self.inner.tags().to_vec()
+    }
+
+    /// How many leading columns are the capture's rather than FIX's.
+    #[getter]
+    fn carried(&self) -> usize {
+        self.inner.carried()
+    }
+
+    /// Where each carried column sat in the capture it came from.
+    #[getter]
+    fn carried_positions(&self) -> Vec<usize> {
+        self.inner.carried_positions().to_vec()
+    }
+
+    /// How many columns carry a value rather than the arrival record.
+    #[getter]
+    fn value_columns(&self) -> usize {
+        self.inner.value_columns()
+    }
+
+    /// The field behind one column, by position.
+    fn column(&self, at: usize) -> Option<PyField> {
+        self.inner.column(at).cloned().map(PyField::from_inner)
+    }
+
+    /// Where one tag's column sits, without a dictionary lookup.
+    fn position_of(&self, tag: FixTag) -> Option<usize> {
+        self.inner.position_of(tag.0)
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.tags().len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "FixProjection({:?}, {} columns)",
+            self.inner.field().name(),
+            self.inner.tags().len()
+        )
+    }
+}
+
+/// The fixed root every message answers as, built from one dictionary.
+///
+/// Header, the fields a consumer reads, the groups worth persisting whole, the
+/// trailer, this crate's own derived facts, and the two lists that close every
+/// row. Columns are named by tag, because a tag is the one name a field has in
+/// every version and every dialect.
+#[pyfunction]
+#[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
+pub(crate) fn fix_schema(
+    registry: Option<PyRef<'_, PyFixRegistry>>,
+    name: &str,
+) -> PyResult<PyField> {
+    let registry = match registry {
+        Some(held) => Arc::clone(&held.inner),
+        None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+    };
+    yggdryl::fix_schema(&registry, name.to_owned())
+        .map(PyField::from_inner)
+        .map_err(value_error)
+}
+
+/// One row's columns, in order, as tags.
+#[pyfunction]
+#[pyo3(name = "fix_schema_tags")]
+pub(crate) fn fix_schema_tags() -> Vec<i32> {
+    yggdryl::fix_schema_tags()
+}
+
+/// The fields this crate defines on its own branch, in tag order.
+///
+/// The digest, the version read, the cross-venue symbol, the market clock, the
+/// partition it falls in, and the two parent order identifiers no standard tag
+/// names. Registering them is a caller's choice, which is what
+/// `FixRegistry.with_crate_fields` is for.
+#[pyfunction]
+#[pyo3(name = "fix_crate_fields")]
+pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
+    yggdryl::fix_crate_fields()
+        .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
+        .map_err(value_error)
 }
 
 /// The `(name, value)` pairs of one message's root, in declared order.

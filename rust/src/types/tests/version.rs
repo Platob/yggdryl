@@ -122,7 +122,9 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.as_str(), "version");
     assert_eq!(DataTypeId::Version.as_u8(), 54);
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Version));
+    // `Version` is no longer last: the three coded FIX datatypes were
+    // appended after it, which is what `as_u8` being a wire contract requires.
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::MsgDirection));
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());
     assert!(!dtype.is_nested());

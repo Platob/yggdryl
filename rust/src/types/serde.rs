@@ -116,6 +116,10 @@ enum DataTypeRef<'a> {
     Currency {},
     Mic {},
     Cfi {},
+    Side {},
+    #[serde(rename = "msgtype")]
+    MsgType {},
+    MsgDirection {},
     Uuid {},
     Version {},
     List {
@@ -243,6 +247,9 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Currency => Self::Currency {},
             D::Mic => Self::Mic {},
             D::Cfi => Self::Cfi {},
+            D::Side => Self::Side {},
+            D::MsgType => Self::MsgType {},
+            D::MsgDirection => Self::MsgDirection {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::List(field) => Self::List { field },
@@ -358,6 +365,10 @@ enum DataTypeValue {
     Currency {},
     Mic {},
     Cfi {},
+    Side {},
+    #[serde(rename = "msgtype")]
+    MsgType {},
+    MsgDirection {},
     Uuid {},
     Version {},
     List {
@@ -469,6 +480,9 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Currency {} => Self::Currency,
             DataTypeValue::Mic {} => Self::Mic,
             DataTypeValue::Cfi {} => Self::Cfi,
+            DataTypeValue::Side {} => Self::Side,
+            DataTypeValue::MsgType {} => Self::MsgType,
+            DataTypeValue::MsgDirection {} => Self::MsgDirection,
             DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::Version {} => Self::Version,
             DataTypeValue::List { field } => Self::list(field),
@@ -596,6 +610,9 @@ impl DataType {
             D::Currency => tag("currency"),
             D::Mic => tag("mic"),
             D::Cfi => tag("cfi"),
+            D::Side => tag("side"),
+            D::MsgType => tag("msgtype"),
+            D::MsgDirection => tag("msgdirection"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::DateTime64 { unit, timezone } => {
@@ -831,6 +848,11 @@ impl DataType {
             "currency" => Self::Currency,
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
+            "side" => Self::Side,
+            "msgtype" => Self::MsgType,
+            // `direction` was this datatype's first spelling; a schema
+            // written under it still reads.
+            "msgdirection" | "direction" => Self::MsgDirection,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
             "datetime64" => {

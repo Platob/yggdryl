@@ -1,11 +1,25 @@
 //! FIX integration tests.
 
+#[path = "fix/batch.rs"]
+mod batch;
+#[path = "fix/cfb.rs"]
+mod cfb;
+#[path = "fix/dictionary.rs"]
+mod dictionary;
+#[path = "fix/digest.rs"]
+mod digest;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/lift.rs"]
+mod lift;
+#[path = "fix/reader.rs"]
+mod reader;
+#[path = "fix/schema.rs"]
+mod schema;
 #[path = "fix/store.rs"]
 mod store;
 

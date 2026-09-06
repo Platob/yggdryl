@@ -79,6 +79,11 @@ pub struct TextOptions {
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per emitted batch.
+    /// Bytes per batch, whichever of this and `batch_row_size` binds first.
+    ///
+    /// A target rather than a ceiling, and a non-zero bound always yields at
+    /// least one row.
+    pub batch_byte_size: Option<u64>,
     pub batch_row_size: Option<usize>,
     /// Most result rows in total.
     pub max_row_size: Option<u64>,
@@ -96,12 +101,31 @@ pub struct TextOptions {
     pub filter_partitions: Vec<(String, String)>,
     /// First emitted row number; `None` omits the `rownum` column.
     pub with_rownum: Option<i64>,
+    /// Whether to classify each line and emit a `mimetype` column.
+    pub with_mimetype: bool,
+    /// Whether to read each line's message type and emit a `msgtype` column.
+    pub with_msgtype: bool,
+    /// Whether to read each line's direction, emit a `direction` column, and
+    /// take the marker off the body.
+    pub with_direction: bool,
+    /// Whether to drop a row whose body repeats the row before it.
+    ///
+    /// A capture tool that published a line twice publishes it twice in a
+    /// row, so one previous digest is the whole of what adjacent
+    /// deduplication needs - never a set, which would grow without bound over
+    /// a day of capture and would also be wrong: two identical heartbeats an
+    /// hour apart are two events.
+    ///
+    /// It is off by default because switching it on deliberately surrenders
+    /// row-in / row-out correspondence: the output no longer aligns with its
+    /// input by position.
+    pub dedup_adjacent: bool,
     framing: bool,
     leading_fragment: LeadingFragment,
     max_record_byte_size: Option<u64>,
     rowheader: Option<Expression>,
-    lstrip: Option<Expression>,
-    rstrip: Option<Expression>,
+    lstrip: Vec<Expression>,
+    rstrip: Vec<Expression>,
     linesep: Option<LineSep>,
     autotype: bool,
     timezone: Option<Timezone>,
@@ -117,6 +141,7 @@ impl TextOptions {
             dtype: None,
             metadata: Metadata::new(),
             safe: false,
+            batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
@@ -126,12 +151,16 @@ impl TextOptions {
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
             with_rownum: None,
+            with_mimetype: false,
+            with_msgtype: false,
+            with_direction: false,
+            dedup_adjacent: false,
             framing: false,
             leading_fragment: LeadingFragment::Keep,
             max_record_byte_size: None,
             rowheader: None,
-            lstrip: None,
-            rstrip: None,
+            lstrip: Vec::new(),
+            rstrip: Vec::new(),
             linesep: None,
             autotype: true,
             timezone: None,
@@ -259,47 +288,77 @@ impl TextOptions {
         Ok(self)
     }
 
-    /// Borrow the left-edge trimming regex source.
+    /// Borrow the left-edge trimming patterns, in the order they are applied.
+    ///
+    /// A capture line routinely carries several layers of prose in front of
+    /// its payload - a bridge's arrow, a stage's label, a plugin's name - and
+    /// one expression that matches all of them at once is the expression
+    /// nobody can read. A sequence strips them one after another, each from
+    /// the new left edge, so `After Enrichment --> ` comes off as
+    /// `After \w+`, then `-->`, then nothing.
     #[must_use]
-    pub fn lstrip(&self) -> Option<&str> {
+    pub fn lstrip(&self) -> impl ExactSizeIterator<Item = &str> {
         self.lstrip
-            .as_ref()
+            .iter()
             .map(|expression| expression.source.as_str())
     }
 
-    /// Compile or clear the left-edge trimming regex atomically.
-    pub fn set_lstrip(&mut self, lstrip: Option<&str>) -> Result<()> {
-        self.lstrip = lstrip
-            .map(|source| Expression::new(source, "$.lstrip"))
-            .transpose()?;
+    /// Compile or clear the left-edge trimming sequence atomically.
+    ///
+    /// The whole sequence is compiled before any of it is installed, so one
+    /// bad pattern leaves the options exactly as they were.
+    ///
+    /// # Errors
+    ///
+    /// Returns the regex refusal naming `$.lstrip` and the offending pattern.
+    pub fn set_lstrip<I, S>(&mut self, patterns: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.lstrip = compile_strips(patterns, "$.lstrip")?;
         Ok(())
     }
 
-    /// Return these options with a left-edge trimming regex.
-    pub fn try_with_lstrip(mut self, lstrip: &str) -> Result<Self> {
-        self.set_lstrip(Some(lstrip))?;
+    /// Return these options with a left-edge trimming sequence.
+    pub fn try_with_lstrip<I, S>(mut self, patterns: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.set_lstrip(patterns)?;
         Ok(self)
     }
 
-    /// Borrow the right-edge trimming regex source.
+    /// Borrow the right-edge trimming patterns, in the order they are applied.
     #[must_use]
-    pub fn rstrip(&self) -> Option<&str> {
+    pub fn rstrip(&self) -> impl ExactSizeIterator<Item = &str> {
         self.rstrip
-            .as_ref()
+            .iter()
             .map(|expression| expression.source.as_str())
     }
 
-    /// Compile or clear the right-edge trimming regex atomically.
-    pub fn set_rstrip(&mut self, rstrip: Option<&str>) -> Result<()> {
-        self.rstrip = rstrip
-            .map(|source| Expression::new(source, "$.rstrip"))
-            .transpose()?;
+    /// Compile or clear the right-edge trimming sequence atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns the regex refusal naming `$.rstrip` and the offending pattern.
+    pub fn set_rstrip<I, S>(&mut self, patterns: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.rstrip = compile_strips(patterns, "$.rstrip")?;
         Ok(())
     }
 
-    /// Return these options with a right-edge trimming regex.
-    pub fn try_with_rstrip(mut self, rstrip: &str) -> Result<Self> {
-        self.set_rstrip(Some(rstrip))?;
+    /// Return these options with a right-edge trimming sequence.
+    pub fn try_with_rstrip<I, S>(mut self, patterns: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        self.set_rstrip(patterns)?;
         Ok(self)
     }
 
@@ -386,28 +445,79 @@ impl TextOptions {
         Ok(())
     }
 
-    pub(crate) fn lstrip_regex(&self) -> Option<&Regex> {
-        self.lstrip.as_ref().map(|expression| &expression.compiled)
+    pub(crate) fn lstrip_regexes(&self) -> impl ExactSizeIterator<Item = &Regex> {
+        self.lstrip.iter().map(|expression| &expression.compiled)
     }
 
-    pub(crate) fn rstrip_regex(&self) -> Option<&Regex> {
-        self.rstrip.as_ref().map(|expression| &expression.compiled)
+    pub(crate) fn rstrip_regexes(&self) -> impl ExactSizeIterator<Item = &Regex> {
+        self.rstrip.iter().map(|expression| &expression.compiled)
+    }
+
+    /// Whether any line rewriting is configured at all.
+    ///
+    /// One question, because every caller asking it is deciding whether the
+    /// body it is about to hand on is the bytes it read.
+    pub(crate) fn rewrites_body(&self) -> bool {
+        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.with_direction
     }
 
     pub(crate) fn output_linesep(&self) -> &[u8] {
         self.linesep.as_ref().map_or(b"\n", LineSep::as_bytes)
     }
 
-    /// Build the decoder's source field without reading the resource.
-    pub(crate) fn source_field(&self) -> Result<Field> {
-        let mut fields = Vec::with_capacity(4 + self.captures.len());
-        fields.push(DataType::Utf8.required_field("url"));
+    /// The root a text read answers `schema()` with, built without reading.
+    ///
+    /// The fixed prefix first - where the line came from, which line it was,
+    /// what it was classified as, and the line itself - then one nullable
+    /// column per named capture, in the order the row header declares them and
+    /// typed by what its syntax can match. Public because a caller composing a
+    /// text read with something that reads its payload needs the columns
+    /// before there is a resource to read, exactly as
+    /// [`FixOptions::source_field`](crate::FixOptions::source_field) does.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the columns do not make a
+    /// struct.
+    pub fn source_field(&self) -> Result<Field> {
+        let mut fields = Vec::with_capacity(7 + self.captures.len());
+        fields.push(described(
+            DataType::Utf8.required_field("url"),
+            "The URL of the object this line was read from.",
+        )?);
         if self.with_rownum.is_some() {
-            fields.push(DataType::Int64.required_field("rownum"));
+            fields.push(described(
+                DataType::Int64.required_field("rownum"),
+                "The physical line number within that object.",
+            )?);
         }
-        fields.push(DataType::Binary.required_field("body"));
+        if self.with_direction {
+            fields.push(described(
+                DataType::MsgDirection.nullable_field("direction"),
+                "Which way the line moved, read from the verb in front of it.",
+            )?);
+        }
+        if self.with_mimetype {
+            fields.push(described(
+                DataType::Utf8.required_field("mimetype"),
+                "What the line was classified as.",
+            )?);
+        }
+        if self.with_msgtype {
+            fields.push(described(
+                DataType::MsgType.nullable_field("msgtype"),
+                "The message type read from the line.",
+            )?);
+        }
+        fields.push(described(
+            DataType::Binary.required_field("body"),
+            "The line itself, with whatever was read off its front removed.",
+        )?);
         if self.max_record_byte_size.is_some() {
-            fields.push(DataType::UInt64.nullable_field("dropped_byte_size"));
+            fields.push(described(
+                DataType::UInt64.nullable_field("dropped_byte_size"),
+                "How many bytes of this record went over the retained limit.",
+            )?);
         }
         fields.extend(self.captures.iter().map(|capture| {
             let dtype = if self.autotype {
@@ -431,6 +541,17 @@ impl TextOptions {
     }
 }
 
+/// One fixed column with the wording that says what it is.
+///
+/// On the generic `description` key, not behind a scheme: what a column holds
+/// is a fact about the column, and every catalog the crate writes to has a
+/// place for one. A caller declaring its own root replaces these along with
+/// everything else, which is what declaring a root means.
+fn described(mut field: Field, description: &str) -> Result<Field> {
+    field.set_description(description)?;
+    Ok(field)
+}
+
 impl Default for TextOptions {
     fn default() -> Self {
         Self::new()
@@ -440,4 +561,16 @@ impl Default for TextOptions {
 #[cfg(feature = "arrow")]
 impl IORecordOptions for TextOptions {
     crate::record_options_fields!();
+}
+
+/// Compile a strip sequence whole, so one bad pattern installs none of it.
+fn compile_strips<I, S>(patterns: I, at: &'static str) -> Result<Vec<Expression>>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    patterns
+        .into_iter()
+        .map(|pattern| Expression::new(pattern.as_ref(), at))
+        .collect()
 }

@@ -1,0 +1,1151 @@
+[
+  {
+    "name": "noadditionaltermbondrefs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "additionaltermbondsecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40001"
+              }
+            },
+            {
+              "name": "additionaltermbondsecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40002"
+              }
+            },
+            {
+              "name": "additionaltermbonddesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40003"
+              }
+            },
+            {
+              "name": "encodedadditionaltermbonddesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40004"
+              }
+            },
+            {
+              "name": "encodedadditionaltermbonddesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40005"
+              }
+            },
+            {
+              "name": "additionaltermbondcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40006"
+              }
+            },
+            {
+              "name": "additionaltermbondissuer",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40007"
+              }
+            },
+            {
+              "name": "encodedadditionaltermbondissuerlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40008"
+              }
+            },
+            {
+              "name": "encodedadditionaltermbondissuer",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40009"
+              }
+            },
+            {
+              "name": "additionaltermbondseniority",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40010"
+              }
+            },
+            {
+              "name": "additionaltermbondcoupontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40011"
+              }
+            },
+            {
+              "name": "additionaltermbondcouponrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40012"
+              }
+            },
+            {
+              "name": "additionaltermbondmaturitydate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40013"
+              }
+            },
+            {
+              "name": "additionaltermbondparvalue",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40014"
+              }
+            },
+            {
+              "name": "additionaltermbondcurrenttotalissuedamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40015"
+              }
+            },
+            {
+              "name": "additionaltermbondcouponfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40016"
+              }
+            },
+            {
+              "name": "additionaltermbondcouponfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40017"
+              }
+            },
+            {
+              "name": "additionaltermbonddaycount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40018"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of bonds in the repeating group.",
+      "display": "NoAdditionalTermBondRefs",
+      "fix:tag": "40000"
+    }
+  },
+  {
+    "name": "noadditionalterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "additionaltermconditionprecedentbondindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40020"
+              }
+            },
+            {
+              "name": "additionaltermdiscrepancyclauseindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40021"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of additional terms in the repeating group.",
+      "display": "NoAdditionalTerms",
+      "fix:tag": "40019"
+    }
+  },
+  {
+    "name": "nocashsettlterms",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "cashsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40023"
+              }
+            },
+            {
+              "name": "cashsettlvaluationfirstbusinessdayoffset",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40024"
+              }
+            },
+            {
+              "name": "cashsettlvaluationsubsequentbusinessdaysoffset",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40916"
+              }
+            },
+            {
+              "name": "cashsettlnumofvaluationdates",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40917"
+              }
+            },
+            {
+              "name": "cashsettlvaluationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40025"
+              }
+            },
+            {
+              "name": "cashsettlbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40026"
+              }
+            },
+            {
+              "name": "cashsettlquotemethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40027"
+              }
+            },
+            {
+              "name": "cashsettlquoteamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40028"
+              }
+            },
+            {
+              "name": "cashsettlquotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40029"
+              }
+            },
+            {
+              "name": "cashsettlminimumquoteamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40030"
+              }
+            },
+            {
+              "name": "cashsettlminimumquotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40031"
+              }
+            },
+            {
+              "name": "cashsettlpricesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42216"
+              }
+            },
+            {
+              "name": "cashsettlpricedefault",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42217"
+              }
+            },
+            {
+              "name": "cashsettlbusinessdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40033"
+              }
+            },
+            {
+              "name": "cashsettlamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40034"
+              }
+            },
+            {
+              "name": "cashsettlrecoveryfactor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40035"
+              }
+            },
+            {
+              "name": "cashsettlfixedtermindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40036"
+              }
+            },
+            {
+              "name": "cashsettlaccruedinterestindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40037"
+              }
+            },
+            {
+              "name": "cashsettlvaluationmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40038"
+              }
+            },
+            {
+              "name": "cashsettltermxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40039"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of elements in the repeating group.",
+      "display": "NoCashSettlTerms",
+      "fix:tag": "40022"
+    }
+  },
+  {
+    "name": "nocontractualdefinitions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "contractualdefinition",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40041"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of financing definitions in the repeating group.",
+      "display": "NoContractualDefinitions",
+      "fix:tag": "40040"
+    }
+  },
+  {
+    "name": "nocontractualmatrices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "contractualmatrixsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40043"
+              }
+            },
+            {
+              "name": "contractualmatrixdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40044"
+              }
+            },
+            {
+              "name": "contractualmatrixterm",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40045"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of contractual matrices in the repeating group.",
+      "display": "NoContractualMatrices",
+      "fix:tag": "40042"
+    }
+  },
+  {
+    "name": "nofinancingtermsupplements",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "financingtermsupplementdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40047"
+              }
+            },
+            {
+              "name": "financingtermsupplementdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40048"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of financing terms supplements in the repeating group.",
+      "display": "NoFinancingTermSupplements",
+      "fix:tag": "40046"
+    }
+  },
+  {
+    "name": "nostreams",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "streamtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40050"
+              }
+            },
+            {
+              "name": "streamxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41303"
+              }
+            },
+            {
+              "name": "streamdesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40051"
+              }
+            },
+            {
+              "name": "streamversion",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42784"
+              }
+            },
+            {
+              "name": "streamversioneffectivedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42785"
+              }
+            },
+            {
+              "name": "streampayside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40052"
+              }
+            },
+            {
+              "name": "streamreceiveside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40053"
+              }
+            },
+            {
+              "name": "streamnotionalxidref",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41305"
+              }
+            },
+            {
+              "name": "streamnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40054"
+              }
+            },
+            {
+              "name": "streamcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40055"
+              }
+            },
+            {
+              "name": "streamnotionaldeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42786"
+              }
+            },
+            {
+              "name": "streamnotionaladjustments",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42787"
+              }
+            },
+            {
+              "name": "streamnotionalfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41306"
+              }
+            },
+            {
+              "name": "streamnotionalfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41307"
+              }
+            },
+            {
+              "name": "streamnotionalcommodityfrequency",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41308"
+              }
+            },
+            {
+              "name": "streamnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41309"
+              }
+            },
+            {
+              "name": "streamtotalnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41310"
+              }
+            },
+            {
+              "name": "streamtotalnotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41311"
+              }
+            },
+            {
+              "name": "streamtext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40056"
+              }
+            },
+            {
+              "name": "encodedstreamtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40982"
+              }
+            },
+            {
+              "name": "encodedstreamtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40983"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of swap streams in the repeating group.",
+      "display": "NoStreams",
+      "fix:tag": "40049"
+    }
+  },
+  {
+    "name": "nosettlratefallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "settlratepostponementmaximumdays",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40086"
+              }
+            },
+            {
+              "name": "settlratepostponementsurvey",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40088"
+              }
+            },
+            {
+              "name": "settlratepostponementcalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40089"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of settlement rate fallbacks in the repeating group",
+      "display": "NoSettlRateFallbacks",
+      "fix:tag": "40085"
+    }
+  },
+  {
+    "name": "noprovisions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "provisiontype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40091"
+              }
+            },
+            {
+              "name": "provisiondateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40092"
+              }
+            },
+            {
+              "name": "provisiondatebusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40093"
+              }
+            },
+            {
+              "name": "provisiondateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40095"
+              }
+            },
+            {
+              "name": "provisiondatetenorperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40096"
+              }
+            },
+            {
+              "name": "provisiondatetenorunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40097"
+              }
+            },
+            {
+              "name": "provisionbreakfeeelection",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42707"
+              }
+            },
+            {
+              "name": "provisionbreakfeerate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42708"
+              }
+            },
+            {
+              "name": "provisioncalculationagent",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40098"
+              }
+            },
+            {
+              "name": "provisionoptionsinglepartybuyerside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40099"
+              }
+            },
+            {
+              "name": "provisionoptionsinglepartysellerside",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40100"
+              }
+            },
+            {
+              "name": "provisionoptionexercisestyle",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40101"
+              }
+            },
+            {
+              "name": "provisionoptionexercisemultiplenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40102"
+              }
+            },
+            {
+              "name": "provisionoptionexerciseminimumnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40103"
+              }
+            },
+            {
+              "name": "provisionoptionexercisemaximumnotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40104"
+              }
+            },
+            {
+              "name": "provisionoptionminimumnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40105"
+              }
+            },
+            {
+              "name": "provisionoptionmaximumnumber",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40106"
+              }
+            },
+            {
+              "name": "provisionoptionexerciseconfirmation",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40107"
+              }
+            },
+            {
+              "name": "provisioncashsettlmethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40108"
+              }
+            },
+            {
+              "name": "provisioncashsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40109"
+              }
+            },
+            {
+              "name": "provisioncashsettlcurrency2",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40110"
+              }
+            },
+            {
+              "name": "provisioncashsettlquotetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40111"
+              }
+            },
+            {
+              "name": "provisiontext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40113"
+              }
+            },
+            {
+              "name": "encodedprovisiontextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40986"
+              }
+            },
+            {
+              "name": "encodedprovisiontext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40987"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of provisions in the repeating group.",
+      "display": "NoProvisions",
+      "fix:tag": "40090"
+    }
+  }
+]

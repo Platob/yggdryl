@@ -69,6 +69,8 @@ import {
   Compaction,
   DataFile,
   FixMsg,
+  FixProjection,
+  FixReader,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -92,6 +94,8 @@ export type {
   Compaction,
   DataFile,
   FixMsg,
+  FixProjection,
+  FixReader,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -2104,6 +2108,7 @@ declare module './index' {
     const ULLINK: MimeType
     const FIX: MimeType
     const FIXUL: MimeType
+    const KEYVALUE: MimeType
     const FIXML: MimeType
     const MARKDOWN: MimeType
     const HTML: MimeType
@@ -2711,6 +2716,21 @@ export interface Fix {
   readonly FixRegistry: typeof FixRegistry
   /** A FIX message: a value plus the registry that types it. */
   readonly FixMsg: FixMsgConstructor
+  /** One dictionary, reading captured lines into messages. */
+  readonly FixReader: typeof FixReader
+  /** Where each fixed column sits, resolved once against one dictionary. */
+  readonly FixProjection: typeof FixProjection
+  /**
+   * The fixed root every message answers as, built from one dictionary.
+   *
+   * Columns are named by tag, because a tag is the one name a field has in
+   * every version and every dialect.
+   */
+  schema(registry?: FixRegistry | null, name?: string | null): Field
+  /** One row's columns, in order, as tags. */
+  schemaTags(): number[]
+  /** The fields this crate defines on its own branch, in tag order. */
+  crateFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
   /** Install the process-wide registry before anything resolves it. */

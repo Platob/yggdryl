@@ -1,0 +1,682 @@
+[
+  {
+    "name": "nostrikerules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "strikeruleid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1223"
+              }
+            },
+            {
+              "name": "startstrikepxrange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1202"
+              }
+            },
+            {
+              "name": "endstrikepxrange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1203"
+              }
+            },
+            {
+              "name": "strikeincrement",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1204"
+              }
+            },
+            {
+              "name": "strikeexercisestyle",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1304"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
+      "display": "NoStrikeRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostrikerules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1201"
+    }
+  },
+  {
+    "name": "notickrules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "starttickpricerange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1206"
+              }
+            },
+            {
+              "name": "endtickpricerange",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1207"
+              }
+            },
+            {
+              "name": "tickincrement",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1208"
+              }
+            },
+            {
+              "name": "tickruletype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1209"
+              }
+            },
+            {
+              "name": "tickruleproductcomplex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2571"
+              }
+            },
+            {
+              "name": "settlpriceincrement",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1830"
+              }
+            },
+            {
+              "name": "settlpricesecondaryincrement",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1831"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
+      "display": "NoTickRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notickrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1205"
+    }
+  },
+  {
+    "name": "noderivativesecurityaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "derivativesecurityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1219"
+              }
+            },
+            {
+              "name": "derivativesecurityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1220"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of alternate derivative security IDs.",
+      "display": "NoDerivativeSecurityAltID",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativesecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1218"
+    }
+  },
+  {
+    "name": "noexecinstrules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "execinstvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1308"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of execution instructions",
+      "display": "NoExecInstRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noexecinstrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1232"
+    }
+  },
+  {
+    "name": "nolottyperules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "lottype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1093"
+              }
+            },
+            {
+              "name": "minlotsize",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1231"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of Lot Type Rules",
+      "display": "NoLotTypeRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nolottyperules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1234"
+    }
+  },
+  {
+    "name": "nomatchrules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "matchalgorithm",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1142"
+              }
+            },
+            {
+              "name": "matchtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "574"
+              }
+            },
+            {
+              "name": "matchruleproductcomplex",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2569"
+              }
+            },
+            {
+              "name": "customerpriority",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2570"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of Match Rules",
+      "display": "NoMatchRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomatchrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1235"
+    }
+  },
+  {
+    "name": "nomaturityrules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "maturityruleid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1222"
+              }
+            },
+            {
+              "name": "maturitymonthyearformat",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1303"
+              }
+            },
+            {
+              "name": "maturitymonthyearincrementunits",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1302"
+              }
+            },
+            {
+              "name": "startmaturitymonthyear",
+              "dtype": {
+                "type": "fixed_ascii",
+                "width": 8
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1241"
+              }
+            },
+            {
+              "name": "endmaturitymonthyear",
+              "dtype": {
+                "type": "fixed_ascii",
+                "width": 8
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1226"
+              }
+            },
+            {
+              "name": "maturitymonthyearincrement",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1229"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of maturity rules in MarurityRules component block",
+      "display": "NoMaturityRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomaturityrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1236"
+    }
+  },
+  {
+    "name": "noordtyperules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "ordtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of order types",
+      "display": "NoOrdTypeRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noordtyperules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1237"
+    }
+  },
+  {
+    "name": "notimeinforcerules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "timeinforce",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "59"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of time in force techniques",
+      "display": "NoTimeInForceRules",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notimeinforcerules\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1239"
+    }
+  },
+  {
+    "name": "noderivativeevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "derivativeeventtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1287"
+              }
+            },
+            {
+              "name": "derivativeeventdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1288"
+              }
+            },
+            {
+              "name": "derivativeeventtime",
+              "dtype": {
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1289"
+              }
+            },
+            {
+              "name": "derivativeeventpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1290"
+              }
+            },
+            {
+              "name": "derivativeeventtext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1291"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of repeating DerivativeEventType entries.",
+      "display": "NoDerivativeEvents",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeevents\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1286"
+    }
+  },
+  {
+    "name": "noderivativeinstrumentparties",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "derivativeinstrumentpartyid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1293"
+              }
+            },
+            {
+              "name": "derivativeinstrumentpartyidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1294"
+              }
+            },
+            {
+              "name": "derivativeinstrumentpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1295"
+              }
+            },
+            {
+              "name": "derivativeinstrumentpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2377"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of repeating derivative instrument party entries.",
+      "display": "NoDerivativeInstrumentParties",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentparties\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1292"
+    }
+  },
+  {
+    "name": "noderivativeinstrumentpartysubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "derivativeinstrumentpartysubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1297"
+              }
+            },
+            {
+              "name": "derivativeinstrumentpartysubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1298"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of derivative instrument party sub IDs.",
+      "display": "NoDerivativeInstrumentPartySubIDs",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:tag": "1296"
+    }
+  }
+]

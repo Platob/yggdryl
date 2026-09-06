@@ -71,8 +71,8 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     let price = DataType::from_logical_name("Price")?;
-    assert_eq!(price, DataType::decimal64(18, 8)?);
-    assert_eq!(price.to_string(), "decimal64(18,8)");
+    assert_eq!(price, DataType::Float64);
+    assert_eq!(price.to_string(), "float64");
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
     let row = DataType::from_str(
@@ -107,8 +107,8 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     # A name is one more spelling of a datatype, so it displays as that datatype.
     price = DataType.from_logical_name("Price")
-    assert price == DataType("decimal64(18,8)")
-    assert str(price) == "decimal64(18,8)"
+    assert price == DataType("float64")
+    assert str(price) == "float64"
 
     # The same lookup backs the grammar, so a FIX declaration types a row.
     row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
@@ -136,8 +136,8 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     const price = DataType.fromLogicalName('Price')
-    assert.ok(price.equals(DataType.from('decimal64(18,8)')))
-    assert.equal(price.toString(), 'decimal64(18,8)')
+    assert.ok(price.equals(DataType.from('float64')))
+    assert.equal(price.toString(), 'float64')
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
     const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
@@ -177,16 +177,16 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `Reserved100Plus` | Pattern | `int32` | a user-defined enumeration value |
 | `Reserved1000Plus` | Pattern | `int32` | as above |
 | `Reserved4000Plus` | Pattern | `int32` | as above |
-| `Qty` | float | `decimal64(18,8)` | exact, 8 bytes |
-| `Price` | float | `decimal64(18,8)` | exact, 8 bytes |
-| `PriceOffset` | float | `decimal64(18,8)` | exact and signed |
-| `Percentage` | float | `decimal64(18,8)` | `0.0525` is 5.25% |
-| `Amt` | float | `decimal128(38,8)` | a notional outgrows 10 integer digits |
+| `Qty` | float | `float64` | the specification states no scale |
+| `Price` | float | `float64` | as above |
+| `PriceOffset` | float | `float64` | as above, signed |
+| `Percentage` | float | `float64` | `0.0525` is 5.25% |
+| `Amt` | float | `float64` | one width, so the family is arithmetic |
 | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
 | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
-| `UTCDateOnly` | String | `date32` | a calendar day |
+| `UTCDateOnly`, `utcdate` | String | `date32` | a calendar day |
 | `LocalMktDate` | String | `date32` | a calendar day |
 | `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
 | `MultipleCharValue` | char | `utf8` | space-delimited members |

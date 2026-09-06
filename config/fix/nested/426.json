@@ -1,0 +1,202 @@
+[
+  {
+    "name": "nopaymentstreamcompoundingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamcompoundingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42607"
+              }
+            },
+            {
+              "name": "paymentstreamcompoundingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42608"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of dates in the repeating group.",
+      "display": "NoPaymentStreamCompoundingDates",
+      "fix:tag": "42606"
+    }
+  },
+  {
+    "name": "nopaymentstreamcompoundingdatesbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamcompoundingdatesbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42621"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStreamCompoundingDatesBusinessCenters",
+      "fix:tag": "42620"
+    }
+  },
+  {
+    "name": "nopaymentstreamfixingdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamfixingdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42661"
+              }
+            },
+            {
+              "name": "paymentstreamfixingdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42662"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of fixing dates in the repeating group.",
+      "display": "NoPaymentStreamFixingDates",
+      "fix:tag": "42660"
+    }
+  },
+  {
+    "name": "nopaymentstreamformulas",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstreamformulalength",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "43109"
+              }
+            },
+            {
+              "name": "paymentstreamformula",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42684"
+              }
+            },
+            {
+              "name": "paymentstreamformuladesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42685"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of formulas in the repeating group.",
+      "display": "NoPaymentStreamFormulas",
+      "fix:tag": "42683"
+    }
+  },
+  {
+    "name": "nopaymentstubenddatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "paymentstubenddatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42697"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoPaymentStubEndDateBusinessCenters",
+      "fix:tag": "42696"
+    }
+  }
+]

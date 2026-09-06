@@ -1,0 +1,382 @@
+[
+  {
+    "name": "nounderlyingdividendfxtriggerdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdividendfxtriggerdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42854"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entries in the UnderlyingDividendFXTriggerDateBusinessCenterGrp.",
+      "display": "NoUnderlyingDividendFXTriggerDateBusinessCenters",
+      "fix:tag": "42853"
+    }
+  },
+  {
+    "name": "nounderlyingdividendpayments",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdividendpaymentdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42856"
+              }
+            },
+            {
+              "name": "underlyingdividendpaymentamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42857"
+              }
+            },
+            {
+              "name": "underlyingdividendpaymentcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42858"
+              }
+            },
+            {
+              "name": "underlyingdividendaccruedinterest",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42859"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entries in the repeating group.",
+      "display": "NoUnderlyingDividendPayments",
+      "fix:tag": "42855"
+    }
+  },
+  {
+    "name": "nounderlyingdividendperiods",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdividendperiodsequence",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42863"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodstartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42864"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42865"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodunderlierrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42866"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodstrikeprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42867"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodbusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42868"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42869"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42870"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42871"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42872"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42873"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodvaluationdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42874"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42875"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42876"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42877"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42878"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42879"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodpaymentdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42880"
+              }
+            },
+            {
+              "name": "underlyingdividendperiodxid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42881"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entries in the UnderlyingDividendPeriodGrp component.",
+      "display": "NoUnderlyingDividendPeriods",
+      "fix:tag": "42862"
+    }
+  },
+  {
+    "name": "nounderlyingdividendperiodbusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingdividendperiodbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42883"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of entries in UnderlyingDividendPeriodBusinessCenterGrp.",
+      "display": "NoUnderlyingDividendPeriodBusinessCenters",
+      "fix:tag": "42882"
+    }
+  },
+  {
+    "name": "nounderlyingextraordinaryevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "underlyingextraordinaryeventtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42885"
+              }
+            },
+            {
+              "name": "underlyingextraordinaryeventvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42886"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of extraordinary events in the repeating group.",
+      "display": "NoUnderlyingExtraordinaryEvents",
+      "fix:tag": "42884"
+    }
+  }
+]

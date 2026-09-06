@@ -1,0 +1,39 @@
+[
+  {
+    "name": "batchid",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Unique Identifier for a batch of messages.",
+      "display": "BatchID",
+      "fix:tag": "50000"
+    }
+  },
+  {
+    "name": "batchtotalmessages",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Total # of messages contained within batch.",
+      "display": "BatchTotalMessages",
+      "fix:tag": "50001"
+    }
+  },
+  {
+    "name": "batchprocessmode",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Indicates the processing mode for a batch of messages.",
+      "display": "BatchProcessMode",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Update\",\"since\":\"5.0SP2\",\"ep\":178,\"doc\":\"Update/incremental (default if not specified)\"},{\"value\":\"1\",\"name\":\"Snapshot\",\"since\":\"5.0SP2\",\"ep\":178,\"sort\":1,\"doc\":\"Snapshot\"}]}",
+      "fix:tag": "50002"
+    }
+  }
+]

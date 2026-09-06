@@ -1,0 +1,813 @@
+[
+  {
+    "name": "nolegpaymentstubstartdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legpaymentstubstartdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42505"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegPaymentStubStartDateBusinessCenters",
+      "fix:tag": "42504"
+    }
+  },
+  {
+    "name": "nolegreturnratedates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratedatemode",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42509"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42510"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42511"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42512"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42513"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42514"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42515"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42516"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42517"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42518"
+              }
+            },
+            {
+              "name": "legreturnratevaluationstartdateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42519"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddateunadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42520"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddaterelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42521"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddateoffsetperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42522"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddateoffsetunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42523"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddateoffsetdaytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42524"
+              }
+            },
+            {
+              "name": "legreturnratevaluationenddateadjusted",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42525"
+              }
+            },
+            {
+              "name": "legreturnratevaluationfrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42526"
+              }
+            },
+            {
+              "name": "legreturnratevaluationfrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42527"
+              }
+            },
+            {
+              "name": "legreturnratevaluationfrequencyrollconvention",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42528"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdatebusinessdayconvention",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42529"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate date repeating group.",
+      "display": "NoLegReturnRateDates",
+      "fix:tag": "42508"
+    }
+  },
+  {
+    "name": "nolegreturnratefxconversions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratefxcurrencysymbol",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42531"
+              }
+            },
+            {
+              "name": "legreturnratefxrate",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42532"
+              }
+            },
+            {
+              "name": "legreturnratefxratecalc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42533"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate FX conversion repeating group.",
+      "display": "NoLegReturnRateFXConversions",
+      "fix:tag": "42530"
+    }
+  },
+  {
+    "name": "nolegreturnrates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratepricesequence",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42535"
+              }
+            },
+            {
+              "name": "legreturnratecommissionbasis",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42536"
+              }
+            },
+            {
+              "name": "legreturnratecommissionamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42537"
+              }
+            },
+            {
+              "name": "legreturnratecommissioncurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42538"
+              }
+            },
+            {
+              "name": "legreturnratetotalcommissionpertrade",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42539"
+              }
+            },
+            {
+              "name": "legreturnratedeterminationmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42540"
+              }
+            },
+            {
+              "name": "legreturnrateamountrelativeto",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42541"
+              }
+            },
+            {
+              "name": "legreturnratequotemeasuretype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42542"
+              }
+            },
+            {
+              "name": "legreturnratequoteunits",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42543"
+              }
+            },
+            {
+              "name": "legreturnratequotemethod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42544"
+              }
+            },
+            {
+              "name": "legreturnratequotecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42545"
+              }
+            },
+            {
+              "name": "legreturnratequotecurrencytype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42546"
+              }
+            },
+            {
+              "name": "legreturnratequotetimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42547"
+              }
+            },
+            {
+              "name": "legreturnratequotetime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42548"
+              }
+            },
+            {
+              "name": "legreturnratequotedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42549"
+              }
+            },
+            {
+              "name": "legreturnratequoteexpirationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42550"
+              }
+            },
+            {
+              "name": "legreturnratequotebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42551"
+              }
+            },
+            {
+              "name": "legreturnratequoteexchange",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42552"
+              }
+            },
+            {
+              "name": "legreturnratequotepricingmodel",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42553"
+              }
+            },
+            {
+              "name": "legreturnratecashflowtype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42554"
+              }
+            },
+            {
+              "name": "legreturnratevaluationtimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42555"
+              }
+            },
+            {
+              "name": "legreturnratevaluationtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42556"
+              }
+            },
+            {
+              "name": "legreturnratevaluationtimebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42557"
+              }
+            },
+            {
+              "name": "legreturnratevaluationpriceoption",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42558"
+              }
+            },
+            {
+              "name": "legreturnratefinalpricefallback",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42559"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate repeating group.",
+      "display": "NoLegReturnRates",
+      "fix:tag": "42534"
+    }
+  },
+  {
+    "name": "nolegreturnrateinformationsources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnrateinformationsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42561"
+              }
+            },
+            {
+              "name": "legreturnratereferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42562"
+              }
+            },
+            {
+              "name": "legreturnratereferencepageheading",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42563"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate information source repeating group.",
+      "display": "NoLegReturnRateInformationSources",
+      "fix:tag": "42560"
+    }
+  },
+  {
+    "name": "nolegreturnrateprices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratepricebasis",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42565"
+              }
+            },
+            {
+              "name": "legreturnrateprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42566"
+              }
+            },
+            {
+              "name": "legreturnratepricecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42567"
+              }
+            },
+            {
+              "name": "legreturnratepricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42568"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate price repeating group.",
+      "display": "NoLegReturnRatePrices",
+      "fix:tag": "42564"
+    }
+  },
+  {
+    "name": "nolegreturnratevaluationdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratevaluationdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42570"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate valuation date business center repeating group.",
+      "display": "NoLegReturnRateValuationDateBusinessCenters",
+      "fix:tag": "42569"
+    }
+  },
+  {
+    "name": "nolegreturnratevaluationdates",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legreturnratevaluationdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42572"
+              }
+            },
+            {
+              "name": "legreturnratevaluationdatetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42573"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of iterations in the return rate valuation date repeating group.",
+      "display": "NoLegReturnRateValuationDates",
+      "fix:tag": "42571"
+    }
+  },
+  {
+    "name": "nolegsettlmethodelectiondatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legsettlmethodelectiondatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "42582"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of business centers in the repeating group.",
+      "display": "NoLegSettlMethodElectionDateBusinessCenters",
+      "fix:tag": "42581"
+    }
+  }
+]

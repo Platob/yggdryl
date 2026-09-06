@@ -12,8 +12,11 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::codes::{FixCode, FixCodeValue, FixCodes};
+use super::lineage::{FixLineage, FixLineageEntry};
 use super::{FixBranch, FixId};
-use crate::{Error, FixField, FixFieldMut, Result};
+use crate::types::folds_equal;
+use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
 
 /// The dictionary a field belongs to; absent means the standard one.
 const BRANCH: &str = "branch";
@@ -28,7 +31,17 @@ const TAGS: &str = "tags";
 /// The alternate names, comma-separated, highest priority first.
 const ALIASES: &str = "aliases";
 /// The specification's own wording.
-const DESCRIPTION: &str = "description";
+/// What a field is for is not FIX's to own.
+///
+/// A description is a property of the *field*, not of the protocol quoting
+/// it: the same sentence is what an Iceberg doc, a SQL column comment and a
+/// FIX definition each publish. It is therefore read and written on the
+/// generic key every catalog already reads, rather than under `fix:` where
+/// only a FIX reader would find it.
+/// What this field was called and typed at each version it lived through.
+const LINEAGE: &str = "lineage";
+/// The FIX code set this field's values are drawn from.
+const CODES: &str = "codes";
 /// What separates the elements of a list-valued property.
 const SEPARATOR: char = ',';
 
@@ -141,8 +154,235 @@ impl<'field> FixField<'field> {
     }
 
     /// Returns the specification's own wording for this field.
+    ///
+    /// Read from the generic `description` key rather than from `fix:`,
+    /// because what a field is for belongs to the field. See
+    /// [`Field::description`](crate::Field::description).
     pub fn description(&self) -> Option<&'field str> {
-        self.get(DESCRIPTION)
+        self.as_field().description()
+    }
+
+    /// Walks what this field was called and typed at each version, oldest
+    /// first.
+    ///
+    /// The iterator is lazy and allocates nothing: every spelling is a slice
+    /// of the stored document, which the field already owns. An absent
+    /// property yields nothing, which is what a field the dictionary has
+    /// never dated answers.
+    pub fn lineage(&self) -> FixLineage<'field> {
+        FixLineage::over(self.get(LINEAGE))
+    }
+
+    /// Returns the version this field was first defined at.
+    ///
+    /// Derived from the first entry rather than stored beside it, the way
+    /// [`FixId`] is derived from a branch and a tag. A field with no lineage,
+    /// and a malformed document, both answer `None`: a version filter that
+    /// cannot read a history must not act as though the field had none it
+    /// disagreed with.
+    pub fn since(&self) -> Option<Version> {
+        self.lineage().next_ok().map(FixLineageEntry::since)
+    }
+
+    /// Returns the version this field was removed at, when one removed it.
+    ///
+    /// A version that stops naming a field has removed it, and the generator
+    /// writes that entry; a reader never infers one.
+    pub fn until(&self) -> Option<Version> {
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.is_removed() {
+                return Some(entry.since());
+            }
+        }
+        None
+    }
+
+    /// Returns whether this field exists at `at`.
+    ///
+    /// A field with no lineage is defined at every version: the dictionary
+    /// states no history to filter it by, which is how a registry that has
+    /// never been dated behaves today.
+    pub fn defined_at(&self, at: Version) -> bool {
+        let mut dated = false;
+        let mut defined = false;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            // Seeing any entry is what says the field has a history to be
+            // filtered by, including one whose every entry postdates `at`:
+            // a field introduced in 2.7 did not exist in 2.6.
+            dated = true;
+            if entry.since() > at {
+                break;
+            }
+            defined = !entry.is_removed();
+        }
+        !dated || defined
+    }
+
+    /// Returns whether the specification had deprecated this field by `at`.
+    ///
+    /// Deprecation is a state a field enters and does not leave, so the newest
+    /// entry at or before `at` is the one that answers - the same walk
+    /// [`Self::defined_at`] makes, asked a different question. A field with no
+    /// lineage is deprecated at no version, because the dictionary states no
+    /// history to say it was.
+    pub fn deprecated_at(&self, at: Version) -> bool {
+        let mut deprecated = false;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.since() > at {
+                break;
+            }
+            deprecated = entry.is_deprecated();
+        }
+        deprecated
+    }
+
+    /// Returns the spelling this field carries at `at`.
+    ///
+    /// The newest entry at or before `at` that states a name wins, because an
+    /// entry stating only a version means "present, unchanged". A field with
+    /// no lineage answers `None`, and the caller reads the field's own name.
+    pub fn name_at(&self, at: Version) -> Option<&'field str> {
+        self.newest_at(at, FixLineageEntry::name)
+    }
+
+    /// Returns the datatype this field carries at `at`.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when a stored FIX datatype name
+    /// resolves to nothing, and [`Error::Parse`] naming the byte position
+    /// when the document is malformed.
+    pub fn dtype_at(&self, at: Version) -> Result<Option<DataType>> {
+        let mut newest = None;
+        for entry in self.lineage() {
+            let entry = entry?;
+            if entry.since() > at {
+                break;
+            }
+            if let Some(dtype) = entry.dtype() {
+                newest = Some(dtype);
+            }
+        }
+        newest.map(DataType::from_str).transpose()
+    }
+
+    /// The newest value at or before `at` that an entry states.
+    fn newest_at<T>(
+        &self,
+        at: Version,
+        read: impl Fn(FixLineageEntry<'field>) -> Option<T>,
+    ) -> Option<T> {
+        let mut newest = None;
+        let mut walk = self.lineage();
+        while let Some(entry) = walk.next_ok() {
+            if entry.since() > at {
+                break;
+            }
+            if let Some(value) = read(entry) {
+                newest = Some(value);
+            }
+        }
+        newest
+    }
+
+    /// Walks this field's FIX code set, ordered by wire value.
+    ///
+    /// The iterator is lazy and allocates nothing: every spelling is a slice
+    /// of the stored document, which the field already owns. An absent
+    /// property yields nothing.
+    pub fn codes(&self) -> FixCodes<'field> {
+        FixCodes::over(self.get(CODES))
+    }
+
+    /// Returns the code one wire value stands for.
+    ///
+    /// The scan stops at the match: `value` leads each record, so this reads
+    /// one key per code passed and no more.
+    pub fn code(&self, value: &str) -> Option<FixCodeValue<'field>> {
+        FixCodes::seek_value(self.get(CODES)?, value)
+    }
+
+    /// Returns the code one symbolic name or alias stands for, folded.
+    ///
+    /// This does **not** stop at the first match. Two codes folding to one
+    /// spelling answer nothing rather than whichever the scan met first, so
+    /// the whole set runs and exactly one match answers. It is affordable
+    /// because [`Self::code`] is the hot path and a spelling lookup comes
+    /// from human or JSON input.
+    pub fn code_by_name(&self, name: &str) -> Option<FixCodeValue<'field>> {
+        self.one_matching(|code| code.is_spelled(name))
+    }
+
+    /// Returns the code one wire value stands for at `at`.
+    ///
+    /// The version is a preference here too: a value the message actually
+    /// carries is named whether or not the version it claims had heard of it,
+    /// because a value in the data is a fact and a version in the frame is an
+    /// assertion.
+    pub fn code_at(&self, at: Version, value: &str) -> Option<FixCodeValue<'field>> {
+        let _ = at;
+        self.code(value)
+    }
+
+    /// Resolves any spelling of a code to its wire value.
+    ///
+    /// Composes the three tiers this module documents. An unresolved spelling
+    /// answers `None` and the caller keeps its own text: a venue sends codes
+    /// no dictionary lists, and refusing one would drop data.
+    pub fn code_value(&self, text: &str) -> Option<&'field str> {
+        self.resolve_value(text, None)
+    }
+
+    /// Returns the symbolic name one wire value stands for.
+    pub fn code_name(&self, value: &str) -> Option<&'field str> {
+        self.code(value).map(FixCodeValue::name)
+    }
+
+    /// Resolves any spelling of a code to its wire value, at one version.
+    ///
+    /// A code added after `at`, and one deprecated at or before it, are both
+    /// invisible: a 4.2 message cannot resolve a name added in 4.4.
+    pub fn code_value_at(&self, at: Version, text: &str) -> Option<&'field str> {
+        self.resolve_value(text, Some(at))
+    }
+
+    /// Returns the symbolic name one wire value stands for, at one version.
+    pub fn code_name_at(&self, at: Version, value: &str) -> Option<&'field str> {
+        self.code_at(at, value).map(FixCodeValue::name)
+    }
+
+    /// The three tiers, preferring what the version knows.
+    ///
+    /// The version is a *preference*, not a gate. A capture whose frame says
+    /// 4.2 routinely carries values the specification added in 4.4 - a venue
+    /// upgrades one side, a bridge relabels a session, a configuration is
+    /// copied from another desk - and a reader that refused them would drop
+    /// exactly the traffic someone is trying to explain. So a code the
+    /// version knows wins, and a code it does not is still read rather than
+    /// discarded.
+    ///
+    /// The preference is what keeps it honest: where two spellings differ
+    /// only by version, the one the message's own version declares answers,
+    /// so a dated read is still a dated read.
+    fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
+        let stored = self.get(CODES)?;
+        if at.is_some() {
+            if let Some(held) = resolve_in(stored, text, at) {
+                return Some(held);
+            }
+        }
+        resolve_in(stored, text, None)
+    }
+
+    /// The one code a predicate matches, or nothing when several do.
+    fn one_matching(
+        &self,
+        matches: impl Fn(&FixCodeValue<'field>) -> bool,
+    ) -> Option<FixCodeValue<'field>> {
+        one_matching(self.get(CODES)?, matches)
     }
 
     /// Name the full key a stored value failed under, and what it should be.
@@ -200,7 +440,7 @@ impl FixFieldMut<'_> {
         match self.set_tag(tag) {
             Ok(()) => Ok(()),
             Err(error) => {
-                self.restore_branch(prior);
+                self.restore(BRANCH, prior);
                 Err(error)
             }
         }
@@ -317,7 +557,263 @@ impl FixFieldMut<'_> {
     /// Returns an error when the property write fails the validation every
     /// metadata write goes through, leaving the field unchanged.
     pub fn set_description(&mut self, value: impl Into<String>) -> Result<()> {
-        self.store(DESCRIPTION, value)
+        self.as_field_mut().set_description(value)
+    }
+
+    /// Records what this field was called and typed at each version.
+    ///
+    /// Entries are sorted oldest first and rendered canonically, so one
+    /// history has one stored text however it was built. Two derivations are
+    /// the writer's rather than a caller's, which is what keeps them from
+    /// drifting:
+    ///
+    /// - the newest entry must agree with the field's own name and datatype,
+    ///   so the lineage is the authority and the field cannot contradict it;
+    /// - `fix:aliases` is rewritten from the historical spellings, so a query
+    ///   by an old name resolves through the index that already exists.
+    ///
+    /// An empty slice removes both the lineage and the aliases it derived.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when two entries share a pedigree, and a
+    /// typed conflict naming both sides when the newest entry disagrees with
+    /// the field's own name or datatype. Either leaves the field unchanged.
+    pub fn set_lineage(&mut self, entries: &[FixLineageEntry<'_>]) -> Result<()> {
+        if entries.is_empty() {
+            let prior = self.remove(LINEAGE);
+            if let Err(error) = self.set_aliases::<[&str; 0], &str>([]) {
+                self.restore(LINEAGE, prior);
+                return Err(error);
+            }
+            return Ok(());
+        }
+        let rendered = FixLineage::render(entries)?;
+        let newest = entries
+            .iter()
+            .max_by_key(|entry| entry.pedigree())
+            .copied()
+            .ok_or_else(|| self.rejected(LINEAGE, "expected at least one entry".into()))?;
+        let field = self.as_field();
+        if let Some(name) = newest.name() {
+            if name != field.name() {
+                return Err(self.disagreement("name", name, field.name()));
+            }
+        }
+        if let Some(dtype) = newest.parse_dtype()? {
+            if dtype != *field.dtype() {
+                return Err(self.disagreement(
+                    "datatype",
+                    &dtype.to_string(),
+                    &field.dtype().to_string(),
+                ));
+            }
+        }
+        // The aliases the lineage implies are derived before either is
+        // written, so one refusal cannot leave half a declaration behind.
+        let aliases = derived_aliases(field.name(), &rendered);
+        let prior = self.insert(LINEAGE, rendered)?;
+        match self.set_aliases(&aliases) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                self.restore(LINEAGE, prior);
+                Err(error)
+            }
+        }
+    }
+
+    /// Records the FIX code set this field's values are drawn from.
+    ///
+    /// Codes are ordered by wire value and rendered canonically, so one code
+    /// set is one text however it was built. Two names may share a value -
+    /// that is an alias - but two codes may not share a name.
+    ///
+    /// An empty slice removes the property, exactly as an empty tag or alias
+    /// list removes its own.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when two codes share a name or one states an
+    /// empty value or name, and the property write's refusal otherwise.
+    /// Either leaves the field unchanged.
+    pub fn set_codes(&mut self, codes: &[FixCode]) -> Result<()> {
+        if codes.is_empty() {
+            self.remove(CODES);
+            return Ok(());
+        }
+        let rendered = FixCodes::render(codes)?;
+        self.store(CODES, rendered)
+    }
+
+    /// Removes the FIX code set, answering what it held.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the stored
+    /// document does not parse, having already removed it: a document a
+    /// reader refuses is one a caller asked to take away.
+    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixCode>>> {
+        let Some(stored) = self.remove(CODES) else {
+            return Ok(None);
+        };
+        FixCodes::over(Some(stored.as_str()))
+            .map(|code| code.map(FixCode::from))
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
+    }
+
+    /// Folds another definition of the same field into this one.
+    ///
+    /// This field is the incoming definition and wins every shared key; the
+    /// other keeps only what it alone declares. Several sources describe one
+    /// tag - FIX Latest, a QuickFIX dictionary, a vendor orchestration, a
+    /// `.cfb` - and folding them is one pass with a rule per key, because
+    /// "merge" alone decides nothing:
+    ///
+    /// | key | rule |
+    /// | --- | --- |
+    /// | `fix:branch`, `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+    /// | `fix:tags` | union, incoming first, order kept, deduplicated |
+    /// | `fix:aliases` | union, folded, incoming first, then rewritten from the merged lineage |
+    /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
+    /// | `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
+    /// | `fix:codes` | merged by wire value, incoming winning a shared value |
+    /// | any other `fix:` key | incoming wins; stored keeps what only it has |
+    ///
+    /// Precedence is the caller's ordering rather than a field on the merge:
+    /// a generator merges its lowest-priority source first, so the highest
+    /// wins by being the last one folded in. One concept, in the one place
+    /// that knows about sources.
+    ///
+    /// The description is deliberately absent from that table. It is a
+    /// property of the field rather than of FIX, so it folds through the
+    /// generic metadata merge with every other field-owned key - which is
+    /// also why a dictionary and an Iceberg catalog now disagree about a
+    /// field's meaning in exactly zero places.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed conflict naming both sides when the branch or the tag
+    /// disagrees, and the write's refusal otherwise. Either leaves the field
+    /// exactly as it was.
+    pub fn merge_with(&mut self, other: &FixField<'_>) -> Result<()> {
+        let held = self.as_protocol();
+        // Identity is checked before anything is built, so a refusal costs
+        // neither a render nor a write.
+        let (branch, incoming_branch) = (held.branch()?, other.branch()?);
+        if !branch.has_identity(&incoming_branch) {
+            return Err(Error::conflict(
+                "fix field",
+                "fix field",
+                format_smolstr!(
+                    "branch {:?} merged with {:?}",
+                    branch.name(),
+                    incoming_branch.name()
+                ),
+            ));
+        }
+        if held.tag()? != other.tag()? {
+            return Err(Error::conflict(
+                "fix field",
+                "fix field",
+                format_smolstr!("tag {:?} merged with {:?}", held.tag()?, other.tag()?),
+            ));
+        }
+
+        // One pass over the `fix:` key set, which is a const listing beside
+        // these accessors, so no held key name is ever collected into a
+        // `String` to be walked.
+        let mut tags = held.tags()?;
+        for tag in other.tags()? {
+            if !tags.contains(&tag) {
+                tags.push(tag);
+            }
+        }
+        let mut aliases: Vec<&str> = held.aliases().collect();
+        for alias in other.aliases() {
+            if !aliases.iter().any(|kept| kept.eq_ignore_ascii_case(alias)) {
+                aliases.push(alias);
+            }
+        }
+        let lineage = merge_lineage(&held, other)?;
+        let codes = merge_codes(&held, other)?;
+        // The aliases the merged lineage implies replace the union, because
+        // that derivation is the writer's and must not drift.
+        let derived = lineage
+            .as_deref()
+            .map(|lineage| derived_aliases(held.as_field().name(), lineage));
+        if let Some(derived) = &derived {
+            aliases = derived.iter().map(SmolStr::as_str).collect();
+        }
+
+        let mut merged: Vec<(&'static str, String)> = Vec::with_capacity(MERGED_KEYS.len());
+        for key in MERGED_KEYS {
+            let value = match key {
+                TAGS => render_tags(&tags),
+                ALIASES => render_aliases(&aliases),
+                LINEAGE => lineage.clone(),
+                CODES => codes.clone(),
+                // Every other key is "incoming wins, stored keeps what only
+                // it has".
+                _ => held.get(key).or_else(|| other.get(key)).map(str::to_owned),
+            };
+            if let Some(value) = value {
+                merged.push((key, value));
+            }
+        }
+        // A `fix:` key this vocabulary does not name is still one side's
+        // statement, so it travels rather than being dropped by the replace.
+        let mut extra: Vec<(String, String)> = Vec::new();
+        for (name, value) in held.iter().chain(other.iter()) {
+            if MERGED_KEYS.contains(&name) || extra.iter().any(|(kept, _)| kept == name) {
+                continue;
+            }
+            extra.push((name.to_owned(), value.to_owned()));
+        }
+        // Every borrow of this field ends here, so the one write below is the
+        // only thing holding it.
+        drop(held);
+
+        // One write. `set` replaces this protocol's properties and validates
+        // the whole replacement first, so three rewrites and their Arrow
+        // invalidations collapse into one and a refusal changes nothing.
+        self.set(
+            merged
+                .iter()
+                .map(|(key, value)| (*key, value.as_str()))
+                .chain(
+                    extra
+                        .iter()
+                        .map(|(key, value)| (key.as_str(), value.as_str())),
+                ),
+        )
+    }
+
+    /// Name both sides of a lineage that contradicts the field carrying it.
+    fn disagreement(&self, what: &str, stated: &str, held: &str) -> Error {
+        Error::conflict(
+            "fix lineage",
+            "fix field",
+            format_smolstr!(
+                "the newest lineage entry states {what} {stated:?}, the field holds {held:?}"
+            ),
+        )
+    }
+
+    /// Put back what an insert or a remove answered.
+    ///
+    /// The value was read out of this very field, so re-inserting it cannot
+    /// fail validation; a failure here would be reported instead of the one
+    /// being unwound, which is why the result is dropped.
+    fn restore(&mut self, name: &str, prior: Option<String>) {
+        match prior {
+            Some(value) => {
+                let _ = self.insert(name, value);
+            }
+            None => {
+                self.remove(name);
+            }
+        }
     }
 
     /// Write one property, dropping the prior value a generic insert answers.
@@ -333,22 +829,6 @@ impl FixFieldMut<'_> {
             Ok(self.remove(BRANCH))
         } else {
             self.insert(BRANCH, branch.name())
-        }
-    }
-
-    /// Put back what [`Self::put_branch`] answered.
-    ///
-    /// The value was read out of this very field, so re-inserting it cannot
-    /// fail validation; a failure here would be reported instead of the one
-    /// being unwound, which is why the result is dropped.
-    fn restore_branch(&mut self, prior: Option<String>) {
-        match prior {
-            Some(value) => {
-                let _ = self.insert(BRANCH, value);
-            }
-            None => {
-                self.remove(BRANCH);
-            }
         }
     }
 
@@ -404,3 +884,147 @@ impl DoubleEndedIterator for FixAliases<'_> {
 }
 
 impl FusedIterator for FixAliases<'_> {}
+
+/// The `fix:` keys a merge folds, as a `const` listing.
+///
+/// A merge walks this rather than collecting the keys a field holds, because
+/// the held names are owned `String`s behind a generic snapshot and building
+/// a vector of them to scan `O(n*m)` is what this replaced.
+const MERGED_KEYS: [&str; 6] = [BRANCH, TAG, TAGS, ALIASES, LINEAGE, CODES];
+
+/// Render aliases the way the setter renders them.
+fn render_aliases(aliases: &[&str]) -> Option<String> {
+    if aliases.is_empty() {
+        return None;
+    }
+    Some(aliases.join(","))
+}
+
+/// Render alternate tags the way the setter renders them.
+fn render_tags(tags: &[i32]) -> Option<String> {
+    if tags.is_empty() {
+        return None;
+    }
+    let mut rendered = String::new();
+    for (index, tag) in tags.iter().enumerate() {
+        if index > 0 {
+            rendered.push(SEPARATOR);
+        }
+        // Writing into a `String` cannot fail.
+        let _ = write!(rendered, "{tag}");
+    }
+    Some(rendered)
+}
+
+/// Fold two lineages by pedigree, the incoming winning an equal pair.
+///
+/// The merged document is re-rendered once, oldest first, so the result is
+/// the same text whichever order the two arrived in.
+fn merge_lineage(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
+    let mut entries: Vec<FixLineageEntry<'_>> = Vec::new();
+    for entry in winner.lineage() {
+        entries.push(entry?);
+    }
+    for entry in other.lineage() {
+        let entry = entry?;
+        if !entries
+            .iter()
+            .any(|held| held.pedigree() == entry.pedigree())
+        {
+            entries.push(entry);
+        }
+    }
+    if entries.is_empty() {
+        return Ok(None);
+    }
+    FixLineage::render(&entries).map(Some)
+}
+
+/// Fold two code sets by wire value, the incoming winning a shared value.
+fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
+    let mut codes: Vec<FixCode> = Vec::new();
+    for code in winner.codes() {
+        codes.push(FixCode::from(code?));
+    }
+    for code in other.codes() {
+        let code = code?;
+        if !codes.iter().any(|held| held.value() == code.value()) {
+            codes.push(FixCode::from(code));
+        }
+    }
+    if codes.is_empty() {
+        return Ok(None);
+    }
+    FixCodes::render(&codes).map(Some)
+}
+
+/// The aliases one lineage implies: its historical spellings, in order.
+///
+/// The field's own name is not an alias of itself, and a spelling already
+/// held is written once, so the derivation is stable under repetition. A
+/// document that does not parse implies nothing, which is the same answer
+/// every other lineage read gives it.
+fn derived_aliases(canonical: &str, lineage: &str) -> Vec<SmolStr> {
+    let mut aliases: Vec<SmolStr> = Vec::new();
+    let mut walk = FixLineage::over(Some(lineage));
+    while let Some(entry) = walk.next_ok() {
+        let Some(name) = entry.name() else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case(canonical)
+            || aliases.iter().any(|held| held.eq_ignore_ascii_case(name))
+        {
+            continue;
+        }
+        aliases.push(SmolStr::new(name));
+    }
+    aliases
+}
+
+/// The one code in `stored` a predicate matches, or nothing when several do.
+///
+/// Ambiguity answers nothing: two codes a caller's spelling reaches are two
+/// answers, and picking one is a guess. Free rather than a method so the
+/// tiers can share one already-read document.
+fn one_matching<'field>(
+    stored: &'field str,
+    matches: impl Fn(&FixCodeValue<'field>) -> bool,
+) -> Option<FixCodeValue<'field>> {
+    let mut found = None;
+    let mut walk = FixCodes::over(Some(stored));
+    while let Some(code) = walk.next_ok() {
+        if !matches(&code) {
+            continue;
+        }
+        if found.is_some_and(|held: FixCodeValue<'field>| held.value() != code.value()) {
+            return None;
+        }
+        found = Some(code);
+    }
+    found
+}
+
+/// The three tiers over one already-read document, at one visibility.
+fn resolve_in<'field>(stored: &'field str, text: &str, at: Option<Version>) -> Option<&'field str> {
+    let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
+    // Tier 1: the text as a wire value, exactly. A spelling that is already a
+    // legal code is never reinterpreted as somebody's name, and the record a
+    // value opens is addressed rather than searched for.
+    if let Some(code) = FixCodes::seek_value(stored, text) {
+        if visible(&code) {
+            return Some(code.value());
+        }
+    }
+    // Tier 2: the folded symbolic name, then any alias.
+    if let Some(code) = one_matching(stored, |code| visible(code) && code.is_spelled(text)) {
+        return Some(code.value());
+    }
+    // Tier 3: the leading parenthesized abbreviation of the description.
+    one_matching(stored, |code| {
+        visible(code)
+            && code
+                .abbreviation()
+                .is_some_and(|short| folds_equal(short, text))
+    })
+    .map(FixCodeValue::value)
+}

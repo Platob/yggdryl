@@ -15,7 +15,9 @@
 //! | tag | `fix:tag` | `i32` | canonical FIX tag |
 //! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
-//! | description | `fix:description` | text | the specification's own wording |
+//! | description | `description` | text | the specification's own wording, on the key every catalog reads |
+//! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
+//! | codes | `fix:codes` | canonical JSON, by wire value | the FIX code set this field's values are drawn from |
 //!
 //! Nesting needs no second type: a component is a Struct field whose
 //! children are its members, a repeating group is a List field whose item is
@@ -44,6 +46,23 @@
 //! seeded, ASCII-folded XXH64 digests. Every digest hit is rechecked against
 //! the field, so a collision is a miss on read and a typed conflict on
 //! mutation. A separate sorted position vector makes iteration tag-major.
+//!
+//! # Versions
+//!
+//! The registry is version-agnostic: it holds every tag ever defined, and a
+//! version is a filter on the read, which is what "defined in one version,
+//! available in the others" means. [`FixField::lineage`](crate::FixField)
+//! carries what a field was called and typed at each version; `since`,
+//! `until` and deprecation derive from it rather than sit beside it, and
+//! [`FixRegistry::field_at`] filters one read by it. There is no
+//! registry-wide default version, and "FIX Latest" is never stored as one:
+//! [`FixRegistry::newest`] resolves it to the real pedigree the dictionary
+//! carries.
+//!
+//! The lineage carries enough to rename and retype a field between versions.
+//! The expression-driven normalization layer - conditions, lookups and value
+//! mappings - is not here and needs an evaluator; "transcoding" names both
+//! and only the lineage-driven half lives in this module.
 //!
 //! Names fold ASCII case once, on the way in, so a query spelled in any case
 //! finds the field and the answer is always the canonical spelling. A tag
@@ -130,17 +149,55 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 
 use crate::{Error, Result, Version};
 
+mod anomaly;
+// Batching is the crate's Arrow surface seen from FIX, so it exists exactly
+// where that surface does.
+#[cfg(feature = "arrow")]
+mod batch;
+mod build;
+mod cfb;
+mod codes;
+mod constants;
+mod crated;
+mod digest;
+mod document;
+mod entry;
 mod field;
 mod global;
+mod lift;
+mod lineage;
 mod msg;
+mod project;
+mod reader;
 mod registry;
+mod schema;
 mod store;
 #[cfg(test)]
 mod tests;
 
+pub use anomaly::{FixAnomalies, FixAnomaly};
+#[cfg(feature = "arrow")]
+pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
+pub use codes::{FixCode, FixCodeValue, FixCodes};
+pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+pub use crated::{
+    CRATE_BRANCH, DEFAULT_PARTITION_SECONDS, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG,
+    PARENTCLORDID_TAG, PARENTORDERID_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG, UNIXPARTITION_TAG,
+    VERSION_TAG, fix_crate_fields,
+};
+pub use digest::FixDedup;
+pub use document::Words;
+pub use entry::FixEntry;
 pub use field::FixAliases;
+pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
+pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
+pub use reader::{DEFAULT_NULL_VALUES, FixReader};
 pub use registry::{FixFieldIter, FixRegistry};
+pub use schema::{
+    BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
+    UNMAPPED_COLUMN, fix_schema, fix_schema_tags,
+};
 
 /// The absent branch occupies four zero bytes in every standard identifier.
 const STANDARD_BRANCH_DIGEST: u32 = 0;

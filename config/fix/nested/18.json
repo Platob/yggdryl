@@ -1,0 +1,1354 @@
+[
+  {
+    "name": "nodisclosureinstructions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "disclosuretype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1813"
+              }
+            },
+            {
+              "name": "disclosureinstruction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1814"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of disclosure instructions.",
+      "display": "NoDisclosureInstructions",
+      "fix:tag": "1812"
+    }
+  },
+  {
+    "name": "nocrosslegs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "654"
+              }
+            },
+            {
+              "name": "legorderqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "685"
+              }
+            },
+            {
+              "name": "legswaptype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "690"
+              }
+            },
+            {
+              "name": "legallocid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1366"
+              }
+            },
+            {
+              "name": "legclearingaccounttype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1817"
+              }
+            },
+            {
+              "name": "legpositioneffect",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "564"
+              }
+            },
+            {
+              "name": "legcoveredoruncovered",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "565"
+              }
+            },
+            {
+              "name": "legsettltype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "587"
+              }
+            },
+            {
+              "name": "legsettldate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "588"
+              }
+            },
+            {
+              "name": "legsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "675"
+              }
+            },
+            {
+              "name": "legsettlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2900"
+              }
+            },
+            {
+              "name": "legvolatility",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1379"
+              }
+            },
+            {
+              "name": "legdividendyield",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1381"
+              }
+            },
+            {
+              "name": "legcurrencyratio",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1383"
+              }
+            },
+            {
+              "name": "legexecinst",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1384"
+              }
+            },
+            {
+              "name": "legshortsaleexemptionreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1689"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of legs in the side of a cross order.",
+      "display": "NoCrossLegs",
+      "fix:tag": "1829"
+    }
+  },
+  {
+    "name": "notradepriceconditions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradepricecondition",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1839"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade price conditions.",
+      "display": "NoTradePriceConditions",
+      "fix:tag": "1838"
+    }
+  },
+  {
+    "name": "notradeqtys",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradeqtytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1842"
+              }
+            },
+            {
+              "name": "tradeqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1843"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade quantities.",
+      "display": "NoTradeQtys",
+      "fix:tag": "1841"
+    }
+  },
+  {
+    "name": "notradeallocamts",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "tradeallocamttype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1845"
+              }
+            },
+            {
+              "name": "tradeallocamt",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1846"
+              }
+            },
+            {
+              "name": "tradealloccurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1847"
+              }
+            },
+            {
+              "name": "tradealloccurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2933"
+              }
+            },
+            {
+              "name": "tradeallocamtreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1850"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade allocation amount entries.",
+      "display": "NoTradeAllocAmts",
+      "fix:tag": "1844"
+    }
+  },
+  {
+    "name": "norelatedtrades",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedtradeid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1856"
+              }
+            },
+            {
+              "name": "relatedtradeidsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1857"
+              }
+            },
+            {
+              "name": "relatedregulatorytradeidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2103"
+              }
+            },
+            {
+              "name": "relatedtradedate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1858"
+              }
+            },
+            {
+              "name": "relatedtrademarketid",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1859"
+              }
+            },
+            {
+              "name": "relatedtradequantity",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1860"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related trades.",
+      "display": "NoRelatedTrades",
+      "fix:tag": "1855"
+    }
+  },
+  {
+    "name": "norelatedpositions",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedpositionid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1862"
+              }
+            },
+            {
+              "name": "relatedpositionidsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1863"
+              }
+            },
+            {
+              "name": "relatedpositiondate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1864"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related positions.",
+      "display": "NoRelatedPositions",
+      "fix:tag": "1861"
+    }
+  },
+  {
+    "name": "novaluechecks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "valuechecktype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1869"
+              }
+            },
+            {
+              "name": "valuecheckaction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1870"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of value check entries.",
+      "display": "NoValueChecks",
+      "fix:tag": "1868"
+    }
+  },
+  {
+    "name": "noinstrmtmatchsides",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "trdmatchsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1891"
+              }
+            },
+            {
+              "name": "quantity",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "53"
+              }
+            },
+            {
+              "name": "currency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "15"
+              }
+            },
+            {
+              "name": "currencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2897"
+              }
+            },
+            {
+              "name": "settlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "120"
+              }
+            },
+            {
+              "name": "settlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2899"
+              }
+            },
+            {
+              "name": "qtytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "854"
+              }
+            },
+            {
+              "name": "lastqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "32"
+              }
+            },
+            {
+              "name": "pricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "423"
+              }
+            },
+            {
+              "name": "lastpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "31"
+              }
+            },
+            {
+              "name": "lastmkt",
+              "dtype": {
+                "type": "mic"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "30"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instrument match sides.",
+      "display": "NoInstrmtMatchSides",
+      "fix:tag": "1889"
+    }
+  },
+  {
+    "name": "notrdmatchsides",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "side",
+              "dtype": {
+                "type": "side"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "54"
+              }
+            },
+            {
+              "name": "sideexecid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1427"
+              }
+            },
+            {
+              "name": "sideexecrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1900"
+              }
+            },
+            {
+              "name": "sidetradeid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1506"
+              }
+            },
+            {
+              "name": "sidetradereportid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1005"
+              }
+            },
+            {
+              "name": "orderdelay",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1428"
+              }
+            },
+            {
+              "name": "orderdelayunit",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1429"
+              }
+            },
+            {
+              "name": "sidelastqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1009"
+              }
+            },
+            {
+              "name": "sideclearingtradeprice",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1597"
+              }
+            },
+            {
+              "name": "sidepricedifferential",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1599"
+              }
+            },
+            {
+              "name": "sideclearingtradepricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1598"
+              }
+            },
+            {
+              "name": "sidefillstationcd",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1006"
+              }
+            },
+            {
+              "name": "sidereasoncd",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1007"
+              }
+            },
+            {
+              "name": "sidetrdsubtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1008"
+              }
+            },
+            {
+              "name": "netgrossind",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "430"
+              }
+            },
+            {
+              "name": "sidecurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1154"
+              }
+            },
+            {
+              "name": "sidecurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2901"
+              }
+            },
+            {
+              "name": "sidesettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1155"
+              }
+            },
+            {
+              "name": "sidesettlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2902"
+              }
+            },
+            {
+              "name": "tradeinputsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "578"
+              }
+            },
+            {
+              "name": "tradeinputdevice",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "579"
+              }
+            },
+            {
+              "name": "complianceid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "376"
+              }
+            },
+            {
+              "name": "compliancetext",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2404"
+              }
+            },
+            {
+              "name": "encodedcompliancetextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2351"
+              }
+            },
+            {
+              "name": "encodedcompliancetext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2352"
+              }
+            },
+            {
+              "name": "solicitedflag",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "377"
+              }
+            },
+            {
+              "name": "custordercapacity",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "582"
+              }
+            },
+            {
+              "name": "timebracket",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "943"
+              }
+            },
+            {
+              "name": "positioneffect",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "77"
+              }
+            },
+            {
+              "name": "exchangerule",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "825"
+              }
+            },
+            {
+              "name": "tradeallocindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "826"
+              }
+            },
+            {
+              "name": "preallocmethod",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "591"
+              }
+            },
+            {
+              "name": "allocid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "70"
+              }
+            },
+            {
+              "name": "sidegrosstradeamt",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1072"
+              }
+            },
+            {
+              "name": "aggressorindicator",
+              "dtype": {
+                "type": "boolean"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1057"
+              }
+            },
+            {
+              "name": "exchangespecialinstructions",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1139"
+              }
+            },
+            {
+              "name": "sideshortsaleexemptionreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1690"
+              }
+            },
+            {
+              "name": "ordercategory",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1115"
+              }
+            },
+            {
+              "name": "avgpxindicator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "819"
+              }
+            },
+            {
+              "name": "avgpxgroupid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1731"
+              }
+            },
+            {
+              "name": "sidemarketsegmentid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1898"
+              }
+            },
+            {
+              "name": "sidevenuetype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1899"
+              }
+            },
+            {
+              "name": "clearingfeeindicator",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "635"
+              }
+            },
+            {
+              "name": "custorderhandlinginst",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1031"
+              }
+            },
+            {
+              "name": "orderhandlinginstsource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1032"
+              }
+            },
+            {
+              "name": "text",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "58"
+              }
+            },
+            {
+              "name": "encodedtextlen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "354"
+              }
+            },
+            {
+              "name": "encodedtext",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "355"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of trade match sides.",
+      "display": "NoTrdMatchSides",
+      "fix:tag": "1890"
+    }
+  },
+  {
+    "name": "nolegexecs",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "654"
+              }
+            },
+            {
+              "name": "legexecid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1893"
+              }
+            },
+            {
+              "name": "legexecrefid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1901"
+              }
+            },
+            {
+              "name": "legtradeid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1894"
+              }
+            },
+            {
+              "name": "legtradereportid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1895"
+              }
+            },
+            {
+              "name": "legorderqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "685"
+              }
+            },
+            {
+              "name": "legpositioneffect",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "564"
+              }
+            },
+            {
+              "name": "legcoveredoruncovered",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "565"
+              }
+            },
+            {
+              "name": "leglastpx",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "637"
+              }
+            },
+            {
+              "name": "legpricetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "686"
+              }
+            },
+            {
+              "name": "legsettlcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "675"
+              }
+            },
+            {
+              "name": "legsettlcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2900"
+              }
+            },
+            {
+              "name": "legshortsaleexemptionreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1689"
+              }
+            },
+            {
+              "name": "leglastqty",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1418"
+              }
+            },
+            {
+              "name": "legqtytype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1591"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of instrument leg executions.",
+      "display": "NoLegExecs",
+      "fix:tag": "1892"
+    }
+  }
+]

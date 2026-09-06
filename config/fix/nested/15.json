@@ -1,0 +1,730 @@
+[
+  {
+    "name": "norequestedpartyroles",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "requestedpartyrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1509"
+              }
+            },
+            {
+              "name": "requestedpartyrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2386"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of requested party roles.",
+      "display": "NoRequestedPartyRoles",
+      "fix:tag": "1508"
+    }
+  },
+  {
+    "name": "nopartyrelationships",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "partyrelationship",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1515"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of party relationships.",
+      "display": "NoPartyRelationships",
+      "fix:tag": "1514"
+    }
+  },
+  {
+    "name": "nopartydetailaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "partydetailaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1517"
+              }
+            },
+            {
+              "name": "partydetailaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1518"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of party alternative identifiers.",
+      "display": "NoPartyDetailAltID",
+      "fix:tag": "1516"
+    }
+  },
+  {
+    "name": "nopartydetailaltsubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "partydetailaltsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1520"
+              }
+            },
+            {
+              "name": "partydetailaltsubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1521"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of party detail alternate sub-identifiers.",
+      "display": "NoPartyDetailAltSubIDs",
+      "fix:tag": "1519"
+    }
+  },
+  {
+    "name": "norisklimittypes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "risklimittype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1530"
+              }
+            },
+            {
+              "name": "risklimitamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1531"
+              }
+            },
+            {
+              "name": "risklimitaction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1767"
+              }
+            },
+            {
+              "name": "risklimitutilizationamount",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1766"
+              }
+            },
+            {
+              "name": "risklimitutilizationpercent",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1765"
+              }
+            },
+            {
+              "name": "risklimitcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1532"
+              }
+            },
+            {
+              "name": "risklimitcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2939"
+              }
+            },
+            {
+              "name": "risklimitplatform",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1533"
+              }
+            },
+            {
+              "name": "risklimitvelocityperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2336"
+              }
+            },
+            {
+              "name": "risklimitvelocityunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2337"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of risk limits with associated warning levels.",
+      "display": "NoRiskLimitTypes",
+      "fix:tag": "1529"
+    }
+  },
+  {
+    "name": "noriskinstrumentscopes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "instrumentscopeoperator",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1535"
+              }
+            },
+            {
+              "name": "riskinstrumentmultiplier",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1558"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of risk instrument scopes.",
+      "display": "NoRiskInstrumentScopes",
+      "fix:tag": "1534"
+    }
+  },
+  {
+    "name": "noinstrumentscopesecurityaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "instrumentscopesecurityaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1541"
+              }
+            },
+            {
+              "name": "instrumentscopesecurityaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1542"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of alternate security identifier for the specified InstrumentScopeSecurityID(1538).",
+      "display": "NoInstrumentScopeSecurityAltID",
+      "fix:tag": "1540"
+    }
+  },
+  {
+    "name": "noriskwarninglevels",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "riskwarninglevelaction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1769"
+              }
+            },
+            {
+              "name": "riskwarninglevelpercent",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1560"
+              }
+            },
+            {
+              "name": "riskwarninglevelamount",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1768"
+              }
+            },
+            {
+              "name": "riskwarninglevelname",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1561"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of risk warning levels.",
+      "display": "NoRiskWarningLevels",
+      "fix:tag": "1559"
+    }
+  },
+  {
+    "name": "norelatedpartydetailid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedpartydetailid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1563"
+              }
+            },
+            {
+              "name": "relatedpartydetailidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1564"
+              }
+            },
+            {
+              "name": "relatedpartydetailrole",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1565"
+              }
+            },
+            {
+              "name": "relatedpartydetailrolequalifier",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1675"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related party detail identifiers.",
+      "display": "NoRelatedPartyDetailID",
+      "fix:tag": "1562"
+    }
+  },
+  {
+    "name": "norelatedpartydetailsubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedpartydetailsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1567"
+              }
+            },
+            {
+              "name": "relatedpartydetailsubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1568"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related party detail sub-identifiers.",
+      "display": "NoRelatedPartyDetailSubIDs",
+      "fix:tag": "1566"
+    }
+  },
+  {
+    "name": "norelatedpartydetailaltid",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedpartydetailaltid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1570"
+              }
+            },
+            {
+              "name": "relatedpartydetailaltidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1571"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related party detail alternate identifiers.",
+      "display": "NoRelatedPartyDetailAltID",
+      "fix:tag": "1569"
+    }
+  },
+  {
+    "name": "norelatedpartydetailaltsubids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "relatedpartydetailaltsubid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1573"
+              }
+            },
+            {
+              "name": "relatedpartydetailaltsubidtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1574"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of related party detail alternate sub-identifiers.",
+      "display": "NoRelatedPartyDetailAltSubIDs",
+      "fix:tag": "1572"
+    }
+  },
+  {
+    "name": "nosecurityclassifications",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "securityclassificationreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1583"
+              }
+            },
+            {
+              "name": "securityclassificationvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1584"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of Security Classifications.",
+      "display": "NoSecurityClassifications",
+      "fix:tag": "1582"
+    }
+  },
+  {
+    "name": "nolegposamt",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "legposamt",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1587"
+              }
+            },
+            {
+              "name": "legposamttype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1588"
+              }
+            },
+            {
+              "name": "legposcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1589"
+              }
+            },
+            {
+              "name": "legposcurrencycodesource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "2938"
+              }
+            },
+            {
+              "name": "legposamtreason",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "1590"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of TrdInstrmtLegPosAmt values.",
+      "display": "NoLegPosAmt",
+      "fix:tag": "1586"
+    }
+  }
+]

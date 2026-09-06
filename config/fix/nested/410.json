@@ -1,0 +1,843 @@
+[
+  {
+    "name": "nocomplexeventcrediteventqualifiers",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventcrediteventqualifier",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41006"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of qualifiers in the repeating group.",
+      "display": "NoComplexEventCreditEventQualifiers",
+      "fix:tag": "41005"
+    }
+  },
+  {
+    "name": "nocomplexeventperioddatetimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventperioddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41008"
+              }
+            },
+            {
+              "name": "complexeventperiodtime",
+              "dtype": {
+                "type": "time32",
+                "unit": "second"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41009"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of entries in the date-time repeating group.",
+      "display": "NoComplexEventPeriodDateTimes",
+      "fix:tag": "41007"
+    }
+  },
+  {
+    "name": "nocomplexeventperiods",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventperiodtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41011"
+              }
+            },
+            {
+              "name": "complexeventbusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41012"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of periods in the repeating group.",
+      "display": "NoComplexEventPeriods",
+      "fix:tag": "41010"
+    }
+  },
+  {
+    "name": "nocomplexeventratesources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventratesource",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41014"
+              }
+            },
+            {
+              "name": "complexeventratesourcetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41015"
+              }
+            },
+            {
+              "name": "complexeventreferencepage",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41016"
+              }
+            },
+            {
+              "name": "complexeventreferencepageheading",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41017"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of rate sources in the repeating group.",
+      "display": "NoComplexEventRateSources",
+      "fix:tag": "41013"
+    }
+  },
+  {
+    "name": "nocomplexeventdatebusinesscenters",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventdatebusinesscenter",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41019"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "The number of business centers in the repeating group.",
+      "display": "NoComplexEventDateBusinessCenters",
+      "fix:tag": "41018"
+    }
+  },
+  {
+    "name": "nocomplexeventcrediteventsources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventcrediteventsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41030"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of event sources in the repeating group.",
+      "display": "NoComplexEventCreditEventSources",
+      "fix:tag": "41029"
+    }
+  },
+  {
+    "name": "nocomplexeventschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "complexeventschedulestartdate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41032"
+              }
+            },
+            {
+              "name": "complexeventscheduleenddate",
+              "dtype": {
+                "type": "date32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41033"
+              }
+            },
+            {
+              "name": "complexeventschedulefrequencyperiod",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41034"
+              }
+            },
+            {
+              "name": "complexeventschedulefrequencyunit",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41035"
+              }
+            },
+            {
+              "name": "complexeventschedulerollconvention",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41036"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of schedules in the repeating group.",
+      "display": "NoComplexEventSchedules",
+      "fix:tag": "41031"
+    }
+  },
+  {
+    "name": "nodeliveryschedules",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "deliveryscheduletype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41038"
+              }
+            },
+            {
+              "name": "deliveryschedulexid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41039"
+              }
+            },
+            {
+              "name": "deliveryschedulenotional",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41040"
+              }
+            },
+            {
+              "name": "deliveryschedulenotionalunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41041"
+              }
+            },
+            {
+              "name": "deliveryschedulenotionalcommodityfrequency",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41042"
+              }
+            },
+            {
+              "name": "deliveryschedulenegativetolerance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41043"
+              }
+            },
+            {
+              "name": "deliveryschedulepositivetolerance",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41044"
+              }
+            },
+            {
+              "name": "deliveryscheduletoleranceunitofmeasure",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41045"
+              }
+            },
+            {
+              "name": "deliveryscheduletolerancetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41046"
+              }
+            },
+            {
+              "name": "deliveryschedulesettlcountry",
+              "dtype": {
+                "type": "country"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41047"
+              }
+            },
+            {
+              "name": "deliveryschedulesettltimezone",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41048"
+              }
+            },
+            {
+              "name": "deliveryschedulesettlflowtype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41049"
+              }
+            },
+            {
+              "name": "deliveryschedulesettlholidaysprocessinginstruction",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41050"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
+      "display": "NoDeliverySchedules",
+      "fix:tag": "41037"
+    }
+  },
+  {
+    "name": "nodeliveryschedulesettldays",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "deliveryschedulesettlday",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41052"
+              }
+            },
+            {
+              "name": "deliveryschedulesettltotalhours",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41053"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of delivery schedules in the repeating group.",
+      "display": "NoDeliveryScheduleSettlDays",
+      "fix:tag": "41051"
+    }
+  },
+  {
+    "name": "nodeliveryschedulesettltimes",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "deliveryschedulesettlstart",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41055"
+              }
+            },
+            {
+              "name": "deliveryschedulesettlend",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41056"
+              }
+            },
+            {
+              "name": "deliveryschedulesettltimetype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41057"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of hour ranges in the repeating group.",
+      "display": "NoDeliveryScheduleSettlTimes",
+      "fix:tag": "41054"
+    }
+  },
+  {
+    "name": "nodeliverystreamcycles",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "deliverystreamcycledesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41082"
+              }
+            },
+            {
+              "name": "encodeddeliverystreamcycledesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41083"
+              }
+            },
+            {
+              "name": "encodeddeliverystreamcycledesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41084"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of delivery cycles in the repeating group.",
+      "display": "NoDeliveryStreamCycles",
+      "fix:tag": "41081"
+    }
+  },
+  {
+    "name": "nodeliverystreamcommoditysources",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "deliverystreamcommoditysource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41086"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of commodity sources in the repeating group.",
+      "display": "NoDeliveryStreamCommoditySources",
+      "fix:tag": "41085"
+    }
+  },
+  {
+    "name": "nomarketdisruptionevents",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "marketdisruptionevent",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41093"
+              }
+            },
+            {
+              "name": "marketdisruptionvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40991"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of disruption events in the repeating group.",
+      "display": "NoMarketDisruptionEvents",
+      "fix:tag": "41092"
+    }
+  },
+  {
+    "name": "nomarketdisruptionfallbacks",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "marketdisruptionfallbacktype",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41095"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackvalue",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "40992"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of fallbacks in the repeating group.",
+      "display": "NoMarketDisruptionFallbacks",
+      "fix:tag": "41094"
+    }
+  },
+  {
+    "name": "nomarketdisruptionfallbackreferenceprices",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "item",
+        "dtype": {
+          "type": "struct",
+          "fields": [
+            {
+              "name": "marketdisruptionfallbackunderliertype",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41097"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackunderliersecurityid",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41098"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackunderliersecurityidsource",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41099"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "utf8"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41100"
+              }
+            },
+            {
+              "name": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
+              "dtype": {
+                "type": "int32"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41101"
+              }
+            },
+            {
+              "name": "encodedmarketdisruptionfallbackunderliersecuritydesc",
+              "dtype": {
+                "type": "binary"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41102"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackopenunits",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41103"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackbasketcurrency",
+              "dtype": {
+                "type": "currency"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41104"
+              }
+            },
+            {
+              "name": "marketdisruptionfallbackbasketdivisor",
+              "dtype": {
+                "type": "float64"
+              },
+              "nullable": true,
+              "metadata": {
+                "fix:tag": "41105"
+              }
+            }
+          ]
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "description": "Number of fallback reference securities in the repeating group.",
+      "display": "NoMarketDisruptionFallbackReferencePrices",
+      "fix:tag": "41096"
+    }
+  }
+]

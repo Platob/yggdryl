@@ -16,7 +16,10 @@
 | Identity | The `FixId`, and separately the branch plus folded canonical name; two fields share neither, nor an alternate identifier, nor an alias |
 | Conflict | The same key twice in one tier of one branch -> typed conflict naming both fields and the branch; overlap across tiers or branches is legal |
 | Order | `iter` and `next_field_after` walk ascending packed identifiers, tag-major then by branch digest |
-| Inference | `infer_bytes_protocol` / `infer_text_protocol` and `infer_bytes_msgtype` / `infer_text_msgtype` classify one line without parsing a message |
+| Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
+| Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
+| Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
+| Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
 | Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
 
@@ -279,6 +282,264 @@ Every lookup has an optional form and a failing twin. The twin raises a typed ab
 | `next_field_after` | the cursor each binding advances with; the same order as `iter` |
 | `len` / `is_empty` | the one field vector counted |
 
+## Versions are a filter on the read
+
+A FIX field outlives the version that introduced it and is renamed and retyped on the way, so one registry holds every tag ever defined and a version filters the read. `fix:lineage` is the field's own history, oldest first, and `since`, `until` and deprecation are derived from it rather than stored beside it. Rust only.
+
+| call | answers |
+| --- | --- |
+| `FixField::lineage()` | every entry, oldest first, as borrowed slices of the stored document |
+| `FixField::since()` | the first entry's version |
+| `FixField::until()` | the version of the entry that removed the field, when one did |
+| `FixField::defined_at(Version)` | whether the field exists then; a field with no lineage exists at every version |
+| `FixField::name_at(Version)` | the newest spelling at or before that version |
+| `FixField::dtype_at(Version)` | the newest datatype at or before it, resolved through the schema grammar |
+| `FixFieldMut::set_lineage(&[FixLineageEntry])` | writes the document, checks it against the field, and rewrites `fix:aliases` from it |
+| `FixRegistry::get_field_at(Version, key)` / `field_at` | the key's field, or nothing when the lineage says it did not exist |
+| `FixRegistry::versions()` | every version some field is dated at, ascending |
+| `FixRegistry::newest()` | the greatest `FixPedigree` any lineage carries |
+
+A `FixPedigree` is a `Version` and an optional extension pack, because the specification dates a change either way. Entries order on the pair, version first, so `5.0SP2` at EP204 precedes `5.0SP2` at EP309 instead of eleven years landing in one bucket.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixLineageEntry, FixPedigree, FixRegistry, Version};
+
+    let mut last_qty = DataType::Float64.nullable_field("LastQty");
+    last_qty.as_fix_mut().set_tag(32)?;
+    last_qty.as_fix_mut().set_lineage(&[
+        FixLineageEntry::new(FixPedigree::new("2.7".parse()?, None))
+            .with_name("LastShares")
+            .with_dtype("int"),
+        FixLineageEntry::new(FixPedigree::new("4.3".parse()?, None))
+            .with_name("LastQty")
+            .with_dtype("Qty"),
+    ])?;
+
+    // The history answers the name and the datatype of any version.
+    let view = last_qty.as_fix();
+    assert_eq!(view.since(), Some("2.7".parse::<Version>()?));
+    assert_eq!(view.name_at("4.2".parse()?), Some("LastShares"));
+    assert_eq!(view.name_at("5.0SP2".parse()?), Some("LastQty"));
+    assert_eq!(view.dtype_at("4.0".parse()?)?, Some(DataType::Int32));
+    // A version older than the first entry is a version the field had not
+    // been defined in, which is not the same as having no history at all.
+    assert!(!view.defined_at("2.6".parse()?));
+
+    // The writer derives the aliases, so a query by an old spelling resolves.
+    assert_eq!(view.aliases().collect::<Vec<_>>(), ["LastShares"]);
+    let registry = FixRegistry::from_fields([last_qty])?;
+    assert_eq!(registry.field("LastShares")?.name(), "LastQty");
+
+    // The dictionary holds the tag whatever version is asked for; only the
+    // read is filtered, and "the newest it holds" is a real pedigree.
+    assert_eq!(registry.field_at("4.2".parse()?, 32)?.name(), "LastQty");
+    assert!(registry.get_field_at("2.6".parse()?, 32).is_none());
+    assert_eq!(registry.newest(), Some(FixPedigree::new("4.3".parse()?, None)));
+    assert_ne!(registry.newest().unwrap().version(), Version::MAX);
+    ```
+
+### The document
+
+`fix:lineage` is one canonically rendered JSON document: an `entries` array, entries sorted oldest first, keys within an entry in the order below, no whitespace. Every key beyond `since` is optional, because most versions change nothing and an entry stating only a version means "present, unchanged". `since` leads because it is what every read keys on, so a version filter compares it and stops.
+
+| key | holds |
+| --- | --- |
+| `since` | the version, required |
+| `ep` | the extension pack that dated the change |
+| `name` | the spelling from that version on |
+| `type` | the FIX datatype name from that version on, in the spelling the grammar already resolves |
+| `deprecated` | `true` where the specification deprecated the field |
+| `removed` | `true` where it removed it, which ends the field's life |
+| `doc` | the specification's wording as of that version |
+
+The read is a borrowed scan rather than a parse, so `name_at` over a dated dictionary allocates nothing. It is safe only because the rendering is canonical and checked on the way in: a reader knows which key can come next, so a hand-edited document with reordered or repeated keys is refused with its byte position instead of mis-read.
+
+### Two derivations belong to the writer
+
+`set_lineage` refuses a newest entry that disagrees with the field's own name or datatype, naming both sides, so the lineage is the authority and the field cannot drift from it. It then rewrites `fix:aliases` from the historical spellings, so an old name resolves through the index that already exists. Both are the writer's rather than a caller's, which is what makes them undriftable.
+
+### Edges
+
+- A field with no lineage answers `None` everywhere and `defined_at` is true at every version: no history is no filter, so an undated dictionary resolves as it always has.
+- A field whose earliest entry postdates the version asked for is not defined then. A field introduced in 2.7 did not exist in 2.6.
+- A malformed document answers nothing rather than something wrong. `lineage()` and `dtype_at` report it with a byte position; `since`, `until`, `name_at` and `defined_at` answer as though the field had no history, and neither path allocates.
+- Two entries sharing one pedigree are refused: two statements about one dated point cannot both be the field's.
+- An empty slice removes the document and the aliases it derived.
+- `set_lineage` is atomic. A refusal leaves the field exactly as it was, aliases included.
+- The registry stays version-agnostic. There is no registry-wide default version; a caller who wants one holds a `Version` beside the registry.
+- "FIX Latest" is a moving label and is never stored as a version. `newest()` resolves it to the real pedigree the dictionary carries, never `Version::MAX`, which would compare wrongly against a field genuinely dated at the newest version.
+- FIXT.1.1 is not modelled: session tags carry the application version that first defined them.
+- The lineage carries enough to rename and retype a field between versions. The expression-driven normalization layer — conditions, lookups and value mappings — is not here and needs an evaluator.
+
+## A field carries its code set
+
+Most FIX fields with a vocabulary are `int`, `Boolean` or `String` and carry their members as a code set: a wire value, a symbolic name, usually a sentence of documentation. `fix:codes` is that vocabulary, ordered by wire value, and any spelling of a member reaches its value. Rust only.
+
+It is a second key beside [`AsciiEnum`](../types/ascii.md), not a second copy: that type is name to ASCII value packed through the field's own width, so it accepts only ASCII-width and coded datatypes and carries no description or pedigree. A field may carry both and neither derives from the other.
+
+| call | answers |
+| --- | --- |
+| `FixField::codes()` | every code, ordered by wire value, borrowed |
+| `FixField::code(&str)` | the code one wire value stands for |
+| `FixField::code_by_name(&str)` | the code one symbolic name or alias stands for, folded |
+| `FixField::code_at(Version, &str)` | the same as `code`, filtered to one version |
+| `FixField::code_value(&str)` | any spelling resolved to its wire value, through the three tiers |
+| `FixField::code_name(&str)` | the symbolic name one wire value stands for |
+| `FixField::code_value_at(Version, &str)` / `code_name_at` | the same, filtered to one version |
+| `FixFieldMut::set_codes(&[FixCode])` | writes the set canonically; an empty slice removes it |
+| `FixFieldMut::remove_codes()` | removes the set and answers what it held |
+
+### Three tiers, and a fall-through
+
+`code_value` composes three tiers and stops at the first that answers. A spelling that reaches none answers `None` and the caller keeps its own text: a venue sends codes no dictionary lists exactly as it sends fields no dictionary names, and refusing one would drop data.
+
+| tier | key | note |
+| ---: | --- | --- |
+| 1 | the text as a wire value, exactly | `4` is `4`; a spelling that is already a legal code is never reinterpreted as somebody's name |
+| 2 | the folded symbolic name, then any alias | the crate's one fold, so case and `_`, `-`, space all fall away |
+| 3 | the leading parenthesized abbreviation of the description | `"Good Till Date (GTD)"` answers `gtd` |
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixCode, Version};
+
+    let mut comm_type = DataType::Utf8.nullable_field("CommType");
+    comm_type.as_fix_mut().set_tag(13)?;
+    comm_type.as_fix_mut().set_codes(&[
+        FixCode::new("PerUnit", "1"),
+        FixCode::new("PercentageWaivedCashDiscount", "4"),
+        FixCode::new("PointsPerBondOrContract", "6")
+            .with_description("Good Till Date (GTD) points per bond"),
+        FixCode::new("BasisPoints", "7")
+            .with_since("5.0SP2".parse::<Version>()?, Some(208)),
+    ])?;
+    let view = comm_type.as_fix();
+
+    // Tier 1: a legal wire value is never read as somebody's name.
+    assert_eq!(view.code_value("4"), Some("4"));
+    assert_eq!(view.code_name("4"), Some("PercentageWaivedCashDiscount"));
+
+    // Tier 2: one fold, so four spellings are one.
+    assert_eq!(view.code_value("percentage_waived_cash_discount"), Some("4"));
+    assert_eq!(view.code_value("PERCENTAGE WAIVED CASH DISCOUNT"), Some("4"));
+
+    // Tier 3: the leading abbreviation of the description.
+    assert_eq!(view.code_value("gtd"), Some("6"));
+
+    // A version hides a code deprecated at or before it, and nothing else: a
+    // value added later still resolves, because a venue that stated the wrong
+    // version is a venue whose values are still worth reading.
+    assert_eq!(view.code_value("BasisPoints"), Some("7"));
+    assert_eq!(view.code_value_at("4.4".parse::<Version>()?, "BasisPoints"), Some("7"));
+
+    // A venue's own spelling falls through unchanged rather than failing.
+    assert_eq!(view.code_value("VenueOwnCommission"), None);
+    ```
+
+### Two traps in tier 3
+
+A *numeric* parenthesization is a tag cross-reference and never a spelling, so `"Broken date; SettlDate (64) is required"` leaves `64` alone. And only the abbreviation on the leading phrase counts, so `"Swap Value Factor (SVP) through a central counterparty (CCP)"` answers `svp` and not `ccp`.
+
+### Ambiguity answers nothing
+
+Two codes folding to one spelling answer `None` rather than whichever the scan met first. So the name tier does **not** stop at its first match: it runs the whole set and answers only on exactly one. That is affordable because tier 1 is the hot path and a spelling lookup comes from human or JSON input.
+
+Two *names* sharing one *value* are an alias, not an ambiguity, and resolve to that value.
+
+### The document
+
+`fix:codes` is one canonical JSON document: a `codes` array ordered by wire value, keys within a code in the order below, no whitespace. Only `value` and `name` are required.
+
+| key | holds |
+| --- | --- |
+| `value` | the wire value, required, and the key every lookup keys on |
+| `name` | the symbolic name, required |
+| `since` | the version the specification added this code at |
+| `ep` | the extension pack that dated the addition |
+| `deprecated` | the version the specification deprecated it at |
+| `sort` | the presentation rank the specification gives it |
+| `group` | the group the specification files it under |
+| `aliases` | venue and per-version spellings that also reach this code |
+| `doc` | the specification's own wording |
+
+`value` leads every code for a reason that is measurable rather than tidy: it makes a record's opening a literal byte sequence, and one that cannot occur inside a stored string, since a quote inside one is escaped. So `code(value)` addresses the record it wants in a single pass over the bytes and reads only that one, instead of parsing every code it passes.
+
+A code's pedigree is stored as real numbers. Many codes are dated by extension pack alone — `BasisPoints` is "Added EP208" rather than added in a version — so a moving label never becomes a stored one.
+
+### Edges
+
+- An unresolved spelling is never an error. `code_value` answers `None`, and the caller keeps its text.
+- Two codes may share a value; two codes may not share a name, folded. `set_codes` refuses the second, naming it, and leaves the field unchanged.
+- A code stating an empty value or an empty name is refused.
+- An empty slice removes the property rather than storing an empty set.
+- A malformed document answers nothing rather than something wrong: `codes()` reports it with a byte position, while `code`, `code_by_name` and `code_value` answer `None`. Neither path allocates.
+- Keys follow the document's declared order, so a hand-edited document with reordered or repeated keys is refused rather than mis-scanned. A reordered one also stops leading with `value`, so the addressed search misses it and falls back to the walk, which is what reports it.
+- `remove_codes` removes the property before it parses what it held, because a document a reader refuses is one a caller asked to take away.
+
+## One merge, with a rule per key
+
+Several sources describe one tag — FIX Latest, a QuickFIX dictionary, a vendor orchestration, a `.cfb` — and `FixFieldMut::merge_with` folds one into another in a single pass. The receiver is the incoming definition and wins every shared key; the other keeps only what it alone declares. Rust only.
+
+| key | rule |
+| --- | --- |
+| `fix:branch`, `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+| `fix:tags` | union, incoming first, order kept, deduplicated |
+| `fix:aliases` | union, folded, incoming first — then rewritten from the merged lineage |
+| `description` | not FIX's key, so this half leaves it alone in both directions; `FixRegistry::update` carries it through the generic merge |
+| `fix:lineage` | merged by pedigree, incoming winning an equal pair, re-sorted oldest first |
+| `fix:codes` | merged by wire value, incoming winning a shared value |
+| any other `fix:` key | incoming wins; stored keeps what only it has |
+
+Precedence is the caller's ordering, not a field on the merge. A generator folds its lowest-priority source first, so the highest-priority one is the last merged and wins — one concept, in the one place that knows about sources.
+
+A description is not merged here at all: what a column holds is a fact about the column rather than a FIX fact, so it lives on the generic `description` key beside `alias`, `comment` and `display`, and the generic half of `update` is what folds it.
+
+The whole merged namespace is written once. `FixRegistry::update` calls it for the `fix:` half and the shared metadata merge for the generic half, because the protocol view reaches only its own namespace by design.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, FixCode, FixLineageEntry, FixPedigree, Version};
+
+    let mut stored = DataType::Utf8.nullable_field("LastQty");
+    stored.as_fix_mut().set_tag(32)?;
+    stored.as_fix_mut().set_tags(&[65])?;
+    stored.as_fix_mut().set_description("the stored wording")?;
+    stored.as_fix_mut().set_codes(&[FixCode::new("StoredOnly", "9")])?;
+
+    let mut incoming = DataType::Utf8.nullable_field("LastQty");
+    incoming.as_fix_mut().set_tag(32)?;
+    incoming.as_fix_mut().set_tags(&[67, 65])?;
+    incoming.as_fix_mut().set_lineage(&[
+        FixLineageEntry::new(FixPedigree::new("2.7".parse::<Version>()?, None))
+            .with_name("LastShares"),
+        FixLineageEntry::new(FixPedigree::new("4.3".parse::<Version>()?, None))
+            .with_name("LastQty"),
+    ])?;
+
+    incoming.as_fix_mut().merge_with(&stored.as_fix())?;
+    let merged = incoming.as_fix();
+
+    assert_eq!(merged.tags()?, [67, 65]);
+    // The stored side keeps what only it declared.
+    assert_eq!(merged.code_name("9"), Some("StoredOnly"));
+    // A description is not this half's key, so merging two FIX views leaves it
+    // alone in both directions; `FixRegistry::update` is what carries it.
+    assert_eq!(merged.description(), None);
+    // The aliases come from the merged lineage, never from the union.
+    assert_eq!(merged.aliases().collect::<Vec<_>>(), ["LastShares"]);
+    ```
+
+### Edges
+
+- Identity is checked before anything is built, so a refusal costs neither a render nor a write.
+- A merge is atomic: the replacement is validated whole before it is applied, so a refusal leaves the field exactly as it was.
+- A merge that adds nothing leaves the field byte-identical.
+- A `fix:` key this vocabulary does not name still travels: it is one side's statement, not something a replace may drop.
+
 ## Insert, update and remove
 
 Both mutations build the result first and check every key it would claim, so a refusal writes nothing.
@@ -320,12 +581,14 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     FixRegistry::install_global(registry)?;
 
     let global = FixRegistry::global()?;
-    assert_eq!(global.field_by_tag(55)?.name(), "Symbol");
+    // Names are folded, and the specification's own spelling stays on `display`.
+    assert_eq!(global.field_by_tag(55)?.name(), "symbol");
+    assert_eq!(global.field_by_tag(55)?.display(), Some("Symbol"));
     assert!(Arc::ptr_eq(FixRegistry::global()?, global), "resolved once");
 
     // A message built without a registry links that same `Arc`.
     let root = DataType::from_fields([global.field_by_tag(55)?.clone()])?.required_field("row");
-    let msg = FixMsg::new(root, Scalar::from_record([("Symbol", Scalar::from("AAPL"))])?)?;
+    let msg = FixMsg::new(root, Scalar::from_record([("symbol", Scalar::from("AAPL"))])?)?;
     assert!(Arc::ptr_eq(msg.registry(), global));
 
     // Once resolved, the default is fixed.
@@ -347,12 +610,14 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     install_global_registry(seed)
 
     default = global_registry()
-    assert default.field_by_tag(55).name == "Symbol"
+    # Names are folded, and the specification's own spelling stays on `display`.
+    assert default.field_by_tag(55).name == "symbol"
+    assert default.field_by_tag(55).display == "Symbol"
     assert default == global_registry(), "resolved once"
 
     # A message built without a registry links that same dictionary.
     root = Field("row", DataType.from_fields([default.field_by_tag(55)]), nullable=False)
-    assert FixMsg(root, {"Symbol": "AAPL"}).registry == default
+    assert FixMsg(root, {"symbol": "AAPL"}).registry == default
 
     # Once resolved, the default is fixed.
     with pytest.raises(ValueError, match="already resolved"):
@@ -371,74 +636,112 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     fix.installGlobalRegistry(seed)
 
     const global = fix.globalRegistry()
-    assert.equal(global.fieldByTag(55).name, 'Symbol')
+    // Names are folded, and the specification's own spelling stays on `display`.
+    assert.equal(global.fieldByTag(55).name, 'symbol')
+    assert.equal(global.fieldByTag(55).display, 'Symbol')
     assert.ok(global.equals(fix.globalRegistry()), 'resolved once')
 
     // A message built without a registry links that same dictionary.
     const root = fields.struct('row', [global.fieldByTag(55)], { nullable: false })
-    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(global))
+    assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(global))
 
     // Once resolved, the default is fixed.
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
     ```
 
-## Protocol and MsgType inference
+## Classifying a captured line
 
-`infer_bytes_protocol` and `infer_text_protocol` classify one arbitrary log line without parsing a message. `infer_bytes_msgtype` and `infer_text_msgtype` borrow the value of numeric tag 35 or symbolic `MSGTYPE`.
+Deciding what one captured line is, what message type it declares and which way it moved is **transport rather than FIX** — every captured line has a shape whatever protocol it carried — so it needs no dictionary and lives with the types that name each answer.
+
+| call | answers |
+| --- | --- |
+| `MimeType::infer_bytes` / `infer_text` | what the line is |
+| `MsgType::infer_bytes` / `infer_text` | the message type it declares, borrowed |
+| `MsgDirection::infer_bytes` / `infer_text` | which way it moved |
+| `MsgDirection::split_bytes` / `split_text` | the same, with the marker taken off the line |
+
+One shallow scan answers all three. It reads no message and allocates nothing, and every answer is a slice of the caller's bytes.
 
 | line | answer |
 | --- | --- |
-| numeric pairs | `text/fix` |
-| known symbolic pairs | `text/ullink` |
-| a numeric frame also carrying key/value names | `text/fixul` |
+| numeric pairs in a frame | `text/fix` |
+| `#`-marked keys, or a `MSGTYPE=` key | `text/ullink` |
+| a numeric frame also carrying symbolic keys | `text/fixul` |
 | official `XmlData(213)` whose payload begins with XML | `text/fixml` |
-| unrelated text | `application/octet-stream` |
+| no frame, but `key=value` throughout | `text/key-value` |
+| a document opening `<` or `{`/`[` | `application/xml`, `application/json` |
+| anything else | `application/octet-stream` |
 
-The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field.
+The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field. A frame beats a document, because an `XmlData` payload is part of a frame; a document beats the bare pair rules, because an attribute inside a tag is not a field.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{FixRegistry, MimeType};
+    use yggdryl::types::{MsgDirection, MsgType};
+    use yggdryl::MimeType;
 
-    let registry = FixRegistry::new();
-    let line = b"sending 8=FIX.4.4|35=D|55=AAPL|10=001| queued seq=7";
-    assert_eq!(registry.infer_bytes_protocol(line), MimeType::FIX);
-    assert_eq!(registry.infer_bytes_msgtype(line), Some(&b"D"[..]));
+    let line = b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=001|";
+    assert_eq!(MimeType::infer_bytes(line), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(line), Some(&b"D"[..]));
+    assert_eq!(MsgDirection::infer_bytes(line), Some(MsgDirection::SENT));
+
+    // No frame, but pairs throughout.
+    assert_eq!(
+        MimeType::infer_bytes(b"level=INFO worker=3 took=12ms"),
+        MimeType::KEYVALUE
+    );
+    // A document is what it opens as.
+    assert_eq!(MimeType::infer_bytes(b"<Order id='1'/>"), MimeType::XML);
+
+    // Reading the verb takes it off the line, and takes nothing else.
+    let (direction, body) = MsgDirection::split_bytes(line);
+    assert_eq!(direction, Some(MsgDirection::SENT));
+    assert_eq!(body, b">> 8=FIX.4.4|35=D|55=AAPL|10=001|");
     ```
 
 === "Python"
 
     ```python
     from yggdryl import MimeType
-    from yggdryl.fix import FixRegistry
 
-    registry = FixRegistry()
     line = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
-    assert registry.infer_text_protocol(line) == MimeType.ULLINK
-    assert registry.infer_text_msgtype(line) == "D"
+    assert MimeType.infer_text(line) == MimeType.ULLINK
+    assert MimeType.infer_text_msgtype(line) == "D"
+    assert MimeType.infer_text_direction("recv " + line) == "RECV"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MimeType, fix } = require('yggdryl')
+    const { MimeType } = require('yggdryl')
 
-    const registry = new fix.FixRegistry()
     const line = '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|'
-    assert.ok(registry.inferTextProtocol(line).equals(MimeType.FIXUL))
-    assert.equal(registry.inferTextMsgtype(line), 'D')
+    assert.ok(MimeType.inferText(line).equals(MimeType.FIXUL))
+    assert.equal(MimeType.inferTextMsgtype(line), 'D')
     ```
 
-A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root. Canonical spellings work in an empty registry, and loaded aliases and alternate tags extend the same lookup.
+A raw `MSGTYPE=` anywhere in the line wins over tag 35, because a bridge writes its own type in front of a frame it relays, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root.
+
+### A direction is the verb in front of the payload
+
+The verb counts only where it stands before the message starts, so a `sent` inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML payload's own wording never becomes a direction.
+
+| direction | opens with |
+| --- | --- |
+| `SENT` | `send`, `sending`, `sent`; and `out`, `outbound`, `outgoing` |
+| `RECV` | `receive`, `receiving`, `received`, `recv`; and `in`, `inbound`, `incoming` |
+
+The bare `in` and `out` forms are **chosen** only where a bracket opens them and a delimiter closes them, because that is the one shape a marker has and none of the shapes the same letters have otherwise: `direct:out` is a route endpoint and `MCFID-IN-XPAR` is a session name. They still count against an opposite verb, which is what makes `sending in session 3` and `received out of order` answer nothing rather than a wrong answer.
+
+A prefix carrying both verbs, and one carrying neither, both answer nothing.
 
 ## Edges
 
 - `registry.get_field("5055:cme")` -> `None`; a string key is a name, and only `FixId::from_str` parses an identifier.
 - `registry.get_field_by_tag(5055)` with no branch -> the deterministic best match, so a named branch's own tag resolves; an explicit branch never crosses.
 - Two names whose seeded XXH64 digests collide -> a read rechecks the field behind the digest and misses; a mutation refuses loudly.
-- `infer_bytes_msgtype` / `infer_text_msgtype` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
+- `MsgType::infer_bytes` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
 - A line the scan cannot place -> `application/octet-stream`; a checksum tag 10 stops the scan.
 - `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.
@@ -461,7 +764,12 @@ A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` plus an alphanum
     cargo test -p yggdryl --lib fix::tests
     cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
+    cargo test -p yggdryl --lib -- fix::tests::a_lineage fix::tests::a_version_filters fix::tests::a_removed_entry fix::tests::two_entries
+    cargo test -p yggdryl --lib -- fix::tests::a_code_set fix::tests::an_alias_shares fix::tests::an_ambiguous_spelling fix::tests::tier_three fix::tests::a_version_hides fix::tests::two_codes_may
+    cargo test -p yggdryl --test allocations a_fix_lineage_read a_fix_code_lookup
     cargo bench -p yggdryl --bench fix -- fix/resolve
+    cargo bench -p yggdryl --bench fix -- fix/lineage
+    cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```
 
@@ -489,12 +797,59 @@ The timing runs report release builds on one Windows x86_64 host, so they are bo
 
 | assertion | scope |
 | --- | --- |
-| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration |
+| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration, every lineage read and every code lookup including a refused document |
+
+### A merge
+
+`fix/mutate`, folding two realistic definitions of tag 32 — each dated, coded, described and aliased.
+
+| case | median |
+| --- | --- |
+| `merge_with`, the `fix:` half | 9.38 us |
+| `update`, both halves plus reindexing | 15.0 us |
+
+Both are dominated by re-rendering the merged lineage and code documents, which is what a generator pays once per tag rather than per read.
+
+### A code set
+
+`fix/codes`, over generated sets of 10, 60 and 300 members against the same document read as a `HashMap`. The map is shown twice on purpose: built once and read forever it wins, and that is the caller's option; built to answer one lookup it loses at every size, which is the case this scan exists for.
+
+| case | 10 codes | 60 codes | 300 codes |
+| --- | --- | --- | --- |
+| `code` on the first value | 347 ns | 346 ns | 351 ns |
+| `code` on the last value | 416 ns | 549 ns | 2.45 us |
+| `code` on a miss | 295 ns | 568 ns | 2.20 us |
+| `code_value_at`, last value | | | 868 ns |
+| `code_by_name`, folded (tier 2) | 2.13 us | 10.4 us | 50.7 us |
+| a `HashMap` hit, map already built | 35.7 ns | 37.4 ns | 35.5 ns |
+| a `HashMap` built, then hit | 2.41 us | 15.3 us | 71.7 us |
+| `set_codes` | | | 917 us |
+
+Tier 1 addresses the record it wants rather than parsing every code it passes, which is why it barely moves with the set's size until the value it seeks is at the end. Tier 2 cannot: it must run the whole set, because two codes folding to one spelling have to answer nothing rather than the first. That is the cost the ambiguity rule buys, and it is still under building a map to answer one question.
+
+### A version-filtered read
+
+`fix/lineage`, over a field carrying three entries in a dictionary of 400 dated ones. Release build, one Windows x86_64 host, twenty samples; the host's own baselines moved by up to 1.8x between runs, so the ratios are the measurement and the absolute figures are a scale.
+
+| case | median | against |
+| --- | --- | --- |
+| `get_field` on an undated key | 8.2 ns | the unfiltered read |
+| `get_field_at` on a dated key | 519 ns | 63x the unfiltered read |
+| `since` | 208 ns | one entry |
+| `defined_at` | 458 ns | three entries |
+| `name_at` | 494 ns | three entries |
+| `dtype_at` | 964 ns | three entries plus building a `DataType` |
+| one `fix:` property lookup | 103 ns | the floor every `fix:` accessor pays |
+| one `Version` parse | 36 ns | paid per entry the scan reaches |
+| `newest` / `versions` | 204 us / 218 us | every lineage in the dictionary, walked once |
+
+Two facts the table is for. A single-entry read is about half fixed cost - one `fix:` metadata lookup plus one version parse - and the scan itself is roughly 110 ns per entry, so a lineage is cheap to hold and not free to ask. And `newest` and `versions` walk every field, so they are answered once and held, never per row.
 
 Criterion takes ten samples with short warm-up and measurement windows in this phase.
 
 ```bash
 cargo bench -p yggdryl --bench fix -- fix/resolve --warm-up-time 0.1 --measurement-time 0.2 --sample-size 10
+cargo bench -p yggdryl --bench fix -- fix/lineage --warm-up-time 0.2 --measurement-time 0.5 --sample-size 20
 python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
 YGGDRYL_BENCH_ITERATIONS=5000 npm run --prefix node bench:fix
 ```

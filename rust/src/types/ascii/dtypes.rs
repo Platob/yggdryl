@@ -117,6 +117,15 @@ pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";
 /// The Arrow extension name of the classification code.
 pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
 
+/// The Arrow extension name of FIX's side of a trade.
+pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
+
+/// The Arrow extension name of FIX's message type.
+pub(crate) const MSGTYPE_EXTENSION_NAME: &str = "yggdryl.msgtype";
+
+/// The Arrow extension name of a captured line's direction.
+pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.msgdirection";
+
 /// The storage width of ISO 3166-1's country code.
 pub(crate) const COUNTRY_WIDTH: usize = 2;
 
@@ -129,6 +138,25 @@ pub(crate) const MIC_WIDTH: usize = 4;
 /// The storage width of ISO 10962's classification code.
 pub(crate) const CFI_WIDTH: usize = 6;
 
+/// The storage width of FIX's side of a trade.
+///
+/// The standard's values are one character and a venue's are not going to be
+/// five, so four is room without waste.
+pub(crate) const SIDE_WIDTH: usize = 4;
+
+/// The storage width of FIX's message type.
+///
+/// Eight rather than the tight fit: the standard's own values are one and two
+/// characters (`D`, `AB`), but a venue's are the ones that run long, and
+/// widening later would change a discriminant, which is a wire contract.
+pub(crate) const MSGTYPE_WIDTH: usize = 8;
+
+/// The storage width of a captured line's direction.
+///
+/// `SENT` and `RECV`, spelled out rather than abbreviated because the stored
+/// bytes are what a reader sees.
+pub(crate) const DIRECTION_WIDTH: usize = 4;
+
 impl DataType {
     /// Every registered code, with its canonical name and storage width.
     ///
@@ -139,6 +167,13 @@ impl DataType {
         ("currency", DataType::Currency, CURRENCY_WIDTH as i32),
         ("mic", DataType::Mic, MIC_WIDTH as i32),
         ("cfi", DataType::Cfi, CFI_WIDTH as i32),
+        ("side", DataType::Side, SIDE_WIDTH as i32),
+        ("msgtype", DataType::MsgType, MSGTYPE_WIDTH as i32),
+        (
+            "msgdirection",
+            DataType::MsgDirection,
+            DIRECTION_WIDTH as i32,
+        ),
     ];
 
     /// Creates ISO 3166-1's two-letter country code.
@@ -216,6 +251,9 @@ impl DataType {
             Self::Currency => Some("currency"),
             Self::Mic => Some("mic"),
             Self::Cfi => Some("cfi"),
+            Self::Side => Some("side"),
+            Self::MsgType => Some("msgtype"),
+            Self::MsgDirection => Some("msgdirection"),
             _ => None,
         }
     }
@@ -241,6 +279,9 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Currency => Some(CURRENCY_EXTENSION_NAME),
         DataType::Mic => Some(MIC_EXTENSION_NAME),
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
+        DataType::Side => Some(SIDE_EXTENSION_NAME),
+        DataType::MsgType => Some(MSGTYPE_EXTENSION_NAME),
+        DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
         _ => None,
     }
 }
@@ -256,6 +297,12 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         CURRENCY_EXTENSION_NAME => DataType::Currency,
         MIC_EXTENSION_NAME => DataType::Mic,
         CFI_EXTENSION_NAME => DataType::Cfi,
+        SIDE_EXTENSION_NAME => DataType::Side,
+        MSGTYPE_EXTENSION_NAME => DataType::MsgType,
+        DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
+        // The name this datatype was first published under, so a column
+        // written before the rename still reads as what it is.
+        "yggdryl.direction" => DataType::MsgDirection,
         _ => return None,
     };
     (dtype.ascii_width() == Some(width)).then_some(dtype)
@@ -293,6 +340,9 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Currency => code_text::<CURRENCY_WIDTH>(bytes),
         DataType::Mic => code_text::<MIC_WIDTH>(bytes),
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
+        DataType::Side => code_text::<SIDE_WIDTH>(bytes),
+        DataType::MsgType => code_text::<MSGTYPE_WIDTH>(bytes),
+        DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
     }
 }
@@ -362,6 +412,9 @@ impl DataType {
             Self::Currency => Some(CURRENCY_WIDTH as i32),
             Self::Mic => Some(MIC_WIDTH as i32),
             Self::Cfi => Some(CFI_WIDTH as i32),
+            Self::Side => Some(SIDE_WIDTH as i32),
+            Self::MsgType => Some(MSGTYPE_WIDTH as i32),
+            Self::MsgDirection => Some(DIRECTION_WIDTH as i32),
             _ => None,
         }
     }
