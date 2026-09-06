@@ -134,6 +134,42 @@ impl Field {
         crate::text::typed::with_field(value, self)
     }
 
+    /// Restates this field's canonical value in the natural text shape.
+    ///
+    /// The read half resolves a named record to an ordered sequence;
+    /// this puts the names back, recursively, so a canonical row renders as
+    /// the object a structured text format is expected to contain rather than
+    /// as a positional array. Leaf spellings belong to the format writers and
+    /// are untouched.
+    ///
+    /// ```
+    /// use yggdryl::{Field, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let field = Field::from_str("row: struct<symbol: utf8, size: int64> not null")?;
+    /// let row = field.from_natural_value(Scalar::from_record([
+    ///     ("symbol", Scalar::from("AAPL")),
+    ///     ("size", Scalar::from(100_i64)),
+    /// ])?)?;
+    ///
+    /// // Canonical rows are positional; the natural restatement names them.
+    /// assert!(row.as_sequence().is_some());
+    /// assert_eq!(
+    ///     field.into_natural_value(row)?.get_key_str("symbol").and_then(Scalar::as_utf8),
+    ///     Some("AAPL"),
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a struct value does not carry exactly the values
+    /// its Field declares, or a union value does not name a declared branch.
+    pub fn into_natural_value(&self, value: Scalar) -> Result<Scalar> {
+        crate::text::typed::into_natural(value, self)
+    }
+
     /// Validates that this field is a struct, without a nullability opinion.
     ///
     /// # Errors

@@ -20,6 +20,96 @@ pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
         .ok_or_else(|| invalid(field, "canonical row is empty"))
 }
 
+/// Restate a canonical value in the natural text shape, naming its members.
+///
+/// This is the write half of [`with_field`]: canonicalization resolves a
+/// record to an ordered sequence, and a text format wants the names back, so
+/// every Struct below `field` becomes a name-keyed record again. Leaf
+/// spellings - base64 bytes, decimal text, ISO temporals - belong to the
+/// format writers and are left exactly as they are.
+pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
+    if value.is_null() {
+        return Ok(value);
+    }
+    match field.dtype() {
+        DataType::Struct(fields) => named(value, fields, field),
+        DataType::List(child)
+        | DataType::ListView(child)
+        | DataType::FixedSizeList(child, _)
+        | DataType::LargeList(child)
+        | DataType::LargeListView(child) => sequence(value, |value| into_natural(value, child), field),
+        DataType::Union(fields, _) => {
+            let Some([type_id, payload]) = value.as_sequence() else {
+                return Err(invalid(field, "expected [type_id, value] for a union"));
+            };
+            let id = type_id
+                .as_i128()
+                .and_then(|id| i8::try_from(id).ok())
+                .ok_or_else(|| invalid(field, "union type id must fit i8"))?;
+            let branch = fields
+                .iter()
+                .find_map(|(candidate, branch)| (candidate == id).then_some(branch))
+                .ok_or_else(|| invalid(field, "union type id is not declared"))?;
+            Ok(Scalar::from_sequence([
+                type_id.clone(),
+                into_natural(payload.clone(), branch)?,
+            ]))
+        }
+        DataType::Dictionary(dictionary) => into_natural(
+            value,
+            &Field::new(field.name(), dictionary.value().clone(), field.is_nullable()),
+        ),
+        DataType::RunEndEncoded(encoded) => into_natural(value, encoded.values()),
+        DataType::Map(map) => {
+            let fields = map.entries().fields();
+            let [_, value_field] = fields else {
+                return Err(invalid(
+                    field,
+                    "map entries do not contain key and value fields",
+                ));
+            };
+            let Some(entries) = value.as_mapping() else {
+                return Ok(value);
+            };
+            Scalar::from_mapping(
+                entries
+                    .iter()
+                    .map(|(key, item)| Ok((key.clone(), into_natural(item.clone(), value_field)?)))
+                    .collect::<Result<Vec<_>>>()?,
+            )
+        }
+        _ => Ok(value),
+    }
+}
+
+/// Re-key one canonical struct row by the names its Field declares.
+fn named(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
+    let Some(values) = value.as_sequence() else {
+        // A record already carries its names; anything else is not a struct
+        // row and the format writer refuses it under its own rules.
+        return Ok(value);
+    };
+    if values.len() != fields.len() {
+        return Err(invalid(
+            field,
+            format_smolstr!(
+                "expected {} struct values, got {}",
+                fields.len(),
+                values.len()
+            ),
+        ));
+    }
+    Scalar::from_record(
+        values
+            .iter()
+            .zip(fields.iter())
+            .map(|(value, child)| {
+                Ok((SmolStr::new(child.name()), into_natural(value.clone(), child)?))
+            })
+            .collect::<Result<Vec<_>>>()?,
+    )
+}
+
 fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);

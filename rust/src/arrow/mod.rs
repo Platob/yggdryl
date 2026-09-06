@@ -12,11 +12,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::cast::ArrowCastPlan;
 use crate::{DataType, Field, Scalar};
-use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
+use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
+mod scalars;
 pub(crate) mod value;
+
+pub use scalars::{ArrowShape, ArrowValue};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
 ///
@@ -892,73 +895,6 @@ pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scal
     Ok(field.scalar(value)?)
 }
 
-/// One real Arrow struct scalar paired with its exact Yggdryl root field.
-#[derive(Clone, Debug)]
-pub struct StructScalar {
-    field: Field,
-    array: StructArray,
-}
-
-impl StructScalar {
-    /// Validates one non-null Arrow struct row against a canonical schema.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless the array is exactly one present row with a
-    /// physical Struct layout compatible with `schema`.
-    pub fn from_parts(schema: Field, array: StructArray) -> Result<Self> {
-        if array.len() != 1 {
-            return Err(Error::IncompatibleSchema(format!(
-                "struct scalar must contain exactly one row, got {}",
-                array.len()
-            )));
-        }
-        if array.is_null(0) {
-            return Err(Error::IncompatibleSchema(
-                "a native Scalar cannot represent a null root struct".to_owned(),
-            ));
-        }
-        ensure_struct_compatible(&schema, &array)?;
-        Ok(Self {
-            field: schema,
-            array,
-        })
-    }
-
-    /// Returns the exact root field.
-    pub const fn field(&self) -> &Field {
-        &self.field
-    }
-
-    /// Borrows the one-row Arrow struct array.
-    pub const fn array(&self) -> &StructArray {
-        &self.array
-    }
-
-    /// Returns a zero-copy one-element slice of the child at `index`.
-    pub fn get(&self, index: usize) -> Option<ArrayRef> {
-        self.array
-            .columns()
-            .get(index)
-            .map(|array| array.slice(0, 1))
-    }
-
-    /// Returns a zero-copy one-element slice by exact field name.
-    pub fn get_by_name(&self, name: &str) -> Option<ArrayRef> {
-        self.field.index_of(name).and_then(|index| self.get(index))
-    }
-
-    /// Returns the exact Field and its zero-copy one-element Arrow slice.
-    pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)> {
-        Some((self.field.get_field(index)?, self.get(index)?))
-    }
-
-    /// Consumes this value into Arrow's scalar marker.
-    pub fn into_arrow_scalar(self) -> ArrowScalar<StructArray> {
-        ArrowScalar::new(self.array)
-    }
-}
-
 /// Read one Arrow array as a sequence of values, typed by `field`.
 ///
 /// Every row becomes the [`Scalar`] its datatype spells - a null slot is
@@ -1261,24 +1197,6 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     }
     field.validate_struct_root()?;
     Ok(field)
-}
-
-/// Check that a struct array carries exactly the columns a field declares.
-///
-/// # Errors
-///
-/// Returns an error naming both schemas when they disagree.
-fn ensure_struct_compatible(schema: &Field, array: &StructArray) -> Result<()> {
-    let expected = arrow_schema_from_field(schema)?;
-    let actual = array.fields();
-    if expected.fields().as_ref() != actual.as_ref() {
-        return Err(Error::IncompatibleSchema(format!(
-            "expected a struct array matching {}, got {}",
-            crate::text::elide_display(&expected),
-            crate::text::elide_display(&arrow_schema::Schema::new(actual.clone()))
-        )));
-    }
-    Ok(())
 }
 
 /// Projects a non-null Struct root Field as an Arrow schema.
