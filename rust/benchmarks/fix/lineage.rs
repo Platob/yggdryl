@@ -121,12 +121,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .collect();
     group.bench_function("set_lineage", |bencher| {
         bencher.iter_batched_ref(
-            || generated(1).remove(0),
+            // Named as the lineage's newest entry names it, because a lineage
+            // that renamed its own field would be a lineage about some other
+            // field - which is what `set_lineage` refuses.
+            || dated("LastQty", 32),
             |field| {
                 field
                     .as_fix_mut()
                     .set_lineage(black_box(&entries))
-                    .expect("a lineage stating no name");
+                    .expect("a lineage agreeing with its field");
             },
             criterion::BatchSize::SmallInput,
         );

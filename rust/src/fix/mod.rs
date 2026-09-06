@@ -150,6 +150,9 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 use crate::{Error, Result, Version};
 
 mod anomaly;
+// Batching is the crate's Arrow surface seen from FIX, so it exists exactly
+// where that surface does.
+#[cfg(feature = "arrow")]
 mod batch;
 mod build;
 mod cfb;
@@ -172,6 +175,7 @@ mod store;
 mod tests;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
+#[cfg(feature = "arrow")]
 pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
