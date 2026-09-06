@@ -916,7 +916,7 @@ impl PyFixMsg {
     /// shifting its neighbours - which is what makes two rows of one capture
     /// comparable at all. A carried column answers null: it is the capture's,
     /// and nothing in the message says what it held.
-    fn to_row(&self, projection: PyRef<'_, PyFixProjection>) -> PyScalar {
+    fn to_row(&self, projection: &PyFixProjection) -> PyScalar {
         PyScalar::from_inner(self.inner.to_row(&projection.inner))
     }
 
@@ -1039,6 +1039,10 @@ impl PyFixReader {
     }
 
     /// Pairs a caller already holds, in the order they arrived.
+    ///
+    /// Taken by value because the borrowed pairs the core reads point into
+    /// these strings, so they have to outlive the call rather than the caller.
+    #[allow(clippy::needless_pass_by_value)]
     fn pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()

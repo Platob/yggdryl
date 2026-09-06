@@ -786,7 +786,6 @@ impl JsFixMsg {
     pub fn lift(&self) -> Vec<(String, JsScalar)> {
         self.inner
             .lift()
-            .into_iter()
             .map(|(facet, value)| (facet.to_owned(), JsScalar::from_core(value.clone())))
             .collect()
     }

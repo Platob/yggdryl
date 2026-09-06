@@ -1412,16 +1412,25 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert!(registry.contains("NoPartyIDs.PartyID"));
     // A member is reached through its parent only: the registry does not
-    // index it, and the remainder of a path is an exact child name.
+    // index it.
     assert!(
         registry
             .get_field_by_name("PartyID", Some(&FixBranch::STANDARD))
             .is_none()
     );
-    assert!(
+    // The remainder of a path folds like the head does. One function that
+    // folded its first segment and matched the rest exactly would refuse
+    // `NoPartyIDs.PartyID` on a dictionary that stores its members folded,
+    // which is every dictionary this crate writes.
+    assert_eq!(
+        registry.get_field_by_path("NoPartyIDs.partyid", Some(&FixBranch::STANDARD)),
+        registry.get_field_by_path("NoPartyIDs.PartyID", Some(&FixBranch::STANDARD)),
+    );
+    assert_eq!(
         registry
-            .get_field_by_path("NoPartyIDs.partyid", Some(&FixBranch::STANDARD))
-            .is_none()
+            .get_field_by_path("NoPartyIDs.PARTY_ID", Some(&FixBranch::STANDARD))
+            .map(Field::name),
+        Some("PartyID"),
     );
     assert!(
         registry
