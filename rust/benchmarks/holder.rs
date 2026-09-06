@@ -7,6 +7,8 @@ mod buffered;
 mod fs;
 #[path = "holder/listing.rs"]
 mod listing;
+#[path = "holder/zip.rs"]
+mod zip;
 
 use criterion::{criterion_group, criterion_main};
 
@@ -18,5 +20,6 @@ criterion_group!(
     fs::listing::listing_benchmarks,
     buffered::buffered_benchmarks,
     listing::listing_benchmarks,
+    zip::zip_benchmarks,
 );
 criterion_main!(holder);

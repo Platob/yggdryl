@@ -228,6 +228,35 @@ impl Url {
         self.0.set_query(query)
     }
 
+    /// Replace or remove the URL fragment, from text that is not URI syntax.
+    ///
+    /// This is how a location inside a resource is addressed: an archive
+    /// member's path lives in the fragment, so `file:///lake/day.zip` and
+    /// `file:///lake/day.zip#trades/eu.csv` name the archive and one member of
+    /// it without either becoming a path segment of the other.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut url = Url::from_str("file:///lake/day.zip")?;
+    /// url.set_fragment(Some("trades/eu ndx.csv"))?;
+    ///
+    /// assert_eq!(url.to_string(), "file:///lake/day.zip#trades/eu%20ndx.csv");
+    /// assert_eq!(url.fragment(true)?.as_deref(), Some("trades/eu ndx.csv"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::set_fragment`].
+    pub fn set_fragment(&mut self, fragment: Option<&str>) -> Result<()> {
+        let mut candidate = self.0.clone();
+        candidate.set_fragment(fragment)?;
+        self.replace_uri(candidate)
+    }
+
     /// Return URL fragment text without `#`, decoding its escapes when asked.
     ///
     /// # Errors
