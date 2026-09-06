@@ -17,7 +17,7 @@
 
 ## Use
 
-Capacity, direct slices, and a declared media type are Rust only.
+Direct slices are Rust only. Python reaches capacity with `IOBase.capacity`, `reserve`, and the `capacity=` keyword on `from_bytes`, and a declared media type through the `media_type` setter.
 
 ```rust
 use yggdryl::IOBase;

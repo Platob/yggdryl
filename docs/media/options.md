@@ -216,7 +216,7 @@ The media type names the encoding, so no format argument is passed.
 
 `cast_arrow_batch` and `cast_arrow_reader` apply the declared schema, then `select_by_names`, then the optional `existing` root.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use arrow_array::RecordBatch;
@@ -267,7 +267,7 @@ assert_eq!(options.commit_row_size(), Some(10_000));
 
 `require_field` is what a write calls, and a datatype is the one part with no default.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};

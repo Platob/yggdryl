@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from ._native import (
     Digest,
+    Digester,
     Xxh3,
     Xxh128,
     Xxh32,
@@ -23,8 +24,14 @@ from ._native import (
     xxh128,
     xxh32,
     xxh64,
+    xxhash_bits,
+    xxhash_column_digests,
     xxhash_digest,
+    xxhash_is_secretable,
+    xxhash_is_seedable,
+    xxhash_row_digests,
     xxhash_secret_minimum_length,
+    xxhash_width,
 )
 
 #: The shortest custom secret XXH3 accepts, in bytes.
@@ -32,14 +39,39 @@ SECRET_MINIMUM_LENGTH: int = xxhash_secret_minimum_length()
 
 digest = xxhash_digest
 
+#: Digest every row of one Arrow batch, framed as an ordered sequence.
+row_digests = xxhash_row_digests
+
+#: Digest every cell of one Arrow column, with no row framing around it.
+column_digests = xxhash_column_digests
+
+#: Whether an algorithm accepts a custom secret.
+is_secretable = xxhash_is_secretable
+
+#: Whether an algorithm accepts a seed.
+is_seedable = xxhash_is_seedable
+
+#: An algorithm's digest width, in bytes.
+width = xxhash_width
+
+#: An algorithm's digest width, in bits.
+bits = xxhash_bits
+
 __all__ = [
     "SECRET_MINIMUM_LENGTH",
     "Digest",
+    "Digester",
     "Xxh3",
     "Xxh128",
     "Xxh32",
     "Xxh64",
+    "bits",
+    "column_digests",
     "digest",
+    "is_secretable",
+    "is_seedable",
+    "row_digests",
+    "width",
     "xxh3",
     "xxh128",
     "xxh32",

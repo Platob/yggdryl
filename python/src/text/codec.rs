@@ -96,7 +96,7 @@ fn limits_from(
 /// Python text readers count characters rather than bytes, so one bounded
 /// read can produce more UTF-8 bytes than the core requested. The excess is
 /// retained for the next `Read` call instead of allocating the whole input.
-struct PythonReader<'py> {
+pub(crate) struct PythonReader<'py> {
     source: Bound<'py, PyAny>,
     pending: Vec<u8>,
     pending_offset: usize,
@@ -104,7 +104,7 @@ struct PythonReader<'py> {
 }
 
 impl<'py> PythonReader<'py> {
-    fn new(source: &Bound<'py, PyAny>) -> Self {
+    pub(crate) fn new(source: &Bound<'py, PyAny>) -> Self {
         Self {
             source: source.clone(),
             pending: Vec::new(),
@@ -129,7 +129,7 @@ impl<'py> PythonReader<'py> {
         io::Error::other("Python stream read failed")
     }
 
-    fn take_error(&mut self) -> Option<PyErr> {
+    pub(crate) fn take_error(&mut self) -> Option<PyErr> {
         self.error.take()
     }
 }

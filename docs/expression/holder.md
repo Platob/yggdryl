@@ -97,7 +97,7 @@
 
 Per-column minimums, maximums, and null counts settle it, in a Parquet footer, an Iceberg manifest, or a Hive path.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use yggdryl::expression::Bounds;

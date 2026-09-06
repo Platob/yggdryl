@@ -240,3 +240,18 @@ class TestCodedView:
 
         assert std_gzip.decompress(path.read_bytes()) == b"alpha\n"
         assert IOBase(path).read_text() == "alpha\n"
+
+
+def test_a_coded_handle_answers_the_level_its_writes_encode_at() -> None:
+    from yggdryl import IOBase
+    from yggdryl.enums import LEVELS
+
+    handle = IOBase.from_bytes(b"").into_coded("gzip", level=3)
+    assert handle.codec == "gzip"
+    assert handle.level == 3
+
+    # An unspecified level is the shared default point of the 0-to-9 scale.
+    assert IOBase.from_bytes(b"").into_coded("zstd").level == LEVELS["default"]
+
+    # A pass-through coding compresses nothing, so it answers no effort.
+    assert IOBase.from_bytes(b"").into_coded("identity", level=9).level == LEVELS["none"]

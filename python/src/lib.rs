@@ -266,12 +266,43 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
     listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
+    listing.set_item("io_write_modes", IOMode::WRITE.map(IOMode::as_str).to_vec())?;
+    listing.set_item(
+        "leading_fragments",
+        yggdryl::media::text::LeadingFragment::ALL
+            .map(yggdryl::media::text::LeadingFragment::as_str)
+            .to_vec(),
+    )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
     listing.set_item(
         "digest_algorithms",
         DigestAlgorithm::ALL.map(DigestAlgorithm::as_str).to_vec(),
     )?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
+    listing.set_item(
+        "edge_algorithms",
+        yggdryl::EdgeAlgorithm::ALL
+            .map(yggdryl::EdgeAlgorithm::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "formats",
+        yggdryl::text::Format::ALL
+            .map(yggdryl::text::Format::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "nullabilities",
+        yggdryl::Nullability::ALL
+            .map(yggdryl::Nullability::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "representations",
+        yggdryl::Representation::ALL
+            .map(yggdryl::Representation::as_str)
+            .to_vec(),
+    )?;
     listing.set_item(
         "compatibility_schemes",
         Scheme::COMPATIBILITY_TARGETS
@@ -302,6 +333,19 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
     module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
     module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
+    // The reserved Arrow schema metadata key that carries per-field dictionary
+    // IDs across the C Data Interface, which has no slot for them.
+    module.add(
+        "IPC_DICTIONARY_IDS_KEY",
+        yggdryl::arrow::IPC_DICTIONARY_IDS_KEY,
+    )?;
+    // The two byte-stream sizes every streamed read is shaped by: what one
+    // chunk hands out, and what one transport fetch asks the store for.
+    module.add(
+        "DEFAULT_STREAM_BATCH_SIZE",
+        yggdryl::DEFAULT_STREAM_BATCH_SIZE,
+    )?;
+    module.add("DEFAULT_FETCH_BYTE_SIZE", yggdryl::DEFAULT_FETCH_BYTE_SIZE)?;
     Ok(())
 }
 
@@ -321,11 +365,22 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<expression::PyBound>()?;
     module.add_class::<expression::PyStatement>()?;
     module.add_class::<expression::PyBoundStatement>()?;
+    module.add_class::<expression::PyBounds>()?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_needs_quoting,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction!(
+        expression::expression_vocabularies,
+        module
+    )?)?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<types::cast::PyArrowCastPlan>()?;
+    module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
@@ -371,6 +426,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PySnapshot>()?;
     module.add_class::<media::iceberg::PyManifestFile>()?;
     module.add_class::<media::iceberg::PyDataFile>()?;
+    media::partition::register(module)?;
     xxhash::register(module)?;
     Ok(())
 }
