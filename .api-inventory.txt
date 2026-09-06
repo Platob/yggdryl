@@ -14,6 +14,7 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
   pub fn combined_as(left: BatchReader, right: BatchReader, field: &Field, safe: bool) -> Result<BatchReader>
   pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader>
   pub fn cast_reader( inner: BatchReader, field: &Field, options: crate::ArrowCastOptions, ) -> Result<BatchReader>
+  pub fn from_reader_error(error: ArrowError) -> Error
   pub type Result<T> = std::result::Result<T, Error>;
   pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef>
   pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar>

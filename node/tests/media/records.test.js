@@ -573,6 +573,33 @@ test('rows read back as records, plain or through a runtime class', (t) => {
   assert.deepEqual([...new IOBase(path.join(root, 'absent.arrows')).readRecords()], [])
 })
 
+test('a cast failure inside a stream reports the failure, not the envelope', () => {
+  // A reader can only carry a core failure boxed inside an ArrowError, and
+  // that envelope is transport: draining one here must hand back the failure
+  // the cast raised, not `External error: <the real one>`.
+  const target = fields.struct('row', [fields.ascii('ccy', { nullable: false })], {
+    nullable: false,
+  })
+  const source = new arrow.Table({
+    ccy: arrow.vectorFromArray(['US\u00c9'], new arrow.Utf8()),
+  })
+
+  for (const drain of [
+    () => target.castArrow(source),
+    () => target.castArrowReader(source).intoIpc(),
+    () => [...target.castArrowReader(source)],
+  ]) {
+    assert.throws(drain, (error) => {
+      assert.ok(
+        !/External error/.test(error.message),
+        `the transport envelope reached the caller: ${error.message}`,
+      )
+      assert.match(error.message, /expected ASCII text, got a non-ASCII byte/)
+      return true
+    })
+  }
+})
+
 test('a field casts whatever Arrow JS holds, batch by batch', () => {
   const target = fields.struct(
     'row',

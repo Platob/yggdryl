@@ -699,7 +699,11 @@ pub fn cast_reader(
 /// raises - a cast it could not plan, a value the target Field rejects - has to
 /// travel boxed inside one. Unwrapping it here keeps the typed variant a caller
 /// can inspect rather than flattening it into a message.
-pub(crate) fn from_reader_error(error: ArrowError) -> Error {
+///
+/// A binding that drains a reader itself needs this for the same reason: the
+/// envelope is transport, and reporting it would hand a caller
+/// `External error: <the real one>` instead of the failure the cast raised.
+pub fn from_reader_error(error: ArrowError) -> Error {
     let ArrowError::ExternalError(external) = error else {
         return Error::Arrow(error);
     };
