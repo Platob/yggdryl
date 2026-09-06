@@ -89,6 +89,36 @@ mod shapes {
         }
         assert!(ArrowShape::from_str("table").is_err());
     }
+
+    #[test]
+    fn a_columns_width_is_the_width_of_the_root_its_rows_live_under() {
+        let structure = DataType::from_fields([
+            DataType::Utf8.required_field("symbol"),
+            DataType::Int64.required_field("size"),
+        ])
+        .expect("the struct datatype is valid");
+
+        // A non-null struct column is its own root, so its children are the
+        // columns...
+        let rows = ArrowValue::from_batch(quote_batch()).expect("the batch names its root");
+        let array = rows.into_array().expect("the rows narrow");
+        let own = ArrowValue::from_array(structure.clone().required_field("row"), array.clone())
+            .expect("the column pairs");
+        assert_eq!(own.column_size(), 2);
+
+        // ...and a nullable one is not a root, so it is one column of a
+        // wrapping root, which is also what laying it out as rows produces.
+        let wrapped = ArrowValue::from_array(structure.nullable_field("row"), array)
+            .expect("the column pairs");
+        assert_eq!(wrapped.column_size(), 1);
+        assert_eq!(
+            wrapped
+                .into_batch()
+                .expect("the column lays out as rows")
+                .num_columns(),
+            1
+        );
+    }
 }
 
 mod pairing {

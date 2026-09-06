@@ -396,14 +396,20 @@ impl ArrowValue {
 
     /// The number of columns one row carries.
     ///
-    /// A Struct root answers its direct children; any other Field is one
-    /// column, because that is what a column of that datatype is.
+    /// This is the width of the root the rows live under, so it agrees with
+    /// [`into_batch`](Self::into_batch): a Field that is its own root answers
+    /// its direct children, and anything else - a nullable Struct included -
+    /// is the one column of a wrapping root.
     pub fn column_size(&self) -> usize {
         match &self.payload {
             Payload::Batch(batch) => batch.num_columns(),
             Payload::Stream(reader) => reader.schema().fields().len(),
             Payload::Scalar(_) | Payload::Array(_) => {
-                self.field.dtype().as_fields().map_or(1, <[Field]>::len)
+                if is_own_root(&self.field) {
+                    self.field.fields().len()
+                } else {
+                    1
+                }
             }
         }
     }
