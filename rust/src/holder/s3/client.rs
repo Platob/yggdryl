@@ -56,7 +56,7 @@ pub(super) struct Stats {
     retries: AtomicU64,
 }
 
-/// A reading of [`Stats`] at one instant.
+/// A reading of an S3 client's request counters at one instant.
 ///
 /// ```
 /// use yggdryl::holder::s3::StatsSnapshot;

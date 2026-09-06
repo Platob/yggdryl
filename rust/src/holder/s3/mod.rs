@@ -93,7 +93,7 @@ use client::Client;
 /// Hold the S3 resource `url` names, resolving its role only when asked.
 ///
 /// Construction performs no request. A caller who already knows the role
-/// reaches for [`file`] or [`folder`] instead.
+/// reaches for [`file()`] or [`folder()`] instead.
 ///
 /// # Errors
 ///
@@ -158,7 +158,7 @@ pub fn folder_with(url: &str, options: S3Options) -> Result<Folder> {
 /// This is the raw-name entry point, and it is where encoding belongs: a key
 /// is arbitrary UTF-8, so `a b/c.txt` and `100%/done.txt` are ordinary names
 /// here while a URL cannot spell either without escaping them. A caller
-/// holding a location rather than a name reaches for [`file`].
+/// holding a location rather than a name reaches for [`file()`].
 ///
 /// ```
 /// use yggdryl::holder::s3;
@@ -195,7 +195,7 @@ pub fn file_at_with(bucket: &str, key: &str, options: S3Options) -> Result<File>
 
 /// Hold the prefix `key` names in `bucket`, whether or not it has entries.
 ///
-/// The raw-name counterpart of [`folder`], per [`file_at`].
+/// The raw-name counterpart of [`folder()`], per [`file_at`].
 ///
 /// # Errors
 ///
