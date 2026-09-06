@@ -24,7 +24,7 @@ use crate::types::datatype::{
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
-use crate::types::scalar::PyScalar;
+use crate::types::scalar::{PyScalar, from_py as scalar_from_py};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
@@ -451,6 +451,66 @@ impl PyField {
             .default_value()
             .map(PyScalar::from_inner)
             .map_err(value_error)
+    }
+
+    /// Check one value against this field and restate it as the field declares.
+    ///
+    /// This is `DataType.scalar` plus the field's own name and nullability, so
+    /// a refusal names the field it happened in. Anything a caller stores goes
+    /// through here, never through `PyArrow`.
+    fn scalar(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .scalar(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Check one row against this struct root, raising `ValueError` on a miss.
+    ///
+    /// The check is arity, then each child's datatype, then each child's
+    /// nullability.
+    fn validate_value(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.inner
+            .validate_value(&scalar_from_py(value)?)
+            .map_err(value_error)
+    }
+
+    /// Check one row and restate it in the exact form this root stores.
+    ///
+    /// The answer is an ordered sequence with one value per child field, each
+    /// at the width and unit its own field declares.
+    fn canonicalize_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .canonicalize_value(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Recover this field's typed value from a natural text-shaped one.
+    ///
+    /// This is the field-directed typing the structured codecs apply to the
+    /// strings and numbers a document proves nothing about.
+    #[allow(clippy::wrong_self_convention)]
+    fn from_natural_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .from_natural_value(scalar_from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Require struct children, raising `ValueError` naming what this is.
+    fn require_struct(&self) -> PyResult<()> {
+        self.inner.require_struct().map_err(value_error)
+    }
+
+    /// Require what a record schema root is: valid, non-null, and a struct.
+    fn validate_struct_root(&self) -> PyResult<()> {
+        self.inner.validate_struct_root().map_err(value_error)
+    }
+
+    /// Re-check the recursive datatype and this field's own declarations.
+    fn validate(&self) -> PyResult<()> {
+        self.inner.validate().map_err(value_error)
     }
 
     /// Returns a recursively normalized field for a named compatibility target.
@@ -984,6 +1044,42 @@ impl PyField {
         self.inner.is_nullable()
     }
 
+    /// Replace the physical name this field is stored under.
+    ///
+    /// A populated Arrow projection is invalidated once, and only when the
+    /// name actually changes.
+    fn set_name(&mut self, value: String) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_name(value);
+        Ok(())
+    }
+
+    /// Replace the datatype, validated against this field's own declarations.
+    ///
+    /// A refused datatype - one that contradicts the field's dictionary
+    /// options - leaves the field exactly as it was.
+    fn set_dtype(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_dtype(core_dtype_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    /// Replace whether a value of this field may be absent.
+    fn set_nullable(&mut self, value: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_nullable(value);
+        Ok(())
+    }
+
+    /// Whether this field's datatype carries struct children.
+    ///
+    /// A struct field is the only shape a record schema root can take.
+    #[getter]
+    fn is_struct(&self) -> bool {
+        self.inner.is_struct()
+    }
+
     #[getter]
     fn parquet_field_id(&self) -> PyResult<Option<i32>> {
         self.inner.parquet_field_id().map_err(value_error)
@@ -1163,6 +1259,58 @@ impl PyField {
     fn remove_parquet_field_id(&mut self) -> PyResult<Option<i32>> {
         self.require_mutable()?;
         self.inner.remove_parquet_field_id().map_err(value_error)
+    }
+
+    /// The highest Arrow/Parquet field identifier anywhere in this tree.
+    ///
+    /// A schema evolution numbers above it, so an identifier is never reused
+    /// for a different column.
+    fn max_parquet_field_id(&self) -> PyResult<Option<i32>> {
+        self.inner.max_parquet_field_id().map_err(value_error)
+    }
+
+    /// The field anywhere in this tree carrying one Parquet identifier.
+    ///
+    /// The walk descends every child a datatype has: struct and union
+    /// members, a list's item, a map's entries, and a run-end layout's two.
+    fn field_by_parquet_field_id(&self, id: FieldId) -> Option<Self> {
+        self.inner
+            .field_by_parquet_field_id(id.0)
+            .cloned()
+            .map(Self::from_inner)
+    }
+
+    /// Number every field in this tree that carries no identifier yet.
+    ///
+    /// Children are numbered depth first in declaration order, a field that
+    /// already carries an identifier keeps it, and the next unused identifier
+    /// is returned - so numbering an evolved schema leaves the columns that
+    /// already existed alone.
+    #[pyo3(signature = (start = FieldId(1)))]
+    fn assign_parquet_field_ids(&mut self, start: FieldId) -> PyResult<i32> {
+        self.require_mutable()?;
+        self.inner
+            .assign_parquet_field_ids(start.0)
+            .map_err(value_error)
+    }
+
+    /// Whether a constructor may supply a value for this field.
+    ///
+    /// An absent marker means it may; an explicit `False` marks a field a
+    /// schema declares but a constructor must refuse.
+    #[getter]
+    fn is_init(&self) -> PyResult<bool> {
+        self.inner.is_init().map_err(value_error)
+    }
+
+    /// Record whether a constructor may supply a value for this field.
+    ///
+    /// `True` removes the reserved key rather than storing a redundant
+    /// default, so two schemas that say the same thing stay equal.
+    fn set_init(&mut self, init: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_init(init);
+        Ok(())
     }
 
     /// Declares the enum this field's ASCII values name.
@@ -1847,6 +1995,41 @@ impl PyField {
         let other = core_field_from_value(other)?;
         self.inner
             .merge_with(&other, upscale)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Compare name, nullability, and nested layout, ignoring all metadata.
+    ///
+    /// This is what two schemas agreeing on storage means, as opposed to
+    /// `==`, which also compares every property either one carries.
+    fn layout_eq(&self, other: &Bound<'_, PyAny>) -> PyResult<bool> {
+        Ok(self.inner.layout_eq(&core_field_from_value(other)?))
+    }
+
+    /// The cross-language hash of name, datatype, and nullability alone.
+    ///
+    /// This is the hash counterpart of `layout_eq`, as `stable_hash` is of
+    /// `==`.
+    fn stable_layout_hash(&self) -> u64 {
+        self.inner.stable_layout_hash()
+    }
+
+    /// The position of the first struct child with this exact name.
+    fn index_of(&self, name: &str) -> Option<usize> {
+        self.inner.index_of(name)
+    }
+
+    /// This struct root with the named children removed.
+    ///
+    /// A name the root does not carry is ignored, and the root keeps its own
+    /// name, nullability, and metadata - this is the schema a partitioned
+    /// write stores, with the partition columns left in the path.
+    fn without_fields(&self, names: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let names = crate::enums::strings_from_iterable(names, "names")?;
+        let borrowed: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.inner
+            .without_fields(&borrowed)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -2644,6 +2827,37 @@ impl PyProtocolField {
             .inner
             .protocol_mut(&self.scheme)
             .update(pairs)
+            .map_err(value_error)
+    }
+
+    /// Replace this protocol's properties with exactly these.
+    ///
+    /// The replacement is atomic and reaches only this protocol: every other
+    /// protocol's keys and every shared key are left as they were. `update`
+    /// is the same call that keeps the names it does not mention.
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn set(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        // Collect before borrowing: the replacement may itself be a view of
+        // this same field, and the core validates the whole set atomically.
+        let mut pairs = BTreeMap::new();
+        if let Some(values) = values {
+            extend_metadata_pairs(values, &mut pairs)?;
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                pairs.insert(key.extract()?, value.extract()?);
+            }
+        }
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .protocol_mut(&self.scheme)
+            .set(pairs)
             .map_err(value_error)
     }
 

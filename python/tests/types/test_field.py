@@ -1919,3 +1919,181 @@ def test_unnesting_flattens_structs_and_exploding_reaches_inside_collections() -
     # A datatype answers the same, so descending never changes the calls.
     assert [c.name for c in row.dtype.unnest_fields()] == [c.name for c in leaves]
     assert [c.name for c in row.dtype.explode_fields()] == [c.name for c in exploded]
+
+
+def test_a_field_replaces_the_three_parts_it_owns() -> None:
+    field = Field("id", "int64", nullable=False)
+
+    field.set_name("trade_id")
+    field.set_dtype("int32")
+    field.set_nullable(True)
+
+    assert field.name == "trade_id"
+    assert str(field.dtype) == "int32"
+    assert field.nullable
+    assert field == Field("trade_id", "int32")
+
+    # Dictionary options belong to a dictionary datatype, so replacing the
+    # datatype with one that is not a dictionary drops them.
+    encoded = Field("symbol", "dictionary<int32,utf8>")
+    encoded.set_dictionary_options(7, True)
+    assert encoded.dictionary_id == 7
+    encoded.set_dtype("utf8")
+    assert encoded.dictionary_id is None
+    assert encoded.dictionary_is_ordered is None
+
+    # An expression that is not a datatype leaves the field unchanged.
+    with pytest.raises(ValueError):
+        encoded.set_dtype("not a datatype")
+    assert str(encoded.dtype) == "utf8"
+
+    # A hashed field is frozen, and so are its parts.
+    frozen = Field("id", "int64")
+    hash(frozen)
+    with pytest.raises(TypeError):
+        frozen.set_name("other")
+
+
+def test_a_field_says_whether_it_can_be_a_row() -> None:
+    root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
+
+    assert root.is_struct
+    assert root.require_struct() is None
+    assert root.validate_struct_root() is None
+    assert root.validate() is None
+    assert root.index_of("symbol") == 1
+    assert root.index_of("absent") is None
+
+    leaf = Field("id", "int64")
+    assert not leaf.is_struct
+    with pytest.raises(ValueError):
+        leaf.require_struct()
+
+    # A root cannot be nullable, but a nullable struct is still a struct.
+    nullable_root = Field("row", "struct<id:int64>")
+    assert nullable_root.require_struct() is None
+    with pytest.raises(ValueError):
+        nullable_root.validate_struct_root()
+
+
+def test_a_field_restates_a_value_as_the_field_declares_it() -> None:
+    import decimal
+
+    price = Field("price", "decimal128(18,4)")
+    assert price.scalar(decimal.Decimal("1.5")).as_py() == decimal.Decimal("1.5000")
+
+    # The field adds its own nullability and name to the datatype's contract.
+    required = Field("n", "int64", nullable=False)
+    with pytest.raises(ValueError, match="n"):
+        required.scalar(None)
+    assert Field("n", "int64").scalar(None).as_py() is None
+
+
+def test_a_struct_root_canonicalizes_and_validates_one_row() -> None:
+    root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
+
+    row = root.canonicalize_value([1, "AAPL"])
+    assert row.kind == "sequence"
+    assert row.as_py() == [1, "AAPL"]
+    assert root.validate_value(row) is None
+
+    # Arity is part of the check, and so is each child's datatype.
+    with pytest.raises(ValueError):
+        root.canonicalize_value([1])
+    with pytest.raises(ValueError):
+        root.validate_value(root.default_scalar())
+        root.validate_value("not a row")
+
+
+def test_a_field_recovers_its_value_from_a_natural_text_one() -> None:
+    import base64
+
+    assert Field("p", "decimal128(18,4)").from_natural_value("12.5").as_py() == __import__(
+        "decimal"
+    ).Decimal("12.5000")
+    assert Field("b", "binary").from_natural_value(
+        base64.b64encode(b"hi").decode()
+    ).as_py() == b"hi"
+    assert str(Field("d", "date32").from_natural_value("2024-01-02").as_py()) == "2024-01-02"
+
+
+def test_two_fields_agree_on_storage_without_agreeing_on_metadata() -> None:
+    plain = Field("id", "int64")
+    annotated = Field("id", "int64")
+    annotated.set_comment("the trade identifier")
+
+    # `==` compares every property; layout compares only what is stored.
+    assert plain != annotated
+    assert plain.stable_hash() != annotated.stable_hash()
+    assert plain.layout_eq(annotated)
+    assert plain.stable_layout_hash() == annotated.stable_layout_hash()
+
+    assert not plain.layout_eq(Field("id", "int32"))
+    assert not plain.layout_eq(Field("other", "int64"))
+    assert plain.stable_layout_hash() != Field("id", "int32").stable_layout_hash()
+
+
+def test_a_root_drops_the_children_a_partitioned_write_leaves_in_the_path() -> None:
+    root = Field("row", "struct<id:int64,year:int32,symbol:utf8>", nullable=False)
+    root.set_comment("kept")
+
+    stored = root.without_fields(["year"])
+    assert [child.name for child in stored.dtype] == ["id", "symbol"]
+    assert stored.name == "row"
+    assert not stored.nullable
+    assert stored.comment == "kept"
+
+    # A name the root does not carry is ignored.
+    assert root.without_fields(["absent"]) == root
+    assert root.without_fields([]) == root
+
+
+def test_parquet_field_ids_are_numbered_and_found_across_the_whole_tree() -> None:
+    tree = Field("row", "struct<id:int64,items:list<struct<sku:utf8>>>", nullable=False)
+    assert tree.max_parquet_field_id() is None
+
+    following = tree.assign_parquet_field_ids()
+    assert tree.max_parquet_field_id() == following - 1
+    first = tree.field_by_parquet_field_id(1)
+    assert first is not None
+    assert first.name == "id"
+    assert tree.field_by_parquet_field_id(following) is None
+
+    # A field that already carries an identifier keeps it.
+    evolved = tree.dtype["id"]
+    kept = evolved.parquet_field_id
+    assert tree.assign_parquet_field_ids(following) == following
+    assert tree.dtype["id"].parquet_field_id == kept
+
+
+def test_a_field_says_whether_a_constructor_may_supply_it() -> None:
+    field = Field("id", "int64")
+    assert field.is_init
+
+    field.set_init(False)
+    assert not field.is_init
+    assert field.metadata["field:init"] == "false"
+
+    # True is the absence of the marker, so two equal schemas stay equal.
+    field.set_init(True)
+    assert field.is_init
+    assert "field:init" not in field.metadata
+    assert field == Field("id", "int64")
+
+
+def test_a_protocol_view_replaces_only_its_own_properties() -> None:
+    field = Field("id", "int64")
+    field.fix.update(id="tag:35", aliases="MsgType")
+    field.set_comment("kept")
+    field.http.update(content_type="text/plain")
+
+    field.fix.set(id="tag:36")
+
+    assert dict(field.fix.items()) == {"id": "tag:36"}
+    assert field.comment == "kept"
+    assert dict(field.http.items()) == {"content_type": "text/plain"}
+
+    # An empty replacement is how a protocol is emptied without touching the rest.
+    field.fix.set()
+    assert len(field.fix) == 0
+    assert field.comment == "kept"
