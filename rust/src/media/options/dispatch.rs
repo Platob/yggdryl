@@ -85,6 +85,16 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
+    fn batch_byte_size(&self) -> Option<u64> {
+        match self {
+            Self::Ipc(options) => options.batch_byte_size(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.batch_byte_size(),
+            Self::Avro(options) => options.batch_byte_size(),
+            Self::Text(options) => options.batch_byte_size(),
+        }
+    }
+
     fn batch_row_size(&self) -> Option<usize> {
         match self {
             Self::Ipc(options) => options.batch_row_size(),
@@ -92,6 +102,16 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.batch_row_size(),
             Self::Avro(options) => options.batch_row_size(),
             Self::Text(options) => options.batch_row_size(),
+        }
+    }
+
+    fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>) {
+        match self {
+            Self::Ipc(options) => options.set_batch_byte_size(batch_byte_size),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_batch_byte_size(batch_byte_size),
+            Self::Avro(options) => options.set_batch_byte_size(batch_byte_size),
+            Self::Text(options) => options.set_batch_byte_size(batch_byte_size),
         }
     }
 

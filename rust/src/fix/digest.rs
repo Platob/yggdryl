@@ -1,0 +1,226 @@
+//! A message's value digest, and the adapter that drops a republished line.
+//!
+//! # What it is over
+//!
+//! The [entries](super::FixEntry), in arrival order. Not the row: the row is
+//! an interpretation, and two readers at two versions interpret one wire
+//! record into two rows. The entries are what arrived, so a digest over them
+//! answers "the same message?" and nothing about how it was read.
+//!
+//! Arrival order, never sorted. Order carries meaning inside a repeating
+//! group, and sorting would cost an allocation per message to produce a
+//! worse answer.
+//!
+//! # Why the lengths are written down
+//!
+//! Each value is fed as its length and then its bytes, rather than separated
+//! by anything. A FIX value may contain any byte at all - `data` fields exist
+//! precisely for that - so a separator-framed digest would make two different
+//! messages equal. `("1", "23")` and `("12", "3")` are the shortest case and
+//! the test that pins it.
+//!
+//! # Two entries are excluded, and only two
+//!
+//! `BodyLength(9)` and `CheckSum(10)` are facts about the *frame*, not the
+//! message: both change when the same message is re-serialized with a
+//! different separator, and a digest that moved under re-serialization would
+//! not identify anything.
+//!
+//! `SendingTime` and `MsgSeqNum` stay in. Excluding them would read like
+//! deduplication but it is a judgement about which differences do not count,
+//! and it makes two genuinely distinct heartbeats one message. The frame
+//! fields are excluded on a different ground entirely: they are not the
+//! message, they are how it was written down.
+
+use crate::digest::DigestAlgorithm;
+
+use super::msg::FixMsg;
+
+/// The frame's own tags, which describe the writing rather than the message.
+const FRAME_TAGS: [i32; 2] = [9, 10];
+
+/// The crate's own tag for the digest, excluded because a value cannot cover
+/// itself.
+const DIGEST_TAG: i32 = super::MSGHASH_TAG;
+
+impl FixMsg {
+    /// This message's value digest.
+    ///
+    /// Computed on every call and stored nowhere. Two calls answer the same
+    /// value because the entries do not change, and a cached digest is a fact
+    /// that a later edit makes a lie - the invalidation rule that would
+    /// prevent it costs more than the walk it saves. [`Direction`] is the
+    /// opposite case and *is* stored, because the bytes it is read from are
+    /// gone by the time anyone could ask again.
+    ///
+    /// 128 bits rather than 64. A day of capture is comfortably a billion
+    /// messages, and the birthday bound puts a 64-bit digest into collision
+    /// around ten times that - so a 64-bit dedup key silently drops a real
+    /// message roughly once per large capture. Sixteen bytes a row is the
+    /// price.
+    ///
+    /// Nothing is materialized: the entries feed a resumable state as they
+    /// are walked, and the length prefixes come from a stack array, so
+    /// hashing a million messages allocates nothing.
+    ///
+    /// A message built from a schema and a value has no entries and digests
+    /// as the empty walk - the same answer for every such message, which is
+    /// correct: none of them arrived.
+    ///
+    /// [`Direction`]: crate::types::Direction
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::{FixReader, FixRegistry};
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    /// let reader = FixReader::new(Arc::new(registry));
+    /// let sent = reader.text("8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|")?;
+    ///
+    /// // The frame is not the message: a different separator, a recomputed
+    /// // body length and a different checksum are the same message.
+    /// let again = reader.text("8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|")?;
+    /// assert_eq!(sent.digest(), again.digest());
+    ///
+    /// // A different value is a different message.
+    /// let other = reader.text("8=FIX.4.4|35=D|11=A|55=MSFT|10=203|")?;
+    /// assert_ne!(sent.digest(), other.digest());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn digest(&self) -> u128 {
+        let mut state = DigestAlgorithm::Xxh128.digester();
+        for entry in self.entries() {
+            let tag = entry.tag();
+            if FRAME_TAGS.contains(&tag) || tag == DIGEST_TAG {
+                continue;
+            }
+            state.write_bytes(&tag.to_be_bytes());
+            // The key only where the tag named no field. A resolved entry is
+            // identified by its tag, and two spellings of one tag are one
+            // field; an unresolved one has nothing but its key, so two rows
+            // whose unknown keys differ are two messages.
+            if tag == 0 {
+                let key = entry.key().as_bytes();
+                state.write_bytes(&length_of(key));
+                state.write_bytes(key);
+            }
+            let value = entry.value().as_bytes();
+            state.write_bytes(&length_of(value));
+            state.write_bytes(value);
+        }
+        state
+            .as_digest()
+            .as_u128()
+            .expect("the 128-bit algorithm answers 128 bits")
+    }
+}
+
+/// One length as four big-endian bytes, saturating rather than wrapping.
+///
+/// A value longer than four gigabytes cannot be distinguished from one at the
+/// bound, which no FIX field is and no capture line could be.
+fn length_of(bytes: &[u8]) -> [u8; 4] {
+    u32::try_from(bytes.len()).unwrap_or(u32::MAX).to_be_bytes()
+}
+
+/// Drops each message whose digest equals the one before it.
+///
+/// A line a capture tool published twice is adjacent, and the second is
+/// dropped. Two identical heartbeats an hour apart are two events and both
+/// survive: non-adjacent identity is a question about a *window* - how wide,
+/// measured how - and that policy belongs to the caller.
+///
+/// One `u128` of state whatever the stream's length. Never a set: a set over
+/// a day's capture grows without bound, which is the exact failure a
+/// byte-shaped batch bound exists to avoid, reintroduced one layer up.
+///
+/// A resend survives. A message replayed under `PossDupFlag` carries a fresh
+/// `SendingTime` and so digests differently - deliberately, because dedup
+/// catches the same bytes twice and the `resent` facet catches the replay,
+/// and neither is made to do the other's job. A dedup that folded resends
+/// would drop exactly the recovery traffic a sequence-gap check reads.
+///
+/// ```
+/// # fn main() -> yggdryl::Result<()> {
+/// # use std::sync::Arc;
+/// # use yggdryl::holder::local::Folder;
+/// # use yggdryl::{FixDedup, FixReader, FixRegistry};
+/// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+/// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+/// let reader = FixReader::new(Arc::new(registry));
+/// let rows = [
+///     "8=FIX.4.4|35=D|11=A|10=0|",
+///     "8=FIX.4.4|35=D|11=A|10=0|",
+///     "8=FIX.4.4|35=D|11=B|10=0|",
+///     "8=FIX.4.4|35=D|11=A|10=0|",
+/// ];
+/// let read = rows.iter().map(|row| reader.text(row).expect("a readable row"));
+///
+/// let mut dedup = FixDedup::new(read);
+/// let kept: Vec<String> = dedup.by_ref().map(|held| held.into_text('|').unwrap()).collect();
+/// // The republished line goes; the one that comes back after B does not,
+/// // because it is no longer adjacent to its twin.
+/// assert_eq!(kept.len(), 3);
+/// assert_eq!(dedup.dropped(), 1);
+/// # Ok(())
+/// # }
+/// ```
+pub struct FixDedup<I> {
+    inner: I,
+    last: Option<u128>,
+    dropped: u64,
+}
+
+impl<I> FixDedup<I> {
+    /// Wraps one stream of messages.
+    pub const fn new(inner: I) -> Self {
+        Self {
+            inner,
+            last: None,
+            dropped: 0,
+        }
+    }
+
+    /// How many messages this adapter has dropped so far.
+    ///
+    /// Dropping is counted because nothing here loses data quietly, and an
+    /// opt-in filter is not an exception to that - it is the one place the
+    /// loss has to be reported instead of avoided.
+    pub const fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    /// The stream underneath, given back.
+    pub fn into_inner(self) -> I {
+        self.inner
+    }
+}
+
+impl<I: Iterator<Item = FixMsg>> Iterator for FixDedup<I> {
+    type Item = FixMsg;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let message = self.inner.next()?;
+            let digest = message.digest();
+            if self.last == Some(digest) {
+                self.dropped += 1;
+                continue;
+            }
+            self.last = Some(digest);
+            return Some(message);
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        // Everything may be dropped and nothing may be, so only the upper
+        // bound survives the filter.
+        (0, self.inner.size_hint().1)
+    }
+}
+
+impl<I: Iterator<Item = FixMsg>> std::iter::FusedIterator for FixDedup<I> {}

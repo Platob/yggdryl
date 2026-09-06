@@ -1,5 +1,6 @@
 mod common;
 
+pub mod batch;
 pub mod codes;
 pub mod lift;
 pub mod lineage;

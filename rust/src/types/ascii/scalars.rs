@@ -230,6 +230,52 @@ impl Direction {
     #[must_use]
     pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8]) {
         let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
+        Self::split_within(line, bound)
+    }
+
+    /// Reads which way a line moved, given where its payload starts.
+    ///
+    /// The reading is the same; what this adds is that the caller already
+    /// knows the offset. A reader has located the frame to parse it, and
+    /// locating it twice is the only cost the bounded reading has.
+    ///
+    /// The default fills silence and never overrides a statement: a line
+    /// carrying a verb answers that verb, and only a line carrying none - or
+    /// carrying both, which is a line no reading can prefer one of - takes
+    /// the default. FIX parsing passes [`Direction::SENT`], because a
+    /// session's own log is written by the side doing the sending and its
+    /// unmarked lines are the ones it sent.
+    ///
+    /// ```
+    /// use yggdryl::types::Direction;
+    ///
+    /// let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
+    /// let at = 11; // where the reader found the frame
+    /// assert_eq!(
+    ///     Direction::at_payload(line, at, Some(Direction::SENT)),
+    ///     Some(Direction::SENT),
+    ///     "the verb inside Text(58) is payload, not prose",
+    /// );
+    ///
+    /// // A line the transport did not mark takes the default, and a line
+    /// // with no default takes nothing.
+    /// let bare = b"8=FIX.4.2|35=D|10=0|";
+    /// assert_eq!(Direction::at_payload(bare, 0, Some(Direction::SENT)), Some(Direction::SENT));
+    /// assert_eq!(Direction::at_payload(bare, 0, None), None);
+    /// ```
+    #[must_use]
+    pub fn at_payload(
+        line: &[u8],
+        payload_at: usize,
+        default: Option<&'static str>,
+    ) -> Option<&'static str> {
+        Self::split_within(line, payload_at.min(line.len()))
+            .0
+            .or(default)
+    }
+
+    /// The reading, over a prefix the caller has already bounded.
+    fn split_within(line: &[u8], bound: usize) -> (Option<&'static str>, &[u8]) {
         let prefix = &line[..bound];
         let mut found: Option<(&'static str, usize)> = None;
         for (start, end, direction, selectable) in markers(prefix) {

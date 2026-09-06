@@ -67,6 +67,11 @@ pub struct AvroOptions {
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch a reader yields.
+    /// Bytes per batch, whichever of this and `batch_row_size` binds first.
+    ///
+    /// A target rather than a ceiling, and a non-zero bound always yields at
+    /// least one row.
+    pub batch_byte_size: Option<u64>,
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
@@ -98,6 +103,7 @@ impl AvroOptions {
             dtype: None,
             metadata: Metadata::new(),
             safe: false,
+            batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,

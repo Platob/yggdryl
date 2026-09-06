@@ -159,6 +159,29 @@ pub trait IORecordOptions: Sized {
     /// Set the row-per-batch bound.
     fn set_batch_row_size(&mut self, batch_row_size: Option<usize>);
 
+    /// Return the byte-per-batch bound, if any.
+    ///
+    /// Whichever of this and [`Self::batch_row_size`] binds first closes the
+    /// batch. Batching by rows alone makes a batch of heartbeats and a batch
+    /// of market data differ by three orders of magnitude in memory for the
+    /// same row count, which is what a byte bound exists to stop.
+    ///
+    /// It is a **target rather than a ceiling**: an in-progress builder cannot
+    /// be measured the way a finished batch can, so the running estimate is
+    /// what was appended plus a fixed per-row width. A non-zero bound always
+    /// yields at least one row - the same guarantee the total byte bound
+    /// gives - so a single enormous value can never produce an empty batch.
+    fn batch_byte_size(&self) -> Option<u64> {
+        None
+    }
+
+    /// Set the byte-per-batch bound.
+    ///
+    /// The default does nothing, for an encoding that does not hold one.
+    fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>) {
+        let _ = batch_byte_size;
+    }
+
     /// Return the row materialization bound for a native-record write.
     ///
     /// Row conversion must never run past the next publication boundary: a
@@ -344,6 +367,13 @@ pub trait IORecordOptions: Sized {
     #[must_use]
     fn with_safe(mut self, safe: bool) -> Self {
         self.set_safe(safe);
+        self
+    }
+
+    /// Return these options with a byte-per-batch bound.
+    #[must_use]
+    fn with_batch_byte_size(mut self, batch_byte_size: u64) -> Self {
+        self.set_batch_byte_size(Some(batch_byte_size));
         self
     }
 
@@ -614,6 +644,14 @@ macro_rules! record_options_fields {
 
         fn set_safe(&mut self, safe: bool) {
             self.safe = safe;
+        }
+
+        fn batch_byte_size(&self) -> Option<u64> {
+            self.batch_byte_size
+        }
+
+        fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>) {
+            self.batch_byte_size = batch_byte_size;
         }
 
         fn batch_row_size(&self) -> Option<usize> {

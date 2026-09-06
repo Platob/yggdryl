@@ -59,10 +59,12 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
-    DEFAULT_NULL_VALUES, FixAliases, FixAnomalies, FixAnomaly, FixBranch, FixCode, FixCodes,
-    FixEntry, FixEnumValue, FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry,
-    FixMsg, FixParty, FixPedigree, FixReader, FixRegistry, STANDARD_HEADER_TAGS,
-    STANDARD_TRAILER_TAGS, Words, fix_lift, fix_lifts,
+    CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DIRECTION_TAG, FixAliases,
+    FixAnomalies, FixAnomaly, FixBatchReader, FixBranch, FixCode, FixCodes, FixDedup, FixEntry,
+    FixEnumValue, FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg,
+    FixOptions, FixParty, FixPedigree, FixReader, FixRegistry, MSGHASH_TAG, SOH,
+    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Words, fix_crate_fields, fix_lift, fix_lifts,
+    write_fix,
 };
 pub use i256::I256;
 #[cfg(feature = "arrow")]

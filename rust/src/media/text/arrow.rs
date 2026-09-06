@@ -88,6 +88,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
         &field,
         rows,
         batch_row_size,
+        options.batch_byte_size(),
         None,
         None,
     )?)

@@ -150,9 +150,12 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 use crate::{Error, Result, Version};
 
 mod anomaly;
+mod batch;
 mod build;
 mod codes;
 mod constants;
+mod crated;
+mod digest;
 mod document;
 mod entry;
 mod field;
@@ -168,8 +171,11 @@ mod store;
 mod tests;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
+pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
 pub use codes::{FixCode, FixCodes, FixEnumValue};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+pub use crated::{CRATE_BRANCH, DIRECTION_TAG, MSGHASH_TAG, fix_crate_fields};
+pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
 pub use field::FixAliases;
