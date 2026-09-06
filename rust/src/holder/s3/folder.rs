@@ -116,6 +116,9 @@ impl Folder {
     /// Returns the store's refusal to create the bucket.
     pub fn create(&self) -> Result<()> {
         if self.prefix.is_empty() {
+            if !self.client.options().bucket_creation() {
+                return Err(refused("create", &self.bucket));
+            }
             return self.client.create_bucket(&self.bucket);
         }
         Ok(())
@@ -349,6 +352,9 @@ impl IOFolder for Folder {
     /// is the success the contract asks for.
     fn delete_folder(&mut self) -> Result<()> {
         if self.prefix.is_empty() {
+            if !self.client.options().bucket_deletion() {
+                return Err(refused("delete", &self.bucket));
+            }
             return self.client.delete_bucket(&self.bucket);
         }
         Ok(())
@@ -478,6 +484,17 @@ impl std::fmt::Debug for Folder {
             .field("url", &self.url)
             .finish()
     }
+}
+
+/// Refuse a bucket lifecycle operation this client was told not to perform.
+///
+/// No request goes out: this is the client's own rule, not the store's, and
+/// finding out from the store would be a round trip and an audit-log entry.
+fn refused(operation: &str, bucket: &str) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        format!("this client is not allowed to {operation} the bucket {bucket}"),
+    ))
 }
 
 /// Report a listing that cannot form a child location.

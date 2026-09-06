@@ -85,6 +85,9 @@ pub(crate) struct Signer {
     session_token: Option<String>,
     /// The region in every credential scope.
     region: String,
+    /// The service in every credential scope: `s3`, or `sts` for the one
+    /// request that trades a role for a credential set.
+    service: &'static str,
     /// (date `YYYYMMDD`, derived signing key) - recomputed when the day changes.
     key: Mutex<Option<(String, [u8; 32])>>,
 }
@@ -97,11 +100,33 @@ impl Signer {
         session_token: Option<String>,
         region: impl Into<String>,
     ) -> Self {
+        Self::for_service(
+            "s3",
+            access_key_id,
+            secret_access_key,
+            session_token,
+            region,
+        )
+    }
+
+    /// The same, for a service other than S3.
+    ///
+    /// The service is part of the credential scope and of the signing key, so
+    /// a request to STS signed as `s3` is refused - which is why this exists
+    /// rather than the scope being spelled once.
+    pub(crate) fn for_service(
+        service: &'static str,
+        access_key_id: impl Into<String>,
+        secret_access_key: impl Into<String>,
+        session_token: Option<String>,
+        region: impl Into<String>,
+    ) -> Self {
         Self {
             access_key_id: access_key_id.into(),
             secret_access_key: secret_access_key.into(),
             session_token,
             region: region.into(),
+            service,
             key: Mutex::new(None),
         }
     }
@@ -162,7 +187,7 @@ impl Signer {
         let (date, datetime) = amz_date(now);
         let canonical_headers = self.canonical_headers(host, &datetime, payload_hash, headers);
         let request = canonical_request(method, path, query, &canonical_headers, payload_hash);
-        let scope = format!("{date}/{}/s3/aws4_request", self.region);
+        let scope = format!("{date}/{}/{}/aws4_request", self.region, self.service);
         let signature = hex(&hmac_sha256(
             &self.signing_key(&date),
             string_to_sign(&datetime, &scope, &request).as_bytes(),
@@ -229,7 +254,7 @@ impl Signer {
         }
         let secret = format!("AWS4{}", self.secret_access_key);
         let mut key = hmac_sha256(secret.as_bytes(), date.as_bytes());
-        for part in [self.region.as_str(), "s3", "aws4_request"] {
+        for part in [self.region.as_str(), self.service, "aws4_request"] {
             key = hmac_sha256(&key, part.as_bytes());
         }
         *cache = Some((date.to_owned(), key));

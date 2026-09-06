@@ -203,6 +203,23 @@ impl<'body> Request<'body> {
         self
     }
 
+    /// Carry the metadata every write of this client's carries.
+    ///
+    /// A name the request already set wins, so a content type a handle
+    /// inferred is never overridden by a default.
+    fn with_metadata(mut self, metadata: &[(String, String)]) -> Self {
+        for (name, value) in metadata {
+            if !self
+                .headers
+                .iter()
+                .any(|(held, _)| held.eq_ignore_ascii_case(name))
+            {
+                self.headers.push((name.clone(), value.clone()));
+            }
+        }
+        self
+    }
+
     /// Say how the object this request stores is to be encrypted.
     ///
     /// `PutObject` and `CreateMultipartUpload` are the two that decide it.
@@ -292,6 +309,17 @@ impl Client {
             }
         } else {
             CredentialSource::Anonymous
+        };
+        // A role wraps whatever answered rather than replacing it: those keys
+        // are what signs the exchange, and the session it hands back is what
+        // signs the bucket.
+        let credentials = match options.assumed_role() {
+            Some(role) => CredentialSource::Role {
+                role: Box::new(role.clone()),
+                base: Box::new(credentials),
+                region: region.clone(),
+            },
+            None => credentials,
         };
         Ok(Self {
             agent: Self::agent(&options),
@@ -1104,6 +1132,7 @@ impl Client {
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
         }
+        request = request.with_metadata(self.options.default_metadata());
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
@@ -1226,6 +1255,7 @@ impl Client {
         if let Some(content_type) = content_type {
             request = request.header("content-type", content_type);
         }
+        request = request.with_metadata(self.options.default_metadata());
         let answer = self.send(&request)?;
         if answer.status >= 300 {
             return Err(self.failure(&request, &answer));
@@ -1486,8 +1516,7 @@ fn shared_agent() -> &'static ureq::Agent {
 /// write, which costs more per request than the whole of signing one. Per
 /// phase, the bound is free.
 fn build_agent(options: &S3Options) -> ureq::Agent {
-    ureq::Agent::new_with_config(
-        ureq::Agent::config_builder()
+    let mut builder = ureq::Agent::config_builder()
             // Statuses are read, never raised: S3 says what it means in the
             // status and an XML body, and this client maps both itself.
             .http_status_as_error(false)
@@ -1495,9 +1524,13 @@ fn build_agent(options: &S3Options) -> ureq::Agent {
             .timeout_send_request(Some(options.timeout()))
             .timeout_recv_response(Some(options.timeout()))
             .timeout_recv_body(Some(options.timeout()))
-            .user_agent(concat!("yggdryl/", env!("CARGO_PKG_VERSION")))
-            .build(),
-    )
+            .user_agent(concat!("yggdryl/", env!("CARGO_PKG_VERSION")));
+    // A named proxy replaces what the environment says; `.proxy` is left
+    // untouched otherwise so `HTTPS_PROXY` and `NO_PROXY` keep deciding.
+    if let Some(proxy) = options.proxy().and_then(|uri| ureq::Proxy::new(uri).ok()) {
+        builder = builder.proxy(Some(proxy));
+    }
+    ureq::Agent::new_with_config(builder.build())
 }
 
 /// The delay before attempt `attempt + 1`, doubling and capped.

@@ -190,6 +190,36 @@ pub(crate) fn parse_delete_result(xml: &[u8]) -> Result<Vec<DeleteFailure>, XmlE
         .collect()
 }
 
+/// `<AssumeRoleResponse><AssumeRoleResult><Credentials>`.
+///
+/// # Errors
+///
+/// Malformed XML, another root, or an answer without an access key or secret.
+pub(crate) fn parse_assumed_credentials(xml: &[u8]) -> Result<AssumedCredentials, XmlError> {
+    let root = parse_root(xml, "AssumeRoleResponse")?;
+    let found = root
+        .child("AssumeRoleResult")
+        .and_then(|result| result.child("Credentials"))
+        .ok_or_else(|| XmlError("missing <AssumeRoleResult><Credentials>".to_owned()))?;
+    Ok(AssumedCredentials {
+        access_key_id: found.required("AccessKeyId")?.to_owned(),
+        secret_access_key: found.required("SecretAccessKey")?.to_owned(),
+        session_token: found
+            .child_text("SessionToken")
+            .unwrap_or_default()
+            .to_owned(),
+        expiration: found.child_text("Expiration").map(str::to_owned),
+    })
+}
+
+/// One credential set STS handed back.
+pub(crate) struct AssumedCredentials {
+    pub(crate) access_key_id: String,
+    pub(crate) secret_access_key: String,
+    pub(crate) session_token: String,
+    pub(crate) expiration: Option<String>,
+}
+
 /// `<CreateBucketConfiguration><LocationConstraint>{region}</LocationConstraint></CreateBucketConfiguration>`.
 pub(crate) fn render_create_bucket(region: &str) -> String {
     format!(

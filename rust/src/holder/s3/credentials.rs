@@ -126,6 +126,15 @@ pub(super) enum CredentialSource {
         /// The profile the shared files are read for.
         profile: Option<String>,
     },
+    /// A role, assumed with whatever the source under it answers.
+    Role {
+        /// The role to trade for.
+        role: Box<super::sts::AssumedRole>,
+        /// Where the keys that sign the exchange come from.
+        base: Box<CredentialSource>,
+        /// The region STS is reached in when the role does not name one.
+        region: String,
+    },
 }
 
 /// The chain plus the set it last found, refreshed before expiry.
@@ -161,17 +170,46 @@ impl CredentialCache {
         match &self.source {
             CredentialSource::Anonymous => Ok(None),
             CredentialSource::Fixed(credentials) => Ok(Some(credentials.clone())),
-            CredentialSource::Chain { profile } => {
+            CredentialSource::Chain { .. } | CredentialSource::Role { .. } => {
                 let mut cached = self.cached.lock().map_err(|_| poisoned())?;
                 if let Some(credentials) = cached.as_ref() {
                     if !credentials.is_stale(now) {
                         return Ok(Some(credentials.clone()));
                     }
                 }
-                let found = from_chain(agent, profile.as_deref())?;
+                let found = resolve_source(&self.source, agent, now)?;
                 cached.clone_from(&found);
                 Ok(found)
             }
+        }
+    }
+}
+
+/// Walk one source, with no cache of its own.
+///
+/// A role's base is walked again whenever the session is refreshed, which is
+/// once an hour rather than once a request - and is what keeps a base that
+/// expires too, like the instance metadata service's, from going stale.
+fn resolve_source(
+    source: &CredentialSource,
+    agent: &ureq::Agent,
+    now: SystemTime,
+) -> Result<Option<Credentials>> {
+    match source {
+        CredentialSource::Anonymous => Ok(None),
+        CredentialSource::Fixed(credentials) => Ok(Some(credentials.clone())),
+        CredentialSource::Chain { profile } => from_chain(agent, profile.as_deref()),
+        CredentialSource::Role { role, base, region } => {
+            let Some(base) = resolve_source(base, agent, now)? else {
+                return Err(Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "expected keys to assume the role {} with, and found none",
+                        role.role_arn()
+                    ),
+                )));
+            };
+            super::sts::assume(agent, &base, role, region, now).map(Some)
         }
     }
 }

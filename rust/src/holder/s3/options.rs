@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use super::credentials::Credentials;
 use super::encryption::Encryption;
+use super::sts::AssumedRole;
 
 /// Part size when nothing else is said: 16 MiB, well above S3's 5 MiB floor.
 const DEFAULT_PART_SIZE: u64 = 16 * 1024 * 1024;
@@ -82,6 +83,11 @@ pub struct S3Options {
     read_environment: bool,
     payload_signing: Option<bool>,
     encryption: Encryption,
+    proxy: Option<String>,
+    assumed_role: Option<AssumedRole>,
+    bucket_creation: bool,
+    bucket_deletion: bool,
+    metadata: Vec<(String, String)>,
 }
 
 impl Default for S3Options {
@@ -102,6 +108,11 @@ impl Default for S3Options {
             read_environment: true,
             payload_signing: None,
             encryption: Encryption::Default,
+            proxy: None,
+            assumed_role: None,
+            bucket_creation: true,
+            bucket_deletion: true,
+            metadata: Vec::new(),
         }
     }
 }
@@ -232,6 +243,70 @@ impl S3Options {
         self
     }
 
+    /// Reach the endpoint through the proxy at `uri`.
+    ///
+    /// `http://`, `https://`, `socks4://`, and `socks5://` are understood, and
+    /// a proxy may carry credentials of its own as `user:password@host`.
+    /// Unset, the transport reads the usual `HTTPS_PROXY` and `NO_PROXY`
+    /// variables, which is what most environments already say.
+    #[must_use]
+    pub fn with_proxy(mut self, uri: impl Into<String>) -> Self {
+        let uri: String = uri.into();
+        self.proxy = (!uri.trim().is_empty()).then(|| uri.trim().to_owned());
+        self
+    }
+
+    /// Sign bucket requests as `role` rather than as the keys that were found.
+    ///
+    /// The credential chain still answers, and what it answers is what signs
+    /// the *exchange*: one STS request trades those keys for the role's, and
+    /// the session it hands back is what reaches the bucket. It expires, so it
+    /// is traded again shortly before it does rather than per request.
+    #[must_use]
+    pub fn with_assumed_role(mut self, role: AssumedRole) -> Self {
+        self.assumed_role = Some(role);
+        self
+    }
+
+    /// Allow, or refuse, creating a bucket through a container handle.
+    ///
+    /// Creating one is what [`IOFolder::create_folder`] does at a bucket root,
+    /// and a process that must never make one says so here. Refusing costs no
+    /// request: it is a refusal, not a probe.
+    ///
+    /// [`IOFolder::create_folder`]: crate::IOFolder::create_folder
+    #[must_use]
+    pub const fn with_bucket_creation(mut self, allowed: bool) -> Self {
+        self.bucket_creation = allowed;
+        self
+    }
+
+    /// Allow, or refuse, deleting a bucket through a container handle.
+    #[must_use]
+    pub const fn with_bucket_deletion(mut self, allowed: bool) -> Self {
+        self.bucket_deletion = allowed;
+        self
+    }
+
+    /// Carry `metadata` on every object this client writes.
+    ///
+    /// A name S3 itself defines - `content-encoding`, `cache-control`, and the
+    /// rest - is sent as that header; anything else becomes user metadata,
+    /// under `x-amz-meta-`. A name the write already sets for itself wins, so
+    /// this never overrides the content type a handle inferred.
+    #[must_use]
+    pub fn with_default_metadata<K, V>(mut self, metadata: impl IntoIterator<Item = (K, V)>) -> Self
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.metadata = metadata
+            .into_iter()
+            .map(|(name, value)| (header_name(&name.into()), value.into()))
+            .collect();
+        self
+    }
+
     /// Consult, or ignore, the process environment and the shared AWS files.
     ///
     /// Off, only explicit values and the URL decide, which is what a test
@@ -317,6 +392,31 @@ impl S3Options {
         &self.encryption
     }
 
+    /// The proxy the endpoint is reached through, when one was named.
+    pub fn proxy(&self) -> Option<&str> {
+        self.proxy.as_deref()
+    }
+
+    /// The role bucket requests are signed as, when one was named.
+    pub const fn assumed_role(&self) -> Option<&AssumedRole> {
+        self.assumed_role.as_ref()
+    }
+
+    /// Whether a container handle may create a bucket.
+    pub const fn bucket_creation(&self) -> bool {
+        self.bucket_creation
+    }
+
+    /// Whether a container handle may delete a bucket.
+    pub const fn bucket_deletion(&self) -> bool {
+        self.bucket_deletion
+    }
+
+    /// The metadata every write carries, as the headers it goes over as.
+    pub fn default_metadata(&self) -> &[(String, String)] {
+        &self.metadata
+    }
+
     /// Whether a write to an endpoint of `scheme` signs its body.
     ///
     /// Explicit wins; otherwise TLS decides, because TLS is what the hash
@@ -329,7 +429,31 @@ impl S3Options {
     /// Whether the transport differs from the process-wide default, in which
     /// case the client needs a connection pool of its own.
     pub(super) fn has_custom_transport(&self) -> bool {
-        self.timeout != DEFAULT_TIMEOUT || self.connect_timeout != DEFAULT_CONNECT_TIMEOUT
+        self.timeout != DEFAULT_TIMEOUT
+            || self.connect_timeout != DEFAULT_CONNECT_TIMEOUT
+            || self.proxy.is_some()
+    }
+}
+
+/// The header a metadata name goes over as.
+///
+/// S3 defines a handful of names itself and treats every other as user
+/// metadata, which travels under `x-amz-meta-`. A caller who spells the prefix
+/// is taken at their word.
+fn header_name(name: &str) -> String {
+    const OWN: [&str; 6] = [
+        "cache-control",
+        "content-disposition",
+        "content-encoding",
+        "content-language",
+        "content-type",
+        "expires",
+    ];
+    let lowered = name.trim().to_ascii_lowercase();
+    if OWN.contains(&lowered.as_str()) || lowered.starts_with("x-amz-") {
+        lowered
+    } else {
+        format!("x-amz-meta-{lowered}")
     }
 }
 
@@ -354,6 +478,11 @@ impl std::fmt::Debug for S3Options {
             .field("payload_signing", &self.payload_signing)
             // `Encryption` redacts a customer key.
             .field("encryption", &self.encryption)
+            .field("proxy", &self.proxy)
+            .field("assumed_role", &self.assumed_role)
+            .field("bucket_creation", &self.bucket_creation)
+            .field("bucket_deletion", &self.bucket_deletion)
+            .field("metadata", &self.metadata)
             .finish()
     }
 }

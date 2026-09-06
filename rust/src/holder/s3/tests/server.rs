@@ -26,6 +26,8 @@ use std::thread::JoinHandle;
 const XMLNS: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
 /// `Last-Modified` of every object, as RFC 7231 spells it.
 const LAST_MODIFIED_HTTP: &str = "Wed, 01 Jan 2020 00:00:00 GMT";
+/// When an assumed-role session lapses, unless a test says sooner.
+const DEFAULT_ROLE_EXPIRY: &str = "2099-01-01T00:00:00Z";
 /// The same instant as a listing's `<LastModified>` (ISO 8601).
 const LAST_MODIFIED_ISO: &str = "2020-01-01T00:00:00.000Z";
 /// `Content-Type` reported for an object stored without one.
@@ -204,6 +206,18 @@ impl FakeS3 {
 
     /// Answer the next `times` requests with `status` and error `code`
     /// before looking at them, e.g. `503 SlowDown` to exercise retries.
+    /// Answer every assumed-role session as already lapsed, or as long-lived.
+    ///
+    /// Lapsed is what makes the refresh path visible: a client that holds a
+    /// session past its expiry asks once, and one that respects it asks again.
+    pub fn expire_roles(&self, expired: bool) {
+        self.inner.store().role_expiry = if expired {
+            "2000-01-01T00:00:00Z".to_owned()
+        } else {
+            DEFAULT_ROLE_EXPIRY.to_owned()
+        };
+    }
+
     pub fn fail_next(&self, status: u16, code: &str, times: usize) {
         self.inner.store().failure = (times > 0).then(|| Injected {
             status,
@@ -479,7 +493,9 @@ fn parse_authorization(value: &str) -> Option<Credential> {
         }
     }
     let scope: Vec<&str> = credential?.split('/').collect();
-    let [access_key, _date, region, "s3", "aws4_request"] = scope[..] else {
+    // STS shares this endpoint in the fixtures, and its scope names its own
+    // service - which is the point: a different service is a different key.
+    let [access_key, _date, region, "s3" | "sts", "aws4_request"] = scope[..] else {
         return None;
     };
     let signature = signature?;
@@ -497,7 +513,6 @@ fn parse_authorization(value: &str) -> Option<Credential> {
 }
 
 /// Everything the handled requests read and write.
-#[derive(Default)]
 struct Store {
     /// Bucket name to its objects, both in byte order.
     buckets: BTreeMap<String, BTreeMap<String, Object>>,
@@ -509,8 +524,24 @@ struct Store {
     required_access_key: Option<String>,
     /// The failure injected by `fail_next`, while requests remain.
     failure: Option<Injected>,
+    /// The expiry every assumed-role session is answered with.
+    role_expiry: String,
     /// Upload ids handed out so far.
     next_upload: usize,
+}
+
+impl Default for Store {
+    fn default() -> Self {
+        Self {
+            buckets: BTreeMap::new(),
+            uploads: HashMap::new(),
+            regions: HashMap::new(),
+            required_access_key: None,
+            failure: None,
+            role_expiry: DEFAULT_ROLE_EXPIRY.to_owned(),
+            next_upload: 0,
+        }
+    }
 }
 
 /// One stored object.
@@ -729,6 +760,11 @@ impl Store {
         bucket: Option<&str>,
         key: Option<&str>,
     ) -> Response {
+        // STS shares the endpoint here so a test needs one server rather than
+        // two; on AWS it is a host of its own.
+        if request.query("Action") == Some("AssumeRole") {
+            return self.assume_role(request);
+        }
         let Some(bucket) = bucket else {
             return invalid_request();
         };
@@ -1006,6 +1042,38 @@ impl Store {
         object_response(206, object)
             .with_header("Content-Range", &format!("bytes {start}-{end}/{size}"))
             .with_body(object.bytes[start..=end].to_vec())
+    }
+
+    /// Answer `AssumeRole` with a session named after the role it is for.
+    ///
+    /// The keys are derived from the role so a test can tell which role a
+    /// request was signed as, and the expiry is whatever `expire_roles` said -
+    /// which is how the refresh path is exercised without waiting an hour.
+    fn assume_role(&self, request: &Request) -> Response {
+        let Some(role) = request.query("RoleArn").filter(|arn| !arn.is_empty()) else {
+            return Response::error(
+                400,
+                "ValidationError",
+                "1 validation error detected: Value null at 'roleArn' failed to \
+                 satisfy constraint: Member must not be null",
+                &[],
+            );
+        };
+        let session = request.query("RoleSessionName").unwrap_or_default();
+        let short = role.rsplit('/').next().unwrap_or(role);
+        let mut xml = document("AssumeRoleResponse");
+        xml.push_str("<AssumeRoleResult><Credentials>");
+        element(&mut xml, "AccessKeyId", &format!("ASIA{short}"));
+        element(&mut xml, "SecretAccessKey", &format!("secret-of-{short}"));
+        element(
+            &mut xml,
+            "SessionToken",
+            &format!("token-{short}-{session}"),
+        );
+        element(&mut xml, "Expiration", &self.role_expiry);
+        xml.push_str("</Credentials></AssumeRoleResult>");
+        xml.push_str("</AssumeRoleResponse>");
+        Response::xml(200, &xml)
     }
 
     fn delete_object(&mut self, bucket: &str, key: &str) -> Response {

@@ -79,7 +79,9 @@ mod folder;
 mod options;
 mod path;
 mod profile;
+mod properties;
 mod sign;
+mod sts;
 mod xml;
 
 pub use client::StatsSnapshot;
@@ -89,6 +91,7 @@ pub use file::File;
 pub use folder::Folder;
 pub use options::S3Options;
 pub use path::Path;
+pub use sts::AssumedRole;
 
 use client::Client;
 
