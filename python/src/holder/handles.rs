@@ -20,12 +20,7 @@ use crate::value_error;
 macro_rules! role {
     ($ident:ident, $name:literal, $doc:expr) => {
         #[doc = $doc]
-        #[pyclass(
-                    name = $name,
-                    module = "yggdryl._native",
-                    extends = PyIOBase,
-                    skip_from_py_object
-                )]
+        #[pyclass(name = $name, module = "yggdryl._native", extends = PyIOBase, skip_from_py_object)]
         pub(crate) struct $ident;
     };
 }
@@ -168,22 +163,22 @@ fn cache<'borrow>(slf: &'borrow PyRef<'_, PyBuffered>) -> PyResult<&'borrow Buff
 impl PyBuffered {
     /// The number of bytes the cache currently holds.
     #[getter]
-    fn cached_bytes(slf: PyRef<'_, Self>) -> PyResult<u64> {
-        Ok(cache(&slf)?.cached_bytes())
+    fn cached_bytes(slf: &Bound<'_, Self>) -> PyResult<u64> {
+        Ok(cache(&slf.borrow())?.cached_bytes())
     }
 
     /// The number of pages the cache currently holds.
     #[getter]
-    fn cached_pages(slf: PyRef<'_, Self>) -> PyResult<usize> {
-        Ok(cache(&slf)?.cached_pages())
+    fn cached_pages(slf: &Bound<'_, Self>) -> PyResult<usize> {
+        Ok(cache(&slf.borrow())?.cached_pages())
     }
 
     /// Return whether the page at `index` is resident.
     ///
     /// Pages are indexed by `offset // page_size`, so this answers what a
     /// benchmark or a diagnostic asks: did that read come from the cache.
-    fn has_cached_page(slf: PyRef<'_, Self>, index: u64) -> PyResult<bool> {
-        Ok(cache(&slf)?.has_cached_page(index))
+    fn has_cached_page(slf: &Bound<'_, Self>, index: u64) -> PyResult<bool> {
+        Ok(cache(&slf.borrow())?.has_cached_page(index))
     }
 
     /// The handle underneath the cache, as its own role.

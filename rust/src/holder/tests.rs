@@ -17,7 +17,7 @@ fn named(name: &str, bytes: Vec<u8>) -> (Holder, crate::MediaType) {
 /// The composed handle for `name` over the coding its suffix declares.
 fn composed(name: &str) -> Holder {
     let codec = Codec::from_url(&Url::from_str(&format!("file:///{name}")).unwrap());
-    let (holder, media_type) = named(name, codec.dump(PLAIN).unwrap());
+    let (holder, _) = named(name, codec.dump(PLAIN).unwrap());
     holder.into_declared_media()
 }
 

@@ -24,12 +24,7 @@ pub(crate) struct PyMedia;
 macro_rules! encoding {
     ($ident:ident, $name:literal, $doc:expr) => {
         #[doc = $doc]
-        #[pyclass(
-                    name = $name,
-                    module = "yggdryl._native",
-                    extends = PyMedia,
-                    skip_from_py_object
-                )]
+        #[pyclass(name = $name, module = "yggdryl._native", extends = PyMedia, skip_from_py_object)]
         pub(crate) struct $ident;
     };
 }

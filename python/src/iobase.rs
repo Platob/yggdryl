@@ -607,6 +607,7 @@ impl PyIOBase {
     /// class - nothing filesystem-specific leaks into the surface.
     #[new]
     #[pyo3(signature = (value, path = None))]
+    #[allow(clippy::new_ret_no_self)] // Construction answers the role subclass, never this base class.
     fn new(
         py: Python<'_>,
         value: &Bound<'_, PyAny>,
@@ -1761,6 +1762,7 @@ impl PyIOBase {
     /// for every wrapper. Repeating the call replaces explicit options without
     /// stacking another text wrapper.
     #[pyo3(signature = (options = None))]
+    #[allow(clippy::wrong_self_convention)] // A pyclass method cannot consume its receiver.
     fn into_text(
         &mut self,
         py: Python<'_>,
@@ -1794,6 +1796,7 @@ impl PyIOBase {
     /// handle already presenting decoded bytes keeps the coding it has, so
     /// repeating the call never decodes twice.
     #[pyo3(signature = (codec = None, level = None))]
+    #[allow(clippy::wrong_self_convention)] // A pyclass method cannot consume its receiver.
     fn into_coded(
         &mut self,
         py: Python<'_>,

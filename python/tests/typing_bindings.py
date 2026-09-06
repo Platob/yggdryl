@@ -9,6 +9,11 @@ from typing import Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
 
+from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
+from yggdryl.holder import Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath
+from yggdryl.holder import Path as Path_
+from yggdryl.media import Avro, Ipc, Media, Parquet, Text
+
 from yggdryl import (
     AsciiEnum,
     Bound,
@@ -396,6 +401,18 @@ io_kind: Literal[
 cursor_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").cursor().stream_bytes(
     batch_size=3
 )
+
+# Every storage role is an ``IOBase``; the wrappers descend one layer at a time.
+role_path: Path_ = Path_("trades.txt")
+role_file: File = File("trades.bin")
+role_folder: Folder = Folder("lake")
+role_temporary: Folder = Folder.temporary()
+role_home: Folder = Folder.home()
+role_config: Folder = Folder.config()
+role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
+coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
+encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro]
+storage_roles: list[type[IOBase]] = [Buffer, Buffered, FsFile, FsFolder, FsPath, Text]
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /
@@ -1180,3 +1197,7 @@ assert fix_message_item and (fix_message_default is None or fix_message_default)
 assert fix_message_pairs == [] or fix_message_pairs
 assert fix_message_len >= 0 and fix_message_hash
 assert fix_global is not None and fix_message_explicit == fix_message_explicit
+assert role_path is not None and role_file is not None and role_folder is not None
+assert role_temporary is not None and role_home is not None and role_config is not None
+assert role_cached is not None
+assert coding_roles and encoding_roles and storage_roles

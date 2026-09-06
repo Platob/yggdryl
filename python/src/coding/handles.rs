@@ -23,12 +23,7 @@ pub(crate) struct PyCoded;
 macro_rules! coding {
     ($ident:ident, $name:literal, $doc:expr) => {
         #[doc = $doc]
-        #[pyclass(
-                    name = $name,
-                    module = "yggdryl._native",
-                    extends = PyCoded,
-                    skip_from_py_object
-                )]
+        #[pyclass(name = $name, module = "yggdryl._native", extends = PyCoded, skip_from_py_object)]
         pub(crate) struct $ident;
     };
 }
@@ -64,17 +59,17 @@ pub(crate) fn describe(
     base: PyClassInitializer<PyIOBase>,
     codec: yggdryl::Codec,
 ) -> PyResult<Py<PyAny>> {
-    let coded = base.add_subclass(PyCoded);
+    let role = base.add_subclass(PyCoded);
     Ok(match codec {
-        yggdryl::Codec::Gzip => Py::new(py, coded.add_subclass(PyGzip))?.into_any(),
+        yggdryl::Codec::Gzip => Py::new(py, role.add_subclass(PyGzip))?.into_any(),
         yggdryl::Codec::Zlib | yggdryl::Codec::Deflate => {
-            Py::new(py, coded.add_subclass(PyZlib))?.into_any()
+            Py::new(py, role.add_subclass(PyZlib))?.into_any()
         }
-        yggdryl::Codec::Zstd => Py::new(py, coded.add_subclass(PyZstd))?.into_any(),
-        yggdryl::Codec::Identity => Py::new(py, coded.add_subclass(PyIdentity))?.into_any(),
+        yggdryl::Codec::Zstd => Py::new(py, role.add_subclass(PyZstd))?.into_any(),
+        yggdryl::Codec::Identity => Py::new(py, role.add_subclass(PyIdentity))?.into_any(),
         // A coding this build has no class for is still a coded handle, and
         // reporting it as one of the others would be a lie.
-        _ => Py::new(py, coded)?.into_any(),
+        _ => Py::new(py, role)?.into_any(),
     })
 }
 
