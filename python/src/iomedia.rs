@@ -1047,7 +1047,7 @@ pub(crate) fn string_pairs_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<
 /// A batch of zero rows is not a small batch: the readers chunk by this number,
 /// so it turns a read of a hundred rows into a successful read of none. `None`
 /// is how "no bound" is spelled, and it is already available.
-fn set_batch_row_size_option(
+pub(crate) fn set_batch_row_size_option(
     options: &mut impl IORecordOptions,
     batch_row_size: Option<usize>,
 ) -> PyResult<()> {

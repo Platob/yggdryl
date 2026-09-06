@@ -387,6 +387,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::parse_arrow_reader, module)?)?;
     module.add_function(wrap_pyfunction!(
         media::iceberg::iceberg_assign_field_ids,
         module

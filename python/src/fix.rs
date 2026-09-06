@@ -19,12 +19,17 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyInt};
 
+use yggdryl::media::IORecordOptions;
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
-    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField,
+    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixId as CoreFixId, FixKey,
+    FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry, Scalar,
     from_json_scalar_with_field, into_json_scalar,
 };
 
+use crate::iomedia::{
+    batch_reader_from_arrow_reader, batch_reader_to_pyarrow, set_batch_row_size_option,
+};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
@@ -848,4 +853,47 @@ pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {
 #[pyo3(name = "install_global_registry")]
 pub(crate) fn fix_install_global_registry(registry: &PyFixRegistry) -> PyResult<()> {
     CoreFixRegistry::install_global((*registry.inner).clone()).map_err(value_error)
+}
+
+/// Parse one payload column from an Arrow C stream into source-first FIX batches.
+///
+/// The core reads lazily: construction consumes only the input schema, and
+/// `PyArrow` pulls bounded result batches through the returned C stream. Every
+/// source column and its metadata survives unchanged. A case-insensitive name
+/// collision with a native FIX column is refused before the first batch is
+/// pulled.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (
+    source,
+    registry = None,
+    column = "body",
+    *,
+    batch_row_size = None,
+    batch_byte_size = None,
+    max_row_size = None,
+    dedup = false,
+))]
+pub(crate) fn parse_arrow_reader<'py>(
+    py: Python<'py>,
+    source: &Bound<'py, PyAny>,
+    registry: Option<PyRef<'py, PyFixRegistry>>,
+    column: &str,
+    batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
+    max_row_size: Option<u64>,
+    dedup: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    let registry = match registry {
+        Some(registry) => Arc::clone(&registry.inner),
+        None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+    };
+    let mut options = CoreFixOptions::new().with_dedup(dedup);
+    set_batch_row_size_option(&mut options, batch_row_size)?;
+    options.set_batch_byte_size(batch_byte_size);
+    options.set_max_row_size(max_row_size);
+    let source = batch_reader_from_arrow_reader(source)?;
+    let parsed =
+        CoreFixBatchReader::from_column(registry, source, column, options).map_err(value_error)?;
+    batch_reader_to_pyarrow(py, parsed)
 }

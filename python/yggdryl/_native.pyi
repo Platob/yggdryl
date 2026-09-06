@@ -3687,6 +3687,18 @@ class FixMsg:
 
 def global_registry() -> FixRegistry: ...
 def install_global_registry(registry: FixRegistry) -> None: ...
+def parse_arrow_reader(
+    source: pyarrow.RecordBatchReader | ArrowStreamReader,
+    registry: FixRegistry | None = None,
+    column: str = "body",
+    *,
+    batch_row_size: int | None = None,
+    batch_byte_size: int | None = None,
+    max_row_size: int | None = None,
+    dedup: bool = False,
+) -> pyarrow.RecordBatchReader:
+    """Parse a payload column into source-first FIX batches, lazily."""
+    ...
 
 STANDARD_BRANCH: str
 USER_TAG_MIN: int

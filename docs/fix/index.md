@@ -1,6 +1,6 @@
 # FIX
 
-FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, and a [message](message.md) typed against one.
+FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, a [message](message.md) typed against one, and a [batch reader](batch.md) projecting streamed captures into Arrow.
 
 ## Pages
 
@@ -10,6 +10,7 @@ FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](..
 | [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
+| [Batch](batch.md) | `FixBatchReader`: streamed byte rows or one Arrow payload column into a fixed source-first schema |
 
 ## Contract
 

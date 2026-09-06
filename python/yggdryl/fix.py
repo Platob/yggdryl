@@ -8,8 +8,9 @@ the boundary, so there is no class for either. :class:`FixRegistry` resolves
 those fields by identifier, by tag, by branch-qualified name or by
 branch-qualified dotted path and persists them as JSON shards through any
 ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
-was resolved against. Resolution, folding, merging, sharding and validation are
-native; this module only names them.
+was resolved against. :func:`parse_arrow_reader` streams a capture's payload
+column into source-first FIX columns. Resolution, folding, merging, sharding
+and validation are native; this module only names them.
 
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
 ``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
@@ -26,6 +27,7 @@ from ._native import (
     FixRegistry,
     global_registry,
     install_global_registry,
+    parse_arrow_reader,
 )
 
 __all__ = [
@@ -36,4 +38,5 @@ __all__ = [
     "FixRegistry",
     "global_registry",
     "install_global_registry",
+    "parse_arrow_reader",
 ]

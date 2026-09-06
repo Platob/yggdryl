@@ -973,7 +973,7 @@ Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills 
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `parse_arrow_reader()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -984,6 +984,7 @@ Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills 
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a write creates `primitive/<branch>/` and `nested/<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
+| `parse_arrow_reader` | accepts an Arrow C stream, pulls lazily, preserves every source column first, and appends the dictionary's numeric FIX columns; `fixbranch`, not provenance `branch`, selects a row's dialect |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
@@ -992,10 +993,18 @@ import copy
 import pathlib
 import pickle
 
+import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, IOBase, Url
-from yggdryl.fix import STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, FixMsg, FixRegistry
+from yggdryl.fix import (
+    STANDARD_BRANCH,
+    USER_TAG_MAX,
+    USER_TAG_MIN,
+    FixMsg,
+    FixRegistry,
+    parse_arrow_reader,
+)
 
 seed = pathlib.Path("config/fix").resolve()
 
@@ -1003,6 +1012,28 @@ seed = pathlib.Path("config/fix").resolve()
 for location in (seed, str(seed), seed.as_uri(), Url(seed), IOBase(seed)):
     assert len(FixRegistry.from_handle(location)) == 34
 registry = FixRegistry.from_handle(seed)
+
+# The Arrow C stream is not collected. Capture columns and child metadata stay
+# first; the parsed columns are named by stable numeric tags. Root metadata is
+# the FIX root's, not a stale class declaration from the source record.
+capture_schema = pa.schema(
+    [
+        pa.field("branch", pa.string(), metadata={b"kind": b"provenance"}),
+        pa.field("body", pa.string()),
+    ],
+    metadata={b"python.class": b"Message"},
+)
+capture = pa.RecordBatch.from_pylist(
+    [{"branch": "venue-a", "body": "8=FIX.4.4|35=D|55=AAPL|10=0|"}],
+    schema=capture_schema,
+)
+source = pa.RecordBatchReader.from_batches(capture_schema, [capture])
+parsed = parse_arrow_reader(source, registry, batch_row_size=1)
+assert parsed.schema.names[:2] == ["branch", "body"]
+assert parsed.schema.field("branch").metadata == {b"kind": b"provenance"}
+assert "35" in parsed.schema.names
+assert b"python.class" not in (parsed.schema.metadata or {})
+assert parsed.read_next_batch().num_rows == 1
 
 # A key is an int tag or a str name; a bool is neither, and a tag that would
 # not fit i32 raises rather than narrowing.
@@ -1114,6 +1145,8 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.
+- `parse_arrow_reader` -> consumes only the source schema at construction, preserves source child fields first, and refuses a case-insensitive native-column collision or `batch_row_size=0` before pulling a batch.
+- a capture's `branch` column -> provenance carried unchanged; `fixbranch` is the optional per-row FIX dialect.
 - `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.
 - `FixRegistry` -> mutable, so unhashable, and equal by the fields it holds.
 - a registry linked by a `FixMsg` or installed as the process default -> `insert`, `update`, and `remove` raise `ValueError`.

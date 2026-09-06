@@ -3,9 +3,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::local::Folder;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
+use yggdryl::{DataType, FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
 
 fn registry() -> Arc<FixRegistry> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -263,7 +264,7 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
     let silent = Scalar::from_record([
         ("body", Scalar::from(b"8=FIX.4.4|35=D|11=A|10=0|".to_vec())),
         ("beginstring", Scalar::Null),
-        ("branch", Scalar::from("")),
+        ("fixbranch", Scalar::from("")),
     ])
     .unwrap();
     let read = FixMsg::from_record(registry, &silent, &options).unwrap();
@@ -273,38 +274,83 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
 #[test]
 fn a_capture_already_in_arrow_feeds_the_same_builders() {
     let registry = registry();
-    // A source batch shaped the way the line reader shapes one: a payload
-    // column beside the columns a monitor orders and joins on.
-    let source = FixBatchReader::from_rows(
-        Arc::clone(&registry),
+    let mut url = DataType::Utf8.required_field("url");
+    url.set_metadata([("source", "capture")]).unwrap();
+    let mut source_field = DataType::from_fields([
+        url,
+        DataType::Int64.required_field("rownum"),
+        DataType::Utf8.required_field("branch"),
+        DataType::Utf8.required_field("body"),
+        DataType::Utf8.required_field("fixbranch"),
+    ])
+    .unwrap()
+    .required_field("message");
+    source_field
+        .set_metadata([("python.class", "Message")])
+        .unwrap();
+    let schema = source_field.into_arrow_schema().unwrap();
+    let batch = RecordBatch::try_new(
+        Arc::clone(&schema),
         vec![
-            Ok(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec()),
-            Ok(b"8=FIX.4.4|35=D|11=ORDER-2|55=MSFT|10=0|".to_vec()),
+            Arc::new(StringArray::from(vec!["file:///capture.log"])),
+            Arc::new(Int64Array::from(vec![7_i64])),
+            Arc::new(StringArray::from(vec!["provenance"])),
+            Arc::new(StringArray::from(vec![
+                "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|",
+            ])),
+            Arc::new(StringArray::from(vec![""])),
         ],
-        FixOptions::new(),
     )
     .unwrap();
-    let first = source.into_iter().next().unwrap().unwrap();
-    assert_eq!(first.num_rows(), 2);
-
-    // Feed the entries column back through as a capture: the point is that
-    // one implementation serves both, so a column source builds the same
-    // schema a row source does.
-    let schema = FixBatchReader::from_rows(Arc::clone(&registry), Vec::new(), FixOptions::new())
-        .unwrap()
-        .schema();
-    let again = FixBatchReader::from_column(
+    let parsed = FixBatchReader::from_column(
         registry,
-        Box::new(arrow_array::RecordBatchIterator::new(
-            [Ok(first)],
-            std::sync::Arc::clone(&schema),
-        )),
-        "entries",
+        yggdryl::arrow::batch_reader(schema, [batch]),
+        "body",
         FixOptions::new(),
-    )
-    .unwrap();
-    let rows: usize = again.map(|batch| batch.unwrap().num_rows()).sum();
-    assert_eq!(rows, 2, "a row in is still a row out");
+    );
+    let mut parsed = parsed.unwrap();
+    let output = parsed.schema();
+    let names: Vec<&str> = output
+        .fields()
+        .iter()
+        .map(|field| field.name().as_str())
+        .collect();
+    assert_eq!(
+        &names[..5],
+        ["url", "rownum", "branch", "body", "fixbranch"]
+    );
+    assert!(names.contains(&"35"));
+    assert_eq!(
+        output.field_with_name("url").unwrap().metadata()["source"],
+        "capture"
+    );
+    assert!(!output.metadata().contains_key("python.class"));
+
+    let batch = parsed.next().unwrap().unwrap();
+    assert_eq!(batch.num_rows(), 1);
+    let branch = column(&batch, "branch")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert_eq!(branch.value(0), "provenance");
+    assert!(column(&batch, "35").is_valid(0));
+}
+
+#[test]
+fn a_source_fix_column_collision_is_refused_before_reading() {
+    let registry = registry();
+    let source = DataType::from_fields([
+        DataType::Utf8.required_field("body"),
+        DataType::Utf8.nullable_field("Entries"),
+    ])
+    .unwrap()
+    .required_field("message");
+    let reader = yggdryl::arrow::batch_reader(source.into_arrow_schema().unwrap(), []);
+    let error = match FixBatchReader::from_column(registry, reader, "body", FixOptions::new()) {
+        Ok(_) => panic!("a colliding source schema must be refused"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("duplicate \"Entries\""));
 }
 
 #[test]

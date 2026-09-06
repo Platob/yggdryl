@@ -1128,6 +1128,16 @@ fix_registry_from_handle: fix.FixRegistry = fix.FixRegistry.from_handle(
 fix_registry_from_text: fix.FixRegistry = fix.FixRegistry.from_handle(
     "file:///dictionary"
 )
+fix_source_schema = pa.schema([pa.field("body", pa.string())])
+fix_source_reader = pa.RecordBatchReader.from_batches(fix_source_schema, [])
+fix_parsed_reader: pa.RecordBatchReader = fix.parse_arrow_reader(
+    fix_source_reader,
+    fix_registry_from_fields,
+    batch_row_size=1024,
+    batch_byte_size=1 << 20,
+    max_row_size=10_000,
+    dedup=False,
+)
 fix_by_id: Field = fix_registry_from_fields.field_by_id("38:")
 fix_maybe_by_id: Field | None = fix_registry_from_fields.get_field_by_id("38:")
 fix_by_tag: Field = fix_registry_from_fields.field_by_tag(38)

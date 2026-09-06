@@ -59,7 +59,7 @@ pub const SOH: u8 = 0x01;
 /// Each names an argument the byte readers already take, so a record carrying
 /// only a payload behaves exactly as the byte reader behaves - which is what
 /// makes this an entry point rather than a second contract.
-const BRANCH_COLUMN: &str = "branch";
+const FIXBRANCH_COLUMN: &str = "fixbranch";
 const BEGINSTRING_COLUMN: &str = "beginstring";
 const TARGETVERSION_COLUMN: &str = "targetversion";
 const SEPARATOR_COLUMN: &str = "sep";
@@ -302,14 +302,14 @@ impl FixBatchReader {
             // matches the capture's.
             let message = reader.bytes(&row).unwrap_or_else(|_| empty(&reader));
             let direction = direction_of(&row, default);
-            Ok((message, direction))
+            Ok((None, message, direction))
         });
-        Self::stream(field, messages, &options)
+        Self::stream(field.clone(), field, messages, &options)
     }
 
     /// A column of frames in, batches out - a capture already in Arrow.
     ///
-    /// The source's other columns are carried through unchanged, ahead of the
+    /// Every source column is carried through unchanged, ahead of the
     /// FIX columns: a capture's arrival timestamp and file offset are what a
     /// monitor orders and joins on, and because the row counts match exactly
     /// carrying them is a slice rather than a join. A column that was read as
@@ -322,7 +322,9 @@ impl FixBatchReader {
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the options do not make a
-    /// root field, or the source reader's own failure.
+    /// root field, a source column collides case-insensitively with a native
+    /// FIX column, or the source reader reports its own failure. The collision
+    /// is checked from the schemas before the first source batch is pulled.
     pub fn from_column(
         registry: Arc<FixRegistry>,
         source: BatchReader,
@@ -330,8 +332,9 @@ impl FixBatchReader {
         options: FixOptions,
     ) -> Result<BatchReader> {
         let options = options.with_payload_column(column);
-        let field = options.source_field(&registry)?;
+        let fix_field = options.source_field(&registry)?;
         let carried = crate::arrow::field_from_arrow_schema("row", source.schema().as_ref())?;
+        let field = combined_field(&carried, &fix_field, options.name.as_str())?;
         let names: Vec<SmolStr> = carried
             .dtype()
             .as_fields()
@@ -367,25 +370,30 @@ impl FixBatchReader {
                 let bytes = column_bytes(&record, &payload).unwrap_or_default();
                 let message = read_record(&reader, &record, &bytes, separator)?;
                 let direction = stated(&record).or_else(|| direction_of(&bytes, default));
-                Ok((message, direction))
+                Ok((Some(row), message, direction))
             });
-        Self::stream(field, records, &options)
+        Self::stream(field, fix_field, records, &options)
     }
 
     /// The one stream both constructors end in.
-    fn stream<I>(field: Field, messages: I, options: &FixOptions) -> Result<BatchReader>
+    fn stream<I>(
+        field: Field,
+        fix_field: Field,
+        messages: I,
+        options: &FixOptions,
+    ) -> Result<BatchReader>
     where
-        I: Iterator<Item = Result<(FixMsg, Option<&'static str>)>> + Send + 'static,
+        I: Iterator<Item = Result<(Option<Scalar>, FixMsg, Option<&'static str>)>> + Send + 'static,
     {
         let dedup = options.dedup;
         // Resolved once for the whole capture: every row asks for the same
         // columns in the same order, and asking the dictionary per row is the
         // cost a fixed schema exists to remove.
-        let projection = super::FixProjection::from_field(field.clone());
+        let projection = super::FixProjection::from_field(fix_field);
         let mut last: Option<u128> = None;
         let rows = messages.filter_map(move |held| match held {
             Err(error) => Some(Err(error)),
-            Ok((message, direction)) => {
+            Ok((source, message, direction)) => {
                 if dedup {
                     let digest = message.digest();
                     if last == Some(digest) {
@@ -393,7 +401,7 @@ impl FixBatchReader {
                     }
                     last = Some(digest);
                 }
-                Some(row_of(&message, &projection, direction))
+                Some(row_of(source.as_ref(), &message, &projection, direction))
             }
         });
         Ok(crate::arrow::rows::result_reader(
@@ -409,6 +417,7 @@ impl FixBatchReader {
 
 /// One message as the fixed row its columns are read from.
 fn row_of(
+    source: Option<&Scalar>,
     message: &FixMsg,
     projection: &super::FixProjection,
     direction: Option<&'static str>,
@@ -425,7 +434,52 @@ fn row_of(
             row = Scalar::from_sequence(held);
         }
     }
-    Ok(row)
+    let Some(source) = source else {
+        return Ok(row);
+    };
+    let source = source.as_sequence().ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: crate::text::expected_got("a source row sequence", "another value"),
+    })?;
+    let parsed = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: crate::text::expected_got("a parsed FIX row sequence", "another value"),
+    })?;
+    Ok(Scalar::from_sequence(
+        source.iter().chain(parsed).cloned().collect::<Vec<_>>(),
+    ))
+}
+
+/// The source columns followed by the fixed FIX columns.
+///
+/// A collision is refused before the source is pulled. Keeping one side would
+/// silently discard either provenance or the parser's answer, while renaming a
+/// caller's column would change its schema behind its back.
+fn combined_field(source: &Field, fix: &Field, name: &str) -> Result<Field> {
+    for carried in source.fields() {
+        if fix
+            .fields()
+            .iter()
+            .any(|parsed| parsed.name().eq_ignore_ascii_case(carried.name()))
+        {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new(carried.name()),
+                reason: crate::text::expected_got(
+                    "a source column distinct from the native FIX columns",
+                    format!("a duplicate {:?}", carried.name()),
+                ),
+            });
+        }
+    }
+    let fields = source
+        .fields()
+        .iter()
+        .chain(fix.fields())
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut combined = DataType::from_fields(fields)?.required_field(name);
+    combined.set_metadata(fix.as_metadata().clone())?;
+    Ok(combined)
 }
 
 /// A row nobody could read, which is still a row.
@@ -493,7 +547,7 @@ fn read_record(
     // statement. A column absent, null or empty is silence, never an
     // instruction, and never an error.
     let mut reader = reader.clone();
-    if let Some(name) = column_text(record, BRANCH_COLUMN) {
+    if let Some(name) = column_text(record, FIXBRANCH_COLUMN) {
         if let Ok(branch) = FixBranch::from_str(&name) {
             reader = reader.branch(&branch);
         }
@@ -535,7 +589,7 @@ impl FixMsg {
     /// | column | supplies |
     /// | --- | --- |
     /// | the payload column, named by options | the bytes parsed |
-    /// | `branch` | the dialect |
+    /// | `fixbranch` | the dialect |
     /// | `beginstring` | the source version |
     /// | `targetversion` | the target version |
     /// | `sep` | the separator |
