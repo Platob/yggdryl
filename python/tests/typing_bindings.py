@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
+import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
 
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
 from yggdryl.holder import Buffer, Buffered, File, Folder, FsFile, FsFolder, FsPath
@@ -410,9 +411,13 @@ role_temporary: Folder = Folder.temporary()
 role_home: Folder = Folder.home()
 role_config: Folder = Folder.config()
 role_cached: IOBase = IOBase.from_bytes(b"payload").buffered(page_size=8)
+role_fs_path: FsPath = FsPath(pa_fs.LocalFileSystem(), "trades.txt")
+role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
+role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
+role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
 coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
 encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro]
-storage_roles: list[type[IOBase]] = [Buffer, Buffered, FsFile, FsFolder, FsPath, Text]
+storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore
 # becomes unused if a typed view regresses to ``Any`` or drops its nullable /
@@ -1201,3 +1206,5 @@ assert role_path is not None and role_file is not None and role_folder is not No
 assert role_temporary is not None and role_home is not None and role_config is not None
 assert role_cached is not None
 assert coding_roles and encoding_roles and storage_roles
+assert role_fs_path is not None and role_fs_file is not None
+assert role_fs_folder is not None and role_created is not None

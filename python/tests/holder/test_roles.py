@@ -19,7 +19,16 @@ import pytest
 
 from yggdryl import IOBase
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.holder import Buffer, Buffered, File, Folder, FsPath, Path
+from yggdryl.holder import (
+    Buffer,
+    Buffered,
+    File,
+    Folder,
+    FsFile,
+    FsFolder,
+    FsPath,
+    Path,
+)
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 PLAIN = b"symbol,price\nAAPL,1\n"
@@ -131,6 +140,19 @@ class TestDescendingTheComposition:
 
 class TestTheExplicitRoles:
     """Naming a role is how a caller asks for the bytes rather than the value."""
+
+    def test_a_foreign_filesystem_has_the_same_three_roles(
+        self, log: pathlib.Path
+    ) -> None:
+        local = pafs.LocalFileSystem()
+        stored = FsPath(local, str(log))
+
+        # The role-only spelling on a bucket, for the same reason the local one
+        # exists: the stored bytes, not the value they encode.
+        assert isinstance(stored, FsPath)
+        assert stored.read_bytes()[:2] == b"\x1f\x8b"
+        assert isinstance(FsFile(local, str(log)), FsFile)
+        assert isinstance(FsFolder(local, str(log.parent)), FsFolder)
 
     def test_the_stored_byte_role_skips_the_composition(
         self, log: pathlib.Path

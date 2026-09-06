@@ -2222,11 +2222,35 @@ class Path(IOBase):
 class FsFile(IOBase):
     """One file on a foreign filesystem, read and written through its streams."""
 
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
 class FsFolder(IOBase):
     """One directory on a foreign filesystem."""
 
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
+
 class FsPath(IOBase):
     """One location on a foreign filesystem that resolves when asked."""
+
+    def __init__(
+        self,
+        filesystem: pyarrow.fs.FileSystem,
+        path: str | PathLike[str],
+        *,
+        uri: str | PathLike[str] | None = None,
+    ) -> None: ...
 
 class Buffered(IOBase):
     """Any handle read through the core's bounded page cache."""

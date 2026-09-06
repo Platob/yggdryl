@@ -224,7 +224,7 @@ fn require_stored(holder: &Holder, role: &str) -> PyResult<()> {
     Err(PyValueError::new_err(format!(
         "expected {role} presenting its stored bytes, got a {} view of {location}; a coded handle \
          codes what passes through it, so copy_into already stores the coded form - or address \
-         the stored bytes with Path, File, or IOBase.from_fs",
+         the stored bytes with the Path, File, FsPath, or FsFile role",
         applied_codec(holder).as_str(),
     )))
 }

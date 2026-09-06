@@ -83,6 +83,38 @@ fn local_holder(
     )))
 }
 
+/// Bind one location on a `pyarrow.fs.FileSystem`, as the roles take it.
+fn bound_location(
+    filesystem: &Bound<'_, PyAny>,
+    path: &Bound<'_, PyAny>,
+    uri: Option<&Bound<'_, PyAny>>,
+) -> PyResult<yggdryl::holder::fs::BoundLocation> {
+    if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
+        return Err(PyValueError::new_err(format!(
+            "expected a pyarrow.fs.FileSystem, got {}",
+            filesystem.get_type().name()?,
+        )));
+    }
+    let path = crate::uri::path_string_from_value(path)?;
+    let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
+    let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+        std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
+    yggdryl::holder::fs::BoundLocation::new(backend, path, uri)
+        .map_err(crate::holder::fs::storage_error)
+}
+
+/// Build one foreign-filesystem role from a bound location.
+fn fs_holder(
+    filesystem: &Bound<'_, PyAny>,
+    path: &Bound<'_, PyAny>,
+    uri: Option<&Bound<'_, PyAny>>,
+    build: impl FnOnce(yggdryl::holder::fs::BoundLocation) -> Holder,
+) -> PyResult<PyClassInitializer<PyIOBase>> {
+    Ok(PyClassInitializer::from(PyIOBase::from_core(build(
+        bound_location(filesystem, path, uri)?,
+    ))))
+}
+
 #[pymethods]
 impl PyPath {
     /// Describe a local location without deciding what it is.
@@ -146,6 +178,54 @@ impl PyFolder {
             py,
             PyClassInitializer::from(PyIOBase::from_core(holder)).add_subclass(Self),
         )
+    }
+}
+
+#[pymethods]
+impl PyFsPath {
+    /// Describe a location on a foreign filesystem without deciding what it is.
+    ///
+    /// `IOBase.from_fs` answers with the coding and record implementation the
+    /// name declares; this is the byte handle underneath that, and the way to
+    /// address the stored bytes of a coded name on a bucket.
+    #[new]
+    #[pyo3(signature = (filesystem, path, *, uri = None))]
+    fn new(
+        filesystem: &Bound<'_, PyAny>,
+        path: &Bound<'_, PyAny>,
+        uri: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        Ok(fs_holder(filesystem, path, uri, yggdryl::holder::fs::located)?.add_subclass(Self))
+    }
+}
+
+#[pymethods]
+impl PyFsFile {
+    /// Describe a file on a foreign filesystem, whether or not it exists yet.
+    #[new]
+    #[pyo3(signature = (filesystem, path, *, uri = None))]
+    fn new(
+        filesystem: &Bound<'_, PyAny>,
+        path: &Bound<'_, PyAny>,
+        uri: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let build = |bound| Holder::FsFile(yggdryl::holder::fs::File::new(bound));
+        Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
+    }
+}
+
+#[pymethods]
+impl PyFsFolder {
+    /// Describe a directory on a foreign filesystem, creating nothing.
+    #[new]
+    #[pyo3(signature = (filesystem, path, *, uri = None))]
+    fn new(
+        filesystem: &Bound<'_, PyAny>,
+        path: &Bound<'_, PyAny>,
+        uri: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyClassInitializer<Self>> {
+        let build = |bound| Holder::FsFolder(yggdryl::holder::fs::Folder::new(bound));
+        Ok(fs_holder(filesystem, path, uri, build)?.add_subclass(Self))
     }
 }
 

@@ -44,7 +44,7 @@
     Buffer: in-memory bytes; built with IOBase.from_bytes
     Path / File / Folder: the local roles, each constructible from a location; Path is what a name declaring nothing takes, and what addresses the stored bytes of a coded name
     Folder: classmethods temporary, home, config
-    FsPath / FsFile / FsFolder: the same three roles on a foreign filesystem
+    FsPath / FsFile / FsFolder: the same three roles on a foreign filesystem, each constructible as (filesystem, path, *, uri=None)
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle
   media: Avro, Ipc, Media, MediaType, MimeType, Parquet, RecordOptions, Text, TextOptions, avro, iceberg
   media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
