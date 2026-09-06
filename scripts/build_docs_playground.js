@@ -23,7 +23,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { AsciiEnum, DataType, fields, fix } = require('../node/binding.js')
+const { AsciiEnum, DataType, fields } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const MANIFEST = path.join(ROOT, 'docs', 'assets', 'playground.json')
@@ -478,112 +478,6 @@ function vocabulary() {
   }
 }
 
-// The FIX corpus: one line per shape a real capture holds, so the decoder on
-// the page shows what the package answers rather than a curated summary. A
-// bridge frame packs its group members behind the two control bytes ULLINK
-// uses, which is why the escape appears here at all.
-const FRAMES = [
-  ['a new order, with its verb', 'sending >> 8=FIX.4.4|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|60=20240201-12:34:56.123|10=072|'],
-  ['an execution report', '8=FIX.4.4|35=8|49=VENUE|56=BUYSIDE|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|60=20240201-12:34:57.900|10=118|'],
-  ['a quote, two-sided', '8=FIX.4.4|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=004|'],
-  ['a tag no dictionary explains', '8=FIX.4.4|35=D|55=AAPL|9999=house-flag|10=000|'],
-  ['an instrument named by ISIN', '8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|54=1|44=10.5|10=000|'],
-  ['a bridge frame, name keys', '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|'],
-  ['a heartbeat', '8=FIX.4.2|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=000|'],
-  ['a line nobody framed', 'no level printed by this plugin'],
-]
-
-// Every column the decoder shows for a frame, whether or not the frame filled
-// it, so two frames read side by side line up.
-const SHOWN = [35, 49, 56, 55, 48, 22, 207, 54, 38, 44, 31, 32, 132, 133, 60, 39, 150]
-
-/** The dictionary this crate tracks, with its own fields registered. */
-function dictionary() {
-  const registry = fix.FixRegistry.fromHandle(path.join(ROOT, 'config', 'fix'))
-  registry.withCrateFields()
-  return registry
-}
-
-/** One captured line, and everything the package answered about it. */
-function frameCase(registry, reader, projection, label, line) {
-  const held = reader.bytes(Buffer.from(line, 'binary'))
-  const row = held.toRow(projection).toJSON()
-
-  // Only the columns the frame actually filled: a row of ninety nulls is not
-  // what anyone reads a decoder for.
-  const columns = SHOWN.map((tag) => {
-    const at = projection.positionOf(tag)
-    const value = at === null ? null : row[at]
-    if (value === null || value === undefined) return null
-    const field = projection.column(at)
-    return {
-      tag,
-      column: String(tag),
-      name: field.display ?? field.name,
-      dtype: field.dtype.toString(),
-      value: String(value),
-    }
-  }).filter((column) => column !== null)
-
-  const ticker = held.symbolTicker()
-  const clock = held.marketTimestamp()
-  const partition = held.unixPartition(3600)
-  return {
-    label,
-    // Escaped, because two of the bytes in a bridge frame are controls and a
-    // JSON string carrying them raw is a string a reader cannot see.
-    line: escapedText([...Buffer.from(line, 'binary')]),
-    root: held.field.name,
-    columns,
-    arrivals: held.arrivals().map(([tag, , key, value]) => [String(tag), key, value]),
-    unmapped: held
-      .arrivals()
-      .filter(([tag]) => registry.getFieldByTag(tag) === null)
-      .map(([, , key]) => key),
-    lift: held.lift().map(([facet, value]) => [facet, String(value.toJSON())]),
-    anomalies: held.anomalies(),
-    digest: Buffer.from(held.digest()).toString('hex'),
-    ticker: ticker === null ? null : String(ticker.toJSON()),
-    clock: clock === null ? null : String(clock.toJSON()),
-    partition: partition === null ? null : String(partition.toJSON()),
-    call:
-      `const reader = new fix.FixReader(registry)\n` +
-      `reader.bytes(Buffer.from(${literal(escapedText([...Buffer.from(line, 'binary')]))}))`,
-  }
-}
-
-/** The dictionary, the fixed row it produces, and every frame read through it. */
-function fixGroup() {
-  const registry = dictionary()
-  const projection = new fix.FixProjection(registry, 'FixMessage')
-  const reader = new fix.FixReader(registry)
-  const schema = projection.field
-
-  const columns = []
-  for (let at = 0; at < schema.fieldLen; at += 1) {
-    const field = schema.fieldAt(at)
-    columns.push({
-      column: field.name,
-      tag: field.fix.tag === null ? '' : String(field.fix.tag),
-      name: field.display ?? field.name,
-      dtype: field.dtype.toString(),
-      description: field.description ?? '',
-    })
-  }
-
-  return {
-    size: registry.size,
-    columns,
-    frames: FRAMES.map(([label, line]) =>
-      frameCase(registry, reader, projection, label, line),
-    ),
-    call:
-      `const registry = fix.FixRegistry.fromHandle('config/fix')\n` +
-      `registry.withCrateFields()\n` +
-      `new fix.FixProjection(registry, 'FixMessage')`,
-  }
-}
-
 /** Build the whole manifest, in the order it is written. */
 function manifest() {
   const encode = []
@@ -598,7 +492,6 @@ function manifest() {
     encode,
     decode,
     vocabulary: vocabulary(),
-    fix: fixGroup(),
   }
 }
 

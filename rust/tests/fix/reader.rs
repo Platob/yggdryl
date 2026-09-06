@@ -356,3 +356,147 @@ fn a_version_names_and_types_a_field_as_that_version_did() {
     assert!(at_new.get_by_name("lastqty").is_some());
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
 }
+
+#[test]
+fn a_numeric_frame_carrying_a_repeating_group_reads_and_only_its_counter_counts() {
+    let reader = reader();
+    // A numeric frame states its group members flat, so the occurrences the
+    // bridge's indexed keys build are not there to build: the counter keeps
+    // the group's own shape and holds nothing, and each member is as many
+    // values as arrived. Retyping the counter to the `NumInGroup` its lineage
+    // dates would collapse that shape and refuse the whole frame.
+    let row = "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|10=000|";
+    let message = reader.text(row).unwrap();
+
+    let field = message
+        .as_field()
+        .get_field_by_path("nopartyids")
+        .expect("the counter's column");
+    let DataType::List(item) = field.dtype() else {
+        panic!("the group's own shape, got {}", field.dtype());
+    };
+    assert!(item.dtype().is_nested(), "a List of `item` Structs");
+    assert!(
+        message
+            .by_tag(453)
+            .unwrap()
+            .as_sequence()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        message.by_tag(452).unwrap().as_sequence().unwrap().len(),
+        2,
+        "a member arrived twice, so it is two values"
+    );
+
+    // One anomaly, and it is the counter's: a member that merely arrived
+    // twice states no count, so `PartyRole=1` is a role and not a group of
+    // one.
+    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
+    assert_eq!(
+        anomalies,
+        ["nopartyids (453) states 2 occurrences and holds 0"],
+        "{anomalies:?}"
+    );
+}
+
+#[test]
+fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column() {
+    let reader = reader();
+    // `FixKey` reads every string as a name, so a numeric group key resolves
+    // only tag-first. Resolving it by name alone built a second, tag-less
+    // column beside the counter's own and left the counter holding nothing.
+    let by_tag = reader
+        .text("MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
+        .unwrap();
+    let by_name = reader
+        .text("MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE|NOPARTYIDS[1]=PARTYID=VENUE")
+        .unwrap();
+
+    for message in [&by_tag, &by_name] {
+        let columns = message
+            .as_field()
+            .dtype()
+            .as_fields()
+            .expect("a struct root")
+            .len();
+        assert_eq!(columns, 2, "msgtype and the group, and nothing beside them");
+        let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+        assert_eq!(occurrences.len(), 2);
+        assert!(message.anomalies().next().is_none());
+    }
+    assert_eq!(by_tag.by_tag(453).unwrap(), by_name.by_tag(453).unwrap());
+}
+
+#[test]
+fn an_occurrence_that_named_no_member_is_kept_as_the_value_it_stated() {
+    let reader = reader();
+    // A bridge writes `NOPARTYIDS[0]=ONE` where it has nothing to name. The
+    // occurrence has no member, but it is still an occurrence: dropping it
+    // would make the row say the group held nothing, which is the one thing
+    // the frame did not say.
+    let message = reader
+        .text("MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO")
+        .unwrap();
+
+    let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+    assert_eq!(occurrences.len(), 2);
+    assert_eq!(occurrences[0].as_str(), Some("ONE"));
+    assert_eq!(occurrences[1].as_str(), Some("TWO"));
+    // Two stated and two held, so there is nothing to report.
+    assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_renamed_group_builds_one_column_at_the_version_that_renamed_it() {
+    let reader = reader()
+        .clone()
+        .source_version("4.2".parse::<Version>().unwrap());
+    // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after. The
+    // counter's slot is projected to the message's version and the members'
+    // slot has to be projected with it, or one group builds two columns
+    // carrying one tag.
+    let message = reader
+        .text("MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b")
+        .unwrap();
+
+    let names: Vec<&str> = message
+        .as_field()
+        .dtype()
+        .as_fields()
+        .expect("a struct root")
+        .iter()
+        .map(yggdryl::Field::name)
+        .collect();
+    assert_eq!(names, ["msgtype", "linesoftext"], "{names:?}");
+    assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
+    assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
+    // The FIX layer reads a group as `List` or `LargeList` everywhere it looks
+    // at one, so the miscount looks at the same pair: a dictionary that stored
+    // its group in the wider variant is still a dictionary of groups.
+    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    party_id.as_fix_mut().set_tag(448).unwrap();
+    let item = DataType::from_fields([party_id])
+        .unwrap()
+        .required_field("item");
+    let mut group = DataType::large_list(item).nullable_field("nopartyids");
+    group.as_fix_mut().set_tag(453).unwrap();
+    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([group, symbol]).unwrap());
+
+    let message = FixReader::new(registry)
+        .text("35=D|55=AAPL|453=2|10=0|")
+        .unwrap();
+    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
+    assert_eq!(
+        anomalies,
+        ["nopartyids (453) states 2 occurrences and holds 0"],
+        "{anomalies:?}"
+    );
+}

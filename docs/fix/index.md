@@ -2,11 +2,16 @@
 
 FIX field definitions are ordinary fields: a `fix:` vocabulary on a [`Field`](../types/field.md), a [registry](registry.md) resolving them, [shards](store.md) persisting them, a [message](message.md) typed against one, a [capture](capture.md) landing in one fixed row, and a [tool](cli.md) to manage all of it.
 
+The dictionary is also open in the browser: [explore](explorer.md) it, [decode](decode.md) a frame against it, or [compose](encode.md) one from a message type's layout.
+
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
 | [FIX](index.md) | This page: vocabulary, `FixBranch`, `FixId`, nesting |
+| [Explorer](explorer.md) | The whole dictionary live: counts, field search, message layouts, provenance |
+| [Decode](decode.md) | A frame in, an explanation out; every shape a capture holds, read by the package |
+| [Encode](encode.md) | A frame composed from a message type's own layout, checked as it is written |
 | [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |

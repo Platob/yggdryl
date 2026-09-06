@@ -70,6 +70,7 @@ impl Projections {
 ///
 /// A field the dictionary knows keeps its metadata across a retype, because
 /// the lineage and the code set are what a later read of it resolves through.
+/// A repeating group keeps its shape, because its lineage dates its counter.
 fn project(known: &Field, version: Option<Version>) -> Field {
     let mut field = known.clone();
     let Some(at) = version else {
@@ -80,6 +81,12 @@ fn project(known: &Field, version: Option<Version>) -> Field {
         if name != known.name() {
             field.set_name(name);
         }
+    }
+    // A nested field is a repeating group, and its lineage dates the counter -
+    // `NumInGroup` - rather than the group. Retyping it would collapse the List
+    // the row builds its occurrences into, so a group is projected by name only.
+    if super::registry::is_nested(known) {
+        return field;
     }
     if let Ok(Some(dtype)) = view.dtype_at(at) {
         if dtype != *known.dtype() {

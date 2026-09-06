@@ -300,19 +300,24 @@ impl<'registry> Builder<'registry> {
         let value = self.typed(&member_field, raw, text);
         self.record(key, text, member_tag);
 
-        let counter = self
-            .registry
-            .get_nested_field(group)
-            .or_else(|| self.registry.get_field_by_name(group, Some(&self.branch)));
-        let (group_field, group_tag) = match counter {
-            Some(known) => {
-                let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
-                (known.clone(), tag)
-            }
-            None => (
-                DataType::Utf8.nullable_field(folded_name(group)),
-                super::field::parse_tag(group).unwrap_or(0),
-            ),
+        // The same resolution the flat counter uses, so a group addressed by
+        // its tag and one addressed by its name reach one slot: `FixKey` reads
+        // every string as a name, so a numeric key resolves only tag-first,
+        // and the field is projected here for the reason `counter` projects
+        // it - two spellings of one group would otherwise build two columns
+        // carrying one tag.
+        let (group_field, group_tag) = match self.counter(group) {
+            Some(held) => held,
+            None => match self.registry.get_field_by_name(group, Some(&self.branch)) {
+                Some(known) => {
+                    let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
+                    (self.project(known), tag)
+                }
+                None => (
+                    DataType::Utf8.nullable_field(folded_name(group)),
+                    super::field::parse_tag(group).unwrap_or(0),
+                ),
+            },
         };
         let slot = self.slot_for(group_field, group_tag);
         slot.group = true;
@@ -408,8 +413,21 @@ impl Slot {
         // holding nothing, not a scalar: the empty list is what lets the
         // count it stated be compared with what the row actually holds.
         if self.group && self.occurrences.is_empty() {
-            let value = Scalar::from_sequence(Vec::new());
-            return Ok((self.field, value));
+            if self.values.is_empty() {
+                let value = Scalar::from_sequence(Vec::new());
+                return Ok((self.field, value));
+            }
+            // An occurrence that named no member is still one: a bridge writes
+            // `NOPARTYIDS[0]=ONE` where it has nothing to name, and dropping
+            // those would lose what arrived to say the group held nothing.
+            // They have no field of their own, so they are what `field_for`
+            // typed them as - text.
+            let absent = self.values.iter().any(Scalar::is_null);
+            let item = DataType::Utf8.named_field("item", absent);
+            let values = Scalar::from_sequence(self.values);
+            let mut list = DataType::list(item).required_field(self.field.name());
+            let _ = list.set_metadata(self.field.as_metadata().iter());
+            return Ok((list, values));
         }
         if self.occurrences.is_empty() {
             // A value that would not type is null, and a field a null lands

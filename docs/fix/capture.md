@@ -84,18 +84,14 @@ One line in, one row out, with the columns named by tag.
 
 ## Try it
 
-Every frame below was read by the real package, and every value is what it answered. Pick one.
-
-<div class="ygg-pg" data-playground="fix" markdown="1">
-This section renders `assets/playground.json` and needs JavaScript.
-</div>
+Every shape a capture holds, read by the real package, is on the [Decode](decode.md) page — beside a reader that takes a frame of your own.
 
 ## Find a column
 
 Eighty-nine columns is more than anyone scrolls, and the question a reader actually has is *which column holds this*. The filter matches the tag, the field name and the wording alike.
 
-<div class="ygg-pg" data-playground="fixSchema" markdown="1">
-This section renders `assets/playground.json` and needs JavaScript.
+<div class="ygg-fx" data-fix="projection" markdown="1">
+This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
 ## A reader is the whole parse surface
@@ -452,5 +448,5 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
     ```bash
     node --test "node/tests/fix/*.test.js"
-    node scripts/build_docs_playground.js --check
+    node scripts/build_docs_fix.js --check
     ```

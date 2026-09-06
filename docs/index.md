@@ -76,7 +76,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
 | xxHash | Digests over bytes, values, handles, and Arrow rows | [xxhash](xxhash/index.md) |
-| FIX | Protocol vocabulary, registries, and messages over `Field` | [fix](fix/index.md) |
+| FIX | Protocol vocabulary, registries, and messages over `Field`, with a live [explorer](fix/explorer.md), [decoder](fix/decode.md) and [composer](fix/encode.md) | [fix](fix/index.md) |
 | Extensions | What crosses the Python and JavaScript boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Install
