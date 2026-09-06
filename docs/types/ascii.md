@@ -472,8 +472,9 @@ Python-only enum bases: [Python boundary](../extensions/python.md).
 - Stored under `ascii(n)` -> padded with trailing NUL to `n`; every string rendering trims the padding back.
 - Canonical scalar -> the trimmed string; bytes and text carrying trailing NULs are accepted and canonicalize to it.
 - `fixed_size_binary(3)` under `yggdryl.currency` -> `currency`; under `yggdryl.ascii` -> `ascii(3)`; plain, or carrying a document -> imports as it is.
-- [Merged](field.md): a code beside itself -> kept; a width beside `ascii` -> `ascii`; either beside `utf8` -> `utf8`.
-- `currency` beside `country` -> `ascii(3)`, the plain text both fit, never one code holding the other's values.
+- [Merged](field.md) widening: a code beside itself -> kept; a width beside `ascii` -> `ascii`; either beside `utf8` -> `utf8`; a code beside `fixed_size_binary(n)` of its width -> those bytes.
+- [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it - `ascii(n)`, `ascii`, `utf8`, `fixed_size_binary(n)` -> the code; beside narrower text -> that text.
+- `currency` beside `country` -> `ascii(3)` widening and `ascii(2)` narrowing, the plain text both fit, never one code holding the other's values.
 - Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`.
 - `ascii_packed` on `ascii`, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `ascii_packed` -> an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.

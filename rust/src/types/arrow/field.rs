@@ -438,6 +438,11 @@ impl RecognizedExtension {
 /// that code fixes, and the canonical `arrow.uuid` over
 /// `FixedSizeBinary(16)`, each with an empty or absent document.
 ///
+/// The answer is what the extension describes, which is the *values* of a
+/// dictionary-encoded column: [`encoded_values`] peels the encoding here and
+/// [`imported_parts`] puts it back, so no extension is recognized in one
+/// layout and lost in the other.
+///
 /// Any other pairing keeps today's behavior exactly - a foreign extension
 /// name, one of ours over a storage it does not spell, a variant or an ASCII
 /// width with a non-empty document: the field imports as its storage type
@@ -446,7 +451,8 @@ impl RecognizedExtension {
 /// # Errors
 ///
 /// Returns an error when a recognized `geoarrow.wkb` field carries a GeoArrow
-/// metadata document that does not parse.
+/// metadata document that does not parse, or when a dictionary key is not an
+/// Arrow type this crate imports.
 pub(crate) fn recognized_arrow_extension(
     metadata: &HashMap<String, String>,
     storage: &ArrowDataType,
@@ -457,6 +463,7 @@ pub(crate) fn recognized_arrow_extension(
     let document = metadata
         .get(EXTENSION_TYPE_METADATA_KEY)
         .map(String::as_str);
+    let (storage, _) = encoded_values(storage)?;
     match name.as_str() {
         GEOARROW_WKB_EXTENSION_NAME if storage == &ArrowDataType::Binary => {
             let geospatial =
@@ -476,19 +483,13 @@ pub(crate) fn recognized_arrow_extension(
         // The storage shape alone tells the two ASCII datatypes apart: the
         // variable form is Arrow's `Binary`, and a width is that width's
         // `FixedSizeBinary`.
-        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
-            let (values, key) = encoded_values(storage)?;
-            Ok(match values {
-                ArrowDataType::Binary => Some(RecognizedExtension::Ascii(re_encoded(
-                    DataType::Ascii,
-                    key,
-                )?)),
-                ArrowDataType::FixedSizeBinary(width) => Some(RecognizedExtension::Ascii(
-                    re_encoded(DataType::ascii(*width)?, key)?,
-                )),
-                _ => None,
-            })
-        }
+        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
+            ArrowDataType::Binary => Some(RecognizedExtension::Ascii(DataType::Ascii)),
+            ArrowDataType::FixedSizeBinary(width) => {
+                Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
+            }
+            _ => None,
+        }),
         UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Uuid))
@@ -496,16 +497,12 @@ pub(crate) fn recognized_arrow_extension(
         VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))
         }
-        code if document.unwrap_or("").is_empty() => {
-            let (values, key) = encoded_values(storage)?;
-            Ok(match values {
-                ArrowDataType::FixedSizeBinary(width) => match code_for_extension(code, *width) {
-                    Some(dtype) => Some(RecognizedExtension::Code(re_encoded(dtype, key)?)),
-                    None => None,
-                },
-                _ => None,
-            })
-        }
+        code if document.unwrap_or("").is_empty() => Ok(match storage {
+            ArrowDataType::FixedSizeBinary(width) => {
+                code_for_extension(code, *width).map(RecognizedExtension::Code)
+            }
+            _ => None,
+        }),
         _ => Ok(None),
     }
 }
@@ -515,9 +512,10 @@ pub(crate) fn recognized_arrow_extension(
 /// Arrow's `Dictionary` carries a bare datatype for its values rather than a
 /// field, so a dictionary-encoded extension column has nowhere but the field
 /// itself to declare its identity. Peeling here is what lets a caller's own
-/// `dictionary(int32, currency)` import as itself rather than as anonymous
-/// bytes; no datatype here *is* a dictionary - a code is its own fixed
-/// binary - so this is only about not losing what a caller composed.
+/// `dictionary(int32, currency)` - or `dictionary(int32, uuid)`, or any other
+/// extension - import as itself rather than as anonymous storage; no datatype
+/// this crate recognizes *is* a dictionary - a code is its own fixed binary -
+/// so this is only about not losing what a caller composed.
 ///
 /// # Errors
 ///
@@ -561,7 +559,13 @@ fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadat
             })
             .map(|(key, held)| (key.clone(), held.clone()))
             .collect();
-        return Ok((recognized.into_dtype(), Metadata::from_arrow(&stripped)?));
+        // The extension describes the values; the encoding it was found under
+        // is the caller's, and goes back on.
+        let (_, key) = encoded_values(value.data_type())?;
+        return Ok((
+            re_encoded(recognized.into_dtype(), key)?,
+            Metadata::from_arrow(&stripped)?,
+        ));
     }
     let metadata = Metadata::from_arrow(value.metadata())?;
     let dtype = DataType::from_arrow_at_depth(value.data_type(), depth)?;
