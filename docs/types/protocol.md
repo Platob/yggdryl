@@ -480,7 +480,7 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "http or protocol or partition or typed_names"
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

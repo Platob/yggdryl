@@ -498,7 +498,7 @@ Python-only enum bases: [Python boundary](../extensions/python.md).
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_datatype.py -k "ascii or registered_code or prebuilt_vocabulary or enum_member"
     python/.venv/bin/python -m pytest python/tests/test_enums.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

@@ -169,7 +169,6 @@ assert_eq!(
 - Python `bytearray` / `memoryview` -> a bounded window, never borrowed; 1.7x slower than `bytes`.
 - JavaScript string -> UTF-8 encoded on the way in; 7.5x slower than `Buffer`.
 - One-byte call -> 166 ns Python, 496 ns Node of binding overhead; gone by 64 KiB.
-- `python/benchmarks/xxhash.py` without `-P` -> `python/benchmarks/types.py` shadows stdlib `types`; `import argparse` crashes.
 - No `xxhash` C package in `python/.venv` -> `(C libxxhash)` rows skipped; `python/tests/xxhash` skipped by `pytest.importorskip`.
 
 ## Commands
@@ -187,7 +186,7 @@ assert_eq!(
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/xxhash -k "TestVectors or TestOutsideImplementation or TestContent or TestDigest"
-    python/.venv/bin/python -P python/benchmarks/xxhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     ```
 
 === "JavaScript"
@@ -199,7 +198,7 @@ assert_eq!(
 
 ## Performance
 
-`rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([benchmarks](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
+`rust/benchmarks/xxhash.rs`, `python/benchmarks/digest.py`, and `node/benchmarks/xxhash.js` measure one protocol from three sides, fixtures built outside every measured loop ([benchmarks](../benchmarks.md)). One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB) produced the numbers: rustc 1.94.1 release, thin LTO, CPython 3.11.15, Node 22.22.2.
 
 The Arrow groups report rows per second for missing or default holders, preserved populated holders, and forced recomputation. The JavaScript rows include the IPC copy that binding requires.
 
@@ -259,7 +258,7 @@ xxh3        1 B (C libxxhash)       78.0 ns     0.01 GB/s
 ```
 
 ```bash
-python/.venv/bin/python -P python/benchmarks/xxhash.py --min-time 0.2 --repeat 5
+python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
 ```
 
 The Node rows ran a release addon on the same payload; `streamed 64 KiB` and `scalar leaf digest` belong to [Streaming](streaming.md) and [Values](values.md).

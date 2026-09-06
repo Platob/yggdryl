@@ -1356,7 +1356,7 @@ else:
     ```
 
     ```bash
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
@@ -1368,6 +1368,6 @@ else:
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
-    python/.venv/bin/python python/benchmarks/xxhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     ```

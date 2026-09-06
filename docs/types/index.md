@@ -50,7 +50,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types python/tests/test_enums.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     ```

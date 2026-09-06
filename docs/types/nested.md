@@ -279,7 +279,7 @@ The sugar spells `DataType::dense_union`, `DataType.variant(fields)`, or `fields
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_factories.py -k "nested or variant or union or map or dictionary or from_fields or read_only"
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

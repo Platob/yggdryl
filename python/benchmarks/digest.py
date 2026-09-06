@@ -11,12 +11,13 @@ The final rows measure Arrow holder filling through the Python boundary. They
 separate schema insertion, default recomputation, preservation, and ``force``;
 the fixture and protocol metadata are built outside every measured call.
 
-The file is named for the topic rather than the module, as ``compression.py``
-is: a benchmark named ``xxhash.py`` would shadow the C ``xxhash`` package it
-compares against, because a script's own directory comes first on ``sys.path``.
+The file is named for the topic rather than the module, as ``coding.py`` and
+``datatypes.py`` are: a script's own directory comes first on ``sys.path``, so
+a benchmark named ``xxhash.py`` shadows the C ``xxhash`` package it compares
+against - the baseline silently becomes this file.
 
 Usage:
-    python benchmarks/xxhash.py [--min-time 0.2] [--repeat 5]
+    python benchmarks/digest.py [--min-time 0.2] [--repeat 5]
 """
 
 from __future__ import annotations

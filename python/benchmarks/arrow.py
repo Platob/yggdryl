@@ -21,36 +21,22 @@ once, rather than reported as zero.
 
 from __future__ import annotations
 
-import os
+import argparse
+import atexit
+import gc
+import importlib
+import json
+import pathlib
+import shutil
+import statistics
 import sys
+import tempfile
+import timeit
+from collections.abc import Callable
 
-# A script's own directory comes first on `sys.path`, and the sibling benchmark
-# `types.py` carries the name `enum` imports from the standard library. On an
-# interpreter that has not already loaded the real `types`, the first import
-# below would resolve to that sibling, so the directory leaves first; nothing
-# here is loaded from it.
-_SCRIPT_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
-sys.path[:] = [
-    entry
-    for entry in sys.path
-    if os.path.abspath(entry or os.curdir) != _SCRIPT_DIRECTORY
-]
+import pyarrow as pa
 
-import argparse  # noqa: E402
-import atexit  # noqa: E402
-import gc  # noqa: E402
-import importlib  # noqa: E402
-import json  # noqa: E402
-import pathlib  # noqa: E402
-import shutil  # noqa: E402
-import statistics  # noqa: E402
-import tempfile  # noqa: E402
-import timeit  # noqa: E402
-from collections.abc import Callable  # noqa: E402
-
-import pyarrow as pa  # noqa: E402
-
-from yggdryl import ArrowValue, Field, IOBase  # noqa: E402
+from yggdryl import ArrowValue, Field, IOBase
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one

@@ -858,7 +858,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_field.py python/tests/types/test_factories.py python/tests/types/test_field_classes.py python/tests/types/test_field_classes_arrow.py python/tests/types/test_field_classes_edges.py python/tests/types/test_field_classes_py314.py python/tests/types/test_protocol_hashability.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     ```
 
@@ -886,6 +886,6 @@ Rust times both consuming typed accessors, construction outside the timer; the b
 
 ```bash
 cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'
-python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
 npm run --prefix node bench:types
 ```
