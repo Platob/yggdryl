@@ -13,7 +13,7 @@ use yggdryl::types::{
     AsciiField, CfiField, CountryField, CurrencyField, FixedAsciiField, MicField, ascii,
 };
 use yggdryl::types::{CfiScalar, CurrencyScalar, FixedAsciiScalar};
-use yggdryl::{ArrowCast, DataType, Field, Scalar};
+use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
 
 use super::typed::assert_typed_marker;
 
@@ -90,7 +90,7 @@ fn fixed(width: i32, cells: &[Option<&[u8]>]) -> ArrayRef {
 /// Cast one recognized ASCII column to `target` through the batch path.
 fn cast_column(batch: RecordBatch, target: Field) -> yggdryl::arrow::Result<ArrayRef> {
     Ok(root([target])
-        .cast_arrow_batch(batch, false)?
+        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?
         .column(0)
         .clone())
 }
@@ -100,7 +100,9 @@ fn text_entering_an_ascii_width_is_validated_and_padded() {
     let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), true).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EU"), None]));
 
-    let cast = field.cast_arrow_array(source, false).unwrap();
+    let cast = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(cast.value(0), b"USD\0");
     assert_eq!(cast.value(1), b"EU\0\0");
     assert!(cast.is_null(2));
@@ -116,7 +118,7 @@ fn a_value_breaking_the_width_rule_is_refused_naming_the_row_and_the_width() {
     ] {
         let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some(value)]));
         let refused = field
-            .cast_arrow_array(source, false)
+            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
             .unwrap_err()
             .to_string();
         assert!(refused.contains("\"ccy\""), "{refused}");
@@ -132,7 +134,10 @@ fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
     let source = fixed(4, &[Some(b"USD\0"), Some(b"EUR\0")]);
     let cast = field
         .as_field()
-        .cast_arrow_array(Arc::clone(&source), false)
+        .cast_arrow_array(
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
     assert!(Arc::ptr_eq(&cast, &source));
 
@@ -140,7 +145,7 @@ fn a_plain_fixed_binary_of_the_width_is_validated_and_reused() {
     let broken = fixed(4, &[Some(b"USD\0"), Some(b"US\xC3\xA9")]);
     let refused = field
         .as_field()
-        .cast_arrow_array(broken, false)
+        .cast_arrow_array(broken, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("row 1"), "{refused}");
@@ -251,7 +256,9 @@ fn a_dictionary_of_text_enters_an_ascii_width() {
     let values: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
     let source: ArrayRef = Arc::new(DictionaryArray::<Int32Type>::try_new(keys, values).unwrap());
 
-    let cast = field.cast_arrow_array(source, false).unwrap();
+    let cast = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(cast.value(0), b"USD\0");
     assert_eq!(cast.value(1), b"EUR\0");
     assert!(cast.is_null(2));
@@ -263,7 +270,9 @@ fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
     let field = FixedAsciiField::try_new("ccy", DataType::FixedAscii(4), false).unwrap();
     let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
 
-    let cast = field.cast_arrow_array(source, false).unwrap();
+    let cast = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(cast.null_count(), 0);
     assert_eq!(cast.value(0), b"USD\0");
     assert_eq!(cast.value(1), b"\0\0\0\0");
@@ -291,7 +300,9 @@ fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     )]));
     let batch = RecordBatch::try_new(schema, vec![Arc::new(position)]).unwrap();
 
-    let cast = target.cast_arrow_batch(batch, true).unwrap();
+    let cast = target
+        .cast_arrow_batch(batch, ArrowCastOptions::new())
+        .unwrap();
     let position = cast
         .column(0)
         .as_any()

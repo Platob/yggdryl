@@ -336,8 +336,9 @@ assert.equal(fallback.onlyDigestFields().dtype.length, 2)
 ```
 
 Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the
-64-bit algorithms. `field.castArrowArrayBits(...)` is the same explicit,
-reversible representation cast outside holder filling.
+64-bit algorithms. `field.castArrowArray(values, { representation: 'bits' })` is
+the same reversible [same-width reading](../types/cast.md#reading-the-bits)
+outside holder filling.
 
 ## A filesystem is whatever answers seven calls
 

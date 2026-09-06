@@ -81,7 +81,7 @@ Every spelling reads to the same bytes and writes back canonical.
     assert id.arrow_scalar(text) == pa.scalar(packed.to_bytes(16, "big"), pa.binary(16))
     assert id.arrow_scalar(text.upper()) == id.arrow_scalar(text)
     assert id.arrow_scalar(packed.to_bytes(16, "big")) == id.arrow_scalar(text)
-    assert id.default_pyvalue() == "00000000-0000-0000-0000-000000000000"
+    assert id.default_scalar().as_py() == "00000000-0000-0000-0000-000000000000"
 
     # Storage is the canonical `arrow.uuid` extension, which PyArrow registers
     # itself, so a column of them reads back as `uuid.UUID`.

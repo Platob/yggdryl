@@ -339,7 +339,7 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
     assert field.arrow_scalar(text.upper()) == field.arrow_scalar(text)
     assert field.arrow_scalar(text.replace("-", "")) == field.arrow_scalar(text)
     assert field.arrow_scalar(packed.to_bytes(16, "big")) == field.arrow_scalar(text)
-    assert field.default_pyvalue() == "00000000-0000-0000-0000-000000000000"
+    assert field.default_scalar().as_py() == "00000000-0000-0000-0000-000000000000"
 
     # Storage is the canonical `arrow.uuid` extension over sixteen bytes, so
     # PyArrow rebuilds its own registered extension type from the projection.
@@ -371,7 +371,7 @@ def test_version_is_canonical_numeric_text_in_sixteen_native_bytes() -> None:
     assert dtype.kind == "text"
     assert str(dtype) == "version"
     assert dtype.ascii_width is None
-    assert field.default_pyvalue() == "0"
+    assert field.default_scalar().as_py() == "0"
     assert field.arrow_scalar("5.0.SP1") == pa.scalar("5.0SP1")
     assert field.cast_arrow_array(pa.array(["5.0.SP1", "5.0SP10"])).to_pylist() == [
         "5.0SP1",
@@ -506,7 +506,7 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     assert ascii32.arrow_scalar(b"USD\x00") == pa.scalar(b"USD\x00", pa.binary(4))
     assert ascii32.arrow_scalar(None) == pa.scalar(None, pa.binary(4))
     assert ccy.arrow_scalar("EUR") == pa.scalar(b"EUR\x00", pa.binary(4))
-    assert ascii32.default_pyvalue() == ""
+    assert ascii32.default_scalar().as_py() == ""
     assert ascii32.default_pyhint() is str
     assert ascii32.default_arrow_scalar() == pa.scalar(b"\x00" * 4, pa.binary(4))
 
@@ -553,7 +553,7 @@ def test_variable_ascii_stores_the_bytes_it_is_given() -> None:
     assert Field.from_arrow(pa.field("note", pa.binary())) == Field("note", "binary")
 
     assert note.arrow_scalar("free text") == pa.scalar(b"free text", pa.binary())
-    assert note.default_pyvalue() == ""
+    assert note.default_scalar().as_py() == ""
     assert note.default_pyhint() is str
     assert note.default_arrow_scalar() == pa.scalar(b"", pa.binary())
 

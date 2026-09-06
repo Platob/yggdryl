@@ -927,7 +927,11 @@ pub(crate) fn select_reader(
     }
     let root = crate::arrow::field_from_arrow_schema(options.name(), reader.schema().as_ref())?;
     match crate::arrow::selected_root(&root, names, options.name())? {
-        Some(target) => Ok(crate::arrow::cast_reader(reader, &target, options.safe())?),
+        Some(target) => Ok(crate::arrow::cast_reader(
+            reader,
+            &target,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?),
         None => Ok(reader),
     }
 }
@@ -951,7 +955,11 @@ pub(crate) fn leaf_reader(
         RecordOptions::Text(text) => crate::media::text::arrow::read_arrow_reader(handle, text)?,
     };
     match declared {
-        Some(field) => Ok(crate::arrow::cast_reader(reader, field, options.safe())?),
+        Some(field) => Ok(crate::arrow::cast_reader(
+            reader,
+            field,
+            crate::ArrowCastOptions::new().with_safe(options.safe()),
+        )?),
         None => Ok(reader),
     }
 }

@@ -27,7 +27,7 @@ test('internal typed-factory bridges stay outside the public package surface', (
   }
   assert.equal(Object.hasOwn(Field, 'fromArrowString'), false)
   assert.equal(Object.hasOwn(Field.prototype, '_showDiffs'), false)
-  assert.equal(Object.hasOwn(Field.prototype, '_castArrowArrayBitsIpcNative'), false)
+  assert.equal(Object.hasOwn(Field.prototype, '_castArrowArrayIpcNative'), false)
   assert.equal(Object.hasOwn(DataType.prototype, '_showDiffs'), false)
   for (const name of ['DifferenceIterator', 'JsDifferenceIterator']) {
     assert.equal(Object.hasOwn(binding, name), false, name)
@@ -37,16 +37,17 @@ test('internal typed-factory bridges stay outside the public package surface', (
   assert.equal(Object.hasOwn(new DataType('int32').constructor, '_simple'), false)
 })
 
-test('Field.castArrowArrayBits preserves every int32 and int64 bit pattern', () => {
+test('the bits reading crosses every same-width pair', () => {
+  const bits = { representation: 'bits' }
   const unsigned32 = arrow.vectorFromArray(
     [0, 2 ** 31 - 1, 2 ** 31, 2 ** 32 - 1, null],
     new arrow.Uint32(),
   )
-  const signed32 = fields.int32('digest').castArrowArrayBits(unsigned32)
+  const signed32 = fields.int32('digest').castArrowArray(unsigned32, bits)
   assert.equal(signed32.type.toString(), 'Int32')
   assert.deepEqual(Array.from(signed32), [0, 2 ** 31 - 1, -(2 ** 31), -1, null])
   assert.deepEqual(
-    Array.from(fields.uint32('digest').castArrowArrayBits(signed32)),
+    Array.from(fields.uint32('digest').castArrowArray(signed32, bits)),
     Array.from(unsigned32),
   )
 
@@ -54,36 +55,62 @@ test('Field.castArrowArrayBits preserves every int32 and int64 bit pattern', () 
     [0n, 2n ** 63n - 1n, 2n ** 63n, 2n ** 64n - 1n, null],
     new arrow.Uint64(),
   )
-  const signed64 = fields.int64('digest').castArrowArrayBits(unsigned64)
+  const signed64 = fields.int64('digest').castArrowArray(unsigned64, bits)
   assert.equal(signed64.type.toString(), 'Int64')
   assert.deepEqual(
     Array.from(signed64),
     [0n, 2n ** 63n - 1n, -(2n ** 63n), -1n, null],
   )
   assert.deepEqual(
-    Array.from(fields.uint64('digest').castArrowArrayBits(signed64)),
+    Array.from(fields.uint64('digest').castArrowArray(signed64, bits)),
     Array.from(unsigned64),
   )
-  const empty = fields.int64('digest').castArrowArrayBits(
-    arrow.vectorFromArray([], new arrow.Uint64()),
+
+  // Eight bytes are eight bytes: the integer, its opposite sign and the raw
+  // payload are one buffer under three readings, and the chain round-trips.
+  const stored = fields
+    .fixedSizeBinary('digest', 8)
+    .castArrowArray(unsigned64, bits)
+  assert.deepEqual(Array.from(stored.get(3)), new Array(8).fill(255))
+  assert.deepEqual(
+    Array.from(fields.uint64('digest').castArrowArray(stored, bits)),
+    Array.from(unsigned64),
   )
+
+  const empty = fields
+    .int64('digest')
+    .castArrowArray(arrow.vectorFromArray([], new arrow.Uint64()), bits)
   assert.equal(empty.type.toString(), 'Int64')
   assert.equal(empty.length, 0)
 
-  const required = fields.int64('digest', { nullable: false })
-    .castArrowArrayBits(arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()))
+  // The reading says what the bytes mean; nullability still says what an
+  // absent value means.
+  const required = fields
+    .int64('digest', { nullable: false })
+    .castArrowArray(
+      arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+      bits,
+    )
   assert.deepEqual(Array.from(required), [0n, -1n])
+  assert.throws(
+    () =>
+      fields
+        .int64('digest', { nullable: false })
+        .castArrowArray(arrow.vectorFromArray([null], new arrow.Uint64()), {
+          ...bits,
+          nullability: 'strict',
+        }),
+    /required Arrow field \$\.digest holds 1 null values/,
+  )
+
+  // Four bytes are not eight, so this stays the ordinary numeric widening.
+  assert.deepEqual(
+    Array.from(fields.int64('digest').castArrowArray(unsigned32, bits)),
+    [0n, 2n ** 31n - 1n, 2n ** 31n, 2n ** 32n - 1n, null],
+  )
 
   assert.throws(
-    () => fields.int64('digest').castArrowArrayBits(unsigned32),
-    /requires a uint64 array/,
-  )
-  assert.throws(
-    () => fields.utf8('digest').castArrowArrayBits(unsigned32),
-    /bit-preserving Arrow integer casts require/,
-  )
-  assert.throws(
-    () => fields.int32('digest').castArrowArrayBits([0]),
+    () => fields.int32('digest').castArrowArray([0]),
     /must be an Apache Arrow Vector/,
   )
 })

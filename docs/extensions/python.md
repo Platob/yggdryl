@@ -347,7 +347,7 @@ batch = pa.record_batch(
 assert fallback.apply_arrow_batch(batch).column("row_digest").null_count == 0
 ```
 
-Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit algorithms. `field.cast_arrow_array_bits(...)` performs the same reversible bit-preserving cast outside holder filling.
+Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit algorithms. `field.cast_arrow_array(values, representation="bits")` performs the same reversible [same-width reading](../types/cast.md#reading-the-bits) outside holder filling.
 
 ## Field classes
 

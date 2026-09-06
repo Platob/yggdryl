@@ -28,6 +28,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [Apache Parquet](media/parquet.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
 | Text | [Structured text](text/index.md) | Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` and `python/benchmarks/types/... |
 | Text | [Placeholders](text/placeholders.md) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
+| Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
 | xxHash | [Handles](xxhash/handles.md) | One containerized x86_64 Linux run (benchmarks): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 relea... |

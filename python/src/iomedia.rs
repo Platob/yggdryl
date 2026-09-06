@@ -57,6 +57,7 @@ use crate::types::datatype::{PyDataType, core_dtype_from_value};
 use crate::types::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
 use crate::types::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
+use yggdryl::ArrowCastOptions;
 
 /// Read a core root Field out of anything Python describes rows with.
 ///
@@ -489,7 +490,7 @@ fn frame_reader(value: &Bound<'_, PyAny>, library: Frames) -> PyResult<BatchRead
 }
 
 /// Name a value's type the way an error should show it.
-fn type_name(value: &Bound<'_, PyAny>) -> String {
+pub(crate) fn type_name(value: &Bound<'_, PyAny>) -> String {
     value.get_type().fully_qualified_name().map_or_else(
         |_| "an unnameable value".to_owned(),
         |name| name.to_string(),
@@ -543,7 +544,7 @@ impl Chained {
             return Ok(batch);
         }
         self.root
-            .cast_arrow_batch(batch, self.safe)
+            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(self.safe))
             .map_err(|error| arrow_schema::ArrowError::ExternalError(Box::new(error)))
     }
 }

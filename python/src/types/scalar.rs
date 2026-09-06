@@ -41,6 +41,7 @@ use crate::types::field::{PyField, core_field_from_value};
 use crate::types::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};
+use yggdryl::ArrowCastOptions;
 
 /// How deep a Python graph may nest before conversion refuses to recurse.
 const MAX_PYTHON_DEPTH: usize = 128;
@@ -874,7 +875,9 @@ impl PyScalar {
     ) -> PyResult<Self> {
         let input = arrow_scalar_into_array(value)?;
         let field = exact_or_inferred_array_field(field, &input, "value")?;
-        let input = field.cast_arrow_array(input, true).map_err(value_error)?;
+        let input = field
+            .cast_arrow_array(input, ArrowCastOptions::new())
+            .map_err(value_error)?;
         scalar_value(&field, input.as_ref())
             .map(Self::from_inner)
             .map_err(value_error)
@@ -889,7 +892,9 @@ impl PyScalar {
     ) -> PyResult<Self> {
         let input = arrow_array_from_pyarrow(value)?;
         let field = exact_or_inferred_array_field(field, &input, "item")?;
-        let input = field.cast_arrow_array(input, true).map_err(value_error)?;
+        let input = field
+            .cast_arrow_array(input, ArrowCastOptions::new())
+            .map_err(value_error)?;
         array_to_value(&field, input.as_ref())
             .map(Self::from_inner)
             .map_err(value_error)
@@ -905,7 +910,7 @@ impl PyScalar {
         let batch = RecordBatch::from_pyarrow_bound(value)?;
         let batch = match field {
             Some(field) => core_root_field_from_value(field, "row")?
-                .cast_arrow_batch(batch, true)
+                .cast_arrow_batch(batch, ArrowCastOptions::new())
                 .map_err(value_error)?,
             None => batch,
         };
@@ -931,7 +936,9 @@ impl PyScalar {
         for batch in &mut reader {
             let batch = batch.map_err(value_error)?;
             let batch = match &root {
-                Some(root) => root.cast_arrow_batch(batch, true).map_err(value_error)?,
+                Some(root) => root
+                    .cast_arrow_batch(batch, ArrowCastOptions::new())
+                    .map_err(value_error)?,
                 None => batch,
             };
             extend_rows(&mut rows, &batch_to_value(&batch).map_err(value_error)?)?;
