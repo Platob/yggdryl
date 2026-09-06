@@ -22,7 +22,12 @@ from .types import (
     field as field,
 )
 from .types.scalar import scalar as scalar
-from .uri import Uri as Uri, Url as Url, Urn as Urn
+from .uri import (
+    Parameters as Parameters,
+    Uri as Uri,
+    Url as Url,
+    Urn as Urn,
+)
 from . import (
     coding as coding,
     enums as enums,

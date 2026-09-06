@@ -1,5 +1,5 @@
 """Resource identifiers."""
 
-from ._native import Uri, Url, Urn
+from ._native import Parameters, Uri, Url, Urn
 
-__all__ = ["Uri", "Url", "Urn"]
+__all__ = ["Parameters", "Uri", "Url", "Urn"]

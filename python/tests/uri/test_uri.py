@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import os
 import pickle
+from collections.abc import Iterator
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Callable
 
@@ -17,8 +18,8 @@ def test_uri_components_path_collection_and_value_protocols() -> None:
     assert value.scheme == "https"
     assert value.authority == "example.com"
     assert value.path == "/archive/report.tar.gz"
-    assert value.query == "download=1"
-    assert value.fragment == "summary"
+    assert value.query() == "download=1"
+    assert value.fragment() == "summary"
     assert value.path_segments == ("archive", "report.tar.gz")
     assert tuple(value) == value.path_segments
     assert len(value) == 2
@@ -315,3 +316,209 @@ def test_uri_mime_and_media_inference_uses_native_suffix_tables() -> None:
     urn.set_media_type("text/csv;encodings=application/gzip")
     assert str(urn) == "urn:example:reports/data.csv.gz"
     assert urn.namespace == "example"
+
+
+def test_components_answer_raw_or_decoded_text() -> None:
+    value = Url("https://example.com/a%20b/c%2Fd?q=a%26b#p%C3%A9")
+
+    assert value.path == "/a%20b/c%2Fd"
+    assert value.path_text() == "/a%20b/c%2Fd"
+    assert value.query() == "q=a%26b"
+    assert value.fragment() == "p%C3%A9"
+
+    # Decoding answers with text, not with structure: the encoded slash stays
+    # inside the segment that carried it.
+    assert value.path_text(decode=True) == "/a b/c/d"
+    assert value.path_segments == ("a%20b", "c%2Fd")
+    assert value.query(decode=True) == "q=a&b"
+    assert value.fragment(True) == "pé"
+
+    urn = Urn("urn:example:weather?=op=map%20view#now")
+    assert urn.query(decode=True) == "=op=map view"
+    assert urn.path_text(decode=True) == "example:weather"
+
+    # An escape that is not UTF-8 is refused rather than replaced.
+    invalid = Uri("https://example.com/a%FF")
+    assert invalid.path_text() == "/a%FF"
+    with pytest.raises(ValueError, match="UTF-8"):
+        invalid.path_text(decode=True)
+
+
+def test_parameters_read_the_query_as_its_pairs() -> None:
+    value = Url("https://example.com/t?symbol=AAPL&venue=XNAS&symbol=MSFT&flag")
+    parameters = value.parameters()
+
+    assert len(parameters) == 4
+    assert bool(parameters)
+    assert "symbol" in parameters
+    assert "absent" not in parameters
+    assert parameters["symbol"] == "AAPL"
+    assert parameters.get_all("symbol") == ("AAPL", "MSFT")
+    # A pair carrying no `=` names an empty value rather than nothing.
+    assert parameters["flag"] == ""
+    assert parameters.get("absent") is None
+    assert parameters.get("absent", "fallback") == "fallback"
+    assert list(parameters) == ["symbol", "venue", "symbol", "flag"]
+    assert list(parameters.keys()) == ["symbol", "venue", "symbol", "flag"]
+    assert list(parameters.values()) == ["AAPL", "XNAS", "MSFT", ""]
+    assert list(parameters.items()) == [
+        ("symbol", "AAPL"),
+        ("venue", "XNAS"),
+        ("symbol", "MSFT"),
+        ("flag", ""),
+    ]
+    assert parameters.into_dict() == {"symbol": "AAPL", "venue": "XNAS", "flag": ""}
+    assert repr(parameters).startswith("Parameters({")
+
+    with pytest.raises(KeyError):
+        parameters["absent"]
+
+    assert Url("https://example.com/t").parameters().into_query() is None
+    assert not Url("https://example.com/t?").parameters()
+
+
+def test_parameters_write_through_to_the_url() -> None:
+    value = Url("https://example.com/t?symbol=AAPL&venue=XNAS&symbol=MSFT#part")
+    parameters = value.parameters()
+
+    # Setting keeps the key's position and drops the pairs it replaced.
+    parameters["symbol"] = "TSLA"
+    assert str(value) == "https://example.com/t?symbol=TSLA&venue=XNAS#part"
+
+    parameters.append("symbol", "NVDA")
+    assert parameters.get_all("symbol") == ("TSLA", "NVDA")
+
+    del parameters["symbol"]
+    assert str(value) == "https://example.com/t?venue=XNAS#part"
+    with pytest.raises(KeyError):
+        del parameters["symbol"]
+
+    parameters.update({"region": "eu"}, depth="10")
+    assert parameters.into_query() == "venue=XNAS&region=eu&depth=10"
+    assert parameters.pop("region") == "eu"
+    assert parameters.pop("region", None) is None
+    with pytest.raises(KeyError):
+        parameters.pop("region")
+    assert parameters.setdefault("depth", "50") == "10"
+    assert parameters.setdefault("side", "buy") == "buy"
+
+    parameters.clear()
+    assert str(value) == "https://example.com/t#part"
+    assert len(parameters) == 0
+
+    # The view is live rather than a snapshot: the URL changing is visible.
+    value.set_query("symbol=NVDA")
+    assert parameters["symbol"] == "NVDA"
+    assert value.query() == "symbol=NVDA"
+
+
+def test_parameters_decode_and_encode_when_asked() -> None:
+    value = Url("https://example.com/t?as%20of=2026-01-02&note=a%26b")
+
+    raw = value.parameters()
+    assert not raw.decode
+    assert raw["as%20of"] == "2026-01-02"
+    assert raw["note"] == "a%26b"
+
+    decoded = value.parameters(decode=True)
+    assert decoded.decode
+    assert decoded["as of"] == "2026-01-02"
+    assert decoded["note"] == "a&b"
+    assert decoded == {"as of": "2026-01-02", "note": "a&b"}
+    assert decoded != raw
+
+    # A decoding view encodes what the query syntax cannot carry; a raw view
+    # refuses it instead of writing a query that would not parse back.
+    decoded["side"] = "buy & sell"
+    assert str(value).endswith("&side=buy%20%26%20sell")
+    assert value.parameters(decode=True)["side"] == "buy & sell"
+
+    with pytest.raises(ValueError):
+        raw["side"] = "buy & sell"
+
+
+def test_a_hashed_url_refuses_a_parameter_write() -> None:
+    value = Url("https://example.com/t?symbol=AAPL")
+    parameters = value.parameters()
+    hash(value)
+
+    with pytest.raises(TypeError, match="frozen"):
+        parameters["symbol"] = "MSFT"
+    assert value.query() == "symbol=AAPL"
+
+
+def test_a_lookup_that_changes_nothing_writes_nothing() -> None:
+    """The mapping methods that only read must not rewrite the query.
+
+    A write-back respells what it parsed - ``flag`` becomes ``flag=``, an empty
+    pair disappears - and a frozen value refuses it, so a ``dict``-shaped read
+    would both change the URL and raise where a ``dict`` would not.
+    """
+    value = Url("https://example.com/t?flag&a=1&&b=%7Ez")
+    stored = str(value)
+    parameters = value.parameters()
+
+    assert parameters.pop("absent", None) is None
+    assert parameters.setdefault("a", "9") == "1"
+    parameters.update()
+    assert str(value) == stored
+
+    with pytest.raises(KeyError):
+        parameters.pop("absent")
+    assert str(value) == stored
+
+    empty = Url("https://example.com/t")
+    empty.parameters().clear()
+    assert str(empty) == "https://example.com/t"
+
+    # The same reads answer on a hashed value, which refuses every write.
+    frozen = Url("https://example.com/t?a=1")
+    hash(frozen)
+    assert frozen.parameters().pop("absent", "default") == "default"
+    assert frozen.parameters().setdefault("a", "9") == "1"
+    frozen.parameters().update()
+    with pytest.raises(TypeError, match="frozen"):
+        frozen.parameters()["a"] = "2"
+
+
+def test_parameters_compare_and_update_the_way_a_mapping_does() -> None:
+    import collections.abc
+
+    class Reading(collections.abc.Mapping[str, str]):
+        """A mapping that is not a ``dict``, which ``update`` must still take."""
+
+        def __init__(self, values: dict[str, str]) -> None:
+            self._values = values
+
+        def __getitem__(self, key: str) -> str:
+            return self._values[key]
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(self._values)
+
+        def __len__(self) -> int:
+            return len(self._values)
+
+    value = Url("https://example.com/t")
+    value.parameters().update(Reading({"symbol": "AAPL"}))
+    value.parameters().update([("venue", "XNAS")])
+    assert value.query() == "symbol=AAPL&venue=XNAS"
+    assert value.parameters() == {"symbol": "AAPL", "venue": "XNAS"}
+
+    # A query that names one key twice is no dict, whatever the dict holds.
+    repeated = Url("https://example.com/t?a=1&a=1").parameters()
+    assert repeated != {"a": "1"}
+    assert repeated != {"a": "1", "b": "2"}
+    assert repeated == Url("https://example.com/t?a=1&a=1").parameters()
+
+
+def test_the_pair_views_are_read_more_than_once() -> None:
+    parameters = Url("https://example.com/t?a=1&b=2&a=3").parameters()
+
+    keys = parameters.keys()
+    assert list(keys) == ["a", "b", "a"]
+    assert list(keys) == ["a", "b", "a"]
+    assert len(keys) == 3
+    assert parameters.values() == ("1", "2", "3")
+    assert parameters.items() == (("a", "1"), ("b", "2"), ("a", "3"))
+    assert list(parameters) == ["a", "b", "a"]

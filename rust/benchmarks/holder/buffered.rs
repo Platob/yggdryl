@@ -13,11 +13,12 @@
 //!   either can only add a lock, a clock read, a map lookup, and a second
 //!   copy. These rows measure that overhead honestly.
 //! - **A fetch per read.** An [`FsFile`](yggdryl::holder::fs::File) answers
-//!   every `pread` with one `read_range` call through the foreign-filesystem
-//!   vtable. Over [`MemoryFileSystem`] that is a lock and a copy; over
-//!   [`LocalFileSystem`] it is an `open`, a `seek`, and a `read` **per call**,
-//!   which is the shape every real object store has - a round trip whose cost
-//!   dwarfs the bytes it carries. These are the rows the cache exists for.
+//!   every `pread` with one random-access input-file open and one positional
+//!   read through the filesystem vtable. Over [`MemoryFileSystem`] that is a
+//!   lock and a copy; over [`LocalFileSystem`] it is an `open`, a `seek`, and a
+//!   `read` **per call**, which is the shape every real object store has - a
+//!   round trip whose cost dwarfs the bytes it carries. These are the rows the
+//!   cache exists for.
 //!
 //! The workloads:
 //!
@@ -313,8 +314,9 @@ fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<d
     // memory legs read the same object.
     let in_memory: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     in_memory
-        .write_full(MEMORY_LOCATION, &payload)
-        .expect("the fixture must be written");
+        .create_dir("bench", true)
+        .expect("the memory fixture root must be created");
+    crate::fs::write_file(in_memory.as_ref(), MEMORY_LOCATION, &payload);
 
     // The local filesystem reads the very file the mapped legs read, so the
     // two local rows differ in how they reach the bytes and in nothing else.
@@ -341,14 +343,14 @@ fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<d
         (
             "fs_memory",
             Box::new(
-                FsFile::from_location(Arc::clone(&in_memory), MEMORY_LOCATION)
+                FsFile::from_path(Arc::clone(&in_memory), MEMORY_LOCATION, None)
                     .expect("a valid location"),
             ),
         ),
         (
             "fs_memory_buffered",
             Box::new(
-                FsFile::from_location(in_memory, MEMORY_LOCATION)
+                FsFile::from_path(in_memory, MEMORY_LOCATION, None)
                     .expect("a valid location")
                     .buffered(BufferedOptions::default()),
             ),
@@ -356,13 +358,13 @@ fn handles(path: &std::path::Path, payload: Vec<u8>) -> Vec<(&'static str, Box<d
         (
             "fs_local",
             Box::new(
-                FsFile::from_location(Arc::clone(&on_disk), &location).expect("a valid location"),
+                FsFile::from_path(Arc::clone(&on_disk), &location, None).expect("a valid location"),
             ),
         ),
         (
             "fs_local_buffered",
             Box::new(
-                FsFile::from_location(on_disk, &location)
+                FsFile::from_path(on_disk, &location, None)
                     .expect("a valid location")
                     .buffered(BufferedOptions::default()),
             ),

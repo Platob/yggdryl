@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, FixId, FixRegistry};
+use yggdryl::{DataType, FixBranch, FixRegistry};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -91,7 +91,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The identity setters, and the refusal path a caller pays for a tag the
     // FIX specification assigns.
     let venue = venue();
-    let vendor = FixId::from_parts(venue.clone(), 9_000).expect("a vendor identifier");
     let mut movable = DataType::Utf8.nullable_field("Movable");
     movable.as_fix_mut().set_tag(9_000).unwrap();
     group.bench_function("set_branch", |bencher| {
@@ -108,7 +107,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter_batched(
             || movable.clone(),
             |mut field| {
-                field.as_fix_mut().set_id(&vendor).unwrap();
+                field.as_fix_mut().set_id(&venue, 9_000).unwrap();
                 field
             },
             BatchSize::SmallInput,
@@ -132,7 +131,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             |mut field| {
                 field
                     .as_fix_mut()
-                    .set_id(&FixId::standard(35))
+                    .set_id(&FixBranch::STANDARD, 35)
                     .expect("the standard branch holds any tag");
                 field
             },

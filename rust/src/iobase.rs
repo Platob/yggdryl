@@ -47,11 +47,22 @@ use crate::holder::Holder;
 /// Default byte-stream batch size used by core readers and language bindings.
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
 
+/// Default number of bytes one transport fetch asks the backing store for.
+///
+/// [`DEFAULT_STREAM_BATCH_SIZE`] shapes what a reader hands *out*; this shapes
+/// what a reader asks *for*. The two are deliberately different sizes: a
+/// decoder pulls in its own small increments - a gzip stream reads 32 KiB at a
+/// time - and against an object store every one of those pulls is a round trip.
+/// Buffering the transport at this size turns a gigabyte-scale scan from tens
+/// of thousands of requests into a few hundred, without changing the decoded
+/// batch shape or the memory a read holds beyond one window per open stream.
+pub const DEFAULT_FETCH_BYTE_SIZE: usize = 1024 * 1024;
+
 /// Bytes copied per step when moving between two handles.
 const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 
 mod bytes;
-mod hierarchy;
+pub(crate) mod hierarchy;
 mod lifecycle;
 #[cfg(feature = "arrow")]
 mod transfer;
@@ -159,6 +170,11 @@ pub trait IOBase: Send + IOMedia {
 
     /// Return the canonical location, when the bytes have one.
     fn url(&self) -> Option<&Url>;
+
+    /// Return the filesystem/path binding when this handle has one.
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        None
+    }
 
     /// Return the representation and content codings of the bytes.
     fn media_type(&self) -> &MediaType;
@@ -327,6 +343,9 @@ pub trait IOBase: Send + IOMedia {
     /// prefix segment cannot be resolved. Everything the walk itself hits
     /// arrives as a failing entry instead.
     fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing> {
+        if self.bound_location().is_some() {
+            return hierarchy::bound_glob(self, pattern, include_private);
+        }
         let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
         let Some(fixed) = parts.iter().position(|part| Url::is_pattern(part)) else {
             // Nothing to expand: the pattern names one location, which counts
@@ -959,23 +978,130 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// Returns the first read or write failure.
     fn copy_into(&self, target: &mut dyn IOBase) -> Result<u64> {
-        target.truncate(0)?;
-        let mut source = self.pstream_bytes(0, TRANSFER_CHUNK)?;
-        let mut chunk = vec![0_u8; TRANSFER_CHUNK];
-        let mut offset = 0_u64;
-        loop {
-            let read = source.read(&mut chunk)?;
-            if read == 0 {
-                break;
-            }
-            target.pwrite_all(offset, &chunk[..read])?;
-            offset = offset.checked_add(read as u64).ok_or_else(|| {
-                Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
-            })?;
+        if let (Some(source), Some(target_location)) =
+            (self.bound_location(), target.bound_location())
+        {
+            return crate::holder::fs::copy_bound(source, target_location);
         }
-        target.set_media_type(self.media_type().clone());
-        target.flush()?;
-        Ok(offset)
+
+        // The generic positional contract has no atomic publish primitive.
+        // Fully consume the source into the existing memory-filesystem
+        // implementation before touching the target. Filesystem-to-filesystem
+        // copies take the bounded native path above and never use this stage.
+        let staging: std::sync::Arc<dyn crate::holder::fs::FileSystem> =
+            std::sync::Arc::new(crate::holder::fs::MemoryFileSystem::new());
+        let staged = crate::holder::fs::BoundLocation::new(
+            std::sync::Arc::clone(&staging),
+            "copy-stage",
+            None::<String>,
+        )?;
+        let mut output = staging.open_output_stream(staged.path(), None)?;
+        let mut source = if let Some(bound) = self.bound_location() {
+            let reader = bound.filesystem().open_input_stream(bound.path())?;
+            ByteStream::from_fs_reader(reader, TRANSFER_CHUNK)?
+        } else {
+            self.pstream_bytes(0, TRANSFER_CHUNK)?
+        };
+        let staged_result = (|| {
+            let mut copied = 0_u64;
+            for chunk in &mut source {
+                let chunk = chunk?;
+                let mut written = 0;
+                while written < chunk.len() {
+                    let count = output.write(&chunk[written..])?;
+                    if count == 0 {
+                        return Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::WriteZero,
+                            "copy staging stream stopped",
+                        )));
+                    }
+                    if count > chunk.len() - written {
+                        return Err(Error::Io(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "copy staging stream over-reported a write",
+                        )));
+                    }
+                    written += count;
+                }
+                copied = copied.checked_add(chunk.len() as u64).ok_or_else(|| {
+                    Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+                })?;
+            }
+            Ok(copied)
+        })();
+        let stage_close = output.close();
+        let copied = match staged_result {
+            Ok(copied) => stage_close.map(|()| copied)?,
+            Err(error) => {
+                let _ = stage_close;
+                return Err(error);
+            }
+        };
+        let media_type = self.media_type().clone();
+
+        if let Some(target_location) = target.bound_location() {
+            crate::holder::fs::copy_bound(&staged, target_location)?;
+            target.set_media_type(media_type);
+            return Ok(copied);
+        }
+
+        // Preserve a whole-value target if its publication fails. This branch
+        // exists for buffers and legacy positional handles; bound filesystem
+        // targets publish through a temporary object above.
+        let original = target.read_all_bytes()?;
+        let original_media_type = target.media_type().clone();
+        let publish = (|| {
+            target.truncate(0)?;
+            let mut input = staging.open_input_stream(staged.path())?;
+            let mut buffer = vec![0_u8; TRANSFER_CHUNK];
+            let result = (|| {
+                let mut offset = 0_u64;
+                loop {
+                    let read = input.read(&mut buffer)?;
+                    if read == 0 {
+                        break;
+                    }
+                    target.pwrite_all(offset, &buffer[..read])?;
+                    offset = offset.checked_add(read as u64).ok_or_else(|| {
+                        Error::Io(std::io::Error::other("copied byte stream exceeds u64::MAX"))
+                    })?;
+                }
+                Ok(())
+            })();
+            let close = input.close();
+            match result {
+                Ok(()) => close?,
+                Err(error) => {
+                    let _ = close;
+                    return Err(error);
+                }
+            }
+            target.set_media_type(media_type);
+            target.flush()
+        })();
+        if let Err(error) = publish {
+            let _ = target.write_all_bytes(&original);
+            target.set_media_type(original_media_type);
+            let _ = target.flush();
+            return Err(error);
+        }
+        Ok(copied)
+    }
+
+    /// Move this value into `target` when both locations expose that capability.
+    ///
+    /// Same-filesystem moves use exactly one native operation. A
+    /// cross-filesystem move first completes the bounded copy and only then
+    /// deletes the source.
+    fn move_into(&mut self, target: &mut dyn IOBase) -> Result<u64> {
+        let source = self
+            .bound_location()
+            .ok_or_else(|| Error::unsupported("move_into from an unbound handle", "memory"))?;
+        let target_location = target
+            .bound_location()
+            .ok_or_else(|| Error::unsupported("move_into to an unbound handle", "memory"))?;
+        let size = crate::holder::fs::move_bound(source, target_location)?;
+        Ok(size)
     }
 
     /// Encode this value into `target` with `codec`, replacing its contents.

@@ -1,17 +1,15 @@
-//! `IOBase`, exposed to JavaScript with the method names `fs` and `path` use.
+//! `IOBase`, exposed to JavaScript with bound filesystem locations and streams.
 //!
-//! The core trait is positional and fully random-access, so there are no flags
-//! to open with and no descriptor to keep: `readBytes`, `writeBytes`, `ls`,
-//! `glob`, `mkdir`, and `unlink` all mean here what they mean on a path in
-//! `node:fs`, and each one is answered by the core implementation for the
-//! backend the location names. Code written against a local directory therefore
-//! runs against a bucket when that backend lands, because only the handle
-//! changes.
+//! A bound handle retains one filesystem equality domain, one opaque path, and
+//! the caller's optional URI spelling. Filesystem operations and stateful byte
+//! streams dispatch through that same core seam; the binding does not parse the
+//! path or collect a foreign stream into a whole value.
 
 use std::time::Duration;
 
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Either3, Either4, Env, Reference, Result, Uint8Array,
+    BigInt, Buffer, ClassInstance, Either, Either3, Either4, Env, Object, Reference, Result,
+    Uint8Array,
 };
 use napi_derive::napi;
 
@@ -21,7 +19,11 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::IORecordOptions as _;
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::holder::fs::{FileSystemInput, JsFileSystem};
+use crate::holder::fs::{
+    ArrowFileInfo, FileSystemInput, JsByteReader as HandlerByteReader,
+    JsByteWriter as HandlerByteWriter, JsFileSystem,
+    JsRandomAccessReader as HandlerRandomAccessReader, exact_bigint_i64, exact_bigint_u64,
+};
 use crate::iomedia::JsBatchReader;
 use crate::media::options::JsRecordOptions;
 use crate::media::text::JsTextOptions;
@@ -91,12 +93,10 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
         Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::holder::fs::File::new(
-            file.filesystem().clone(),
-            file.url().clone(),
+            file.bound().clone(),
         ))),
         Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::holder::fs::Path::new(
-            path.filesystem().clone(),
-            path.url().clone(),
+            path.bound().clone(),
         ))),
         _ => None,
     }
@@ -106,12 +106,8 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::FsFolder(folder) => folder.clone(),
-        Holder::FsFile(file) => {
-            yggdryl::holder::fs::Folder::new(file.filesystem().clone(), file.url().clone())
-        }
-        Holder::FsPath(path) => {
-            yggdryl::holder::fs::Folder::new(path.filesystem().clone(), path.url().clone())
-        }
+        Holder::FsFile(file) => yggdryl::holder::fs::Folder::new(file.bound().clone()),
+        Holder::FsPath(path) => yggdryl::holder::fs::Folder::new(path.bound().clone()),
         _ => return None,
     };
     Some(Holder::FsFolder(folder))
@@ -143,6 +139,232 @@ pub(crate) fn folder_from_input(value: LocationInput<'_>) -> Result<Holder> {
     Holder::folder(url.into_path().map_err(napi_error)?).map_err(napi_error)
 }
 
+/// A stateful sequential filesystem input stream.
+#[napi(js_name = "ByteReader")]
+pub struct JsFsByteReader {
+    inner: FsByteReader,
+}
+
+enum FsByteReader {
+    Core(Box<dyn yggdryl::holder::fs::ByteReader>),
+    Handler(HandlerByteReader),
+}
+
+#[napi]
+impl JsFsByteReader {
+    /// Read at most `length` bytes from the current stream position.
+    #[napi]
+    pub fn read(&mut self, length: BigInt) -> Result<Uint8Array> {
+        let length = exact_bigint_u64(&length, "length").map_err(napi_error)?;
+        match &mut self.inner {
+            FsByteReader::Handler(reader) => reader.read_owned(length).map_err(napi_error),
+            FsByteReader::Core(reader) => {
+                let length = usize::try_from(length).map_err(napi_error)?;
+                let mut bytes = vec![0; length];
+                let read = reader.read(&mut bytes).map_err(napi_error)?;
+                bytes.truncate(read);
+                Ok(Uint8Array::from(bytes))
+            }
+        }
+    }
+
+    /// Return the current byte position.
+    #[napi]
+    pub fn tell(&self) -> BigInt {
+        BigInt::from(match &self.inner {
+            FsByteReader::Core(reader) => reader.tell(),
+            FsByteReader::Handler(reader) => reader.tell(),
+        })
+    }
+
+    /// Close the stream. Repeated closes are idempotent.
+    #[napi]
+    pub fn close(&mut self) -> Result<()> {
+        match &mut self.inner {
+            FsByteReader::Core(reader) => reader.close(),
+            FsByteReader::Handler(reader) => reader.close(),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Whether the stream has been closed.
+    #[napi(getter)]
+    pub fn closed(&self) -> bool {
+        match &self.inner {
+            FsByteReader::Core(reader) => reader.closed(),
+            FsByteReader::Handler(reader) => reader.closed(),
+        }
+    }
+}
+
+/// A stateful random-access filesystem input file.
+#[napi(js_name = "RandomAccessReader")]
+pub struct JsFsRandomAccessReader {
+    inner: FsRandomAccessReader,
+}
+
+enum FsRandomAccessReader {
+    Core(Box<dyn yggdryl::holder::fs::RandomAccessReader>),
+    Handler(HandlerRandomAccessReader),
+}
+
+#[napi]
+impl JsFsRandomAccessReader {
+    /// Read at most `length` bytes from the current file position.
+    #[napi]
+    pub fn read(&mut self, length: BigInt) -> Result<Uint8Array> {
+        let length = exact_bigint_u64(&length, "length").map_err(napi_error)?;
+        match &mut self.inner {
+            FsRandomAccessReader::Handler(reader) => reader.read_owned(length).map_err(napi_error),
+            FsRandomAccessReader::Core(reader) => {
+                let length = usize::try_from(length).map_err(napi_error)?;
+                let mut bytes = vec![0; length];
+                let read = reader.read(&mut bytes).map_err(napi_error)?;
+                bytes.truncate(read);
+                Ok(Uint8Array::from(bytes))
+            }
+        }
+    }
+
+    /// Read at most `length` bytes at `offset` without moving the position.
+    #[napi]
+    pub fn read_at(&mut self, offset: BigInt, length: BigInt) -> Result<Uint8Array> {
+        let offset = exact_bigint_u64(&offset, "offset").map_err(napi_error)?;
+        let length = exact_bigint_u64(&length, "length").map_err(napi_error)?;
+        match &mut self.inner {
+            FsRandomAccessReader::Handler(reader) => {
+                reader.read_at_owned(offset, length).map_err(napi_error)
+            }
+            FsRandomAccessReader::Core(reader) => {
+                let length = usize::try_from(length).map_err(napi_error)?;
+                let mut bytes = vec![0; length];
+                let read = reader.read_at(offset, &mut bytes).map_err(napi_error)?;
+                bytes.truncate(read);
+                Ok(Uint8Array::from(bytes))
+            }
+        }
+    }
+
+    /// Seek relative to `start`, `current`, or `end` and return the position.
+    #[napi]
+    pub fn seek(&mut self, offset: BigInt, whence: Option<String>) -> Result<BigInt> {
+        let whence = whence.unwrap_or_else(|| "start".to_owned());
+        let from = match whence.as_str() {
+            "start" => {
+                std::io::SeekFrom::Start(exact_bigint_u64(&offset, "offset").map_err(napi_error)?)
+            }
+            "current" => {
+                std::io::SeekFrom::Current(exact_bigint_i64(&offset, "offset").map_err(napi_error)?)
+            }
+            "end" => {
+                std::io::SeekFrom::End(exact_bigint_i64(&offset, "offset").map_err(napi_error)?)
+            }
+            value => {
+                return Err(napi_error(format!(
+                    "expected whence to be 'start', 'current', or 'end', got {value:?}"
+                )));
+            }
+        };
+        match &mut self.inner {
+            FsRandomAccessReader::Core(reader) => reader.seek(from),
+            FsRandomAccessReader::Handler(reader) => reader.seek_to(from),
+        }
+        .map(BigInt::from)
+        .map_err(napi_error)
+    }
+
+    /// Return the current byte position.
+    #[napi]
+    pub fn tell(&self) -> BigInt {
+        BigInt::from(match &self.inner {
+            FsRandomAccessReader::Core(reader) => reader.tell(),
+            FsRandomAccessReader::Handler(reader) => reader.tell(),
+        })
+    }
+
+    /// Close the file. Repeated closes are idempotent.
+    #[napi]
+    pub fn close(&mut self) -> Result<()> {
+        match &mut self.inner {
+            FsRandomAccessReader::Core(reader) => reader.close(),
+            FsRandomAccessReader::Handler(reader) => reader.close(),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Whether the file has been closed.
+    #[napi(getter)]
+    pub fn closed(&self) -> bool {
+        match &self.inner {
+            FsRandomAccessReader::Core(reader) => reader.closed(),
+            FsRandomAccessReader::Handler(reader) => reader.closed(),
+        }
+    }
+}
+
+/// A stateful filesystem output or append stream.
+#[napi(js_name = "ByteWriter")]
+pub struct JsFsByteWriter {
+    inner: FsByteWriter,
+}
+
+enum FsByteWriter {
+    Core(Box<dyn yggdryl::holder::fs::ByteWriter>),
+    Handler(HandlerByteWriter),
+}
+
+#[napi]
+impl JsFsByteWriter {
+    /// Forward one byte chunk and return the number written.
+    #[napi]
+    pub fn write(&mut self, bytes: Uint8Array) -> Result<BigInt> {
+        match &mut self.inner {
+            FsByteWriter::Core(writer) => writer.write(bytes.as_ref()).map(|value| value as u64),
+            FsByteWriter::Handler(writer) => writer.write_owned(bytes),
+        }
+        .map(BigInt::from)
+        .map_err(napi_error)
+    }
+
+    /// Return the current byte position.
+    #[napi]
+    pub fn tell(&self) -> BigInt {
+        BigInt::from(match &self.inner {
+            FsByteWriter::Core(writer) => writer.tell(),
+            FsByteWriter::Handler(writer) => writer.tell(),
+        })
+    }
+
+    /// Flush forwarded writes without closing the stream.
+    #[napi]
+    pub fn flush(&mut self) -> Result<()> {
+        match &mut self.inner {
+            FsByteWriter::Core(writer) => writer.flush(),
+            FsByteWriter::Handler(writer) => writer.flush(),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Close the stream. Repeated closes are idempotent.
+    #[napi]
+    pub fn close(&mut self) -> Result<()> {
+        match &mut self.inner {
+            FsByteWriter::Core(writer) => writer.close(),
+            FsByteWriter::Handler(writer) => writer.close(),
+        }
+        .map_err(napi_error)
+    }
+
+    /// Whether the stream has been closed.
+    #[napi(getter)]
+    pub fn closed(&self) -> bool {
+        match &self.inner {
+            FsByteWriter::Core(writer) => writer.closed(),
+            FsByteWriter::Handler(writer) => writer.closed(),
+        }
+    }
+}
+
 /// A random-access resource: a local file, a directory, or a memory buffer.
 #[napi(js_name = "IOBase")]
 pub struct JsIOBase {
@@ -163,11 +385,21 @@ impl JsIOBase {
         Self { inner }
     }
 
+    fn bound_location(&self) -> Option<&yggdryl::holder::fs::BoundLocation> {
+        self.inner.bound_location()
+    }
+
+    fn bound_file(&self) -> Result<yggdryl::holder::fs::File> {
+        self.bound_location()
+            .cloned()
+            .map(yggdryl::holder::fs::File::new)
+            .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
+    }
+
     /// Build a second handle on the same location.
     ///
-    /// A handle owns backend state - a mapping, an open descriptor, a staged
-    /// value - so it is not copied; the location it describes is what gets
-    /// rebuilt. A handle on a foreign Arrow file system rebuilds onto that
+    /// A handle owns backend state, so it is not copied; the location it
+    /// describes is what gets rebuilt. A handle on a foreign Arrow file system rebuilds onto that
     /// same file system, because its location alone would not say where it
     /// lives.
     fn rebuilt(&self) -> Result<Self> {
@@ -182,11 +414,17 @@ impl JsIOBase {
     }
 
     /// Build a handle on `path` over a held JavaScript file system handler.
-    fn over_fs(env: Env, filesystem: &FileSystemInput<'_>, path: &str) -> Result<Self> {
+    fn over_fs(
+        env: Env,
+        filesystem: &FileSystemInput<'_>,
+        path: &str,
+        uri: Option<String>,
+    ) -> Result<Self> {
         let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
             std::sync::Arc::new(JsFileSystem::new(env, filesystem)?);
-        let url = yggdryl::holder::fs::location_url(backend.as_ref(), path).map_err(napi_error)?;
-        Ok(Self::from_core(yggdryl::holder::fs::located(backend, url)))
+        let bound =
+            yggdryl::holder::fs::BoundLocation::new(backend, path, uri).map_err(napi_error)?;
+        Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
     }
 
     /// Build a container handle for one recorded location.
@@ -226,7 +464,7 @@ impl JsIOBase {
                         "expected a path on the file system as the second argument, got none",
                     )
                 })?;
-                return Self::over_fs(env, &filesystem, &path);
+                return Self::over_fs(env, &filesystem, &path, None);
             }
         };
         if let Some(path) = path {
@@ -258,13 +496,10 @@ impl JsIOBase {
 
     /// Describe a resource on any Arrow file system a caller supplies.
     ///
-    /// This is the explicit spelling of what the constructor infers, and it is
-    /// the whole surface a foreign file system needs. Arrow JS ships none, so
-    /// `filesystem` is the vtable `pyarrow.fs` implements, written as a plain
-    /// object in camelCase: `typeName`, `fileInfo`, `list`, `readRange`,
-    /// `writeFull`, `createDir`, `deleteFile`. A `Map`, `node:fs`, an S3
-    /// client, or a caching layer over one reaches those same six calls, so
-    /// none of them needs code of its own here.
+    /// Arrow JS ships no filesystem implementation, so `filesystem` implements
+    /// the public synchronous `FileSystemHandler` protocol in camelCase. The
+    /// handler owns normalization, metadata, listing, lifecycle operations,
+    /// native copy and move, and four stateful stream constructors.
     ///
     /// ```js
     /// const handle = IOBase.fromFs(handler, 'bucket/key.parquet')
@@ -276,17 +511,69 @@ impl JsIOBase {
     /// record methods work exactly as they do on a local file. Per the
     /// laziness contract nothing is opened, created, or read here.
     ///
-    /// A write publishes when the handle is flushed, because an Arrow file
-    /// system replaces whole files rather than writing ranges - so a file
-    /// another reader will open is flushed before it is handed over.
-    ///
     /// The handler is called synchronously, on the JavaScript thread that
     /// supplied it and no other: a handle built here cannot be read from a
     /// `Worker`, because a JavaScript value belongs to one isolate and this
     /// boundary refuses rather than pretending otherwise.
     #[napi(factory)]
-    pub fn from_fs(env: Env, filesystem: FileSystemInput<'_>, path: String) -> Result<Self> {
-        Self::over_fs(env, &filesystem, &path)
+    pub fn from_fs(
+        env: Env,
+        filesystem: FileSystemInput<'_>,
+        path: String,
+        uri: Option<String>,
+    ) -> Result<Self> {
+        Self::over_fs(env, &filesystem, &path, uri)
+    }
+
+    /// Resolve a filesystem URI once through the core URI boundary.
+    ///
+    /// Local URIs use the native local Arrow filesystem implementation. Arrow
+    /// JS supplies no S3 backend, so a valid S3 URI reports `Unsupported`
+    /// without exposing credentials; callers with an S3 implementation bind it
+    /// explicitly with [`Self::from_fs`].
+    #[napi(factory)]
+    pub fn from_uri(
+        uri: String,
+        options: Option<std::collections::HashMap<String, serde_json::Value>>,
+    ) -> Result<Self> {
+        let options = options
+            .map(|options| {
+                options
+                    .into_iter()
+                    .map(|(key, value)| {
+                        let value = match value {
+                            serde_json::Value::String(value) => value,
+                            serde_json::Value::Bool(value) => value.to_string(),
+                            serde_json::Value::Number(value) => value.to_string(),
+                            _ => {
+                                return Err(napi_error(format!(
+                                    "filesystem URI option {key:?} must be a string, boolean, or number"
+                                )));
+                            }
+                        };
+                        Ok((key, value))
+                    })
+                    .collect::<Result<std::collections::BTreeMap<_, _>>>()
+            })
+            .transpose()?;
+        let resolved = yggdryl::holder::fs::ResolvedFileSystemUri::from_uri(uri, options.as_ref())
+            .map_err(napi_error)?;
+        match resolved.filesystem() {
+            yggdryl::holder::fs::ResolvedFileSystem::Local => {
+                let filesystem: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+                    std::sync::Arc::new(yggdryl::holder::fs::LocalFileSystem::new());
+                let bound = yggdryl::holder::fs::BoundLocation::new(
+                    filesystem,
+                    resolved.path(),
+                    Some(resolved.uri().to_owned()),
+                )
+                .map_err(napi_error)?;
+                Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
+            }
+            yggdryl::holder::fs::ResolvedFileSystem::S3(_) => Err(napi_error(
+                yggdryl::Error::unsupported("S3 filesystem URI", "Arrow JS"),
+            )),
+        }
     }
 
     /// Describe an in-memory resource holding `data`.
@@ -300,6 +587,63 @@ impl JsIOBase {
     #[napi(getter)]
     pub fn url(&self) -> Option<JsUrl> {
         self.inner.url().cloned().map(JsUrl::from_core)
+    }
+
+    /// The exact caller-supplied filesystem handler, when this is a
+    /// JavaScript-handler-backed location.
+    #[napi(getter)]
+    pub fn filesystem<'env>(&self, env: &'env Env) -> Result<Option<Object<'env>>> {
+        let Some(bound) = self.bound_location() else {
+            return Ok(None);
+        };
+        let Some(filesystem) = bound.filesystem().as_any().downcast_ref::<JsFileSystem>() else {
+            return Ok(None);
+        };
+        filesystem.handler(env).map(Some)
+    }
+
+    /// The exact opaque path supplied to the bound filesystem.
+    #[napi(getter)]
+    pub fn path(&self) -> Option<String> {
+        self.bound_location().map(|bound| bound.path().to_owned())
+    }
+
+    /// The exact optional URI spelling supplied by the caller.
+    #[napi(getter)]
+    pub fn uri(&self) -> Option<String> {
+        self.bound_location()
+            .and_then(yggdryl::holder::fs::BoundLocation::uri)
+            .map(str::to_owned)
+    }
+
+    /// A credential-free form suitable for diagnostics and logs.
+    #[napi(getter)]
+    pub fn masked_uri(&self) -> Option<String> {
+        self.bound_location()
+            .and_then(yggdryl::holder::fs::BoundLocation::masked_uri)
+            .map(str::to_owned)
+    }
+
+    /// Inspect the exact bound path without suppressing backend failures.
+    #[napi]
+    pub fn info(&self) -> Result<ArrowFileInfo> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))?;
+        bound
+            .filesystem()
+            .file_info(bound.path())
+            .map(ArrowFileInfo::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Whether both handles share a filesystem equality domain and exact path.
+    #[napi]
+    pub fn same_location(&self, other: &JsIOBase) -> Result<bool> {
+        match (self.bound_location(), other.bound_location()) {
+            (Some(left), Some(right)) => left.try_same_location(right).map_err(napi_error),
+            _ => Ok(false),
+        }
     }
 
     /// The final path component, as `path.basename`.
@@ -755,6 +1099,77 @@ impl JsIOBase {
         Ok(i64::try_from(offset).unwrap_or(i64::MAX))
     }
 
+    /// Explicitly normalize this path according to its filesystem.
+    #[napi]
+    pub fn normalize_path(&self) -> Result<String> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("normalizePath requires a bound filesystem location"))?;
+        bound
+            .filesystem()
+            .normalize_path(bound.path())
+            .map_err(napi_error)
+    }
+
+    /// Create this bound directory with the requested recursive semantics.
+    #[napi]
+    pub fn create_dir(&self, recursive: bool) -> Result<()> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("createDir requires a bound filesystem location"))?;
+        bound
+            .filesystem()
+            .create_dir(bound.path(), recursive)
+            .map_err(napi_error)
+    }
+
+    /// Delete this empty directory itself.
+    #[napi]
+    pub fn delete_dir(&self) -> Result<()> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("deleteDir requires a bound filesystem location"))?;
+        bound
+            .filesystem()
+            .delete_dir(bound.path())
+            .map_err(napi_error)
+    }
+
+    /// Delete descendants while retaining this directory.
+    #[napi]
+    pub fn delete_dir_contents(&self, missing_dir_ok: bool) -> Result<()> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("deleteDirContents requires a bound filesystem location"))?;
+        bound
+            .filesystem()
+            .delete_dir_contents(bound.path(), missing_dir_ok)
+            .map_err(napi_error)
+    }
+
+    /// Explicitly clear the filesystem root while retaining that root.
+    #[napi]
+    pub fn delete_root_dir_contents(&self) -> Result<()> {
+        let bound = self.bound_location().ok_or_else(|| {
+            napi_error("deleteRootDirContents requires a bound filesystem location")
+        })?;
+        yggdryl::holder::fs::Folder::new(bound.clone())
+            .delete_root_dir_contents()
+            .map_err(napi_error)
+    }
+
+    /// Delete this exact file; a directory is an error.
+    #[napi]
+    pub fn delete_file(&self) -> Result<()> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("deleteFile requires a bound filesystem location"))?;
+        bound
+            .filesystem()
+            .delete_file(bound.path())
+            .map_err(napi_error)
+    }
+
     /// Create this resource as a container, as `fs.mkdirSync`.
     ///
     /// Parents are created too, and an existing container is left alone, which
@@ -869,23 +1284,134 @@ impl JsIOBase {
     /// Publish and release everything [`Self::open`] cached.
     ///
     /// The handle stays usable afterwards; a later operation re-materializes.
-    /// This is what publishes a written file at its exact length, and on a
-    /// backend that replaces whole files - any Arrow file system - it is what
-    /// hands the staged value over, so a file another reader will open is
-    /// written inside a scope.
+    /// Filesystem stream handles expose their own explicit `close()` methods.
     #[napi]
     pub fn close(&mut self) -> Result<()> {
         self.inner.close().map_err(napi_error)
     }
 
+    /// Open this bound path as a strict random-access input file.
+    #[napi]
+    pub fn open_input_file(&self) -> Result<JsFsRandomAccessReader> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("openInputFile requires a bound filesystem location"))?;
+        if let Some(filesystem) = bound.filesystem().as_any().downcast_ref::<JsFileSystem>() {
+            return filesystem
+                .input_file(bound.path())
+                .map(|inner| JsFsRandomAccessReader {
+                    inner: FsRandomAccessReader::Handler(inner),
+                })
+                .map_err(napi_error);
+        }
+        self.bound_file()?
+            .open_input_file()
+            .map(|inner| JsFsRandomAccessReader {
+                inner: FsRandomAccessReader::Core(inner),
+            })
+            .map_err(napi_error)
+    }
+
+    /// Open this bound path as a strict sequential input stream.
+    #[napi]
+    pub fn open_input_stream(&self) -> Result<JsFsByteReader> {
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("openInputStream requires a bound filesystem location"))?;
+        if let Some(filesystem) = bound.filesystem().as_any().downcast_ref::<JsFileSystem>() {
+            return filesystem
+                .input_stream(bound.path())
+                .map(|inner| JsFsByteReader {
+                    inner: FsByteReader::Handler(inner),
+                })
+                .map_err(napi_error);
+        }
+        self.bound_file()?
+            .open_input_stream()
+            .map(|inner| JsFsByteReader {
+                inner: FsByteReader::Core(inner),
+            })
+            .map_err(napi_error)
+    }
+
+    /// Open a truncating output stream and forward optional metadata exactly.
+    #[napi]
+    pub fn open_output_stream(
+        &self,
+        metadata: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<JsFsByteWriter> {
+        let metadata = metadata.map(yggdryl::holder::fs::OutputMetadata::from_entries);
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("openOutputStream requires a bound filesystem location"))?;
+        if let Some(filesystem) = bound.filesystem().as_any().downcast_ref::<JsFileSystem>() {
+            return filesystem
+                .output_stream(bound.path(), metadata.as_ref())
+                .map(|inner| JsFsByteWriter {
+                    inner: FsByteWriter::Handler(inner),
+                })
+                .map_err(napi_error);
+        }
+        self.bound_file()?
+            .open_output_stream(metadata.as_ref())
+            .map(|inner| JsFsByteWriter {
+                inner: FsByteWriter::Core(inner),
+            })
+            .map_err(napi_error)
+    }
+
+    /// Open an append stream and forward optional metadata exactly.
+    #[napi]
+    pub fn open_append_stream(
+        &self,
+        metadata: Option<std::collections::HashMap<String, String>>,
+    ) -> Result<JsFsByteWriter> {
+        let metadata = metadata.map(yggdryl::holder::fs::OutputMetadata::from_entries);
+        let bound = self
+            .bound_location()
+            .ok_or_else(|| napi_error("openAppendStream requires a bound filesystem location"))?;
+        if let Some(filesystem) = bound.filesystem().as_any().downcast_ref::<JsFileSystem>() {
+            return filesystem
+                .append_stream(bound.path(), metadata.as_ref())
+                .map(|inner| JsFsByteWriter {
+                    inner: FsByteWriter::Handler(inner),
+                })
+                .map_err(napi_error);
+        }
+        self.bound_file()?
+            .open_append_stream(metadata.as_ref())
+            .map(|inner| JsFsByteWriter {
+                inner: FsByteWriter::Core(inner),
+            })
+            .map_err(napi_error)
+    }
+
     /// Copy every byte here into `target`, returning the count.
     #[napi]
-    pub fn copy_into(&self, target: &mut JsIOBase) -> Result<i64> {
-        let copied = self
-            .inner
-            .copy_into(&mut target.inner)
-            .map_err(napi_error)?;
-        Ok(i64::try_from(copied).unwrap_or(i64::MAX))
+    pub fn copy_into(&self, target: &mut JsIOBase) -> Result<BigInt> {
+        let copied = match (self.bound_location(), target.bound_location()) {
+            (Some(source), Some(target)) => {
+                yggdryl::holder::fs::copy_bound(source, target).map_err(napi_error)?
+            }
+            _ => self
+                .inner
+                .copy_into(&mut target.inner)
+                .map_err(napi_error)?,
+        };
+        Ok(BigInt::from(copied))
+    }
+
+    /// Move this file into `target`, using the backend operation when equal.
+    #[napi]
+    pub fn move_into(&self, target: &mut JsIOBase) -> Result<JsIOBase> {
+        let source = self
+            .bound_location()
+            .ok_or_else(|| napi_error("moveInto requires a bound filesystem source"))?;
+        let destination = target
+            .bound_location()
+            .ok_or_else(|| napi_error("moveInto requires a bound filesystem target"))?;
+        yggdryl::holder::fs::move_bound(source, destination).map_err(napi_error)?;
+        target.rebuilt()
     }
 
     /// The content coding this resource's name declares, or `null` for none.

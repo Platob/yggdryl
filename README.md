@@ -20,18 +20,18 @@ Start with the [Yggdryl documentation](https://platob.github.io/yggdryl/) for
 copyable Rust, Python, and JavaScript examples. The same pages live in
 [`docs/`](docs/index.md), including the
 [getting-started guide](docs/getting-started.md) and the
-[architecture reference](docs/architecture.md). One page documents one core
-layer, so the site tree and source tree agree:
+[architecture reference](docs/architecture.md). One tab per core layer and one
+page per family in that layer, so the site tree and source tree agree:
 
-| Layer | Page |
+| Layer | Tab |
 | --- | --- |
-| Datatypes, fields, scalar values | [types](docs/types.md) |
-| Storage handles and backends | [holder](docs/holder.md) |
-| Content codings | [coding](docs/coding.md) |
-| Record encodings and tables | [media](docs/media.md) |
-| Structured text | [text](docs/text.md) |
-| Identifiers | [uri](docs/uri.md) |
-| Arrow, expressions, hashing, FIX | [arrow](docs/arrow.md), [expression](docs/expression.md), [xxhash](docs/xxhash.md), [fix](docs/fix.md) |
+| Datatypes, fields, scalars, casting, families | [types](docs/types/index.md) |
+| Storage handles and backends | [holder](docs/holder/index.md) |
+| Content codings | [coding](docs/coding/index.md) |
+| Record encodings and tables | [media](docs/media/index.md) |
+| Structured text | [text](docs/text/index.md) |
+| Identifiers | [uri](docs/uri/index.md) |
+| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [xxhash](docs/xxhash/index.md), [fix](docs/fix/index.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
@@ -109,7 +109,7 @@ The record surface is one streaming read and three explicit write intents:
 media type rather than an argument, `options.field` selects and casts in one
 pass, and a handle addressing a folder reads and writes across the partitions
 beneath it. The canonical signatures and intent rules live on the
-[I/O page](docs/holder.md#canonical-record-write-signatures).
+[records page](docs/holder/iobase/records.md).
 
 ```rust
 use yggdryl::IOMedia;
@@ -187,8 +187,8 @@ temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
 YAML.
 Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
 explicit byte, depth, node, and document limits. See the
-[shared text](docs/text.md), [JSON](docs/text.md),
-[TOML](docs/text.md), and [YAML](docs/text.md) guides.
+[shared text](docs/text/index.md), [JSON](docs/text/json.md),
+[TOML](docs/text/toml.md), and [YAML](docs/text/yaml.md) pages.
 
 ## Native value behavior
 
@@ -220,13 +220,16 @@ and resource-path views in both languages.
 
 Default and schema-only core builds support Rust 1.85. The optional `iceberg`
 feature and both bindings require Rust 1.94 because they include official
-Iceberg 0.10.1. Parquet and Iceberg are non-default core features, so test and
-Clippy passes cover both the default core and the feature-enabled workspace.
+Iceberg 0.10.1. Root Cargo commands select only the core; CI checks its default
+surface and the all-feature workspace separately.
 
 ```console
-cargo fmt --manifest-path rust/Cargo.toml
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --features "parquet iceberg" -- -D warnings
-cargo test --manifest-path rust/Cargo.toml --features "parquet iceberg"
+cargo fmt --all -- --check
+cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets --all-features
+cargo check -p yggdryl --profile bench --benches --all-features
 python scripts/check_docs_examples.py
 python -m mkdocs build --strict
 ```

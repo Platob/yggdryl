@@ -1,0 +1,38 @@
+[
+  {
+    "name": "PartyIDSource",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party ID source",
+      "fix:description": "Identifies the class or source of the PartyID value.",
+      "fix:tag": "447"
+    }
+  },
+  {
+    "name": "PartyID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party ID",
+      "fix:description": "Party identifier or identity value, as specified by PartyIDSource.",
+      "fix:tag": "448"
+    }
+  },
+  {
+    "name": "PartyRole",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Party role",
+      "fix:description": "Identifies the type or role of the PartyID specified.",
+      "fix:tag": "452"
+    }
+  }
+]

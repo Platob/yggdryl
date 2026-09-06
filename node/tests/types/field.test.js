@@ -555,6 +555,9 @@ test('every well-known protocol has its own live field accessor', () => {
     'iceberg',
     'fix',
     'field',
+    'digest',
+    'identity',
+    'partition',
     's3',
     'gs',
     'az',
@@ -591,6 +594,74 @@ test('every well-known protocol has its own live field accessor', () => {
     () => field.protocol('1invalid'),
     /invalid scheme expression at byte 0: scheme must start with an ASCII letter/,
   )
+})
+
+test('digest roles select effective components and validate atomically', () => {
+  const symbol = new Field('symbol', 'utf8', false)
+  const price = new Field('price', 'float64', false)
+  const holder = new Field('row_digest', 'uint64', false)
+  holder.digest.set('role', 'holder')
+
+  const before = holder.digest.entries()
+  assert.throws(
+    () => holder.digest.update({ note: 'output', role: 'invalid' }),
+    /holder or component/,
+  )
+  assert.deepEqual(holder.digest.entries(), before)
+  assert.throws(
+    () => new Field('bad', 'uint64', true, { 'digest:role': 'invalid' }),
+    /holder or component/,
+  )
+
+  const defaults = new Field(
+    'row',
+    DataType.fromFields([symbol, price, holder]),
+    false,
+  )
+  assert.equal(defaults.hasDigestComponents, false)
+  assert.deepEqual(defaults.digestFieldNames(), ['symbol', 'price'])
+  assert.equal(defaults.digestFieldLen, 2)
+  assert.deepEqual(
+    defaults.digestFields().map((child) => child.name),
+    ['symbol', 'price'],
+  )
+  assert.deepEqual(
+    [...defaults.onlyDigestFields().dtype].map((child) => child.name),
+    ['symbol', 'price'],
+  )
+
+  const venue = new Field('venue', 'utf8', false)
+  venue.digest.set('role', 'component')
+  const explicit = new Field(
+    'row',
+    DataType.fromFields([symbol, venue, price, holder]),
+    false,
+  )
+  assert.equal(explicit.hasDigestComponents, true)
+  assert.deepEqual(explicit.digestFieldNames(), ['venue'])
+  assert.equal(explicit.digestFieldLen, 1)
+  assert.deepEqual(
+    explicit.digestFields().map((child) => child.name),
+    ['venue'],
+  )
+  assert.deepEqual(
+    [...explicit.onlyDigestFields().dtype].map((child) => child.name),
+    ['venue'],
+  )
+
+  const holdersOnly = new Field(
+    'row',
+    DataType.fromFields([holder]),
+    false,
+  ).onlyDigestFields()
+  assert.deepEqual([...holdersOnly.dtype], [])
+  assert.equal(holdersOnly.digestFieldLen, 0)
+
+  assert.deepEqual(symbol.digestFields(), [])
+  assert.deepEqual(symbol.digestFieldNames(), [])
+  assert.equal(symbol.digestFieldLen, 0)
+  assert.equal(symbol.hasDigestComponents, false)
+  assert.throws(() => symbol.onlyDigestFields(), /expected a struct root/)
 })
 
 test('partition markers name the columns a path spells out', () => {

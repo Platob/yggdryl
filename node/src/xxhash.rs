@@ -18,6 +18,35 @@ use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::napi_error;
 use crate::text::codec::JsScalar;
+use crate::types::field::JsField;
+
+/// Decode exactly one Arrow batch, transform it, and return one IPC batch.
+fn fill_arrow_batch_ipc(
+    bytes: &Uint8Array,
+    fill: impl FnOnce(arrow_array::RecordBatch) -> yggdryl::arrow::Result<arrow_array::RecordBatch>,
+) -> Result<Buffer> {
+    use arrow_ipc::reader::StreamReader;
+    use arrow_ipc::writer::StreamWriter;
+
+    let mut reader =
+        StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+    let batch = reader
+        .next()
+        .transpose()
+        .map_err(napi_error)?
+        .ok_or_else(|| napi_error("Arrow IPC must contain exactly one record batch, got 0"))?;
+    if reader.next().transpose().map_err(napi_error)?.is_some() {
+        return Err(napi_error(
+            "Arrow IPC must contain exactly one record batch, got more than 1",
+        ));
+    }
+    let filled = fill(batch).map_err(napi_error)?;
+    let mut writer =
+        StreamWriter::try_new(Vec::new(), filled.schema().as_ref()).map_err(napi_error)?;
+    writer.write(&filled).map_err(napi_error)?;
+    writer.finish().map_err(napi_error)?;
+    Ok(writer.into_inner().map_err(napi_error)?.into())
+}
 
 /// Anything JavaScript can hand a digest.
 ///
@@ -306,6 +335,22 @@ macro_rules! state {
             #[napi]
             pub fn write_scalar(&mut self, value: &JsScalar) {
                 self.inner.write_scalar(&value.inner);
+            }
+
+            /// Fill this schema's default digest holders in one Arrow batch.
+            ///
+            /// The JavaScript loader owns the copied Arrow IPC boundary and
+            /// removes this private method from the published class.
+            #[napi(js_name = "_fillArrowBatchIpcNative", skip_typescript)]
+            pub fn fill_arrow_batch_ipc(
+                &self,
+                root: &JsField,
+                bytes: Uint8Array,
+                force: bool,
+            ) -> Result<Buffer> {
+                fill_arrow_batch_ipc(&bytes, |batch| {
+                    self.inner.fill_arrow_batch(&root.inner, batch, force)
+                })
             }
 
             /// Answer the digest of everything fed so far.

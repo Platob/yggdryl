@@ -61,25 +61,23 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
     assert.equal(schema.dtype.getFieldAt(0).nullable, false)
     ```
 
-## What is here
+## Layers
 
-**A schema is a field.** [`DataType`](types.md) is the logical type tree and
-[`Field`](types.md) adds a name, nullability, and metadata. A non-null struct field describes
-rows, so there is no second schema type to keep in sync, and [casting](types.md) reconciles
-incoming Arrow data to it.
+One tab per layer in the top bar; one page per family in that layer's sidebar.
 
-**Storage is one trait.** [`IOBase`](holder.md) addresses bytes positionally and lazily: building
-a handle touches nothing, reading something absent yields nothing, writing creates. An in-memory
-buffer, a [local file or directory](holder.md), and a
-[compressed view](coding.md) of either are all the same trait, and
-[one enum](holder.md#holder-every-storage-handle) names every implementation.
-
-**Records ride on storage.** Any handle reads and writes Arrow batches, choosing
-[Arrow IPC](media.md) or [Parquet](media.md) from its own media type, and
-[Iceberg](media.md) reads its schemas as ordinary fields.
-
-**Scalars are one tree.** [JSON](text.md), [YAML](text.md), and [TOML](text.md) share
-the [structured value](text.md), and [URIs](uri.md) name where any of it lives.
+| Layer | Owns | Start at |
+| --- | --- | --- |
+| Types | `DataType`, `Field`, `Scalar`, casting, and the datatype families | [types](types/index.md) |
+| Holder | `IOBase` handles: bytes, values, records, and the storage backends | [holder](holder/index.md) |
+| Coding | gzip, zlib/deflate, and Zstandard over any handle | [coding](coding/index.md) |
+| Media | Arrow IPC, Parquet, Avro, plain-text records, and Iceberg tables | [media](media/index.md) |
+| Text | JSON, YAML, and TOML over the shared `Scalar` | [text](text/index.md) |
+| URI | `Uri`, `Url`, `Urn`, paths, globs, and partitions | [uri](uri/index.md) |
+| Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
+| Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
+| xxHash | Digests over bytes, values, handles, and Arrow rows | [xxhash](xxhash/index.md) |
+| FIX | Protocol vocabulary, registries, and messages over `Field` | [fix](fix/index.md) |
+| Extensions | What crosses the Python and JavaScript boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Install
 
@@ -105,5 +103,4 @@ the [structured value](text.md), and [URIs](uri.md) name where any of it lives.
     npm install yggdryl
     ```
 
-Start with [Getting started](getting-started.md), or read the [architecture](architecture.md) for
-the shape of the whole thing first.
+Then [Getting started](getting-started.md), or the [architecture](architecture.md) for the shape of the whole tree.

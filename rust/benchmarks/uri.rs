@@ -8,6 +8,7 @@ const NETWORK_URI: &str =
 const WINDOWS_PATH: &str = r"C:\Users\Ada Lovelace\market data\trades.parquet";
 const UNC_PATH: &str = r"\\market-data\shared\prices\2026\ticks.arrow";
 const S3_URI: &str = "s3://market-data.s3.eu-west-3.amazonaws.com/2026/trades.parquet";
+const ESCAPED_URI: &str = "https://example.test/archive/Ada%20Lovelace/report.csv?as%20of=2026-01-02&note=a%26b&venue=XNAS";
 
 fn parsing_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("resource_parse");
@@ -74,8 +75,8 @@ fn value_benchmarks(criterion: &mut Criterion) {
                 value.scheme().as_str(),
                 value.authority().as_str(),
                 value.path().as_str(),
-                value.query(),
-                value.fragment(),
+                value.query(false).expect("a raw query never decodes"),
+                value.fragment(false).expect("a raw fragment never decodes"),
             ))
         });
     });
@@ -109,6 +110,51 @@ fn value_benchmarks(criterion: &mut Criterion) {
             value
                 .set_media_type(black_box(encoded.clone()))
                 .expect("the static media type must have preferred extensions");
+            value
+        });
+    });
+    group.bench_function("component_decoding", |bencher| {
+        let escaped = Uri::from_str(ESCAPED_URI).expect("the static escaped URI must parse");
+        bencher.iter(|| {
+            let value = black_box(&escaped);
+            black_box((
+                value.path_text(true).expect("the static path must decode"),
+                value.query(true).expect("the static query must decode"),
+            ))
+        });
+    });
+    group.bench_function("parameter_pairs_raw", |bencher| {
+        let escaped = Uri::from_str(ESCAPED_URI).expect("the static escaped URI must parse");
+        bencher.iter(|| {
+            black_box(&escaped)
+                .parameters(false)
+                .expect("a raw view never decodes")
+                .len()
+        });
+    });
+    group.bench_function("parameter_pairs_decoded", |bencher| {
+        let escaped = Uri::from_str(ESCAPED_URI).expect("the static escaped URI must parse");
+        bencher.iter(|| {
+            black_box(&escaped)
+                .parameters(true)
+                .expect("the static pairs must decode")
+                .len()
+        });
+    });
+    group.bench_function("parameter_write_back", |bencher| {
+        let escaped = Uri::from_str(ESCAPED_URI).expect("the static escaped URI must parse");
+        bencher.iter(|| {
+            let mut value = black_box(&escaped).clone();
+            let mut parameters = value
+                .parameters(true)
+                .expect("the static pairs must decode")
+                .into_owned();
+            parameters
+                .insert("as of", "2026-01-02 09:30")
+                .expect("a decoding view encodes what it is given");
+            value
+                .set_parameters(&parameters)
+                .expect("the edited pairs must spell a query");
             value
         });
     });

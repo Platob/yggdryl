@@ -12,15 +12,16 @@ was resolved against. Resolution, folding, merging, sharding and validation are
 native; this module only names them.
 
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
-``STANDARD_TAG_LIMIT`` is the first tag the FIX specification does not assign
-itself: below it, no other branch may claim a tag.
+``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
+non-standard branch may claim.
 """
 
 from __future__ import annotations
 
 from ._native import (
     STANDARD_BRANCH,
-    STANDARD_TAG_LIMIT,
+    USER_TAG_MAX,
+    USER_TAG_MIN,
     FixMsg,
     FixRegistry,
     global_registry,
@@ -29,7 +30,8 @@ from ._native import (
 
 __all__ = [
     "STANDARD_BRANCH",
-    "STANDARD_TAG_LIMIT",
+    "USER_TAG_MAX",
+    "USER_TAG_MIN",
     "FixMsg",
     "FixRegistry",
     "global_registry",

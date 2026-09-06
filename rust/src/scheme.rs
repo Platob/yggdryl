@@ -24,6 +24,9 @@ enum SchemeValue {
     Iceberg,
     Fix,
     Field,
+    Digest,
+    Identity,
+    Partition,
     S3,
     Gs,
     Az,
@@ -67,6 +70,12 @@ impl Scheme {
     pub const FIX: Self = Self(SchemeValue::Fix);
     /// The Yggdryl field metadata namespace.
     pub const FIELD: Self = Self(SchemeValue::Field);
+    /// The generic row-digest metadata namespace.
+    pub const DIGEST: Self = Self(SchemeValue::Digest);
+    /// The generic field identity metadata namespace.
+    pub const IDENTITY: Self = Self(SchemeValue::Identity);
+    /// The generic field partition metadata namespace.
+    pub const PARTITION: Self = Self(SchemeValue::Partition);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeValue::S3);
     /// The Google Cloud Storage protocol scheme.
@@ -115,6 +124,9 @@ impl Scheme {
             SchemeValue::Iceberg => "iceberg",
             SchemeValue::Fix => "fix",
             SchemeValue::Field => "field",
+            SchemeValue::Digest => "digest",
+            SchemeValue::Identity => "identity",
+            SchemeValue::Partition => "partition",
             SchemeValue::S3 => "s3",
             SchemeValue::Gs => "gs",
             SchemeValue::Az => "az",
@@ -220,10 +232,13 @@ impl FromStr for Scheme {
             5 if value.eq_ignore_ascii_case("arrow") => Some(Self::ARROW),
             5 if value.eq_ignore_ascii_case("field") => Some(Self::FIELD),
             5 if value.eq_ignore_ascii_case("spark") => Some(Self::SPARK),
+            6 if value.eq_ignore_ascii_case("digest") => Some(Self::DIGEST),
             6 if value.eq_ignore_ascii_case("polars") => Some(Self::POLARS),
             6 if value.eq_ignore_ascii_case("pandas") => Some(Self::PANDAS),
             7 if value.eq_ignore_ascii_case("iceberg") => Some(Self::ICEBERG),
             8 if value.eq_ignore_ascii_case("postgres") => Some(Self::POSTGRES),
+            8 if value.eq_ignore_ascii_case("identity") => Some(Self::IDENTITY),
+            9 if value.eq_ignore_ascii_case("partition") => Some(Self::PARTITION),
             10 if value.eq_ignore_ascii_case("postgresql") => Some(Self::POSTGRESQL),
             _ => None,
         };

@@ -8,9 +8,12 @@
 //! against a local directory, and the same code will run against a bucket when
 //! that backend lands, because only the handle changes.
 
+use std::collections::BTreeMap;
+
+use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
@@ -40,33 +43,19 @@ pub(crate) struct PyIOBase {
 ///
 /// `None` for anything else, so the local rebuild stays the default path.
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
-    match inner {
-        Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
-        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::holder::fs::File::new(
-            file.filesystem().clone(),
-            file.url().clone(),
-        ))),
-        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::holder::fs::Path::new(
-            path.filesystem().clone(),
-            path.url().clone(),
-        ))),
-        _ => None,
-    }
+    inner
+        .bound_location()
+        .cloned()
+        .map(yggdryl::holder::fs::located)
 }
 
 /// Address a foreign-filesystem handle's location as a container.
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
-    let folder = match inner {
-        Holder::FsFolder(folder) => folder.clone(),
-        Holder::FsFile(file) => {
-            yggdryl::holder::fs::Folder::new(file.filesystem().clone(), file.url().clone())
-        }
-        Holder::FsPath(path) => {
-            yggdryl::holder::fs::Folder::new(path.filesystem().clone(), path.url().clone())
-        }
-        _ => return None,
-    };
-    Some(Holder::FsFolder(folder))
+    inner
+        .bound_location()
+        .cloned()
+        .map(yggdryl::holder::fs::Folder::new)
+        .map(Holder::FsFolder)
 }
 
 impl PyIOBase {
@@ -83,13 +72,13 @@ impl PyIOBase {
     fn located(path: &std::path::Path) -> PyResult<Self> {
         Holder::local(path)
             .map(Self::from_core)
-            .map_err(value_error)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Build a second handle on the same location.
     ///
-    /// A handle owns backend state - a mapping, an open descriptor, a staged
-    /// value - so it is not copied; the location it describes is what gets
+    /// A handle owns backend state - such as a mapping or an open descriptor -
+    /// so it is not copied; the location it describes is what gets
     /// rebuilt. A handle on a foreign Arrow filesystem rebuilds onto that
     /// same filesystem, because its location alone would not say where it
     /// lives.
@@ -122,13 +111,65 @@ impl PyIOBase {
     }
 
     /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
-    fn over_fs(filesystem: &Bound<'_, PyAny>, path: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let location = crate::uri::path_string_from_value(path)?;
+    fn over_fs(
+        filesystem: &Bound<'_, PyAny>,
+        path: &Bound<'_, PyAny>,
+        uri: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let path = crate::uri::path_string_from_value(path)?;
+        let uri = uri.map(crate::uri::path_string_from_value).transpose()?;
+        Self::over_fs_parts(filesystem, path, uri)
+    }
+
+    fn over_fs_parts(
+        filesystem: &Bound<'_, PyAny>,
+        path: String,
+        uri: Option<String>,
+    ) -> PyResult<Self> {
         let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
-            std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem));
-        let url =
-            yggdryl::holder::fs::location_url(backend.as_ref(), &location).map_err(value_error)?;
-        Ok(Self::from_core(yggdryl::holder::fs::located(backend, url)))
+            std::sync::Arc::new(crate::holder::fs::PyFileSystem::new(filesystem)?);
+        let bound = yggdryl::holder::fs::BoundLocation::new(backend, path, uri)
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
+    }
+
+    fn arrow_binding(&self, py: Python<'_>) -> Option<(Py<PyAny>, String)> {
+        let bound = self.inner.bound_location()?;
+        let filesystem = bound
+            .filesystem()
+            .as_any()
+            .downcast_ref::<crate::holder::fs::PyFileSystem>()?;
+        Some((filesystem.original(py), bound.path().to_owned()))
+    }
+
+    fn native_cursor(slf: &Bound<'_, Self>, position: u64) -> PyIOCursor {
+        PyIOCursor {
+            handle: slf.clone().unbind(),
+            position: std::sync::atomic::AtomicU64::new(position),
+            closed: std::sync::atomic::AtomicBool::new(false),
+            reader: std::sync::Mutex::new(None),
+            close_failure: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn native_python_file<'py>(
+        slf: &Bound<'py, Self>,
+        position: u64,
+        mode: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let cursor = Py::new(py, Self::native_cursor(slf, position))?;
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("mode", mode)?;
+        py.import("pyarrow")?
+            .getattr("PythonFile")?
+            .call((cursor,), Some(&kwargs))
+    }
+
+    fn bound(&self) -> PyResult<&yggdryl::holder::fs::BoundLocation> {
+        self.inner
+            .bound_location()
+            .ok_or_else(|| PyValueError::new_err("this handle has no bound filesystem location"))
     }
 
     /// Resolve the options a record call runs under.
@@ -196,7 +237,9 @@ impl PyIOBase {
             return Ok(None);
         };
         let path = path.to_string_lossy().into_owned();
-        self.inner.close().map_err(value_error)?;
+        self.inner
+            .close()
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(Some((path, base)))
     }
 
@@ -206,7 +249,10 @@ impl PyIOBase {
         py: Python<'py>,
         options: &RecordOptions,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let reader = self.inner.read_arrow_reader(options).map_err(value_error)?;
+        let reader = self
+            .inner
+            .read_arrow_reader(options)
+            .map_err(crate::holder::fs::storage_error)?;
         batch_reader_to_pyarrow(py, reader)
     }
 
@@ -219,7 +265,82 @@ impl PyIOBase {
     ) -> PyResult<()> {
         self.inner
             .write_arrow_reader(batches, mode, options)
-            .map_err(value_error)
+            .map_err(crate::holder::fs::storage_error)
+    }
+}
+
+fn filesystem_uri_options(
+    options: Option<&Bound<'_, PyAny>>,
+) -> PyResult<Option<BTreeMap<String, String>>> {
+    let Some(options) = options else {
+        return Ok(None);
+    };
+    let mut values = BTreeMap::new();
+    for item in options.call_method0("items")?.try_iter()? {
+        let item = item?;
+        let pair = item.cast::<PyTuple>()?;
+        if pair.len() != 2 {
+            return Err(PyTypeError::new_err("filesystem options must be a mapping"));
+        }
+        let key = pair.get_item(0)?.extract::<String>()?;
+        let value = pair.get_item(1)?;
+        let value = if value.is_instance_of::<PyBool>() {
+            if value.extract::<bool>()? {
+                "true".to_owned()
+            } else {
+                "false".to_owned()
+            }
+        } else {
+            value.extract::<String>().map_err(|_| {
+                PyTypeError::new_err(format!(
+                    "filesystem option {key:?} must be a string or boolean"
+                ))
+            })?
+        };
+        values.insert(key, value);
+    }
+    Ok(Some(values))
+}
+
+fn resolved_arrow_filesystem<'py>(
+    py: Python<'py>,
+    filesystem: &yggdryl::holder::fs::ResolvedFileSystem,
+) -> PyResult<Bound<'py, PyAny>> {
+    let module = py.import("pyarrow.fs")?;
+    match filesystem {
+        yggdryl::holder::fs::ResolvedFileSystem::Local => {
+            module.getattr("LocalFileSystem")?.call0()
+        }
+        yggdryl::holder::fs::ResolvedFileSystem::S3(options) => {
+            let kwargs = PyDict::new(py);
+            if let Some(value) = options.access_key() {
+                kwargs.set_item("access_key", value)?;
+            }
+            if let Some(value) = options.secret_key() {
+                kwargs.set_item("secret_key", value)?;
+            }
+            if let Some(value) = options.session_token() {
+                kwargs.set_item("session_token", value)?;
+            }
+            if let Some(value) = options.endpoint_override() {
+                kwargs.set_item("endpoint_override", value)?;
+            }
+            if let Some(value) = options.region() {
+                kwargs.set_item("region", value)?;
+            }
+            kwargs.set_item("scheme", options.transport())?;
+            kwargs.set_item("anonymous", options.anonymous())?;
+            match options.addressing_style() {
+                yggdryl::holder::fs::S3AddressingStyle::Automatic => {}
+                yggdryl::holder::fs::S3AddressingStyle::Path => {
+                    kwargs.set_item("force_virtual_addressing", false)?;
+                }
+                yggdryl::holder::fs::S3AddressingStyle::Virtual => {
+                    kwargs.set_item("force_virtual_addressing", true)?;
+                }
+            }
+            module.getattr("S3FileSystem")?.call((), Some(&kwargs))
+        }
     }
 }
 
@@ -250,13 +371,13 @@ impl PyIOBase {
     #[new]
     #[pyo3(signature = (value, path = None))]
     fn new(value: &Bound<'_, PyAny>, path: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        if crate::holder::fs::is_arrow_filesystem(value) {
+        if crate::holder::fs::is_arrow_filesystem(value)? {
             let path = path.ok_or_else(|| {
                 PyValueError::new_err(
                     "expected a path on the filesystem as the second argument, got none",
                 )
             })?;
-            return Self::over_fs(value, path);
+            return Self::over_fs(value, path, None);
         }
         if let Some(path) = path {
             return Err(PyValueError::new_err(format!(
@@ -271,7 +392,10 @@ impl PyIOBase {
                 return handle.rebuilt();
             }
             // No location to rebuild from, so the content is what is taken.
-            let bytes = handle.inner.read_all_bytes().map_err(value_error)?;
+            let bytes = handle
+                .inner
+                .read_all_bytes()
+                .map_err(crate::holder::fs::storage_error)?;
             let mut buffer = Holder::Buffer(yggdryl::holder::Buffer::from_bytes(bytes));
             buffer.set_media_type(handle.inner.media_type().clone());
             return Ok(Self::from_core(buffer));
@@ -306,12 +430,11 @@ impl PyIOBase {
     /// Describe a resource on any `pyarrow.fs.FileSystem`.
     ///
     /// This is the explicit spelling of what the constructor infers, and it
-    /// is the whole surface a foreign filesystem needs: `S3FileSystem`,
+    /// accepts every Arrow filesystem: `S3FileSystem`,
     /// `GcsFileSystem`, `AzureFileSystem`, `LocalFileSystem`,
     /// `SubTreeFileSystem`, and a custom filesystem wrapped in
     /// `PyFileSystem(FileSystemHandler)` - which is also how `fsspec` arrives
-    /// - all reach the same seven-method contract, so none of them needs code
-    /// of its own here.
+    /// - all reach the same complete filesystem and stream contract.
     ///
     /// ```python
     /// handle = IOBase.from_fs(S3FileSystem(region="eu-west-1"), "bucket/key.parquet")
@@ -323,22 +446,42 @@ impl PyIOBase {
     /// methods work exactly as they do on a local file. Per the laziness
     /// contract nothing is opened, created, or read here.
     ///
-    /// A write publishes when the handle closes, because an Arrow filesystem
-    /// replaces whole files rather than writing ranges - so a file another
-    /// reader will open is written inside a `with` block.
+    /// The four explicit `open_*` methods return `PyArrow` native files and
+    /// forward writes as they arrive; close each returned stream to flush the
+    /// backend exactly once.
     #[classmethod]
+    #[pyo3(signature = (filesystem, path, *, uri = None))]
     fn from_fs(
         _cls: &Bound<'_, PyType>,
         filesystem: &Bound<'_, PyAny>,
         path: &Bound<'_, PyAny>,
+        uri: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        if !crate::holder::fs::is_arrow_filesystem(filesystem) {
+        if !crate::holder::fs::is_arrow_filesystem(filesystem)? {
             return Err(PyValueError::new_err(format!(
                 "expected a pyarrow.fs.FileSystem, got {}",
                 filesystem.get_type().name()?,
             )));
         }
-        Self::over_fs(filesystem, path)
+        Self::over_fs(filesystem, path, uri)
+    }
+
+    /// Resolve one `file`, `s3`, `s3a`, or `s3n` URI through the core parser.
+    #[classmethod]
+    #[pyo3(signature = (uri, *, options = None))]
+    fn from_uri(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        uri: &Bound<'_, PyAny>,
+        options: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Self> {
+        let uri = crate::uri::path_string_from_value(uri)?;
+        let options = filesystem_uri_options(options)?;
+        let resolved =
+            yggdryl::holder::fs::ResolvedFileSystemUri::from_uri(uri.clone(), options.as_ref())
+                .map_err(crate::holder::fs::storage_error)?;
+        let filesystem = resolved_arrow_filesystem(py, resolved.filesystem())?;
+        Self::over_fs_parts(&filesystem, resolved.path().to_owned(), Some(uri))
     }
 
     /// Describe an in-memory resource holding `data`.
@@ -356,9 +499,109 @@ impl PyIOBase {
         self.inner.url().cloned().map(PyUrl::from_core)
     }
 
+    /// The exact `pyarrow.fs.FileSystem` supplied at construction.
+    #[getter]
+    fn filesystem(&self, py: Python<'_>) -> Option<Py<PyAny>> {
+        let bound = self.inner.bound_location()?;
+        bound
+            .filesystem()
+            .as_any()
+            .downcast_ref::<crate::holder::fs::PyFileSystem>()
+            .map(|filesystem| filesystem.original(py))
+    }
+
+    /// The exact opaque path passed to the bound filesystem.
+    #[getter]
+    fn path(&self) -> Option<String> {
+        self.inner
+            .bound_location()
+            .map(|bound| bound.path().to_owned())
+    }
+
+    /// The caller's exact optional URI spelling. It may contain credentials.
+    #[getter]
+    fn uri(&self) -> Option<String> {
+        self.inner
+            .bound_location()
+            .and_then(|bound| bound.uri().map(str::to_owned))
+    }
+
+    /// A credential-free URI for diagnostics and logs.
+    #[getter]
+    fn masked_uri(&self) -> Option<String> {
+        self.inner
+            .bound_location()
+            .and_then(|bound| bound.masked_uri().map(str::to_owned))
+    }
+
+    /// Inspect this exact bound path as a `pyarrow.fs.FileInfo`.
+    fn info<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let bound = self.bound()?;
+        let info = bound
+            .filesystem()
+            .file_info(bound.path())
+            .map_err(crate::holder::fs::storage_error)?;
+        let module = py.import("pyarrow.fs")?;
+        let file_type = module.getattr("FileType")?;
+        let kind = match info.kind {
+            yggdryl::IOKind::File => file_type.getattr("File")?,
+            yggdryl::IOKind::Directory => file_type.getattr("Directory")?,
+            yggdryl::IOKind::Unknown => file_type.getattr("NotFound")?,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "a filesystem cannot report the storage kind {}",
+                    other.as_str()
+                )));
+            }
+        };
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("type", kind)?;
+        if let Some(size) = info.size {
+            kwargs.set_item("size", size)?;
+        }
+        if let Some(mtime_ns) = info.mtime_ns {
+            kwargs.set_item("mtime_ns", mtime_ns)?;
+        }
+        module
+            .getattr("FileInfo")?
+            .call((&info.path,), Some(&kwargs))
+    }
+
+    /// Return whether both handles bind the same filesystem and raw path.
+    fn same_location(&self, other: &Self) -> PyResult<bool> {
+        let (Some(left), Some(right)) = (self.inner.bound_location(), other.inner.bound_location())
+        else {
+            return Ok(false);
+        };
+        if left.path() != right.path() {
+            return Ok(false);
+        }
+        left.try_same_location(right)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Ask the bound filesystem to normalize a path explicitly.
+    fn normalize_path(&self, path: &Bound<'_, PyAny>) -> PyResult<String> {
+        let path = crate::uri::path_string_from_value(path)?;
+        self.bound()?
+            .filesystem()
+            .normalize_path(&path)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
     /// The final path component, as `pathlib.PurePath.name`.
     #[getter]
     fn name(&self) -> String {
+        if let Some(bound) = self.inner.bound_location() {
+            return bound
+                .path()
+                .strip_suffix('/')
+                .unwrap_or(bound.path())
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+        }
         self.inner
             .url()
             .and_then(|url| url.file_name())
@@ -400,15 +643,29 @@ impl PyIOBase {
 
     /// The number of bytes here, as `Path.stat().st_size`.
     #[getter]
-    fn size(&self) -> u64 {
-        self.inner.size()
+    fn size(&self) -> PyResult<u64> {
+        match self.inner.bound_location() {
+            Some(bound) => bound
+                .filesystem()
+                .file_info(bound.path())
+                .map(|info| info.size.unwrap_or(0))
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(self.inner.size()),
+        }
     }
 
     /// The exact core storage role: memory, file, directory, table,
     /// namespace, catalog, or unknown.
     #[getter]
-    fn kind(&self) -> &'static str {
-        self.inner.kind().as_str()
+    fn kind(&self) -> PyResult<&'static str> {
+        match self.inner.bound_location() {
+            Some(bound) => bound
+                .filesystem()
+                .file_info(bound.path())
+                .map(|info| info.kind.as_str())
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(self.inner.kind().as_str()),
+        }
     }
 
     /// The number of logical rows in this media value.
@@ -458,23 +715,50 @@ impl PyIOBase {
     }
 
     /// Return whether anything is here now, as `Path.exists`.
-    fn exists(&self) -> bool {
-        self.inner.kind() != yggdryl::IOKind::Unknown
+    fn exists(&self) -> PyResult<bool> {
+        match self.inner.bound_location() {
+            Some(bound) => bound
+                .filesystem()
+                .file_info(bound.path())
+                .map(|info| info.kind != yggdryl::IOKind::Unknown)
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(self.inner.kind() != yggdryl::IOKind::Unknown),
+        }
     }
 
     /// Return whether this resource contains others, as `Path.is_dir`.
-    fn is_dir(&self) -> bool {
-        self.inner.is_container()
+    fn is_dir(&self) -> PyResult<bool> {
+        match self.inner.bound_location() {
+            Some(bound) => bound
+                .filesystem()
+                .file_info(bound.path())
+                .map(|info| info.kind == yggdryl::IOKind::Directory)
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(self.inner.is_container()),
+        }
     }
 
     /// Return whether this resource holds bytes, as `Path.is_file`.
-    fn is_file(&self) -> bool {
-        self.inner.kind() == yggdryl::IOKind::File
+    fn is_file(&self) -> PyResult<bool> {
+        match self.inner.bound_location() {
+            Some(bound) => bound
+                .filesystem()
+                .file_info(bound.path())
+                .map(|info| info.kind == yggdryl::IOKind::File)
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(self.inner.kind() == yggdryl::IOKind::File),
+        }
     }
 
     /// Return whether this handle exposes its byte or record surface.
-    fn is_io(&self) -> bool {
-        self.inner.is_io()
+    fn is_io(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_io())
     }
 
     /// Return whether this resource is one whole byte value.
@@ -482,8 +766,14 @@ impl PyIOBase {
     /// The byte surface - `read_bytes` and `write_bytes` - is for an atomic
     /// resource; `is_tabular` names the record surface instead. A container
     /// holding neither answers `False` to both.
-    fn is_atomic(&self) -> bool {
-        self.inner.is_atomic()
+    fn is_atomic(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_atomic())
     }
 
     /// Return whether this resource holds rows and columns.
@@ -492,8 +782,14 @@ impl PyIOBase {
     /// triplets - is for a tabular resource: a leaf whose media type names a
     /// record encoding, a folder that reads as the table beneath it, or a
     /// table format's own folder.
-    fn is_tabular(&self) -> bool {
-        self.inner.is_tabular()
+    fn is_tabular(&self) -> PyResult<bool> {
+        if let Some(bound) = self.inner.bound_location() {
+            bound
+                .filesystem()
+                .file_info(bound.path())
+                .map_err(crate::holder::fs::storage_error)?;
+        }
+        Ok(self.inner.is_tabular())
     }
 
     /// Iterate the immediate children, as `Path.iterdir`.
@@ -529,7 +825,7 @@ impl PyIOBase {
             entries: self
                 .inner
                 .glob(pattern, include_private)
-                .map_err(value_error)?,
+                .map_err(crate::holder::fs::storage_error)?,
         })
     }
 
@@ -565,7 +861,7 @@ impl PyIOBase {
             entries: self
                 .inner
                 .children_matching(&filter, include_private)
-                .map_err(value_error)?,
+                .map_err(crate::holder::fs::storage_error)?,
         })
     }
 
@@ -596,8 +892,160 @@ impl PyIOBase {
             entries: self
                 .inner
                 .children_where(&borrowed, include_private)
-                .map_err(value_error)?,
+                .map_err(crate::holder::fs::storage_error)?,
         })
+    }
+
+    /// Open a random-access native Arrow input file.
+    fn open_input_file<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method1("open_input_file", (&path,))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        Self::native_python_file(slf, 0, "r")
+    }
+
+    /// Open a sequential native Arrow input stream.
+    #[pyo3(signature = (compression = Some("detect"), buffer_size = None))]
+    fn open_input_stream<'py>(
+        slf: &Bound<'py, Self>,
+        compression: Option<&str>,
+        buffer_size: Option<i64>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let kwargs = PyDict::new(py);
+        match compression {
+            Some(compression) => kwargs.set_item("compression", compression)?,
+            None => kwargs.set_item("compression", py.None())?,
+        }
+        match buffer_size {
+            Some(size) => kwargs.set_item("buffer_size", size)?,
+            None => kwargs.set_item("buffer_size", py.None())?,
+        }
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_input_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        let stream = Self::native_python_file(slf, 0, "r")?;
+        py.import("pyarrow")?
+            .getattr("input_stream")?
+            .call((stream,), Some(&kwargs))
+    }
+
+    /// Open a truncating native Arrow output stream.
+    #[pyo3(signature = (compression = Some("detect"), buffer_size = None, metadata = None))]
+    fn open_output_stream<'py>(
+        slf: &Bound<'py, Self>,
+        compression: Option<&str>,
+        buffer_size: Option<i64>,
+        metadata: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let kwargs = PyDict::new(py);
+        match compression {
+            Some(compression) => kwargs.set_item("compression", compression)?,
+            None => kwargs.set_item("compression", py.None())?,
+        }
+        match buffer_size {
+            Some(size) => kwargs.set_item("buffer_size", size)?,
+            None => kwargs.set_item("buffer_size", py.None())?,
+        }
+        match metadata {
+            Some(metadata) => kwargs.set_item("metadata", metadata)?,
+            None => kwargs.set_item("metadata", py.None())?,
+        }
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_output_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        if metadata.is_some() {
+            return Err(crate::holder::fs::storage_error(
+                yggdryl::Error::unsupported("output metadata", "native IOBase"),
+            ));
+        }
+        kwargs.del_item("metadata")?;
+        let stream = Self::native_python_file(slf, 0, "w")?;
+        let output = py
+            .import("pyarrow")?
+            .getattr("output_stream")?
+            .call((stream,), Some(&kwargs))?;
+        if let Err(error) = slf
+            .borrow_mut()
+            .inner
+            .truncate(0)
+            .map_err(crate::holder::fs::storage_error)
+        {
+            let _ = output.call_method0("close");
+            return Err(error);
+        }
+        Ok(output)
+    }
+
+    /// Open a native Arrow append stream.
+    #[pyo3(signature = (compression = Some("detect"), buffer_size = None, metadata = None))]
+    fn open_append_stream<'py>(
+        slf: &Bound<'py, Self>,
+        compression: Option<&str>,
+        buffer_size: Option<i64>,
+        metadata: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let kwargs = PyDict::new(py);
+        match compression {
+            Some(compression) => kwargs.set_item("compression", compression)?,
+            None => kwargs.set_item("compression", py.None())?,
+        }
+        match buffer_size {
+            Some(size) => kwargs.set_item("buffer_size", size)?,
+            None => kwargs.set_item("buffer_size", py.None())?,
+        }
+        match metadata {
+            Some(metadata) => kwargs.set_item("metadata", metadata)?,
+            None => kwargs.set_item("metadata", py.None())?,
+        }
+        if let Some((filesystem, path)) = slf.borrow().arrow_binding(py) {
+            let filesystem = filesystem.bind(py);
+            return filesystem
+                .call_method("open_append_stream", (&path,), Some(&kwargs))
+                .map_err(|error| {
+                    crate::holder::fs::direct_file_error(py, filesystem, &error, &path)
+                });
+        }
+        if metadata.is_some() {
+            return Err(crate::holder::fs::storage_error(
+                yggdryl::Error::unsupported("append metadata", "native IOBase"),
+            ));
+        }
+        kwargs.del_item("metadata")?;
+        let position = {
+            let handle = slf.borrow();
+            match handle.inner.bound_location() {
+                Some(bound) => bound
+                    .filesystem()
+                    .file_info(bound.path())
+                    .map_err(crate::holder::fs::storage_error)?
+                    .size
+                    .unwrap_or(0),
+                None => handle.inner.size(),
+            }
+        };
+        let stream = Self::native_python_file(slf, position, "w")?;
+        py.import("pyarrow")?
+            .getattr("output_stream")?
+            .call((stream,), Some(&kwargs))
     }
 
     /// Read every byte here, as `Path.read_bytes`.
@@ -605,7 +1053,10 @@ impl PyIOBase {
     /// A resource that does not exist reads as empty rather than raising, per
     /// the laziness contract.
     fn read_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
-        let bytes = self.inner.read_all_bytes().map_err(value_error)?;
+        let bytes = self
+            .inner
+            .read_all_bytes()
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
@@ -619,7 +1070,7 @@ impl PyIOBase {
         let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
         let digest = py
             .detach(|| self.inner.read_digest(algorithm))
-            .map_err(value_error)?;
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(crate::xxhash::PyDigest::from_core(digest))
     }
 
@@ -635,13 +1086,16 @@ impl PyIOBase {
         let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
         let digest = py
             .detach(|| self.inner.read_range_digest(offset, length, algorithm))
-            .map_err(value_error)?;
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(crate::xxhash::PyDigest::from_core(digest))
     }
 
     /// Read every byte here as text, as `Path.read_text`.
     fn read_text(&self) -> PyResult<String> {
-        let bytes = self.inner.read_all_bytes().map_err(value_error)?;
+        let bytes = self
+            .inner
+            .read_all_bytes()
+            .map_err(crate::holder::fs::storage_error)?;
         String::from_utf8(bytes).map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
@@ -662,13 +1116,15 @@ impl PyIOBase {
         let value = self
             .inner
             .read_scalar(field.as_ref())
-            .map_err(value_error)?;
+            .map_err(crate::holder::fs::storage_error)?;
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
     /// Replace what is here with `data`, as `Path.write_bytes`.
     fn write_bytes(&mut self, data: &[u8]) -> PyResult<usize> {
-        self.inner.write_all_bytes(data).map_err(value_error)?;
+        self.inner
+            .write_all_bytes(data)
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(data.len())
     }
 
@@ -681,7 +1137,7 @@ impl PyIOBase {
     fn write_scalar(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
             .write_scalar(&from_py(value)?)
-            .map_err(value_error)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Read `length` bytes from `offset`, which `pathlib` cannot do.
@@ -697,7 +1153,7 @@ impl PyIOBase {
         let bytes = self
             .inner
             .read_range_bytes(offset, length)
-            .map_err(value_error)?;
+            .map_err(crate::holder::fs::storage_error)?;
         Ok(PyBytes::new(py, &bytes))
     }
 
@@ -727,7 +1183,7 @@ impl PyIOBase {
         let bytes = self
             .inner
             .read_range_bytes(offset, length)
-            .map_err(value_error)?;
+            .map_err(crate::holder::fs::storage_error)?;
         if !text {
             return Ok(PyBytes::new(py, &bytes).into_any());
         }
@@ -747,12 +1203,41 @@ impl PyIOBase {
         position: u64,
         batch_size: usize,
     ) -> PyResult<PyByteIterator> {
+        if batch_size == 0 {
+            return Err(PyValueError::new_err(
+                "batch_size must be greater than zero",
+            ));
+        }
+        if let Some(bound) = slf.borrow().inner.bound_location() {
+            let mut reader = match bound.filesystem().open_input_file(bound.path()) {
+                Ok(reader) => reader,
+                Err(error) if error.is_absent() => {
+                    return Ok(PyByteIterator {
+                        source: PyByteSource::Empty,
+                        batch_size,
+                        done: false,
+                    });
+                }
+                Err(error) => return Err(crate::holder::fs::storage_error(error)),
+            };
+            reader
+                .seek(std::io::SeekFrom::Start(position))
+                .map_err(crate::holder::fs::storage_error)?;
+            return Ok(PyByteIterator {
+                source: PyByteSource::Reader {
+                    reader,
+                    cursor: None,
+                },
+                batch_size,
+                done: false,
+            });
+        }
         // Validate through the core without touching the source.
         drop(
             slf.borrow()
                 .inner
                 .pstream_bytes(position, batch_size)
-                .map_err(value_error)?,
+                .map_err(crate::holder::fs::storage_error)?,
         );
         Ok(PyByteIterator {
             source: PyByteSource::Position {
@@ -766,13 +1251,12 @@ impl PyIOBase {
 
     /// Write `data` at `offset`, growing and zero-filling as needed.
     ///
-    /// A positional write is a *piece* of a value, so it does not publish:
-    /// a backend that stages - an Arrow filesystem replaces whole files, a
-    /// memory-mapped file grows geometrically - holds it until `flush` or
-    /// `close`. Whole-value writes publish immediately because they are
-    /// complete operations rather than pieces of one.
+    /// Filesystem-backed writes use the bound filesystem's stream capability;
+    /// the Python binding does not retain or assemble the object in memory.
     fn pwrite(&mut self, offset: u64, data: &[u8]) -> PyResult<usize> {
-        self.inner.pwrite(offset, data).map_err(value_error)
+        self.inner
+            .pwrite(offset, data)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Append `data` after the last byte, returning the offset it landed at.
@@ -780,7 +1264,9 @@ impl PyIOBase {
     /// The core's `append_bytes` under its own name; `append` is the inferring
     /// entry point that also takes text and the other buffer types.
     fn append_bytes(&mut self, data: &[u8]) -> PyResult<u64> {
-        self.inner.append_bytes(data).map_err(value_error)
+        self.inner
+            .append_bytes(data)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Append bytes or UTF-8 text after the last byte, returning its offset.
@@ -797,6 +1283,53 @@ impl PyIOBase {
             "appended data must be bytes, bytearray, memoryview, or str",
             |bytes| self.append_bytes(bytes),
         )
+    }
+
+    /// Create this bound directory with Arrow's explicit recursive policy.
+    #[pyo3(signature = (recursive = false))]
+    fn create_dir(&mut self, recursive: bool) -> PyResult<()> {
+        let bound = self.bound()?.clone();
+        bound
+            .filesystem()
+            .create_dir(bound.path(), recursive)
+            .map_err(crate::holder::fs::storage_error)?;
+        self.inner = Holder::FsFolder(yggdryl::holder::fs::Folder::new(bound));
+        Ok(())
+    }
+
+    /// Delete this empty directory itself.
+    fn delete_dir(&mut self) -> PyResult<()> {
+        let bound = self.bound()?.clone();
+        bound
+            .filesystem()
+            .delete_dir(bound.path())
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Delete descendants while retaining this directory.
+    #[pyo3(signature = (missing_dir_ok = false))]
+    fn delete_dir_contents(&mut self, missing_dir_ok: bool) -> PyResult<()> {
+        let bound = self.bound()?.clone();
+        bound
+            .filesystem()
+            .delete_dir_contents(bound.path(), missing_dir_ok)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Delete all filesystem-root children while retaining its root.
+    fn delete_root_dir_contents(&mut self) -> PyResult<()> {
+        yggdryl::holder::fs::Folder::new(self.bound()?.clone())
+            .delete_root_dir_contents()
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Delete this file. Directories are rejected by the backend.
+    fn delete_file(&mut self) -> PyResult<()> {
+        let bound = self.bound()?.clone();
+        bound
+            .filesystem()
+            .delete_file(bound.path())
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Create this resource as a container, as `Path.mkdir`.
@@ -818,7 +1351,14 @@ impl PyIOBase {
             })?;
             Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)?
         };
-        folder.truncate(0).map_err(value_error)?;
+        if let Some(bound) = folder.bound_location() {
+            bound
+                .filesystem()
+                .create_dir(bound.path(), true)
+                .map_err(crate::holder::fs::storage_error)?;
+        } else {
+            folder.truncate(0).map_err(value_error)?;
+        }
         self.inner = folder;
         Ok(())
     }
@@ -834,9 +1374,9 @@ impl PyIOBase {
             yggdryl::Error::Io(error) if error.kind() == std::io::ErrorKind::IsADirectory => {
                 PyIsADirectoryError::new_err(error.to_string())
             }
-            error => value_error(error),
+            error => crate::holder::fs::storage_error(error),
         })?;
-        self.inner.flush().map_err(value_error)
+        self.inner.flush().map_err(crate::holder::fs::storage_error)
     }
 
     /// Delete the resource here, as `Path.unlink` on a leaf.
@@ -845,7 +1385,13 @@ impl PyIOBase {
     /// uses; unlike `pathlib`'s, a resource that is not there is not an error,
     /// because absence is a no-op success everywhere on this handle.
     fn unlink(&mut self) -> PyResult<()> {
-        self.inner.remove(false).map_err(value_error)
+        if self.inner.bound_location().is_some() {
+            self.delete_file()
+        } else {
+            self.inner
+                .remove(false)
+                .map_err(crate::holder::fs::storage_error)
+        }
     }
 
     /// Empty the contents, keeping the resource.
@@ -854,7 +1400,7 @@ impl PyIOBase {
     /// emptied of every child, recursively; a resource that is not there is
     /// left alone. Nothing is created.
     fn clear(&mut self) -> PyResult<()> {
-        self.inner.clear().map_err(value_error)
+        self.inner.clear().map_err(crate::holder::fs::storage_error)
     }
 
     /// Delete the resource completely.
@@ -871,17 +1417,21 @@ impl PyIOBase {
     /// resource exactly as a fresh handle would.
     #[pyo3(signature = (recursive = false))]
     fn remove(&mut self, recursive: bool) -> PyResult<()> {
-        self.inner.remove(recursive).map_err(value_error)
+        self.inner
+            .remove(recursive)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Cut this resource to `size` bytes.
     fn truncate(&mut self, size: u64) -> PyResult<()> {
-        self.inner.truncate(size).map_err(value_error)
+        self.inner
+            .truncate(size)
+            .map_err(crate::holder::fs::storage_error)
     }
 
     /// Flush anything buffered, as `IOBase.flush`.
     fn flush(&mut self) -> PyResult<()> {
-        self.inner.flush().map_err(value_error)
+        self.inner.flush().map_err(crate::holder::fs::storage_error)
     }
 
     /// Put this handle behind the core's bounded page cache.
@@ -942,13 +1492,50 @@ impl PyIOBase {
         slf
     }
 
+    /// Retain this handle behind the content coding its name declares.
+    ///
+    /// The handle then presents *decoded* bytes:
+    /// `IOBase("app.log.gz").into_coded()` reads as the log it holds, reports
+    /// `text/plain`, and reads its records without anything naming gzip. The
+    /// conversion is lazy and every read streams in bounded windows, so a
+    /// multi-gigabyte archive costs one window rather than its decoded size.
+    ///
+    /// `codec` overrides what the name declares - `"gzip"`, `"zlib"`,
+    /// `"deflate"`, `"zstd"`, `"identity"` - and `level` is the shared 0-9
+    /// scale writes encode at. A name declaring no coding passes its bytes
+    /// through unchanged.
+    ///
+    /// The handle is updated in place and returned for chaining. A handle
+    /// already presenting decoded bytes is left as it is, so repeating the
+    /// call never decodes twice.
+    #[pyo3(signature = (codec = None, level = None))]
+    fn into_coded<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        codec: Option<&str>,
+        level: Option<u8>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let codec = match codec {
+            Some(name) => name.parse::<Codec>().map_err(value_error)?,
+            None => slf.inner.codec(),
+        };
+        let level = level.map_or(Level::DEFAULT, Level::new);
+        // The codec is parsed before the temporary empty holder is installed,
+        // so no Python exception can leave the object detached from its value.
+        let held = std::mem::replace(
+            &mut slf.inner,
+            Holder::Buffer(yggdryl::holder::Buffer::new()),
+        );
+        slf.inner = held.into_coded_with(codec, level);
+        Ok(slf)
+    }
+
     /// Materialize the resource and cache what repeated calls would re-derive.
     ///
     /// A handle works without this - every operation materializes what it needs
     /// - so calling it moves that cost to a known point. Opening a resource
     /// that does not exist yet succeeds without creating it.
     fn open(&mut self) -> PyResult<()> {
-        self.inner.open().map_err(value_error)
+        self.inner.open().map_err(crate::holder::fs::storage_error)
     }
 
     /// Return whether cached state is currently held.
@@ -972,12 +1559,12 @@ impl PyIOBase {
     /// This is what publishes a written file at its exact length, which is why
     /// a `with` block is how a file meant for another reader is written.
     fn close(&mut self) -> PyResult<()> {
-        self.inner.close().map_err(value_error)
+        self.inner.close().map_err(crate::holder::fs::storage_error)
     }
 
     /// Enter a scope, as `IOBase.open`.
     fn __enter__(mut slf: PyRefMut<'_, Self>) -> PyResult<PyRefMut<'_, Self>> {
-        slf.inner.open().map_err(value_error)?;
+        slf.inner.open().map_err(crate::holder::fs::storage_error)?;
         Ok(slf)
     }
 
@@ -999,7 +1586,18 @@ impl PyIOBase {
 
     /// Copy every byte here into `target`, returning the count.
     fn copy_into(&self, target: &mut Self) -> PyResult<u64> {
-        self.inner.copy_into(&mut target.inner).map_err(value_error)
+        self.inner
+            .copy_into(&mut target.inner)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Move this file into `target`, using the backend's native move when equal.
+    fn move_into(&mut self, target: &mut Self) -> PyResult<Self> {
+        let returned = target.rebuilt()?;
+        self.inner
+            .move_into(&mut target.inner)
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(returned)
     }
 
     /// Encode every byte here into `target`, returning the bytes written.
@@ -1072,6 +1670,9 @@ impl PyIOBase {
         PyIOCursor {
             handle: slf.clone().unbind(),
             position: std::sync::atomic::AtomicU64::new(position),
+            closed: std::sync::atomic::AtomicBool::new(false),
+            reader: std::sync::Mutex::new(None),
+            close_failure: std::sync::Mutex::new(None),
         }
     }
 
@@ -1821,6 +2422,9 @@ impl PyIOBase {
 
     /// The location as text, so `str(handle)` names it.
     fn __fspath__(&self) -> PyResult<String> {
+        if let Some(bound) = self.inner.bound_location() {
+            return Ok(bound.path().to_owned());
+        }
         self.inner
             .url()
             .ok_or_else(|| PyValueError::new_err("this resource has no file system path"))?
@@ -1839,6 +2443,9 @@ impl PyIOBase {
     }
 
     fn __str__(&self) -> String {
+        if let Some(bound) = self.inner.bound_location() {
+            return bound.to_string();
+        }
         self.inner
             .url()
             .map_or_else(|| "<memory>".to_owned(), ToString::to_string)
@@ -1874,7 +2481,7 @@ impl PyIOBaseIterator {
             .next()
             .transpose()
             .map(|entry| entry.map(PyIOBase::from_core))
-            .map_err(value_error)
+            .map_err(crate::holder::fs::storage_error)
     }
 }
 
@@ -1938,6 +2545,9 @@ impl PyRecordIterator {
 pub(crate) struct PyIOCursor {
     handle: Py<PyIOBase>,
     position: std::sync::atomic::AtomicU64,
+    closed: std::sync::atomic::AtomicBool,
+    reader: std::sync::Mutex<Option<Box<dyn yggdryl::holder::fs::RandomAccessReader>>>,
+    close_failure: std::sync::Mutex<Option<crate::holder::fs::StickyFailure>>,
 }
 
 impl PyIOCursor {
@@ -1949,6 +2559,129 @@ impl PyIOCursor {
         self.position
             .store(position, std::sync::atomic::Ordering::Release);
     }
+
+    fn require_open(&self) -> PyResult<()> {
+        if self.closed.load(std::sync::atomic::Ordering::Acquire) {
+            Err(PyValueError::new_err("I/O operation on closed file"))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn reader(
+        &self,
+    ) -> PyResult<std::sync::MutexGuard<'_, Option<Box<dyn yggdryl::holder::fs::RandomAccessReader>>>>
+    {
+        self.reader
+            .lock()
+            .map_err(|_| PyValueError::new_err("cursor reader lock is poisoned"))
+    }
+
+    fn close_failure(
+        &self,
+    ) -> PyResult<std::sync::MutexGuard<'_, Option<crate::holder::fs::StickyFailure>>> {
+        self.close_failure
+            .lock()
+            .map_err(|_| PyValueError::new_err("cursor close lock is poisoned"))
+    }
+
+    fn read_buffer(&self, py: Python<'_>, wanted: usize) -> PyResult<Vec<u8>> {
+        if wanted == 0 {
+            return Ok(Vec::new());
+        }
+        let position = self.load();
+        let bound = {
+            let handle = self.handle.borrow(py);
+            handle.inner.bound_location().cloned()
+        };
+        let mut buffer = Vec::new();
+        buffer.try_reserve_exact(wanted).map_err(|error| {
+            PyValueError::new_err(format!(
+                "cannot allocate a {wanted}-byte cursor read: {error}"
+            ))
+        })?;
+        buffer.resize(wanted, 0);
+        let read = if let Some(bound) = bound {
+            let mut slot = self.reader()?;
+            if slot.is_none() {
+                let mut reader = bound
+                    .filesystem()
+                    .open_input_file(bound.path())
+                    .map_err(crate::holder::fs::storage_error)?;
+                if let Err(error) = reader.seek(std::io::SeekFrom::Start(position)) {
+                    let _ = reader.close();
+                    return Err(crate::holder::fs::storage_error(error));
+                }
+                *slot = Some(reader);
+            }
+            let reader = slot
+                .as_mut()
+                .ok_or_else(|| PyValueError::new_err("cursor reader was not initialized"))?;
+            reader
+                .read(&mut buffer)
+                .map_err(crate::holder::fs::storage_error)?
+        } else {
+            self.handle
+                .borrow(py)
+                .inner
+                .pread(position, &mut buffer)
+                .map_err(crate::holder::fs::storage_error)?
+        };
+        if read > buffer.len() {
+            return Err(PyValueError::new_err(format!(
+                "backend reported reading {read} bytes into a {}-byte buffer",
+                buffer.len()
+            )));
+        }
+        buffer.truncate(read);
+        let next = position
+            .checked_add(read as u64)
+            .ok_or_else(|| PyValueError::new_err("read position exceeds u64::MAX"))?;
+        self.store(next);
+        Ok(buffer)
+    }
+
+    fn read_to_end_buffer(&self, py: Python<'_>) -> PyResult<Vec<u8>> {
+        const CHUNK: usize = 64 * 1024;
+        let mut bytes = Vec::new();
+        loop {
+            let chunk = self.read_buffer(py, CHUNK)?;
+            if chunk.is_empty() {
+                return Ok(bytes);
+            }
+            bytes.try_reserve(chunk.len()).map_err(|error| {
+                PyValueError::new_err(format!("cannot grow cursor read result: {error}"))
+            })?;
+            bytes.extend_from_slice(&chunk);
+        }
+    }
+
+    fn write_slice(&self, py: Python<'_>, bytes: &[u8]) -> PyResult<u64> {
+        if let Some(mut reader) = self.reader()?.take() {
+            reader.close().map_err(crate::holder::fs::storage_error)?;
+        }
+        let mut handle = self.handle.borrow_mut(py);
+        let position = self.load();
+        let offered = u64::try_from(bytes.len())
+            .map_err(|_| PyValueError::new_err("write length exceeds u64::MAX"))?;
+        position
+            .checked_add(offered)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        let written = handle
+            .inner
+            .pwrite(position, bytes)
+            .map_err(crate::holder::fs::storage_error)?;
+        if written > bytes.len() {
+            return Err(PyValueError::new_err(
+                "backend reported writing beyond the supplied buffer",
+            ));
+        }
+        let next = position
+            .checked_add(written as u64)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        self.store(next);
+        Ok(written as u64)
+    }
 }
 
 #[pymethods]
@@ -1958,8 +2691,9 @@ impl PyIOCursor {
     const __hash__: Option<Py<PyAny>> = None;
 
     /// The current position, in bytes from the start.
-    fn tell(&self) -> u64 {
-        self.load()
+    fn tell(&self) -> PyResult<u64> {
+        self.require_open()?;
+        Ok(self.load())
     }
 
     /// The same position as an attribute, settable.
@@ -1969,13 +2703,80 @@ impl PyIOCursor {
     }
 
     #[setter]
-    fn set_position(&self, position: u64) {
+    fn set_position(&self, position: u64) -> PyResult<()> {
+        self.require_open()?;
+        if let Some(reader) = self.reader()?.as_mut() {
+            reader
+                .seek(std::io::SeekFrom::Start(position))
+                .map_err(crate::holder::fs::storage_error)?;
+        }
         self.store(position);
+        Ok(())
+    }
+
+    /// Whether this file object has been closed.
+    #[getter]
+    fn closed(&self) -> bool {
+        self.closed.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    fn readable(&self) -> PyResult<bool> {
+        self.require_open()?;
+        Ok(true)
+    }
+
+    fn writable(&self) -> PyResult<bool> {
+        self.require_open()?;
+        Ok(true)
+    }
+
+    fn seekable(&self) -> PyResult<bool> {
+        self.require_open()?;
+        Ok(true)
     }
 
     /// Move the position, as `io.IOBase.seek` moves one, returning it.
     #[pyo3(signature = (offset, whence = 0))]
     fn seek(&self, py: Python<'_>, offset: i64, whence: u8) -> PyResult<u64> {
+        self.require_open()?;
+        let from = match whence {
+            0 => u64::try_from(offset)
+                .map(std::io::SeekFrom::Start)
+                .map_err(|_| PyValueError::new_err("a seek cannot land before the start"))?,
+            1 => std::io::SeekFrom::Current(offset),
+            2 => std::io::SeekFrom::End(offset),
+            _ => {
+                return Err(PyValueError::new_err(
+                    "whence must be 0 (start), 1 (current), or 2 (end)",
+                ));
+            }
+        };
+        let bound = {
+            let handle = self.handle.borrow(py);
+            handle.inner.bound_location().cloned()
+        };
+        if let Some(bound) = bound {
+            let mut slot = self.reader()?;
+            if slot.is_none() {
+                let mut reader = bound
+                    .filesystem()
+                    .open_input_file(bound.path())
+                    .map_err(crate::holder::fs::storage_error)?;
+                if let Err(error) = reader.seek(std::io::SeekFrom::Start(self.load())) {
+                    let _ = reader.close();
+                    return Err(crate::holder::fs::storage_error(error));
+                }
+                *slot = Some(reader);
+            }
+            let reader = slot
+                .as_mut()
+                .ok_or_else(|| PyValueError::new_err("cursor reader was not initialized"))?;
+            let target = reader
+                .seek(from)
+                .map_err(crate::holder::fs::storage_error)?;
+            self.store(target);
+            return Ok(target);
+        }
         let origin = match whence {
             0 => 0,
             1 => self.load(),
@@ -1996,36 +2797,49 @@ impl PyIOCursor {
     /// Read from the position, advancing it; `-1` reads to the end.
     #[pyo3(signature = (size = -1))]
     fn read<'py>(&self, py: Python<'py>, size: i64) -> PyResult<Bound<'py, PyBytes>> {
-        let handle = self.handle.borrow(py);
-        let position = self.load();
-        let remaining = handle.inner.size().saturating_sub(position);
-        let wanted = match u64::try_from(size) {
-            Ok(size) => remaining.min(size),
-            // A negative size reads to the end, as io.RawIOBase spells it.
-            Err(_) => remaining,
+        self.require_open()?;
+        let buffer = match usize::try_from(size) {
+            Ok(wanted) => self.read_buffer(py, wanted)?,
+            Err(_) => self.read_to_end_buffer(py)?,
         };
-        let mut buffer = vec![0_u8; usize::try_from(wanted).map_err(value_error)?];
-        let read = handle
-            .inner
-            .pread(position, &mut buffer)
-            .map_err(value_error)?;
-        buffer.truncate(read);
-        self.store(position + read as u64);
         Ok(PyBytes::new(py, &buffer))
+    }
+
+    /// Read bytes into any writable Python buffer.
+    fn readinto(&self, py: Python<'_>, buffer: &Bound<'_, PyAny>) -> PyResult<usize> {
+        self.require_open()?;
+        let view = PyBuffer::<u8>::get(buffer).map_err(|_| {
+            PyTypeError::new_err("readinto() argument must be a writable contiguous byte buffer")
+        })?;
+        let capacity = view
+            .as_mut_slice(py)
+            .ok_or_else(|| {
+                PyTypeError::new_err(
+                    "readinto() argument must be a writable contiguous byte buffer",
+                )
+            })?
+            .len();
+        let bytes = self.read_buffer(py, capacity)?;
+        let count = bytes.len();
+        let target = view.as_mut_slice(py).ok_or_else(|| {
+            PyTypeError::new_err("readinto() argument must be a writable contiguous byte buffer")
+        })?;
+        for (slot, byte) in target.iter().zip(bytes) {
+            slot.set(byte);
+        }
+        Ok(count)
     }
 
     /// Stream byte arrays from the current position, advancing as consumed.
     #[pyo3(signature = (batch_size = 65536))]
     fn stream_bytes(slf: &Bound<'_, Self>, batch_size: usize) -> PyResult<PyByteIterator> {
         let cursor = slf.borrow();
-        let handle = cursor.handle.borrow(slf.py());
-        drop(
-            handle
-                .inner
-                .pstream_bytes(cursor.load(), batch_size)
-                .map_err(value_error)?,
-        );
-        drop(handle);
+        cursor.require_open()?;
+        if batch_size == 0 {
+            return Err(PyValueError::new_err(
+                "batch_size must be greater than zero",
+            ));
+        }
         drop(cursor);
         Ok(PyByteIterator {
             source: PyByteSource::Cursor(slf.clone().unbind()),
@@ -2035,21 +2849,103 @@ impl PyIOCursor {
     }
 
     /// Write at the position, advancing it, returning the bytes written.
-    fn write(&self, py: Python<'_>, data: &[u8]) -> PyResult<u64> {
-        let mut handle = self.handle.borrow_mut(py);
-        let position = self.load();
-        let written = handle.inner.pwrite(position, data).map_err(value_error)?;
-        self.store(position + written as u64);
-        Ok(written as u64)
+    fn write(&self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<u64> {
+        const WINDOW: usize = 64 * 1024;
+        self.require_open()?;
+        if let Ok(bytes) = data.cast::<PyBytes>() {
+            return self.write_slice(py, bytes.as_bytes());
+        }
+
+        let byte_view = py
+            .import("builtins")?
+            .getattr("memoryview")?
+            .call1((data,))
+            .and_then(|view| view.call_method1("cast", ("B",)))
+            .map_err(|_| {
+                PyTypeError::new_err(
+                    "write() argument must support the contiguous byte buffer protocol",
+                )
+            })?;
+        let view = PyBuffer::<u8>::get(&byte_view).map_err(|_| {
+            PyTypeError::new_err(
+                "write() argument must support the contiguous byte buffer protocol",
+            )
+        })?;
+        let cells = view.as_slice(py).ok_or_else(|| {
+            PyTypeError::new_err("write() argument must be a contiguous byte buffer")
+        })?;
+        let length = u64::try_from(cells.len())
+            .map_err(|_| PyValueError::new_err("write length exceeds u64::MAX"))?;
+        self.load()
+            .checked_add(length)
+            .ok_or_else(|| PyValueError::new_err("write position exceeds u64::MAX"))?;
+        let mut window = vec![0_u8; cells.len().min(WINDOW)];
+        let mut total = 0_u64;
+        for chunk in cells.chunks(WINDOW) {
+            for (slot, cell) in window.iter_mut().zip(chunk) {
+                *slot = cell.get();
+            }
+            let written = self.write_slice(py, &window[..chunk.len()])?;
+            total += written;
+            if written < chunk.len() as u64 {
+                break;
+            }
+        }
+        Ok(total)
     }
 
     /// Flush the handle the cursor writes through.
     fn flush(&self, py: Python<'_>) -> PyResult<()> {
+        self.require_open()?;
         self.handle
             .borrow_mut(py)
             .inner
             .flush()
-            .map_err(value_error)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Flush and close exactly once.
+    fn close(&self, py: Python<'_>) -> PyResult<()> {
+        let mut close_failure = self.close_failure()?;
+        if self.closed.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            return close_failure.as_ref().map_or(Ok(()), |failure| {
+                Err(crate::holder::fs::storage_error(failure.error()))
+            });
+        }
+        let reader_close = match self.reader()?.take() {
+            Some(mut reader) => reader.close(),
+            None => Ok(()),
+        };
+        let flush = self.handle.borrow_mut(py).inner.flush();
+        let error = match (reader_close, flush) {
+            (Err(error), _) | (_, Err(error)) => Some(error),
+            (Ok(()), Ok(())) => None,
+        };
+        let Some(error) = error else {
+            return Ok(());
+        };
+        let failure = crate::holder::fs::StickyFailure::new(error);
+        let returned = crate::holder::fs::storage_error(failure.error());
+        *close_failure = Some(failure);
+        Err(returned)
+    }
+
+    fn __enter__(slf: PyRef<'_, Self>) -> PyResult<PyRef<'_, Self>> {
+        slf.require_open()?;
+        Ok(slf)
+    }
+
+    #[pyo3(signature = (exception_type = None, exception = None, traceback = None))]
+    fn __exit__(
+        &self,
+        py: Python<'_>,
+        exception_type: Option<&Bound<'_, PyAny>>,
+        exception: Option<&Bound<'_, PyAny>>,
+        traceback: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        let _ = (exception_type, exception, traceback);
+        self.close(py)?;
+        Ok(false)
     }
 }
 
@@ -2059,11 +2955,19 @@ impl PyIOCursor {
 /// retains the originating handle (or cursor) and asks the core stream for one
 /// bounded chunk per `__next__`. No chunks are collected across the boundary.
 enum PyByteSource {
-    Position { handle: Py<PyIOBase>, position: u64 },
+    Position {
+        handle: Py<PyIOBase>,
+        position: u64,
+    },
     Cursor(Py<PyIOCursor>),
+    Reader {
+        reader: Box<dyn yggdryl::holder::fs::RandomAccessReader>,
+        cursor: Option<Py<PyIOCursor>>,
+    },
+    Empty,
 }
 
-#[pyclass(name = "ByteIterator", module = "yggdryl._native")]
+#[pyclass(name = "ByteIterator", module = "yggdryl._native", unsendable)]
 pub(crate) struct PyByteIterator {
     source: PyByteSource,
     batch_size: usize,
@@ -2102,29 +3006,51 @@ impl PyByteIterator {
             }
             PyByteSource::Cursor(cursor) => {
                 let cursor = cursor.borrow(py);
-                let position = cursor.load();
-                let handle = cursor.handle.borrow(py);
-                let mut stream = handle
-                    .inner
-                    .pstream_bytes(position, self.batch_size)
-                    .map_err(value_error)?;
-                let next = stream.next().transpose();
-                drop(stream);
-                if let Ok(Some(bytes)) = &next {
-                    cursor.store(
-                        position
-                            .checked_add(bytes.len() as u64)
-                            .ok_or_else(|| value_error("byte stream position exceeds u64::MAX"))?,
-                    );
+                match cursor.read_buffer(py, self.batch_size) {
+                    Ok(bytes) if bytes.is_empty() => {
+                        self.done = true;
+                        return Ok(None);
+                    }
+                    Ok(bytes) => return Ok(Some(PyBytes::new(py, &bytes))),
+                    Err(error) => {
+                        self.done = true;
+                        return Err(error);
+                    }
                 }
-                next
+            }
+            PyByteSource::Reader { reader, cursor } => {
+                let mut bytes = vec![0_u8; self.batch_size];
+                match reader.read(&mut bytes) {
+                    Ok(0) => {
+                        self.done = true;
+                        reader.close().map_err(crate::holder::fs::storage_error)?;
+                        return Ok(None);
+                    }
+                    Ok(count) => {
+                        bytes.truncate(count);
+                        if let Some(cursor) = cursor {
+                            let cursor = cursor.borrow(py);
+                            cursor.store(cursor.load().saturating_add(count as u64));
+                        }
+                        Ok(Some(bytes))
+                    }
+                    Err(error) => {
+                        self.done = true;
+                        let _ = reader.close();
+                        Err(error)
+                    }
+                }
+            }
+            PyByteSource::Empty => {
+                self.done = true;
+                return Ok(None);
             }
         };
         let next = match next {
             Ok(next) => next,
             Err(error) => {
                 self.done = true;
-                return Err(value_error(error));
+                return Err(crate::holder::fs::storage_error(error));
             }
         };
         if let Some(bytes) = next {

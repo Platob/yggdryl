@@ -16,10 +16,10 @@ use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
-use crate::fix::{FixTag, branch_from_py, id_from_py};
+use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
-    arrow_scalar_to_pyarrow_type, ascii_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
+    arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
 use crate::uri::{PyUrl, core_url_from_value};
@@ -458,16 +458,19 @@ impl PyField {
         value: &Bound<'py, PyAny>,
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let scalar =
-            if self.inner.dtype().is_ascii() || matches!(self.inner.dtype(), CoreDataType::Uuid) {
-                ascii_arrow_scalar(py, value, self.inner.dtype(), safe)?
-            } else {
-                // Project the complete Field so registered extension metadata can
-                // be rehydrated by PyArrow before selecting its scalar target type.
-                let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
-                let target = arrow_field.getattr("type")?;
-                arrow_scalar_to_pyarrow_type(py, value, target, safe)?
-            };
+        let scalar = if self.inner.dtype().is_ascii()
+            || matches!(
+                self.inner.dtype(),
+                CoreDataType::Uuid | CoreDataType::Version
+            ) {
+            core_arrow_scalar(py, value, self.inner.dtype(), safe)?
+        } else {
+            // Project the complete Field so registered extension metadata can
+            // be rehydrated by PyArrow before selecting its scalar target type.
+            let arrow_field = core_field_to_pyarrow(py, &self.inner)?;
+            let target = arrow_field.getattr("type")?;
+            arrow_scalar_to_pyarrow_type(py, value, target, safe)?
+        };
         if !self.inner.is_nullable() && !scalar.getattr("is_valid")?.extract::<bool>()? {
             return Err(PyValueError::new_err(format!(
                 "field {:?} is not nullable",
@@ -505,6 +508,19 @@ impl PyField {
                 return Ok(value.clone());
             }
         }
+        arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
+    /// Bit-casts one opposite-signed, same-width `PyArrow` integer Array.
+    fn cast_arrow_array_bits<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let array = self
+            .inner
+            .cast_arrow_array_bits(arrow_array_from_pyarrow(value)?)
+            .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &array, Some(&self.inner))
     }
 
@@ -1452,6 +1468,24 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::FIELD)
     }
 
+    /// Returns the live row-digest property view.
+    #[getter]
+    fn digest(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::DIGEST)
+    }
+
+    /// Returns the live generic field-identity property view.
+    #[getter]
+    fn identity(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::IDENTITY)
+    }
+
+    /// Returns the live generic partition-field property view.
+    #[getter]
+    fn partition(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::PARTITION)
+    }
+
     /// Returns the live Amazon S3 property view.
     #[getter]
     fn s3(slf: Py<Self>) -> PyProtocolField {
@@ -1486,6 +1520,42 @@ impl PyField {
     #[getter]
     fn pandas(slf: Py<Self>) -> PyProtocolField {
         PyProtocolField::new(slf, CoreScheme::PANDAS)
+    }
+
+    /// Returns the effective row-digest components in declaration order.
+    #[getter]
+    fn digest_fields(&self) -> Vec<Self> {
+        self.inner
+            .digest_fields()
+            .cloned()
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// Returns the names of the effective row-digest components.
+    #[getter]
+    fn digest_field_names(&self) -> Vec<&str> {
+        self.inner.digest_field_names().collect()
+    }
+
+    /// Returns how many fields contribute to each row digest.
+    #[getter]
+    fn digest_field_len(&self) -> usize {
+        self.inner.digest_field_len()
+    }
+
+    /// Returns whether any child explicitly declares the digest-component role.
+    #[getter]
+    fn has_digest_components(&self) -> bool {
+        self.inner.has_digest_components()
+    }
+
+    /// Returns this struct root holding only its effective digest components.
+    fn only_digest_fields(&self) -> PyResult<Self> {
+        self.inner
+            .only_digest_fields()
+            .map(Self::from_inner)
+            .map_err(value_error)
     }
 
     /// Returns whether this field carries the values a path spells out.
@@ -2104,8 +2174,8 @@ impl PyProtocolField {
 
     /// The dictionary this field belongs to, on the `fix` view.
     ///
-    /// A branch crosses as text: `"standard"` is the FIX specification's own
-    /// dictionary and what an absent `fix:branch` means, and assigning it
+    /// A branch crosses as text: an empty string is the FIX specification's
+    /// own dictionary and what an absent `fix:branch` means, and assigning it
     /// removes the key rather than storing it. A spelling that is not a branch
     /// is a `ValueError` carrying the native parse failure, and a refusal -
     /// a tag the specification assigns cannot move to another dictionary -
@@ -2118,7 +2188,7 @@ impl PyProtocolField {
             .inner
             .as_fix()
             .branch()
-            .map(|branch| branch.as_str().to_owned())
+            .map(|branch| branch.name().to_owned())
             .map_err(value_error)
     }
 
@@ -2134,7 +2204,7 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
-    /// This field's identity, `branch:tag`, on the `fix` view.
+    /// This field's identity, `tag:branch`, on the `fix` view.
     ///
     /// Derived from the branch and the canonical tag on every read and never
     /// stored, so it is `None` exactly when `fix:tag` is absent. Assigning one
@@ -2144,29 +2214,32 @@ impl PyProtocolField {
     fn id(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_fix("id")?;
         let field = self.borrow_field(py)?;
-        Ok(field
-            .inner
-            .as_fix()
-            .id()
-            .map_err(value_error)?
-            .map(|id| id.to_string()))
+        let view = field.inner.as_fix();
+        let Some(tag) = view.tag().map_err(value_error)? else {
+            return Ok(None);
+        };
+        let branch = view.branch().map_err(value_error)?;
+        Ok(Some(format!("{tag}:{branch}")))
     }
 
     #[setter]
     fn set_id(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_fix("id")?;
-        let id = id_from_py(&value.extract::<String>()?)?;
+        let (branch, id) = id_parts_from_py(&value.extract::<String>()?)?;
         let mut field = self.borrow_field_mut(value.py())?;
-        field.inner.as_fix_mut().set_id(&id).map_err(value_error)
+        field
+            .inner
+            .as_fix_mut()
+            .set_id(&branch, id.tag())
+            .map_err(value_error)
     }
 
     /// The canonical FIX tag, on the `fix` view.
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
-    /// removes it, the way every other property is removed. A tag below
-    /// `STANDARD_TAG_LIMIT` is the FIX specification's own, so a field in
-    /// another branch cannot claim it.
+    /// removes it, the way every other property is removed. A field in another
+    /// branch can claim only `USER_TAG_MIN..USER_TAG_MAX`.
     #[getter]
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;

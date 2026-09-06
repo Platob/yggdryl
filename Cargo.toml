@@ -5,6 +5,9 @@
 [workspace]
 resolver = "3"
 members = ["rust", "python", "node"]
+# Root commands target the Rust source of truth. Bindings remain explicit
+# workspace members and are selected with `--workspace` or their own tools.
+default-members = ["rust"]
 
 [workspace.package]
 version = "0.1.1"
@@ -24,6 +27,7 @@ arrow-pyarrow = "59.2.0"
 arrow-row = "59.2.0"
 arrow-schema = { version = "59.2.0", features = ["ffi"] }
 arrow-select = "59.2.0"
+base64 = "0.23"
 half = "2.7"
 napi = { version = "3.12.1", default-features = false, features = ["napi8"] }
 napi-build = "2.4.1"
@@ -45,3 +49,22 @@ must_use_candidate = "allow"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# Keep file/line backtraces for workspace code while avoiding the bulk of
+# full symbols and third-party debug information in local builds.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = 0
+
+[profile.test]
+debug = "line-tables-only"
+
+[profile.test.package."*"]
+debug = 0
+
+# Opt into full debugger symbols only when a debugging session needs them.
+[profile.debugging]
+inherits = "dev"
+debug = 2

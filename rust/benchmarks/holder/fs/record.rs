@@ -3,8 +3,7 @@
 //!
 //! The three record methods are inherited, not reimplemented, so these
 //! measure exactly what the wrapper adds to an IPC or Parquet round trip:
-//! one staged materialization on the way in and one whole-value publish on
-//! the way out.
+//! filesystem stream acquisition and bounded byte forwarding.
 
 use std::hint::black_box;
 
@@ -34,7 +33,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
             let filesystem = memory();
             bencher.iter(|| {
                 let mut handle =
-                    FsFile::from_location(filesystem.clone(), name).expect("a valid location");
+                    FsFile::from_path(filesystem.clone(), name, None).expect("a valid location");
                 let options = handle
                     .record_options()
                     .expect("an implemented encoding")
@@ -67,7 +66,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
 
         group.bench_function(format!("read/fs_memory/{encoding}"), |bencher| {
             let filesystem = memory();
-            let mut handle = FsFile::from_location(filesystem, name).expect("a valid location");
+            let mut handle = FsFile::from_path(filesystem, name, None).expect("a valid location");
             store(&mut handle, &source);
             let options = handle.record_options().expect("an implemented encoding");
             bencher.iter(|| {

@@ -880,8 +880,12 @@ fn contended_commit_benchmarks(criterion: &mut Criterion) {
 /// makes once per run beside Criterion's wall time - a regression in either
 /// is a regression.
 fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
+    use std::any::Any;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use yggdryl::holder::fs::{FileInfo, FileInfos, FileSystem, MemoryFileSystem};
+    use yggdryl::holder::fs::{
+        ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem, MemoryFileSystem,
+        OutputMetadata, RandomAccessReader,
+    };
     use yggdryl::media::iceberg::Catalog;
 
     /// A memory filesystem that counts every vtable call reaching it.
@@ -902,34 +906,94 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
             self.inner.type_name()
         }
 
+        fn equals(&self, other: &dyn FileSystem) -> bool {
+            self.count();
+            other
+                .as_any()
+                .downcast_ref::<Self>()
+                .is_some_and(|other| std::ptr::eq(self, other))
+        }
+
+        fn normalize_path(&self, path: &str) -> yggdryl::Result<String> {
+            self.count();
+            self.inner.normalize_path(path)
+        }
+
         fn file_info(&self, path: &str) -> yggdryl::Result<FileInfo> {
             self.count();
             self.inner.file_info(path)
         }
 
-        fn list(&self, path: &str, recursive: bool) -> FileInfos {
+        fn list(&self, selector: &FileSelector) -> FileInfos {
             self.count();
-            self.inner.list(path, recursive)
+            self.inner.list(selector)
         }
 
-        fn read_range(&self, path: &str, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
+        fn create_dir(&self, path: &str, recursive: bool) -> yggdryl::Result<()> {
             self.count();
-            self.inner.read_range(path, offset, buffer)
+            self.inner.create_dir(path, recursive)
         }
 
-        fn write_full(&self, path: &str, bytes: &[u8]) -> yggdryl::Result<()> {
+        fn delete_dir(&self, path: &str) -> yggdryl::Result<()> {
             self.count();
-            self.inner.write_full(path, bytes)
+            self.inner.delete_dir(path)
         }
 
-        fn create_dir(&self, path: &str) -> yggdryl::Result<()> {
+        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> yggdryl::Result<()> {
             self.count();
-            self.inner.create_dir(path)
+            self.inner.delete_dir_contents(path, missing_dir_ok)
+        }
+
+        fn delete_root_dir_contents(&self) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.delete_root_dir_contents()
         }
 
         fn delete_file(&self, path: &str) -> yggdryl::Result<()> {
             self.count();
             self.inner.delete_file(path)
+        }
+
+        fn copy_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.copy_file(source, target)
+        }
+
+        fn move_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
+            self.count();
+            self.inner.move_file(source, target)
+        }
+
+        fn open_input_file(&self, path: &str) -> yggdryl::Result<Box<dyn RandomAccessReader>> {
+            self.count();
+            self.inner.open_input_file(path)
+        }
+
+        fn open_input_stream(&self, path: &str) -> yggdryl::Result<Box<dyn ByteReader>> {
+            self.count();
+            self.inner.open_input_stream(path)
+        }
+
+        fn open_output_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> yggdryl::Result<Box<dyn ByteWriter>> {
+            self.count();
+            self.inner.open_output_stream(path, metadata)
+        }
+
+        fn open_append_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> yggdryl::Result<Box<dyn ByteWriter>> {
+            self.count();
+            self.inner.open_append_stream(path, metadata)
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
         }
     }
 
@@ -940,9 +1004,10 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     };
     let counted = || {
         let filesystem = Arc::new(Counting::default());
-        let warehouse = yggdryl::holder::fs::Folder::from_location(
+        let warehouse = yggdryl::holder::fs::Folder::from_path(
             Arc::clone(&filesystem) as Arc<dyn FileSystem>,
             "warehouse",
+            None,
         )
         .expect("a valid location");
         (filesystem, Catalog::new(warehouse))

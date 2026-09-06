@@ -380,6 +380,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "uuid",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
+        Scalar::Version(value) => tagged_pickle_state(
+            py,
+            "version",
+            Some(PyString::new(py, &value.to_string()).into_any().unbind()),
+        ),
         Scalar::Enum(value) => tagged_pickle_state(
             py,
             "enum",
@@ -650,6 +655,11 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(Scalar::Uuid)
                 .map_err(value_error)
         }
+        "version" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::Version>()
+            .map(Scalar::Version)
+            .map_err(value_error),
         "enum" => {
             let (kind, value) = payload()?.extract::<(String, String)>()?;
             Enum::from_parts(&kind, &value)
@@ -1507,6 +1517,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Text(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Ascii(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Version(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.

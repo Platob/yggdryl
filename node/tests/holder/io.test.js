@@ -44,32 +44,132 @@ function scratch() {
 
 function memoryFs() {
   const files = new Map()
-  return {
+  const domain = {}
+  const missing = (name) => {
+    const error = new Error(`NotFound: ${name}`)
+    error.code = 'NotFound'
+    return error
+  }
+  const reader = (name, random) => {
+    const bytes = files.get(name)
+    if (bytes === undefined) throw missing(name)
+    let position = 0n
+    let closed = false
+    const value = {
+      read(length) {
+        if (closed) throw new Error('Unsupported: stream is closed')
+        const chunk = bytes.subarray(
+          Number(position),
+          Number(position + length),
+        )
+        position += BigInt(chunk.length)
+        return chunk
+      },
+      tell() {
+        return position
+      },
+      close() {
+        closed = true
+      },
+      get closed() {
+        return closed
+      },
+    }
+    if (random) {
+      value.readAt = (offset, length) =>
+        bytes.subarray(Number(offset), Number(offset + length))
+      value.seek = (offset, whence) => {
+        const base =
+          whence === 'current'
+            ? position
+            : whence === 'end'
+              ? BigInt(bytes.length)
+              : 0n
+        position = base + offset
+        return position
+      }
+    }
+    return value
+  }
+  const handler = {
     files,
     typeName: 'memory',
+    domain,
+    equals(other) {
+      return other?.domain === domain
+    },
+    normalizePath(name) {
+      return name
+    },
     fileInfo(name) {
       const bytes = files.get(name)
       return bytes === undefined
-        ? { path: name, kind: 'unknown' }
+        ? { path: name, kind: 'not-found' }
         : { path: name, kind: 'file', size: BigInt(bytes.length) }
     },
-    list() {
+    list(selector) {
+      if (!selector.allowNotFound) throw missing(selector.baseDir)
       return []
     },
-    readRange(name, offset, length) {
-      const bytes = files.get(name)
-      if (bytes === undefined) return Buffer.alloc(0)
-      const start = Number(offset)
-      return bytes.subarray(start, start + length)
-    },
-    writeFull(name, bytes) {
-      files.set(name, Buffer.from(bytes))
-    },
     createDir() {},
+    deleteDir() {},
+    deleteDirContents() {},
+    deleteRootDirContents() {
+      files.clear()
+    },
     deleteFile(name) {
-      files.delete(name)
+      if (!files.delete(name)) throw missing(name)
+    },
+    copyFile(source, target) {
+      const bytes = files.get(source)
+      if (bytes === undefined) throw missing(source)
+      files.set(target, Buffer.from(bytes))
+    },
+    move(source, target) {
+      this.copyFile(source, target)
+      files.delete(source)
+    },
+    openInputFile(name) {
+      return reader(name, true)
+    },
+    openInputStream(name) {
+      return reader(name, false)
+    },
+    openOutputStream(name) {
+      return this.writer(name, false)
+    },
+    openAppendStream(name) {
+      return this.writer(name, true)
+    },
+    writer(name, append) {
+      const chunks = append && files.has(name) ? [files.get(name)] : []
+      let position = chunks.reduce(
+        (size, chunk) => size + BigInt(chunk.length),
+        0n,
+      )
+      let closed = false
+      const publish = () => files.set(name, Buffer.concat(chunks))
+      return {
+        write(bytes) {
+          chunks.push(Buffer.from(bytes))
+          position += BigInt(bytes.length)
+          return BigInt(bytes.length)
+        },
+        tell() {
+          return position
+        },
+        flush: publish,
+        close() {
+          if (!closed) publish()
+          closed = true
+        },
+        get closed() {
+          return closed
+        },
+      }
     },
   }
+  return handler
 }
 
 function names(handles) {
@@ -115,8 +215,14 @@ test('buffered adds one reconfigurable native cache without changing identity', 
     handle.buffered({ pageSize: 1_000, maxBytes: 1, ttlMs: 10_000 }),
     handle,
   )
-  assert.deepEqual(handle.readRangeBytes(63_900, 300), bytes.subarray(63_900, 64_200))
-  assert.deepEqual(handle.readRangeBytes(63_900, 300), bytes.subarray(63_900, 64_200))
+  assert.deepEqual(
+    handle.readRangeBytes(63_900, 300),
+    bytes.subarray(63_900, 64_200),
+  )
+  assert.deepEqual(
+    handle.readRangeBytes(63_900, 300),
+    bytes.subarray(63_900, 64_200),
+  )
 
   // A second call replaces the options on the same cache layer, and writes
   // still invalidate the touched pages before the next read.
@@ -131,13 +237,14 @@ test('buffered adds one reconfigurable native cache without changing identity', 
 
 test('open promotes record handles and retains media metadata until close', () => {
   const filesystem = memoryFs()
-  const rows = (withQuantity) => new arrow.Table({
-    id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-    venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
-    ...(withQuantity
-      ? { quantity: arrow.vectorFromArray([10, 20], new arrow.Int32()) }
-      : {}),
-  })
+  const rows = (withQuantity) =>
+    new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
+      ...(withQuantity
+        ? { quantity: arrow.vectorFromArray([10, 20], new arrow.Int32()) }
+        : {}),
+    })
   const handle = IOBase.fromFs(filesystem, 'cache.arrows')
   handle.mediaType = 'application/vnd.apache.arrow.stream'
   handle.overwriteArrowTable(rows(false))
@@ -210,9 +317,10 @@ test('structured values use the inferred format, field, and content coding', (t)
   const invalid = new IOBase(path.join(root, 'invalid.json'))
   invalid.writeText('{"quantity":"many","symbol":"AAPL"}')
   assert.throws(
-    () => invalid.readScalar(
-      'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
-    ),
+    () =>
+      invalid.readScalar(
+        'trade: struct<quantity: int32 not null, symbol: utf8 not null> not null',
+      ),
     /quantity/,
   )
 })
@@ -220,15 +328,23 @@ test('structured values use the inferred format, field, and content coding', (t)
 test('I/O capability and logical dimensions come from core media metadata', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const rows = (ids, venues) => new arrow.Table({
-    id: arrow.vectorFromArray(ids, new arrow.Int64()),
-    venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
-  })
-  const wider = (ids) => new arrow.Table({
-    id: arrow.vectorFromArray(ids, new arrow.Int64()),
-    venue: arrow.vectorFromArray(ids.map(() => 'XNAS'), new arrow.Utf8()),
-    quantity: arrow.vectorFromArray(ids.map(() => 10), new arrow.Int32()),
-  })
+  const rows = (ids, venues) =>
+    new arrow.Table({
+      id: arrow.vectorFromArray(ids, new arrow.Int64()),
+      venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+    })
+  const wider = (ids) =>
+    new arrow.Table({
+      id: arrow.vectorFromArray(ids, new arrow.Int64()),
+      venue: arrow.vectorFromArray(
+        ids.map(() => 'XNAS'),
+        new arrow.Utf8(),
+      ),
+      quantity: arrow.vectorFromArray(
+        ids.map(() => 10),
+        new arrow.Int32(),
+      ),
+    })
 
   const folder = new IOBase(path.join(root, 'empty'))
   folder.mkdir()
@@ -241,7 +357,9 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   const handle = new IOBase(path.join(root, 'dimensions.arrows'))
   const first = rows([1n, 2n], ['XNAS', 'XNYS'])
   const second = rows([3n, 4n], ['XLON', 'XPAR'])
-  handle.overwriteArrowReader(BatchReader.from([first.batches[0], second.batches[0]]))
+  handle.overwriteArrowReader(
+    BatchReader.from([first.batches[0], second.batches[0]]),
+  )
   assert.equal(handle.kind, 'file')
   assert.equal(handle.isIo(), true)
   assert.equal(handle.rowSize, 4)
@@ -332,7 +450,10 @@ test('ls descends only when it is asked to', (t) => {
   assert.equal([...handle.ls(true)].length, 14)
   assert.equal([...handle.ls(true, true)].length, 16)
   // A leaf contains nothing rather than failing to be listed.
-  assert.deepEqual([...handle.joinpath('year=2024', 'month=01', 'notes.txt').ls(true)], [])
+  assert.deepEqual(
+    [...handle.joinpath('year=2024', 'month=01', 'notes.txt').ls(true)],
+    [],
+  )
 })
 
 test('glob and rglob select the same leaves', (t) => {
@@ -376,9 +497,18 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
   // The inferring entry point answers the same range as bytes or as text.
   assert.deepEqual(handle.readRange(0, 6), Buffer.from('symbol'))
   assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
-  assert.deepEqual(handle.readRange(0, 6, { text: false }), Buffer.from('symbol'))
-  assert.throws(() => handle.readRange(0, 6, { utf8: true }), /unknown readRange option utf8/)
-  assert.throws(() => handle.readRange(0, 6, { text: 'yes' }), /text must be a boolean/)
+  assert.deepEqual(
+    handle.readRange(0, 6, { text: false }),
+    Buffer.from('symbol'),
+  )
+  assert.throws(
+    () => handle.readRange(0, 6, { utf8: true }),
+    /unknown readRange option utf8/,
+  )
+  assert.throws(
+    () => handle.readRange(0, 6, { text: 'yes' }),
+    /text must be a boolean/,
+  )
   assert.equal(handle.pwrite(0, Buffer.from('SYMBOL')), 6)
   assert.equal(handle.readText(), 'SYMBOL,price')
   assert.equal(handle.appendBytes(Buffer.from('!')), 12)
@@ -404,10 +534,16 @@ test('positional access needs no mode and rejects impossible offsets', (t) => {
 
   handle.truncate(6)
   assert.equal(handle.readText(), 'SYMBOL')
-  assert.throws(() => handle.readRangeBytes(-1, 4), /offset must be a non-negative whole number/)
+  assert.throws(
+    () => handle.readRangeBytes(-1, 4),
+    /offset must be a non-negative whole number/,
+  )
   assert.throws(() => handle.readRangeBytes(1.5, 4), /offset/)
   // `length` is checked exactly as `offset` is, rather than being coerced.
-  assert.throws(() => handle.readRangeBytes(0, -1), /length must be a non-negative whole number/)
+  assert.throws(
+    () => handle.readRangeBytes(0, -1),
+    /length must be a non-negative whole number/,
+  )
   assert.throws(() => handle.readRangeBytes(0, 1.5), /length/)
   assert.throws(() => handle.readRange(0, 1.5, { text: true }), /length/)
   assert.throws(() => handle.truncate(Number.NaN), /size/)
@@ -434,29 +570,30 @@ test('positioned byte streams are lazy bounded iterators', () => {
 
   // The iterator retains the native handle even when no JavaScript variable
   // names the origin anymore.
-  const detached = (() => IOBase.fromBytes(Buffer.from('kept')).pstreamBytes(1, 2))()
+  const detached = (() =>
+    IOBase.fromBytes(Buffer.from('kept')).pstreamBytes(1, 2))()
   assert.equal(Buffer.concat([...detached]).toString(), 'ept')
 
   assert.throws(() => handle.pstreamBytes(0, 0), /greater than zero/)
-  assert.throws(() => handle.pstreamBytes(-1), /position must be a non-negative whole number/)
+  assert.throws(
+    () => handle.pstreamBytes(-1),
+    /position must be a non-negative whole number/,
+  )
   assert.throws(() => handle.pstreamBytes(0, 1.5), /batchSize/)
 })
 
 test('a byte stream throws once and then stays fused', () => {
-  const refusing = {
-    typeName: 'refusing',
-    fileInfo(location) {
-      return { path: location, kind: 'file', size: 4n }
-    },
-    list() {
-      return []
-    },
-    readRange() {
-      throw new Error('the byte source refused the request')
-    },
-    writeFull() {},
-    createDir() {},
-    deleteFile() {},
+  const refusing = memoryFs()
+  refusing.fileInfo = (location) => ({
+    path: location,
+    kind: 'file',
+    size: 4n,
+  })
+  refusing.openInputStream = () => {
+    throw new Error('the byte source refused the request')
+  }
+  refusing.openInputFile = () => {
+    throw new Error('the byte source refused the request')
   }
   const stream = IOBase.fromFs(refusing, 'bucket/key.bin').pstreamBytes(0, 4)
   assert.throws(() => stream.next(), /byte source refused/)
@@ -489,7 +626,7 @@ test('bytes move between two handles without a temporary copy', (t) => {
   source.writeText('symbol,price\n')
 
   const target = IOBase.fromBytes()
-  assert.equal(source.copyInto(target), 13)
+  assert.equal(source.copyInto(target), 13n)
   assert.equal(target.readText(), 'symbol,price\n')
   source.flush()
 })
@@ -509,7 +646,11 @@ test('a memory handle needs no location', () => {
 test('a leaf knows the partitions above it', (t) => {
   const root = lake()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
-  const leaf = new IOBase(root).joinpath('year=2024', 'month=01', 'part-0.parquet')
+  const leaf = new IOBase(root).joinpath(
+    'year=2024',
+    'month=01',
+    'part-0.parquet',
+  )
 
   assert.deepEqual(leaf.partitions, [
     { column: 'year', value: '2024' },
@@ -535,10 +676,12 @@ test('childrenWhere selects the parts to rewrite', (t) => {
     4,
   )
 
-  const both = [...handle.childrenWhere([
-    ['year', '2024'],
-    ['month', '02'],
-  ])]
+  const both = [
+    ...handle.childrenWhere([
+      ['year', '2024'],
+      ['month', '02'],
+    ]),
+  ]
   assert.equal(both.length, 2)
   assert.deepEqual([...handle.childrenWhere({ year: '1999' })], [])
   // No filter is every leaf.
@@ -583,11 +726,68 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
     records.map((row) => Buffer.from(row.body).toString()),
     ['first', 'second', 'plain'],
   )
-  assert.deepEqual(records.map((row) => row.id), [7n, 9n, null])
+  assert.deepEqual(
+    records.map((row) => row.id),
+    [7n, 9n, null],
+  )
+})
+
+test('framed text keeps physical row starts and reports a bounded prefix', () => {
+  const options = new TextOptions()
+  options.framing = true
+  options.leadingFragment = 'drop'
+  options.rowheader = '^\\[(?<level>[A-Z])\\] '
+  options.withRownum = 40n
+  options.batchRowSize = 1
+  options.maxRecordByteSize = 8
+
+  const source = IOBase.fromBytes(
+    Buffer.from('leading\r[A] 12345678\r\n[B] abc\ndefgh\r[C] z'),
+  )
+  const batches = [...source.readArrowReader(options)]
+  assert.deepEqual(
+    batches.map((batch) => batch.numRows),
+    [1, 1, 1],
+  )
+  assert.deepEqual(
+    batches[0].schema.fields.map((field) => [field.name, field.nullable]),
+    [
+      ['url', false],
+      ['rownum', false],
+      ['body', false],
+      ['dropped_byte_size', true],
+      ['level', true],
+    ],
+  )
+  assert.deepEqual(
+    batches.flatMap((batch) => [...batch.getChild('rownum')]),
+    [41n, 42n, 44n],
+  )
+  assert.deepEqual(
+    batches
+      .flatMap((batch) => [...batch.getChild('body')])
+      .map((body) => Buffer.from(body).toString()),
+    ['12345678', 'abc\ndefg', 'z'],
+  )
+  assert.deepEqual(
+    batches.flatMap((batch) => [...batch.getChild('dropped_byte_size')]),
+    [null, 1n, null],
+  )
+  assert.deepEqual(
+    batches.flatMap((batch) => [...batch.getChild('level')]),
+    ['A', 'B', 'C'],
+  )
 })
 
 test('text-only settings are flat native TextOptions value state', () => {
   const options = new TextOptions()
+  assert.equal(options.framing, false)
+  assert.equal(options.leadingFragment, 'keep')
+  assert.equal(options.maxRecordByteSize, null)
+
+  options.framing = true
+  options.leadingFragment = ' DROP '
+  options.maxRecordByteSize = 4096
   options.rowheader = '(?<stamp>\\S+)'
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
@@ -603,11 +803,29 @@ test('text-only settings are flat native TextOptions value state', () => {
   assert.equal(options.autotype, false)
   assert.equal(options.timezone.toString(), '+02:00')
   assert.equal(options.withRownum, -3n)
+  assert.equal(options.framing, true)
+  assert.equal(options.leadingFragment, 'drop')
+  assert.equal(options.maxRecordByteSize, 4096)
   assert.ok(options.clone().equals(options))
 
   assert.throws(() => {
+    options.leadingFragment = 'preserve'
+  }, /expected one of keep, drop, error/)
+  assert.equal(options.leadingFragment, 'drop')
+  for (const value of [-1, 1.5, Number.POSITIVE_INFINITY, 2 ** 53 + 2]) {
+    assert.throws(() => {
+      options.maxRecordByteSize = value
+    }, /maxRecordByteSize must be a non-negative whole number of at most 2\^53/)
+    assert.equal(options.maxRecordByteSize, 4096)
+  }
+  options.maxRecordByteSize = 0
+  assert.equal(options.maxRecordByteSize, 0)
+  options.maxRecordByteSize = null
+  assert.equal(options.maxRecordByteSize, null)
+
+  assert.throws(() => {
     options.rowheader = '(?<body>.+)'
-  }, /distinct from url, rownum, and body/)
+  }, /distinct from url, rownum, body, and dropped_byte_size/)
   assert.throws(() => {
     options.withRownum = 1
   })
@@ -672,7 +890,9 @@ test('generic record writes encode only the binary text body', (t) => {
   target.appendRecords([{ body: Buffer.from('three') }], options)
   assert.equal(target.readBytes().toString(), 'one\ntwo\nthree\n')
   assert.deepEqual(
-    [...target.readRecords(options)].map((row) => Buffer.from(row.body).toString()),
+    [...target.readRecords(options)].map((row) =>
+      Buffer.from(row.body).toString(),
+    ),
     ['one', 'two', 'three'],
   )
 
@@ -703,12 +923,18 @@ test('text folders decode coded leaves through the same record path', (t) => {
   options.lstrip = '^\\s+'
   const rows = [...new IOBase(root).readRecords(options)]
 
-  assert.deepEqual(rows.map((row) => row.rownum), [1n, 1n])
+  assert.deepEqual(
+    rows.map((row) => row.rownum),
+    [1n, 1n],
+  )
   assert.deepEqual(
     rows.map((row) => Buffer.from(row.body).toString()),
     ['from a', 'from b'],
   )
-  assert.deepEqual(rows.map((row) => row.id), [1n, 2n])
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    [1n, 2n],
+  )
 })
 test('a cursor shares the handle and owns its position', () => {
   const handle = IOBase.fromBytes()
@@ -824,5 +1050,8 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
   // A name that lies is caught by the decoder rather than believed.
   const lying = new IOBase(path.join(root, 'lying.json.gz'))
   lying.writeText('not gzip at all')
-  assert.throws(() => lying.decompressInto(IOBase.fromBytes()), /invalid gzip header/)
+  assert.throws(
+    () => lying.decompressInto(IOBase.fromBytes()),
+    /invalid gzip header/,
+  )
 })

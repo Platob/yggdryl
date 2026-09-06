@@ -58,6 +58,7 @@ use super::nested::{Children, Mapping, Nested, Record, Sequence};
 use super::temporal::scalars::{Temporal, temporal_key};
 use super::text::Text;
 use super::uuid::Uuid;
+use super::version::Version;
 
 /// One concrete scalar representation.
 ///
@@ -130,6 +131,8 @@ pub enum Scalar {
     Ascii(AsciiFamily),
     /// An RFC 9562 identifier.
     Uuid(Uuid),
+    /// A canonical, numerically ordered version.
+    Version(Version),
     /// One identity-preserving member of a shared static enum.
     Enum(Enum),
     /// Opaque bytes retaining their storage representation.
@@ -257,6 +260,7 @@ impl Serialize for Scalar {
                 AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
             },
             Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
+            Self::Version(value) => tagged(serializer, "version", value),
             Self::Enum(value) => tagged(serializer, "enum", value),
             Self::Bytes(value) => match value {
                 Bytes::Binary(value) => tagged(serializer, "bytes", &value.as_bytes()),
@@ -455,6 +459,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Mic(SmolStr),
             Cfi(SmolStr),
             Uuid(SmolStr),
+            Version(Version),
             Enum(Enum),
             Bytes(Arc<[u8]>),
             FixedSizeBinary(Arc<[u8]>),
@@ -530,6 +535,7 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
                 .map_err(D::Error::custom),
+            StructuralValue::Version(value) => Ok(Self::Version(value)),
             StructuralValue::Enum(value) => Ok(Self::Enum(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
             StructuralValue::FixedSizeBinary(value) => Ok(Self::Bytes(Bytes::FixedSizeBinary(
@@ -698,6 +704,7 @@ impl Ord for Scalar {
             Self::Text(left) => same_kind!(Self::Text(right) => left.cmp(right)),
             Self::Ascii(left) => same_kind!(Self::Ascii(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
+            Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
@@ -738,6 +745,7 @@ impl Hash for Scalar {
             Self::Text(value) => value.hash(state),
             Self::Ascii(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
+            Self::Version(value) => value.hash(state),
             Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Geospatial(value) => value.hash(state),
@@ -803,6 +811,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Temporal(Temporal::Interval(_)) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Ascii(_) => 18,
+        Scalar::Version(_) => 19,
     }
 }
 
@@ -852,6 +861,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Mic(_)) => DataTypeId::Mic,
             Self::Ascii(AsciiFamily::Cfi(_)) => DataTypeId::Cfi,
             Self::Uuid(_) => DataTypeId::Uuid,
+            Self::Version(_) => DataTypeId::Version,
             Self::Enum(_) => DataTypeId::Utf8,
             Self::Bytes(Bytes::Binary(_)) => DataTypeId::Binary,
             Self::Bytes(Bytes::FixedSizeBinary(_)) => DataTypeId::FixedSizeBinary,
@@ -906,6 +916,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Mic(_)) => "mic",
             Self::Ascii(AsciiFamily::Cfi(_)) => "cfi",
             Self::Uuid(_) => "uuid",
+            Self::Version(_) => "version",
             Self::Enum(_) => "enum",
             Self::Bytes(Bytes::Binary(_)) => "bytes",
             Self::Bytes(Bytes::FixedSizeBinary(_)) => "fixed_size_binary",

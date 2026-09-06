@@ -401,7 +401,7 @@ pub(super) fn file_path_from_uri(value: &Uri) -> Result<PathBuf> {
             "file URI path must not be empty",
         ));
     }
-    if value.query().is_some() || value.fragment().is_some() {
+    if value.query.is_some() || value.fragment.is_some() {
         return Err(parse_error(
             "path",
             value.scheme().as_str().len() + 1 + value.path().as_str().len(),
@@ -504,13 +504,18 @@ pub(super) fn validate_file_authority_round_trip(value: &str) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn decode_file_component<'a>(
-    value: &'a str,
+/// Decode the percent escapes in one component, rejecting bytes a policy bars.
+///
+/// `None` means the component carries no escape at all, which is what lets
+/// every caller answer a decode request without allocating for the common case.
+fn decode_percent_bytes(
+    value: &str,
     target: &'static str,
-) -> Result<Cow<'a, str>> {
+    rejected: impl Fn(u8) -> Option<&'static str>,
+) -> Result<Option<Vec<u8>>> {
     let bytes = value.as_bytes();
     if !bytes.contains(&b'%') {
-        return Ok(Cow::Borrowed(value));
+        return Ok(None);
     }
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -520,21 +525,11 @@ pub(super) fn decode_file_component<'a>(
             index += 1;
             continue;
         }
-        if index + 2 >= bytes.len() {
-            return Err(parse_error(
-                target,
-                index,
-                "percent escape must contain exactly two hexadecimal digits",
-            ));
-        }
-        let Some(high) = hex_value(bytes[index + 1]) else {
-            return Err(parse_error(
-                target,
-                index,
-                "percent escape must contain exactly two hexadecimal digits",
-            ));
-        };
-        let Some(low) = hex_value(bytes[index + 2]) else {
+        let escape = bytes
+            .get(index + 1)
+            .zip(bytes.get(index + 2))
+            .and_then(|(high, low)| Some((hex_value(*high)?, hex_value(*low)?)));
+        let Some((high, low)) = escape else {
             return Err(parse_error(
                 target,
                 index,
@@ -542,19 +537,83 @@ pub(super) fn decode_file_component<'a>(
             ));
         };
         let byte = (high << 4) | low;
-        if matches!(byte, b'/' | b'\\') {
-            return Err(parse_error(
-                target,
-                index,
-                "encoded path separators cannot be converted safely",
-            ));
-        }
-        if byte == 0 {
-            return Err(parse_error(target, index, "file path must not contain NUL"));
+        if let Some(reason) = rejected(byte) {
+            return Err(parse_error(target, index, reason));
         }
         decoded.push(byte);
         index += 3;
     }
+    Ok(Some(decoded))
+}
+
+/// Decode one component's percent escapes into the text they stand for.
+///
+/// The escapes are decoded, not re-interpreted: a component keeps its own
+/// syntax, so `%2F` in a path segment becomes a literal `/` in the returned
+/// text rather than a new segment boundary, and the borrowed form is returned
+/// untouched when there is nothing to decode.
+pub(crate) fn percent_decode<'a>(value: &'a str, target: &'static str) -> Result<Cow<'a, str>> {
+    let Some(decoded) = decode_percent_bytes(value, target, |_| None)? else {
+        return Ok(Cow::Borrowed(value));
+    };
+    String::from_utf8(decoded).map(Cow::Owned).map_err(|error| {
+        parse_error(
+            target,
+            encoded_position_for_decoded_byte(value, error.utf8_error().valid_up_to()),
+            "percent escapes must decode to UTF-8",
+        )
+    })
+}
+
+/// Answer one component as raw text or as the text its escapes stand for.
+pub(super) fn decoded_component<'a>(
+    value: &'a str,
+    decode: bool,
+    target: &'static str,
+) -> Result<Cow<'a, str>> {
+    if decode {
+        percent_decode(value, target)
+    } else {
+        Ok(Cow::Borrowed(value))
+    }
+}
+
+/// Percent-encode every byte the component's syntax cannot carry literally.
+///
+/// Text that needs no escape is borrowed. `%` is always encoded, so encoding
+/// decoded text can never produce an escape the caller did not mean.
+pub(super) fn percent_encode(value: &str, allowed: impl Fn(u8) -> bool) -> Cow<'_, str> {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
+    let bytes = value.as_bytes();
+    if bytes.iter().all(|byte| *byte != b'%' && allowed(*byte)) {
+        return Cow::Borrowed(value);
+    }
+    let mut encoded = String::with_capacity(bytes.len() + 2);
+    for byte in bytes {
+        if *byte != b'%' && allowed(*byte) {
+            encoded.push(*byte as char);
+            continue;
+        }
+        encoded.push('%');
+        encoded.push(HEX[usize::from(byte >> 4)] as char);
+        encoded.push(HEX[usize::from(byte & 0x0F)] as char);
+    }
+    Cow::Owned(encoded)
+}
+
+pub(super) fn decode_file_component<'a>(
+    value: &'a str,
+    target: &'static str,
+) -> Result<Cow<'a, str>> {
+    let Some(decoded) = decode_percent_bytes(value, target, |byte| match byte {
+        b'/' | b'\\' => Some("encoded path separators cannot be converted safely"),
+        0 => Some("file path must not contain NUL"),
+        _ => None,
+    })?
+    else {
+        return Ok(Cow::Borrowed(value));
+    };
     let decoded = String::from_utf8(decoded).map_err(|error| {
         parse_error(
             target,
@@ -600,12 +659,8 @@ pub(super) fn canonicalize_file_drive(
     path: &mut UriPath,
     has_authority: &mut bool,
 ) {
-    let authority_bytes = authority.as_str().as_bytes();
-    if authority_bytes.len() == 2
-        && authority_bytes[0].is_ascii_alphabetic()
-        && authority_bytes[1] == b':'
-        && path.as_str().starts_with('/')
-    {
+    if is_file_drive_authority(authority.as_str(), path.as_str()) {
+        let authority_bytes = authority.as_str().as_bytes();
         let mut normalized = SmolStrBuilder::new();
         normalized.push('/');
         normalized.push(char::from(authority_bytes[0].to_ascii_uppercase()));
@@ -642,4 +697,9 @@ pub(super) fn canonicalize_file_drive(
         *path = UriPath(normalized.into());
     }
     *has_authority = true;
+}
+
+pub(super) fn is_file_drive_authority(authority: &str, path: &str) -> bool {
+    let bytes = authority.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' && path.starts_with('/')
 }

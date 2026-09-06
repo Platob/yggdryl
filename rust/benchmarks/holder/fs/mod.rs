@@ -4,10 +4,11 @@
 //! payload, the same operation, once through an `fs` handle and once
 //! through the native handle the reader already trusts - `holder::Buffer` for the
 //! memory filesystem, `local::File` for the local one. The difference is what
-//! the vtable and the staging cost.
+//! the vtable and stream-dispatch cost.
 
 pub(crate) mod bytes;
 pub(crate) mod listing;
+pub(crate) mod local_parity;
 pub(crate) mod record;
 
 use std::sync::Arc;
@@ -68,7 +69,13 @@ pub(crate) fn payload() -> Vec<u8> {
 
 /// One shared in-memory filesystem for the memory-backed measurements.
 pub(crate) fn memory() -> Arc<MemoryFileSystem> {
-    Arc::new(MemoryFileSystem::new())
+    let filesystem = Arc::new(MemoryFileSystem::new());
+    for root in ["bench", "bucket"] {
+        filesystem
+            .create_dir(root, true)
+            .expect("the benchmark fixture root must be created");
+    }
+    filesystem
 }
 
 /// One local filesystem mapping, and the temporary root it works under.
@@ -103,14 +110,32 @@ pub(crate) fn buffer(name: &str) -> yggdryl::holder::Buffer {
 pub(crate) fn tree(filesystem: &dyn FileSystem, root: &str) {
     for year in ["2024", "2025"] {
         for month in ["01", "02"] {
+            let directory = format!("{root}/year={year}/month={month}");
+            filesystem
+                .create_dir(&directory, true)
+                .expect("the fixture directory must be created");
             for part in 0..4 {
-                let path = format!("{root}/year={year}/month={month}/part-{part}.parquet");
-                filesystem
-                    .write_full(&path, b"PAR1")
-                    .expect("the fixture must write");
+                let path = format!("{directory}/part-{part}.parquet");
+                write_file(filesystem, &path, b"PAR1");
             }
         }
     }
+}
+
+/// Stream one complete benchmark fixture through the filesystem contract.
+pub(crate) fn write_file(filesystem: &dyn FileSystem, path: &str, bytes: &[u8]) {
+    let mut writer = filesystem
+        .open_output_stream(path, None)
+        .expect("the fixture stream must open");
+    let mut position = 0;
+    while position < bytes.len() {
+        let written = writer
+            .write(&bytes[position..])
+            .expect("the fixture stream must write");
+        assert_ne!(written, 0, "the fixture stream must make progress");
+        position += written;
+    }
+    writer.close().expect("the fixture stream must close");
 }
 
 /// Write the record fixture through a handle and return it published.

@@ -34,17 +34,21 @@ benchmarks/{datatype,field,enums,uri,text,json,toml,yaml,io}.rs
                        Criterion target wiring / baselines
 ```
 
-Run the checks from the repository root. The Parquet encoding and the Iceberg
-table format over it are behind non-default features, so the test and Clippy
-passes run twice: once with default features and once with both enabled.
+Run checks from the repository root. Root Cargo commands select only the Rust
+core; `--workspace` explicitly adds the binding crates. Parquet and Iceberg are
+non-default core features, so CI checks the default core and the full workspace.
 
 ```console
-cargo fmt --manifest-path rust/Cargo.toml
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
-cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets --features "parquet iceberg" -- -D warnings
-cargo test --manifest-path rust/Cargo.toml
-cargo test --manifest-path rust/Cargo.toml --features "parquet iceberg"
+cargo fmt --all -- --check
+cargo clippy -p yggdryl --all-targets --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets
+cargo clippy --workspace --all-targets --all-features --no-deps -- -D warnings
+cargo test -p yggdryl --all-targets --all-features
+cargo check -p yggdryl --profile bench --benches --all-features
 ```
+
+Development and test profiles retain line-table backtraces but omit full debug
+symbols. Use `--profile debugging` when a debugger needs full symbols.
 
 Default and schema-only core builds support Rust 1.85. The optional `iceberg`
 feature and both bindings require Rust 1.94 because they include official
@@ -62,7 +66,7 @@ updates, Arrow conversion, or extension boundaries.
 `DataType::variant(fields)` is the finite-sum convenience constructor. It assigns
 declaration-order IDs and returns the canonical dense Arrow Union; the
 `variant(...)` parser spelling canonicalizes to the same physical display. See
-the [datatype guide](../docs/types.md) before mapping one of these tagged
+the [nested datatypes page](../docs/types/nested.md) before mapping one of these tagged
 unions to Iceberg/Parquet Variant or PostgreSQL JSON, which use different
 external encodings.
 
@@ -71,7 +75,7 @@ Python development:
 ```console
 python -m venv python/.venv
 python/.venv/Scripts/python -m pip install maturin pyarrow pytest mypy
-python/.venv/Scripts/python -m maturin develop --release --manifest-path python/Cargo.toml
+python/.venv/Scripts/python -m maturin develop --manifest-path python/Cargo.toml
 python/.venv/Scripts/python -m pytest python/tests
 python/.venv/Scripts/python -m mypy --config-file python/pyproject.toml --strict python/yggdryl python/tests/typing_bindings.py python/tests/types/typing_fields.py
 ```
@@ -83,7 +87,9 @@ examples are documented in [`python/FIELDS.md`](../python/FIELDS.md) and
 Node.js development:
 
 ```console
-npm install --prefix node
-npm run --prefix node build
+npm ci --prefix node
+npm run --prefix node build:debug
 npm test --prefix node
 ```
+
+Use release builds only for packaging and performance measurements.

@@ -906,6 +906,7 @@ static_field_constructor!(super::ascii::MicType, DataType::Mic);
 static_field_constructor!(super::ascii::CfiType, DataType::Cfi);
 static_field_constructor!(super::nested::VariantType, DataType::Variant);
 static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
+static_field_constructor!(super::version::VersionType, DataType::Version);
 
 #[cfg(test)]
 mod tests;

@@ -36,6 +36,22 @@ impl<'source> ByteStream<'source> {
         Self::from_source(ReaderSource(reader), batch_size)
     }
 
+    /// Stream one filesystem reader, retaining exactly that open handle.
+    pub fn from_fs_reader(
+        reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+        batch_size: usize,
+    ) -> Result<Self> {
+        Self::from_source(FileSystemSource { reader }, batch_size)
+    }
+
+    /// Stream one random-access filesystem reader after it has been positioned.
+    pub fn from_fs_random_reader(
+        reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+        batch_size: usize,
+    ) -> Result<Self> {
+        Self::from_source(RandomFileSystemSource { reader }, batch_size)
+    }
+
     pub(super) fn from_handle<H: IOBase + ?Sized>(
         handle: &'source H,
         position: u64,
@@ -92,7 +108,22 @@ impl<'source> ByteStream<'source> {
                     self.done = true;
                     break;
                 }
-                Ok(read) => filled += read,
+                Ok(read) if read <= target.len() - filled => filled += read,
+                Ok(read) => {
+                    let error = Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!(
+                            "byte source reported {read} bytes for a {}-byte buffer",
+                            target.len() - filled
+                        ),
+                    ));
+                    if filled == 0 {
+                        self.done = true;
+                        return Err(error);
+                    }
+                    self.pending_error = Some(error);
+                    break;
+                }
                 Err(error) if filled == 0 => {
                     self.done = true;
                     return Err(error);
@@ -228,6 +259,50 @@ impl<R: Read> ByteSource for ReaderSource<R> {
     }
 }
 
+struct FileSystemSource<'source> {
+    reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+}
+
+struct RandomFileSystemSource<'source> {
+    reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+}
+
+impl ByteSource for RandomFileSystemSource<'_> {
+    fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+        let read = self.reader.read(target)?;
+        if read == 0 && !self.reader.closed() {
+            self.reader.close()?;
+        }
+        Ok(read)
+    }
+}
+
+impl Drop for RandomFileSystemSource<'_> {
+    fn drop(&mut self) {
+        if !self.reader.closed() {
+            let _ = self.reader.close();
+        }
+    }
+}
+
+impl ByteSource for FileSystemSource<'_> {
+    fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+        let read = self.reader.read(target)?;
+        if read == 0 && !self.reader.closed() {
+            self.reader.close()?;
+        }
+        Ok(read)
+    }
+}
+
+impl Drop for FileSystemSource<'_> {
+    fn drop(&mut self) {
+        if !self.reader.closed() {
+            let _ = self.reader.close();
+        }
+    }
+}
+
 fn into_io_error(error: Error) -> std::io::Error {
     match error {
         Error::Io(error) => error,
@@ -338,6 +413,24 @@ mod tests {
         assert_eq!(stream.next().unwrap().unwrap(), b"ok");
         assert!(stream.next().is_some_and(|item| item.is_err()));
         assert!(stream.next().is_none());
+        assert!(stream.next().is_none());
+    }
+
+    struct Overreports;
+
+    impl ByteSource for Overreports {
+        fn read_bytes(&mut self, target: &mut [u8]) -> Result<usize> {
+            Ok(target.len() + 1)
+        }
+    }
+
+    #[test]
+    fn a_source_cannot_report_bytes_outside_the_supplied_buffer() {
+        let mut stream = ByteStream::from_source(Overreports, 4).unwrap();
+        let error = stream.next().unwrap().unwrap_err();
+        assert!(
+            matches!(error, Error::Io(error) if error.kind() == std::io::ErrorKind::InvalidData)
+        );
         assert!(stream.next().is_none());
     }
 }

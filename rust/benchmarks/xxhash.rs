@@ -14,6 +14,7 @@ criterion_group!(
     benchmarks::handles::handle_benchmarks,
     benchmarks::values::value_benchmarks,
     benchmarks::values::stable_hash_benchmarks,
-    benchmarks::arrow::row_digest_benchmarks
+    benchmarks::arrow::row_digest_benchmarks,
+    benchmarks::arrow::holder_fill_benchmarks
 );
 criterion_main!(xxhash);

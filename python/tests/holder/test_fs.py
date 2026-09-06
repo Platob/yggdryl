@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip as stdlib_gzip
 import io
 import pathlib
 from typing import Any
@@ -10,8 +11,7 @@ import pyarrow as pa
 import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
-
-from yggdryl import IOBase
+from yggdryl import IOBase, TextOptions
 
 
 @pytest.fixture
@@ -31,7 +31,6 @@ def table() -> pa.Table:
     return pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]})
 
 
-
 class MemoryHandler(pafs.FileSystemHandler):
     """A custom in-memory filesystem, the way a caller writes their own.
 
@@ -41,6 +40,8 @@ class MemoryHandler(pafs.FileSystemHandler):
 
     def __init__(self) -> None:
         self.files: dict[str, bytes] = {}
+        self.input_file_opens: list[str] = []
+        self.input_stream_opens: list[str] = []
 
     def get_type_name(self) -> str:
         return "memory"
@@ -62,9 +63,17 @@ class MemoryHandler(pafs.FileSystemHandler):
                 found.append(pafs.FileInfo(key, pafs.FileType.NotFound))
         return found
 
-    def get_file_info_selector(self, selector: pafs.FileSelector) -> list[pafs.FileInfo]:
+    def get_file_info_selector(
+        self, selector: pafs.FileSelector
+    ) -> list[pafs.FileInfo]:
         base = selector.base_dir.strip("/")
         prefix = f"{base}/" if base else ""
+        if base in self.files:
+            raise NotADirectoryError(base)
+        if base and not any(name.startswith(prefix) for name in self.files):
+            if selector.allow_not_found:
+                return []
+            raise FileNotFoundError(base)
         found = []
         directories = set()
         for name, data in self.files.items():
@@ -92,25 +101,50 @@ class MemoryHandler(pafs.FileSystemHandler):
             del self.files[name]
 
     def delete_dir_contents(self, path: str, missing_dir_ok: bool = False) -> None:
-        self.delete_dir(path)
+        key = path.strip("/")
+        if key in self.files:
+            raise NotADirectoryError(path)
+        prefix = f"{key}/" if key else ""
+        children = [name for name in self.files if name.startswith(prefix)]
+        if key and not children and not missing_dir_ok:
+            raise FileNotFoundError(path)
+        for name in children:
+            del self.files[name]
 
     def delete_root_dir_contents(self) -> None:
         self.files.clear()
 
     def delete_file(self, path: str) -> None:
-        self.files.pop(path.strip("/"), None)
+        key = path.strip("/")
+        if key in self.files:
+            del self.files[key]
+            return
+        if any(name.startswith(f"{key}/") for name in self.files):
+            raise IsADirectoryError(path)
+        raise FileNotFoundError(path)
 
     def move(self, src: str, dest: str) -> None:
-        self.files[dest.strip("/")] = self.files.pop(src.strip("/"))
+        source = src.strip("/")
+        if source not in self.files:
+            raise FileNotFoundError(src)
+        self.files[dest.strip("/")] = self.files.pop(source)
 
     def copy_file(self, src: str, dest: str) -> None:
-        self.files[dest.strip("/")] = self.files[src.strip("/")]
+        source = src.strip("/")
+        if source not in self.files:
+            raise FileNotFoundError(src)
+        self.files[dest.strip("/")] = self.files[source]
 
     def open_input_stream(self, path: str) -> pa.NativeFile:
-        return pa.BufferReader(self.files[path.strip("/")])
+        key = path.strip("/")
+        self.input_stream_opens.append(key)
+        if key not in self.files:
+            raise FileNotFoundError(path)
+        return pa.BufferReader(self.files[key])
 
     def open_input_file(self, path: str) -> pa.NativeFile:
         key = path.strip("/")
+        self.input_file_opens.append(key)
         if key not in self.files:
             raise FileNotFoundError(path)
         return pa.BufferReader(self.files[key])
@@ -119,7 +153,10 @@ class MemoryHandler(pafs.FileSystemHandler):
         return pa.PythonFile(_MemorySink(self, path.strip("/")), mode="w")
 
     def open_append_stream(self, path: str, metadata: Any = None) -> pa.NativeFile:
-        raise NotImplementedError
+        key = path.strip("/")
+        sink = _MemorySink(self, key)
+        sink.write(self.files.get(key, b""))
+        return pa.PythonFile(sink, mode="w")
 
     def __eq__(self, other: object) -> bool:
         return self is other
@@ -129,12 +166,7 @@ class MemoryHandler(pafs.FileSystemHandler):
 
 
 class _MemorySink(io.BytesIO):
-    """The sink ``MemoryHandler`` writes through, storing what it collected.
-
-    A whole-value write is the one shape an Arrow filesystem has, so the
-    bytes are handed over when the stream closes - which is exactly when the
-    handle publishes.
-    """
+    """A test backend stream that publishes its received bytes on close."""
 
     def __init__(self, handler: MemoryHandler, path: str) -> None:
         super().__init__()
@@ -203,25 +235,19 @@ class TestConstruction:
 class TestBytesAndFolders:
     """The byte and hierarchy surface, over PyArrow's own local filesystem."""
 
-    def test_bytes_round_trip_and_publish_on_close(
+    def test_positional_writes_reach_the_backend_without_a_close(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        handle = IOBase.from_fs(local, f"{root}/staged.bin")
-        # Positional writes are pieces of a value, so they stage: an Arrow
-        # filesystem replaces whole files and must never see a half-written one.
+        handle = IOBase.from_fs(local, f"{root}/direct.bin")
         handle.pwrite(0, b"pend")
         handle.pwrite(4, b"ing")
 
-        assert not pathlib.Path(root, "staged.bin").exists()
-        handle.close()
-        assert pathlib.Path(root, "staged.bin").read_bytes() == b"pending"
+        assert pathlib.Path(root, "direct.bin").read_bytes() == b"pending"
 
     def test_a_whole_value_write_publishes_without_a_close(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
         handle = IOBase.from_fs(local, f"{root}/whole.bin")
-        # A complete value is one store operation, so it needs no scope; the
-        # staging above exists to fold many positional writes into one.
         handle.write_bytes(b"published")
         assert pathlib.Path(root, "whole.bin").read_bytes() == b"published"
 
@@ -312,6 +338,100 @@ class TestRecords:
         assert handle.read_bytes() == pathlib.Path(root, "foreign.parquet").read_bytes()
 
 
+class TestFramedText:
+    """Logical records retain their contract through every Arrow filesystem."""
+
+    @pytest.mark.parametrize("filesystem_kind", ["local", "subtree", "custom"])
+    def test_schema_precedes_iteration_and_leaves_never_share_a_record(
+        self,
+        filesystem_kind: str,
+        local: pafs.LocalFileSystem,
+        tmp_path: pathlib.Path,
+    ) -> None:
+        first = b"[A] first\ncontinued in a"
+        second = b"leading in b\n[B] second"
+        handler: MemoryHandler | None = None
+
+        if filesystem_kind == "custom":
+            handler = MemoryHandler()
+            handler.files["logs/a.log"] = first
+            handler.files["logs/b.log"] = second
+            filesystem: pafs.FileSystem = pafs.PyFileSystem(handler)
+            location = "logs"
+        else:
+            storage = tmp_path / filesystem_kind / "logs"
+            storage.mkdir(parents=True)
+            (storage / "a.log").write_bytes(first)
+            (storage / "b.log").write_bytes(second)
+            if filesystem_kind == "subtree":
+                filesystem = pafs.SubTreeFileSystem(
+                    (tmp_path / filesystem_kind).as_posix(), local
+                )
+                location = "logs"
+            else:
+                filesystem = local
+                location = storage.as_posix()
+
+        options = TextOptions()
+        options.framing = True
+        options.leading_fragment = "keep"
+        options.max_record_byte_size = 64
+        options.rowheader = r"^\[(?<kind>[A-Z])\] "
+        options.with_rownum = 1
+        options.batch_row_size = 1
+
+        reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
+        assert reader.schema.names == [
+            "url",
+            "rownum",
+            "body",
+            "dropped_byte_size",
+            "kind",
+        ]
+        assert reader.schema.field("dropped_byte_size") == pa.field(
+            "dropped_byte_size", pa.uint64(), nullable=True
+        )
+        if handler is not None:
+            assert handler.input_file_opens == []
+            assert handler.input_stream_opens == []
+
+        table = reader.read_all()
+        assert table.column("body").to_pylist() == [
+            b"first\ncontinued in a",
+            b"leading in b",
+            b"second",
+        ]
+        assert table.column("rownum").to_pylist() == [1, 1, 2]
+        assert table.column("kind").to_pylist() == ["A", None, "B"]
+        assert table.column("dropped_byte_size").to_pylist() == [None, None, None]
+        urls = table.column("url").to_pylist()
+        assert urls[0].endswith("a.log")
+        assert urls[1].endswith("b.log") and urls[2].endswith("b.log")
+        if handler is not None:
+            assert handler.input_file_opens == []
+            assert handler.input_stream_opens == ["logs/a.log", "logs/b.log"]
+
+    def test_s3_schema_is_known_without_contacting_the_endpoint(self) -> None:
+        filesystem = pafs.S3FileSystem(
+            anonymous=True,
+            scheme="http",
+            endpoint_override="127.0.0.1:9",
+            connect_timeout=0.05,
+            request_timeout=0.05,
+        )
+        options = TextOptions()
+        options.framing = True
+        options.rowheader = r"^\[(?<kind>[A-Z])\] "
+        options.max_record_byte_size = 64
+
+        reader = IOBase.from_fs(filesystem, "bucket/missing.log").read_arrow_reader(
+            options=options
+        )
+
+        assert reader.schema.names == ["url", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.field("dropped_byte_size").type == pa.uint64()
+
+
 class TestCustomFilesystems:
     """A custom handler and a wrapped store, with no code of their own here."""
 
@@ -345,6 +465,7 @@ class TestCustomFilesystems:
         base = pathlib.Path(root, "warehouse")
         base.mkdir()
         subtree = pafs.SubTreeFileSystem(base.as_posix(), local)
+        subtree.create_dir("trades")
 
         handle = IOBase.from_fs(subtree, "trades/part-0.parquet")
         with handle:
@@ -411,7 +532,7 @@ class TestCustomFilesystems:
 
     def test_a_handler_that_raises_surfaces_its_own_message(self) -> None:
         class Broken(MemoryHandler):
-            def open_input_file(self, path: str) -> pa.NativeFile:
+            def open_input_stream(self, path: str) -> pa.NativeFile:
                 raise PermissionError("the bucket refused the request: 403 Forbidden")
 
             def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
@@ -421,7 +542,7 @@ class TestCustomFilesystems:
                 ]
 
         handle = IOBase.from_fs(pafs.PyFileSystem(Broken()), "bucket/key.bin")
-        with pytest.raises(ValueError) as failure:
+        with pytest.raises(PermissionError) as failure:
             handle.read_bytes()
 
         # The foreign message crosses unchanged rather than being reworded.
@@ -429,7 +550,7 @@ class TestCustomFilesystems:
 
     def test_an_exception_with_no_message_still_names_its_class(self) -> None:
         class Bare(MemoryHandler):
-            def open_input_file(self, path: str) -> pa.NativeFile:
+            def open_input_stream(self, path: str) -> pa.NativeFile:
                 # The shape normal Python code raises: the class is the message.
                 raise PermissionError
 
@@ -440,14 +561,14 @@ class TestCustomFilesystems:
                 ]
 
         handle = IOBase.from_fs(pafs.PyFileSystem(Bare()), "bucket/key.bin")
-        with pytest.raises(ValueError) as failure:
+        with pytest.raises(PermissionError) as failure:
             handle.read_bytes()
 
         # With no text to carry, the class is the whole of what the caller has.
         assert "PermissionError" in str(failure.value)
 
-    def test_a_byte_stream_yields_one_failure_then_stays_fused(self) -> None:
-        class FailsAfterOneChunk(MemoryHandler):
+    def test_a_byte_stream_opens_once_and_stays_fused(self) -> None:
+        class CountsInputOpens(MemoryHandler):
             def __init__(self) -> None:
                 super().__init__()
                 self.files["bucket/key.bin"] = b"abcdef"
@@ -455,25 +576,21 @@ class TestCustomFilesystems:
 
             def open_input_file(self, path: str) -> pa.NativeFile:
                 self.reads += 1
-                if self.reads > 1:
-                    raise PermissionError("later streamed read failed")
                 return super().open_input_file(path)
 
-        handler = FailsAfterOneChunk()
-        handle = IOBase.from_fs(
-            pafs.PyFileSystem(handler), "bucket/key.bin"
-        )
+        handler = CountsInputOpens()
+        handle = IOBase.from_fs(pafs.PyFileSystem(handler), "bucket/key.bin")
         stream = handle.pstream_bytes(batch_size=3)
 
-        # Creating the iterator performs no ranged read.
-        assert handler.reads == 0
+        # One native input file is retained across every bounded read.
+        assert handler.reads == 1
         assert next(stream) == b"abc"
-        with pytest.raises(ValueError, match="later streamed read failed"):
-            next(stream)
+        assert next(stream) == b"def"
         with pytest.raises(StopIteration):
             next(stream)
         with pytest.raises(StopIteration):
             next(stream)
+        assert handler.reads == 1
 
 
 class TestTables:
@@ -495,3 +612,79 @@ class TestTables:
         # Every byte of that table went through the caller's own handler.
         assert any(name.endswith(".metadata.json") for name in handler.files)
         assert any(name.endswith(".parquet") for name in handler.files)
+
+
+class _CountingSource(io.BytesIO):
+    """A backend stream that records the size of every read asked of it."""
+
+    def __init__(self, data: bytes, reads: list[int]) -> None:
+        super().__init__(data)
+        self._reads = reads
+
+    def readinto(self, buffer: Any) -> int:  # type: ignore[override]
+        self._reads.append(len(buffer))
+        return super().readinto(buffer)
+
+    def read(self, size: int | None = -1) -> bytes:
+        self._reads.append(len(self.getvalue()) if size is None or size < 0 else size)
+        return super().read(size)
+
+
+class CountingHandler(MemoryHandler):
+    """``MemoryHandler`` that records what each read asks the backend for."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[int] = []
+
+    def open_input_stream(self, path: str) -> pa.NativeFile:
+        key = path.strip("/")
+        self.input_stream_opens.append(key)
+        if key not in self.files:
+            raise FileNotFoundError(path)
+        return pa.PythonFile(_CountingSource(self.files[key], self.reads), mode="r")
+
+
+def _log_payload(lines: int) -> tuple[bytes, int]:
+    """Log text gzip cannot shrink away, so the object spans fetch windows."""
+    alphabet = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    state = 0x2545F491
+    body = bytearray()
+    for index in range(lines):
+        body += b"[INFO] id=%d " % index
+        for _ in range(1024):
+            state ^= (state << 13) & 0xFFFFFFFF
+            state ^= state >> 17
+            state ^= (state << 5) & 0xFFFFFFFF
+            body.append(alphabet[state % len(alphabet)])
+        body += b"\n"
+    return bytes(body), lines
+
+
+def test_a_compressed_log_is_read_one_fetch_window_at_a_time() -> None:
+    """A foreign filesystem is asked for windows, not for decoder-sized reads.
+
+    A gzip stream pulls 32 KiB at a time, and on an object store - or across
+    this binding, where every read is a call into Python - that is what a scan
+    would cost without a window between the transport and the decoder.
+    """
+    plain, lines = _log_payload(2_000)
+    handler = CountingHandler()
+    handler.files["logs/app.log.gz"] = stdlib_gzip.compress(plain)
+    encoded_size = len(handler.files["logs/app.log.gz"])
+    assert encoded_size > 1024 * 1024, encoded_size
+
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
+
+    handle = IOBase.from_fs(pafs.PyFileSystem(handler), "logs/app.log.gz")
+    table = handle.read_arrow_reader(options=options).read_all()
+
+    assert table.num_rows == lines
+    assert handler.input_stream_opens == ["logs/app.log.gz"]
+    assert handler.input_file_opens == []
+    # One ask per window, not one per decoder pull, and no one-byte probe.
+    windows = -(-encoded_size // (1024 * 1024))
+    assert len(handler.reads) <= windows + 1, handler.reads
+    assert min(handler.reads) > 64 * 1024, handler.reads

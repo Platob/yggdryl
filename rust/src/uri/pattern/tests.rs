@@ -42,7 +42,7 @@ mod detection {
         let value = url("file:///data/trades-?.arrows");
 
         assert!(!value.is_glob());
-        assert_eq!(value.query(), Some(".arrows"));
+        assert_eq!(value.query(false).unwrap().as_deref(), Some(".arrows"));
         assert!(url("file:///data/trades-7.arrows").matches_glob("trades-?.arrows"));
     }
 

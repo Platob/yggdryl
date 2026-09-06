@@ -172,3 +172,65 @@ class TestDecompressInto:
     ) -> None:
         with pytest.raises(ValueError):
             plain.decompress_into(IOBase(tmp_path / "out.json"), "gzip")
+
+
+class TestCodedView:
+    """``into_coded`` opens a handle as the value its coding holds."""
+
+    def test_the_path_declares_the_coding_the_view_decodes(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        plain = "[INFO] alpha\n[WARN] beta\n"
+        path = tmp_path / "app.log.gz"
+        path.write_bytes(std_gzip.compress(plain.encode()))
+
+        # The handle itself mirrors the stored bytes, coding and all.
+        source = IOBase(path)
+        assert source.codec == "gzip"
+        assert source.read_bytes()[:2] == b"\x1f\x8b"
+
+        # The view presents what those bytes hold, so nothing names gzip.
+        decoded = IOBase(path).into_coded()
+        assert decoded.codec is None
+        assert decoded.media_type.base == source.media_type.base
+        assert decoded.read_text() == plain
+        assert decoded.size == len(plain)
+        assert decoded.read_range_bytes(7, 5) == b"alpha"
+        # Reads stream in bounded windows rather than materializing the value.
+        assert b"".join(decoded.pstream_bytes(0, 8)) == plain.encode()
+
+    def test_the_view_is_in_place_idempotent_and_overridable(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        payload = PAYLOAD.encode()
+        path = tmp_path / "rows.json"
+        path.write_bytes(std_gzip.compress(payload))
+
+        # A name declaring no coding passes its bytes through unchanged.
+        passthrough = IOBase(tmp_path / "plain.json")
+        passthrough.write_bytes(payload)
+        assert passthrough.into_coded().read_bytes() == payload
+
+        # This name says nothing about the bytes, so the caller names it.
+        handle = IOBase(path)
+        assert handle.into_coded("gzip") is handle
+        assert handle.read_bytes() == payload
+
+        # A view already presenting decoded bytes has no second coding to
+        # remove, so repeating the call never decodes twice.
+        assert handle.into_coded("zstd", 9).read_bytes() == payload
+
+        with pytest.raises(ValueError, match="content coding"):
+            IOBase(path).into_coded("brotli")
+
+    def test_a_write_through_the_view_publishes_the_encoded_form(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        path = tmp_path / "notes.txt.gz"
+        handle = IOBase(path).into_coded()
+
+        handle.write_text("alpha\n")
+        handle.close()
+
+        assert std_gzip.decompress(path.read_bytes()) == b"alpha\n"
+        assert IOBase(path).into_coded().read_text() == "alpha\n"

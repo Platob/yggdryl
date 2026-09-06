@@ -1,13 +1,19 @@
 //! Focused edge cases of the FIX module, driven with explicit inputs.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use smol_str::SmolStr;
+
 use super::global::autoload;
-use super::registry::{BranchedName, Folded};
+use super::registry::control_byte;
 use super::store::shard_of;
 use crate::holder::local::Folder;
-use crate::{DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, Scalar};
+use crate::{
+    DataType, Error, Field, FixBranch, FixId, FixKey, FixMsg, FixRegistry, MimeType, Scalar,
+    Version,
+};
 
 /// The venue dictionary every branched case is written against.
 fn cme() -> FixBranch {
@@ -22,9 +28,9 @@ fn tagged(name: &str, tag: i32) -> Field {
 }
 
 /// A nullable text field carrying one canonical identifier.
-fn identified(name: &str, id: &FixId) -> Field {
+fn identified(name: &str, branch: &FixBranch, tag: i32) -> Field {
     let mut field = DataType::Utf8.nullable_field(name);
-    field.as_fix_mut().set_id(id).unwrap();
+    field.as_fix_mut().set_id(branch, tag).unwrap();
     field
 }
 
@@ -83,80 +89,205 @@ fn probe<'registry>(
     [
         registry.get_field_by_tag(tag).map(Field::name),
         registry.get_field_by_tag(alternate).map(Field::name),
-        registry.get_field_by_name(&standard, name).map(Field::name),
         registry
-            .get_field_by_name(&standard, alias)
+            .get_field_by_name(name, Some(&standard))
+            .map(Field::name),
+        registry
+            .get_field_by_name(alias, Some(&standard))
             .map(Field::name),
     ]
 }
 
 #[test]
-fn folded_text_compares_and_hashes_without_case() {
-    use std::hash::{BuildHasher, RandomState};
-
-    let state = RandomState::new();
-    assert_eq!(Folded::probe("MsgType"), Folded::probe("MSGTYPE"));
-    assert_eq!(
-        state.hash_one(Folded::probe("MsgType")),
-        state.hash_one(Folded::probe("msgtype"))
-    );
-    assert_ne!(Folded::probe("MsgType"), Folded::probe("MsgTypes"));
-    // Folding is ASCII only: a non-ASCII byte is compared as it is.
-    assert_ne!(Folded::probe("Größe"), Folded::probe("GRÖSSE"));
-
-    // A name index key is that folding inside one branch: the name still
-    // folds, the branch is compared exactly, and the separator between
-    // them keeps the concatenation unambiguous.
-    let standard = FixBranch::STANDARD;
+fn name_indexes_fold_ascii_without_crossing_branches() {
     let cme = cme();
+    let standard = tagged("MsgType", 35);
+    let vendor = identified("MsgType", &cme, 5_035);
+    let registry = FixRegistry::from_fields([standard.clone(), vendor.clone()]).unwrap();
     assert_eq!(
-        BranchedName::probe(&cme, "MsgType"),
-        BranchedName::probe(&cme, "MSGTYPE")
+        registry.get_field_by_name("MSGTYPE", Some(&FixBranch::STANDARD)),
+        Some(&standard)
     );
     assert_eq!(
-        state.hash_one(BranchedName::probe(&cme, "MsgType")),
-        state.hash_one(BranchedName::probe(&cme, "msgtype"))
+        registry.get_field_by_name("msgtype", Some(&cme)),
+        Some(&vendor)
     );
-    assert_ne!(
-        BranchedName::probe(&cme, "MsgType"),
-        BranchedName::probe(&standard, "MsgType")
-    );
-    assert_ne!(
-        state.hash_one(BranchedName::probe(&cme, "MsgType")),
-        state.hash_one(BranchedName::probe(&standard, "MsgType"))
-    );
-    // `cme` + `x` and `cm` + `ex` are two keys, not one.
-    let cm = FixBranch::from_str("cm").unwrap();
-    assert_ne!(
-        BranchedName::probe(&cme, "x"),
-        BranchedName::probe(&cm, "ex")
-    );
-    assert_ne!(
-        state.hash_one(BranchedName::probe(&cme, "x")),
-        state.hash_one(BranchedName::probe(&cm, "ex"))
+    assert!(
+        registry
+            .get_field_by_name("msgtype", Some(&FixBranch::from_str("cm").unwrap()))
+            .is_none()
     );
 }
 
 #[test]
-fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
-    assert_eq!(FixBranch::from_str("CME").unwrap().as_str(), "cme");
-    assert_eq!(FixBranch::from_str("cme").unwrap(), cme());
+fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
+    type Case = (&'static [u8], MimeType, Option<&'static [u8]>);
+
+    let registry = FixRegistry::from_fields([
+        tagged("Account", 1),
+        tagged("BeginString", 8),
+        tagged("MsgType", 35),
+        tagged("Symbol", 55),
+    ])
+    .unwrap();
+    let cases: &[Case] = &[
+        (
+            b"2025-01-01 INFO 8=FIX.4.4|35=D|55=AAPL|",
+            MimeType::FIX,
+            Some(b"D"),
+        ),
+        (
+            b"prefix MsgType=8 Symbol=AAPL suffix",
+            MimeType::ULLINK,
+            Some(b"8"),
+        ),
+        (
+            b"35=F^ASymbol=MSFT^AMsgType=ignored",
+            MimeType::FIXUL,
+            Some(b"ignored"),
+        ),
+        (
+            b"[8=FIX.4.2<SOH>35=A<SOH>55=IBM]",
+            MimeType::FIX,
+            Some(b"A"),
+        ),
+        (
+            b"8=FIXT.1.1\\x0135=AE\\x0155=EUR/USD",
+            MimeType::FIX,
+            Some(b"AE"),
+        ),
+        (
+            b"raw 8=FIX.4.4{SOH}9=224{SOH}35=8{SOH}10=118{SOH}",
+            MimeType::FIX,
+            Some(b"8"),
+        ),
+        (
+            b"sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|",
+            MimeType::FIXUL,
+            Some(b"UDF"),
+        ),
+        (
+            b"8=FIX.4.4|35=D|11=ORDER-1|SYMBOL=AAPL|SIDE=1|10=000",
+            MimeType::FIXUL,
+            Some(b"D"),
+        ),
+        (
+            b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|",
+            MimeType::FIXUL,
+            Some(b"D"),
+        ),
+        (
+            b"8=FIX.4.4|35=D|213=<Order/>|10=000|",
+            MimeType::FIXML,
+            Some(b"D"),
+        ),
+        (
+            b"8=FIX.4.4|35=8|58=quoting #A=1 and #B=2|10=001|",
+            MimeType::FIX,
+            Some(b"8"),
+        ),
+        (
+            b"toBridge #ISINCODE=XX|#SYMBOL=TTF|#SIDE=1",
+            MimeType::ULLINK,
+            None,
+        ),
+        (
+            b"ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1",
+            MimeType::ULLINK,
+            Some(b"D"),
+        ),
+        (
+            b"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR",
+            MimeType::ULLINK,
+            None,
+        ),
+        (
+            b"MsgType=prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix",
+            MimeType::FIXUL,
+            Some(b"prefix"),
+        ),
+        (
+            b"<Order ClOrdID='XML-1'>body</Order>",
+            MimeType::OCTET_STREAM,
+            None,
+        ),
+        (
+            b"level=INFO timestamp=2025-01-01 message=random",
+            MimeType::OCTET_STREAM,
+            None,
+        ),
+        (b"35=", MimeType::OCTET_STREAM, None),
+        (b"not a protocol line", MimeType::OCTET_STREAM, None),
+    ];
+    for (line, protocol, msgtype) in cases {
+        assert_eq!(&registry.infer_bytes_protocol(line), protocol, "{line:?}");
+        assert_eq!(registry.infer_bytes_msgtype(line), *msgtype, "{line:?}");
+        let text = std::str::from_utf8(line).unwrap();
+        assert_eq!(&registry.infer_text_protocol(text), protocol, "{text}");
+        assert_eq!(
+            registry.infer_text_msgtype(text),
+            msgtype.and_then(|value| std::str::from_utf8(value).ok()),
+            "{text}"
+        );
+    }
+
+    // An overflowing numeric key is one bad candidate, not a reason to stop
+    // before a later valid frame in the same log line.
+    let overflow = b"999999999999999999999=x 8=FIX.4.4|35=D|";
+    assert_eq!(registry.infer_bytes_protocol(overflow), MimeType::FIX);
     assert_eq!(
-        FixBranch::from_str("STANDARD").unwrap(),
-        FixBranch::STANDARD
+        registry.infer_bytes_msgtype(overflow),
+        Some(b"D".as_slice())
     );
+
+    // The protocol constants are enough for MsgType inference; a dictionary
+    // enriches aliases but is not required to find canonical wire spellings.
+    let empty = FixRegistry::new();
+    assert_eq!(empty.infer_bytes_protocol(b"35=D|55=AAPL|"), MimeType::FIX);
+    assert_eq!(empty.infer_bytes_msgtype(b"35=D|55=AAPL|"), Some(&b"D"[..]));
+    assert_eq!(
+        empty.infer_text_protocol("ACCOUNT=A1|MSGTYPE=8|"),
+        MimeType::ULLINK
+    );
+    assert_eq!(empty.infer_text_msgtype("ACCOUNT=A1|MSGTYPE=8|"), Some("8"));
+
+    assert_eq!(MimeType::ULLINK.as_str(), "text/ullink");
+    assert_eq!(MimeType::FIX.as_str(), "text/fix");
+    assert_eq!(MimeType::FIXUL.as_str(), "text/fixul");
+    assert_eq!(MimeType::FIXML.as_str(), "text/fixml");
+
+    for value in ["U1", "UABC", "UL"] {
+        let line = format!("8=FIX.4.4|35={value}|10=000|");
+        assert_eq!(registry.infer_text_msgtype(&line), Some("UDF"));
+    }
+    assert_eq!(registry.infer_text_msgtype("35=U|"), Some("U"));
+}
+
+#[test]
+fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
+    assert_eq!(FixBranch::from_str("CME").unwrap().name(), "cme");
+    assert_eq!(FixBranch::from_str("cme").unwrap(), cme());
+    assert_eq!(FixBranch::from_str("STD").unwrap().name(), "std");
+    assert_eq!(FixBranch::from_str("standard").unwrap().name(), "standard");
     assert!(FixBranch::STANDARD.is_standard());
     assert!(!cme().is_standard());
     assert_eq!(FixBranch::default(), FixBranch::STANDARD);
-    assert_eq!(FixBranch::STANDARD.to_string(), "standard");
-    assert_eq!(FixBranch::from_str("a-b.c_9").unwrap().as_str(), "a-b.c_9");
+    assert_eq!(FixBranch::STANDARD.to_string(), "");
+    assert_eq!(FixBranch::from_str("a-b.c_9").unwrap().name(), "a-b.c_9");
+
+    let complete =
+        FixBranch::from_parts("CME", "4.4".parse::<Version>().unwrap(), "CME", "BANKX").unwrap();
+    assert_eq!(complete.name(), "cme");
+    assert_eq!(complete.digest(), cme().digest());
+    assert_eq!(complete.version(), "4.4".parse::<Version>().unwrap());
+    assert_eq!(complete.target_comp_id(), "CME");
+    assert_eq!(complete.sender_comp_id(), "BANKX");
 
     let cases = [
-        ("", 0_usize),
         (" cme", 0),
         ("2cme", 0),
         (".cme", 0),
-        ("cme:1", 3),
+        ("1:cme", 0),
         ("cm e", 2),
         ("cm,e", 2),
         ("cme/x", 3),
@@ -180,48 +311,78 @@ fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
 }
 
 #[test]
-fn an_identifier_renders_and_parses_branch_colon_tag() {
-    assert_eq!(FixId::standard(35).to_string(), "standard:35");
-    assert_eq!(
-        FixId::from_parts(cme(), 5001).unwrap().to_string(),
-        "cme:5001"
+fn a_forced_branch_digest_collision_is_atomic_and_names_both_branches() {
+    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
+    let before = registry.clone();
+    let collision = FixBranch {
+        name: SmolStr::new_static("collision"),
+        digest: FixBranch::STANDARD.digest(),
+        version: Version::default(),
+        target_comp_id: SmolStr::default(),
+        sender_comp_id: SmolStr::default(),
+    };
+    let error = registry.set_branch(collision).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            Error::Conflict { path, .. }
+                if path.contains("collision")
+                    && path.contains("#00000000")
+        ),
+        "{error}"
     );
-    for text in ["standard:35", "cme:5001", "standard:0", "cme:2147483647"] {
-        let id = FixId::from_str(text).unwrap();
-        assert_eq!(id.to_string(), text, "{text}");
-        assert_eq!(text.parse::<FixId>().unwrap(), id, "{text}");
+    assert_eq!(registry, before);
+}
+
+#[test]
+fn an_identifier_is_packed_and_renders_without_inventing_branch_text() {
+    const STANDARD: FixId = FixId::standard(35);
+    assert_eq!(size_of::<FixId>(), 8);
+    assert_eq!(STANDARD, FixId::standard(35));
+    assert_eq!(FixBranch::STANDARD.digest(), 0);
+    assert_eq!(FixId::standard(35).branch_digest().to_ne_bytes(), [0; 4]);
+    assert_eq!(FixId::standard(35).to_string(), "35:");
+    let cme = cme();
+    let vendor = FixId::from_parts(&cme, 5001).unwrap();
+    assert_eq!(vendor.to_string(), format!("5001:#{:08x}", cme.digest()));
+    for text in ["35:", "5001:cme", "0:", "39999:cme"] {
+        assert_eq!(
+            text.parse::<FixId>().unwrap(),
+            FixId::from_str(text).unwrap()
+        );
     }
     // Case folds on the way in, so one dictionary has one spelling.
     assert_eq!(
-        FixId::from_str("CME:5001").unwrap(),
-        FixId::from_parts(cme(), 5001).unwrap()
+        FixId::from_str("5001:CME").unwrap(),
+        FixId::from_parts(&cme, 5001).unwrap()
     );
-    let id = FixId::from_str("cme:5001").unwrap();
-    assert_eq!(id.branch(), &cme());
+    let id = FixId::from_str("5001:cme").unwrap();
+    assert_eq!(id.branch_digest(), cme.digest());
     assert_eq!(id.tag(), 5001);
     assert!(!id.is_standard());
     assert!(FixId::standard(35).is_standard());
 
-    // Ordering is branch-major, then by tag.
+    // Ordering is tag-major, then by the unsigned branch digest.
     let mut ids = [
-        FixId::from_str("standard:1").unwrap(),
-        FixId::from_str("cme:9000").unwrap(),
-        FixId::from_str("standard:0").unwrap(),
-        FixId::from_str("cme:5000").unwrap(),
+        FixId::from_str("1:").unwrap(),
+        FixId::from_str("9000:cme").unwrap(),
+        FixId::from_str("0:").unwrap(),
+        FixId::from_str("5000:cme").unwrap(),
     ];
     ids.sort();
-    assert_eq!(
-        ids.map(|id| id.to_string()),
-        ["cme:5000", "cme:9000", "standard:0", "standard:1"]
-    );
+    assert_eq!(ids.map(FixId::tag), [0, 1, 5000, 9000]);
 
-    // A bare tag is not an identifier, and neither half may be empty or
+    // A bare tag is not an identifier, and the tag half may not be empty or
     // signed.
-    for text in ["35", "", "cme", "cme:", ":5001", "cme:+5", "cme:-5"] {
+    for text in ["35", "", "cme", ":cme", "+5:cme", "-5:cme"] {
         let error = FixId::from_str(text).unwrap_err();
         assert!(matches!(&error, Error::Parse { .. }), "{text:?}: {error}");
     }
-    for (text, position) in [("35", 2_usize), ("cme:abc", 4), ("cme:5 0", 4)] {
+    assert!(matches!(
+        FixId::from_str("35:standard").unwrap_err(),
+        Error::InvalidMetadataValue { .. }
+    ));
+    for (text, position) in [("35", 2_usize), ("abc:cme", 0)] {
         match FixId::from_str(text).unwrap_err() {
             Error::Parse {
                 target: "fix identifier",
@@ -231,23 +392,51 @@ fn an_identifier_renders_and_parses_branch_colon_tag() {
             other => panic!("{text:?}: {other}"),
         }
     }
+    assert!(matches!(
+        FixId::from_str("5:cme 0").unwrap_err(),
+        Error::Parse {
+            target: "fix branch",
+            position: 5,
+            ..
+        }
+    ));
     // An over-long branch is refused as a branch, in the identifier's
-    // own coordinates because the branch is its prefix.
-    let long = format!("{}:5001", "a".repeat(24));
+    // own coordinates after the tag and separator.
+    let long = format!("5001:{}", "a".repeat(24));
     match FixId::from_str(&long).unwrap_err() {
         Error::Parse {
             target: "fix branch",
             position,
             ..
-        } => assert_eq!(position, FixBranch::MAX_LENGTH),
+        } => assert_eq!(position, 5 + FixBranch::MAX_LENGTH),
         other => panic!("{other}"),
     }
     // Parsed text is held to the same rule as constructed parts.
     assert!(
-        FixId::from_str("cme:35")
+        FixId::from_str("35:cme")
             .unwrap_err()
             .to_string()
             .contains("fix:branch")
+    );
+}
+
+#[test]
+fn the_identifier_finalizer_spreads_the_committed_dictionary_control_bytes() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    let folder = Folder::new(root).unwrap();
+    let registry = FixRegistry::from_handle(&folder).unwrap();
+    let classes: HashSet<u8> = registry
+        .iter()
+        .map(|field| control_byte(field.as_fix().id().unwrap().unwrap()))
+        .collect();
+    assert!(
+        classes.len() >= 16,
+        "{} fields reached only {} control-byte classes",
+        registry.len(),
+        classes.len()
     );
 }
 
@@ -346,8 +535,8 @@ fn the_branch_round_trips_and_the_standard_one_is_never_stored() {
 
     field.as_fix_mut().set_tag(5001).unwrap();
     let id = field.as_fix().id().unwrap().unwrap();
-    assert_eq!(id.to_string(), "cme:5001");
-    assert_eq!(id, FixId::from_str("cme:5001").unwrap());
+    assert_eq!(id.to_string(), format!("5001:#{:08x}", cme.digest()));
+    assert_eq!(id, FixId::from_str("5001:cme").unwrap());
 
     // The canonical answer is the folded spelling, whatever was written.
     let mut shouted = DataType::Utf8.nullable_field("TradeID");
@@ -381,14 +570,18 @@ fn a_specification_tag_belongs_to_the_standard_branch_at_every_door() {
         assert!(reason.contains("\"cme\""), "{reason}");
     };
 
-    // The constructor is the one implementation, and 5000 is the boundary.
-    refusal(&FixId::from_parts(cme.clone(), 35).unwrap_err());
-    refusal(&FixId::from_parts(cme.clone(), 4_999).unwrap_err());
-    assert!(FixId::from_parts(cme.clone(), 5_000).is_ok());
-    assert_eq!(FixId::STANDARD_TAG_LIMIT, 5_000);
+    // The constructor is the one implementation, and both boundaries matter.
+    refusal(&FixId::from_parts(&cme, 35).unwrap_err());
+    refusal(&FixId::from_parts(&cme, 4_999).unwrap_err());
+    refusal(&FixId::from_parts(&cme, 40_000).unwrap_err());
+    assert!(FixId::from_parts(&cme, 5_000).is_ok());
+    assert!(FixId::from_parts(&cme, 39_999).is_ok());
+    assert_eq!(FixId::USER_TAG_MIN, 5_000);
+    assert_eq!(FixId::USER_TAG_MAX, 40_000);
     // The rule is one-way: the standard branch holds any tag.
-    assert!(FixId::from_parts(FixBranch::STANDARD, 10_000).is_ok());
-    assert!(FixId::from_parts(FixBranch::STANDARD, 0).is_ok());
+    assert!(FixId::from_parts(&FixBranch::STANDARD, 40_000).is_ok());
+    assert!(FixId::from_parts(&FixBranch::STANDARD, i32::MAX).is_ok());
+    assert!(FixId::from_parts(&FixBranch::STANDARD, 0).is_ok());
 
     // `set_branch` on a field whose canonical tag is a specification one.
     let mut field = tagged("Symbol", 55);
@@ -398,7 +591,7 @@ fn a_specification_tag_belongs_to_the_standard_branch_at_every_door() {
 
     // The same for a field whose *alternate* tag is one: an alternate
     // resolves as strongly as a canonical tag.
-    let mut alternate = identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap());
+    let mut alternate = identified("TradeID", &cme, 5001);
     alternate.as_fix_mut().set_tags(&[5002]).unwrap();
     let mut standard = DataType::Utf8.nullable_field("TradeID");
     standard.as_fix_mut().set_tag(5001).unwrap();
@@ -408,7 +601,7 @@ fn a_specification_tag_belongs_to_the_standard_branch_at_every_door() {
     assert_eq!(standard, before);
 
     // `set_tag` in a vendor branch: refused, never a silent renamespacing.
-    let mut vendor = identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap());
+    let mut vendor = identified("TradeID", &cme, 5001);
     let before = vendor.clone();
     refusal(&vendor.as_fix_mut().set_tag(35).unwrap_err());
     assert_eq!(vendor, before);
@@ -429,28 +622,28 @@ fn a_specification_tag_belongs_to_the_standard_branch_at_every_door() {
 #[test]
 fn set_id_moves_both_halves_in_either_direction_and_atomically() {
     let cme = cme();
-    let vendor = FixId::from_parts(cme.clone(), 5001).unwrap();
+    let vendor = FixId::from_parts(&cme, 5001).unwrap();
 
     // Standard to vendor: the order `set_tag` then `set_branch` refuses.
     let mut field = tagged("Symbol", 55);
     assert!(field.as_fix_mut().set_branch(&cme).is_err());
-    field.as_fix_mut().set_id(&vendor).unwrap();
-    assert_eq!(field.as_fix().id().unwrap(), Some(vendor.clone()));
+    field.as_fix_mut().set_id(&cme, 5001).unwrap();
+    assert_eq!(field.as_fix().id().unwrap(), Some(vendor));
     assert_eq!(field.get_metadata("fix:branch"), Some("cme"));
     assert_eq!(field.get_metadata("fix:tag"), Some("5001"));
 
     // Vendor back to standard, which the other single setter refuses too.
     assert!(field.as_fix_mut().set_tag(35).is_err());
-    field.as_fix_mut().set_id(&FixId::standard(35)).unwrap();
+    field.as_fix_mut().set_id(&FixBranch::STANDARD, 35).unwrap();
     assert_eq!(field.as_fix().id().unwrap(), Some(FixId::standard(35)));
     assert!(!field.has_metadata("fix:branch"));
 
     // A refused tag restores the branch entry it had already written.
-    let mut vendored = identified("TradeID", &vendor);
+    let mut vendored = identified("TradeID", &cme, 5001);
     let before = vendored.clone();
     let error = vendored
         .as_fix_mut()
-        .set_id(&FixId::standard(-1))
+        .set_id(&FixBranch::STANDARD, -1)
         .unwrap_err();
     assert!(error.to_string().contains("fix:tag"), "{error}");
     assert_eq!(vendored, before, "the branch came back");
@@ -462,11 +655,11 @@ fn set_id_moves_both_halves_in_either_direction_and_atomically() {
     // the identifier carries the branch rule already.
     let mut plain = tagged("Symbol", 55);
     let before = plain.clone();
-    assert!(plain.as_fix_mut().set_id(&FixId::standard(-1)).is_err());
+    assert!(plain.as_fix_mut().set_id(&FixBranch::STANDARD, -1).is_err());
     assert_eq!(plain, before);
     assert!(!plain.has_metadata("fix:branch"));
     assert!(
-        FixId::from_parts(cme, -1).is_err(),
+        FixId::from_parts(&cme, -1).is_err(),
         "and never in a vendor one"
     );
 }
@@ -475,7 +668,7 @@ fn set_id_moves_both_halves_in_either_direction_and_atomically() {
 fn two_branches_may_hold_the_same_tag_and_the_same_name() {
     let cme = cme();
     let standard = FixBranch::STANDARD;
-    let mut venue = identified("Symbol", &FixId::from_parts(cme.clone(), 5055).unwrap());
+    let mut venue = identified("Symbol", &cme, 5055);
     venue.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     venue.as_fix_mut().set_tags(&[9055]).unwrap();
     let mut spec = tagged("Symbol", 5055);
@@ -487,43 +680,54 @@ fn two_branches_may_hold_the_same_tag_and_the_same_name() {
 
     // Each identifier answers its own field, and each name in its own
     // dictionary.
-    assert_eq!(registry.field_by_id(&FixId::standard(5055)).unwrap(), &spec);
+    assert_eq!(registry.field_by_id(FixId::standard(5055)).unwrap(), &spec);
     assert_eq!(
         registry
-            .field_by_id(&FixId::from_parts(cme.clone(), 5055).unwrap())
+            .field_by_id(FixId::from_parts(&cme, 5055).unwrap())
             .unwrap(),
         &venue
     );
     assert_eq!(
         registry
-            .field_by_id(&FixId::from_parts(cme.clone(), 9055).unwrap())
+            .field_by_id(FixId::from_parts(&cme, 9055).unwrap())
             .unwrap(),
         &venue,
         "an alternate identifier resolves in its branch too"
     );
-    assert_eq!(registry.field_by_name(&cme, "SYMBOL").unwrap(), &venue);
-    assert_eq!(registry.field_by_name(&standard, "symbol").unwrap(), &spec);
-    assert_eq!(registry.field_by_name(&cme, "ticker").unwrap(), &venue);
-    assert_eq!(registry.field_by_name(&standard, "ticker").unwrap(), &spec);
+    assert_eq!(
+        registry.field_by_name("SYMBOL", Some(&cme)).unwrap(),
+        &venue
+    );
+    assert_eq!(
+        registry.field_by_name("symbol", Some(&standard)).unwrap(),
+        &spec
+    );
+    assert_eq!(
+        registry.field_by_name("ticker", Some(&cme)).unwrap(),
+        &venue
+    );
+    assert_eq!(
+        registry.field_by_name("ticker", Some(&standard)).unwrap(),
+        &spec
+    );
 
-    // A bare tag and a bare name are the standard branch and never reach
-    // the venue field.
+    // The standard canonical definitions win the omitted-branch lookup.
     assert_eq!(registry.get_field_by_tag(5055), Some(&spec));
     assert_eq!(registry.get_field_by_tag(9055), Some(&spec));
     assert_eq!(registry.get_field("Symbol"), Some(&spec));
     assert_eq!(registry.get_field("Ticker"), Some(&spec));
     // A colon-bearing string is a name, never an identifier.
-    assert!(registry.get_field("cme:5055").is_none());
-    assert!(registry.get_field_by_name(&cme, "absent").is_none());
+    assert!(registry.get_field("5055:cme").is_none());
+    assert!(registry.get_field_by_name("absent", Some(&cme)).is_none());
     assert!(
         registry
-            .get_field_by_id(&FixId::from_parts(cme.clone(), 6000).unwrap())
+            .get_field_by_id(FixId::from_parts(&cme, 6000).unwrap())
             .is_none()
     );
 
     // A conflict inside one branch is still a conflict, and it names that
     // branch; the same key in the other branch is not.
-    let mut twice = identified("VenueSym", &FixId::from_parts(cme.clone(), 5099).unwrap());
+    let mut twice = identified("VenueSym", &cme, 5099);
     twice.as_fix_mut().set_aliases(["TICKER"]).unwrap();
     let mut probed = registry.clone();
     let error = probed.insert(twice.clone()).unwrap_err();
@@ -534,41 +738,92 @@ fn two_branches_may_hold_the_same_tag_and_the_same_name() {
     );
     assert_eq!(probed, registry);
     let mut moved = twice;
-    moved.as_fix_mut().set_id(&FixId::standard(5099)).unwrap();
+    moved
+        .as_fix_mut()
+        .set_id(&FixBranch::STANDARD, 5099)
+        .unwrap();
     let error = probed.insert(moved).unwrap_err();
     assert!(
         matches!(&error, Error::Conflict { path, .. }
-            if path.contains("in branch \"standard\"")),
+            if path.contains("in branch \"\"")),
         "{error}"
     );
     assert_eq!(probed, registry);
 
     // The failing halves name the key the way it was asked.
     let by_id = registry
-        .field_by_id(&FixId::from_parts(cme, 6000).unwrap())
+        .field_by_id(FixId::from_parts(&cme, 6000).unwrap())
         .unwrap_err();
     assert!(
-        matches!(&by_id, Error::Absent { expected: "fix field", path } if path == "identifier cme:6000"),
+        matches!(&by_id, Error::Absent { expected: "fix field", path } if path.starts_with("identifier 6000:#")),
         "{by_id}"
     );
     // The specialized and generic pairs answer alike for an identifier.
     let id = FixId::standard(5055);
-    assert_eq!(registry.get_field(&id), registry.get_field_by_id(&id));
-    assert_eq!(registry.get_field(FixKey::Id(&id)), Some(&spec));
+    assert_eq!(registry.get_field(id), registry.get_field_by_id(id));
+    assert_eq!(registry.get_field(FixKey::Id(id)), Some(&spec));
     assert_eq!(
-        registry.field(&id).map(Field::name).ok(),
-        registry.field_by_id(&id).map(Field::name).ok()
+        registry.field(id).map(Field::name).ok(),
+        registry.field_by_id(id).map(Field::name).ok()
     );
-    assert!(registry.contains(&id));
+    assert!(registry.contains(id));
+}
+
+#[test]
+fn an_omitted_branch_infers_one_deterministic_best_name_match() {
+    let alpha = FixBranch::from_str("alpha").unwrap();
+    let cme = cme();
+
+    let standard_shared = tagged("Shared", 6_000);
+    let cme_shared = identified("Shared", &cme, 6_001);
+
+    let mut standard_alias = tagged("StandardAliasHolder", 6_002);
+    standard_alias
+        .as_fix_mut()
+        .set_aliases(["VenueCanonical"])
+        .unwrap();
+    let venue_canonical = identified("VenueCanonical", &cme, 6_003);
+
+    let alpha_tie = identified("VendorTie", &alpha, 6_004);
+    let cme_tie = identified("VendorTie", &cme, 6_005);
+
+    let registry = FixRegistry::from_fields([
+        cme_tie.clone(),
+        venue_canonical.clone(),
+        cme_shared,
+        standard_alias,
+        standard_shared.clone(),
+        alpha_tie.clone(),
+    ])
+    .unwrap();
+
+    assert_eq!(
+        registry.get_field_by_name("shared", None),
+        Some(&standard_shared)
+    );
+    assert_eq!(
+        registry.get_field_by_name("VenueCanonical", None),
+        Some(&venue_canonical),
+        "a canonical vendor name beats a standard alias"
+    );
+    assert_eq!(
+        registry.get_field_by_name("vendortie", None),
+        Some(&alpha_tie),
+        "named branches tie-break by canonical spelling, not insertion order"
+    );
+    assert_eq!(registry.get_field("vendortie"), Some(&alpha_tie));
+    assert_eq!(
+        registry.get_field_by_name("VendorTie", Some(&cme)),
+        Some(&cme_tie)
+    );
 }
 
 #[test]
 fn a_corrupt_stored_property_is_reported_under_its_full_key() {
     let cases = [
         ("fix:branch", "2cme"),
-        ("fix:branch", ""),
         ("fix:branch", "c me"),
-        ("fix:branch", "cme:1"),
+        ("fix:branch", "1:cme"),
         ("fix:branch", "aaaaaaaaaaaaaaaaaaaaaaaa"),
         ("fix:tag", "3x"),
         ("fix:tag", "+35"),
@@ -647,7 +902,7 @@ fn a_name_or_alias_resolves_in_any_case_to_the_canonical_spelling() {
     ] {
         assert_eq!(
             registry
-                .field_by_name(&FixBranch::STANDARD, query)
+                .field_by_name(query, Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             "Symbol",
@@ -658,14 +913,14 @@ fn a_name_or_alias_resolves_in_any_case_to_the_canonical_spelling() {
     }
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "clientorderid")
+            .field_by_name("clientorderid", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "ClOrdID"
     );
     assert!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "Symbols")
+            .get_field_by_name("Symbols", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(!registry.contains("Symbols"));
@@ -683,21 +938,21 @@ fn tier_order_never_lets_an_alternate_key_shadow_a_canonical_one() {
         let registry = FixRegistry::from_fields(order).unwrap();
         assert_eq!(
             registry
-                .field_by_name(&FixBranch::STANDARD, "px")
+                .field_by_name("px", Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             "Px"
         );
         assert_eq!(
             registry
-                .field_by_name(&FixBranch::STANDARD, "Price")
+                .field_by_name("Price", Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             "Px"
         );
         assert_eq!(
             registry
-                .field_by_name(&FixBranch::STANDARD, "LastPrice")
+                .field_by_name("LastPrice", Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             "LastPx"
@@ -714,14 +969,14 @@ fn a_tag_query_never_consults_names_and_a_name_query_never_consults_tags() {
     assert_eq!(registry.field_by_tag(1).unwrap().name(), "35");
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "35")
+            .field_by_name("35", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "35"
     );
     assert!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "1")
+            .get_field_by_name("1", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(registry.get_field_by_tag(2).is_none());
@@ -732,18 +987,18 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
     let stored = full("Symbol", 55, &[65], &["Ticker"]);
     let registry = FixRegistry::from_fields([stored]).unwrap();
     let cases = [
-        (full("SymbolSfx", 55, &[], &[]), "identifier standard:55"),
+        (full("SymbolSfx", 55, &[], &[]), "identifier 55:"),
         (
             full("symbol", 56, &[], &[]),
-            "name \"symbol\" in branch \"standard\"",
+            "name \"symbol\" in branch \"\"",
         ),
         (
             full("SymbolSfx", 56, &[65], &[]),
-            "alternate identifier standard:65",
+            "alternate identifier 65:",
         ),
         (
             full("SymbolSfx", 56, &[], &["TICKER"]),
-            "alias \"TICKER\" in branch \"standard\"",
+            "alias \"TICKER\" in branch \"\"",
         ),
     ];
     for (incoming, key) in cases {
@@ -773,14 +1028,14 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "Ticker")
+            .field_by_name("Ticker", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Ticker"
     );
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "Symbol")
+            .field_by_name("Symbol", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Symbol"
@@ -805,7 +1060,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert_eq!(registry.field_by_tag(55).unwrap(), &replacement);
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "symbol")
+            .field_by_name("symbol", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "SYMBOL"
@@ -813,7 +1068,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert_eq!(registry.field_by_tag(66).unwrap().name(), "SYMBOL");
     assert_eq!(
         registry
-            .field_by_name(&FixBranch::STANDARD, "Sym")
+            .field_by_name("Sym", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "SYMBOL"
@@ -821,7 +1076,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
     assert!(registry.get_field_by_tag(65).is_none());
     assert!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "Ticker")
+            .get_field_by_name("Ticker", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert_eq!(registry.len(), 2);
@@ -835,7 +1090,7 @@ fn reinserting_the_same_identity_replaces_wholesale() {
         .insert(full("Symbol", 55, &[], &["px"]))
         .unwrap_err();
     assert!(
-        matches!(&error, Error::Conflict { path, .. } if path == "alias \"px\" in branch \"standard\" of Symbol, held by Price"),
+        matches!(&error, Error::Conflict { path, .. } if path == "alias \"px\" in branch \"\" of Symbol, held by Price"),
         "{error}"
     );
     assert_eq!(registry, before);
@@ -891,7 +1146,7 @@ fn a_merge_follows_the_truth_table() {
     for name in ["symbol", "ticker", "SYM", "instrument"] {
         assert_eq!(
             registry
-                .field_by_name(&FixBranch::STANDARD, name)
+                .field_by_name(name, Some(&FixBranch::STANDARD))
                 .unwrap()
                 .name(),
             "SYMBOL",
@@ -955,20 +1210,17 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
     // An unknown identifier is an absence, not a silent insert.
     let error = registry.update(tagged("Text", 58)).unwrap_err();
     assert!(
-        matches!(&error, Error::Absent { path, .. } if path == "identifier standard:58"),
+        matches!(&error, Error::Absent { path, .. } if path == "identifier 58:"),
         "{error}"
     );
 
     // A branch disagreement is that same absence: the branch is half
     // of the identity, so the incoming field names no stored one.
     let error = registry
-        .update(identified(
-            "Symbol",
-            &FixId::from_parts(cme(), 5055).unwrap(),
-        ))
+        .update(identified("Symbol", &cme(), 5055))
         .unwrap_err();
     assert!(
-        matches!(&error, Error::Absent { path, .. } if path == "identifier cme:5055"),
+        matches!(&error, Error::Absent { path, .. } if path.starts_with("identifier 5055:#")),
         "{error}"
     );
 
@@ -1061,24 +1313,24 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
     for name in ["symbol", "TICKER", "price", "absent"] {
         assert_eq!(
             registry.get_field(name),
-            registry.get_field_by_name(&FixBranch::STANDARD, name),
+            registry.get_field_by_name(name, Some(&FixBranch::STANDARD)),
             "{name}"
         );
         assert_eq!(
             registry.get_field(&name.to_owned()),
-            registry.get_field_by_name(&FixBranch::STANDARD, name)
+            registry.get_field_by_name(name, Some(&FixBranch::STANDARD))
         );
         assert_eq!(
             registry.field(name).map(Field::name).ok(),
             registry
-                .field_by_name(&FixBranch::STANDARD, name)
+                .field_by_name(name, Some(&FixBranch::STANDARD))
                 .map(Field::name)
                 .ok()
         );
         assert_eq!(
             registry.contains(name),
             registry
-                .get_field_by_name(&FixBranch::STANDARD, name)
+                .get_field_by_name(name, Some(&FixBranch::STANDARD))
                 .is_some()
         );
     }
@@ -1087,11 +1339,11 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
     let by_tag = registry.field_by_tag(1).unwrap_err();
     assert!(matches!(&by_tag, Error::Absent { expected: "fix field", path } if path == "tag 1"));
     let by_name = registry
-        .field_by_name(&FixBranch::STANDARD, "absent")
+        .field_by_name("absent", Some(&FixBranch::STANDARD))
         .unwrap_err();
     assert!(matches!(&by_name, Error::Absent { path, .. } if path == "name \"absent\""));
     let by_path = registry
-        .field_by_path(&FixBranch::STANDARD, "Symbol.absent")
+        .field_by_path("Symbol.absent", Some(&FixBranch::STANDARD))
         .unwrap_err();
     assert!(matches!(&by_path, Error::Absent { path, .. } if path == "path \"Symbol.absent\""));
     assert_eq!(
@@ -1126,7 +1378,7 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     let registry = FixRegistry::from_fields([group, instrument]).unwrap();
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs")
+            .field_by_path("NoPartyIDs", Some(&FixBranch::STANDARD))
             .unwrap()
             .as_fix()
             .tag()
@@ -1135,56 +1387,56 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "NoPartyIDs.PartyID")
+            .field_by_path("NoPartyIDs.PartyID", Some(&FixBranch::STANDARD))
             .unwrap(),
         &party_id
     );
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "nopartyids.item.PartyRole")
+            .field_by_path("nopartyids.item.PartyRole", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "PartyRole"
     );
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "Instrument.Symbol")
+            .field_by_path("Instrument.Symbol", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "Symbol"
     );
     assert_eq!(
         registry
-            .field_by_path(&FixBranch::STANDARD, "instr.SecurityID")
+            .field_by_path("instr.SecurityID", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "SecurityID"
     );
     assert_eq!(
         registry.get_field("Instrument.Symbol"),
-        registry.get_field_by_path(&FixBranch::STANDARD, "Instrument.Symbol")
+        registry.get_field_by_path("Instrument.Symbol", Some(&FixBranch::STANDARD))
     );
     assert!(registry.contains("NoPartyIDs.PartyID"));
     // A member is reached through its parent only: the registry does not
     // index it, and the remainder of a path is an exact child name.
     assert!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "PartyID")
+            .get_field_by_name("PartyID", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixBranch::STANDARD, "NoPartyIDs.partyid")
+            .get_field_by_path("NoPartyIDs.partyid", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixBranch::STANDARD, "Instrument.Absent")
+            .get_field_by_path("Instrument.Absent", Some(&FixBranch::STANDARD))
             .is_none()
     );
     assert!(
         registry
-            .get_field_by_path(&FixBranch::STANDARD, "Absent.Symbol")
+            .get_field_by_path("Absent.Symbol", Some(&FixBranch::STANDARD))
             .is_none()
     );
 }
@@ -1216,14 +1468,14 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     // only the last identifier it saw sees every field exactly once.
     let mut walked = Vec::new();
     let mut cursor = None;
-    while let Some(field) = registry.next_field_after(cursor.as_ref()) {
+    while let Some(field) = registry.next_field_after(cursor) {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
     assert_eq!(walked, ["Account", "Symbol", "Text"]);
     assert!(
         registry
-            .next_field_after(Some(&FixId::standard(i32::MAX)))
+            .next_field_after(Some(FixId::standard(i32::MAX)))
             .is_none()
     );
     assert!(FixRegistry::new().next_field_after(None).is_none());
@@ -1233,7 +1485,7 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     let with_alternate = FixRegistry::from_fields([aliased, tagged("Account", 1)]).unwrap();
     assert_eq!(
         with_alternate
-            .next_field_after(Some(&FixId::standard(1)))
+            .next_field_after(Some(FixId::standard(1)))
             .map(Field::name)
             .unwrap(),
         "MsgType"
@@ -1251,34 +1503,34 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
 
     // Debug renders the fields under their identifiers, in order.
     let rendered = format!("{registry:?}");
-    assert!(rendered.starts_with("{\"standard:1\": "), "{rendered}");
-    assert!(rendered.find("\"standard:55\"").unwrap() < rendered.find("\"standard:58\"").unwrap());
+    assert!(rendered.starts_with("{\"1:\": "), "{rendered}");
+    assert!(rendered.find("\"55:\"").unwrap() < rendered.find("\"58:\"").unwrap());
 }
 
 #[test]
-fn iteration_and_the_cursor_are_branch_major() {
+fn iteration_and_the_cursor_are_tag_major() {
     let cme = cme();
     let registry = FixRegistry::from_fields([
         tagged("Account", 1),
-        identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap()),
+        identified("TradeID", &cme, 5001),
         tagged("MsgType", 35),
-        identified("Venue", &FixId::from_parts(cme.clone(), 9000).unwrap()),
+        identified("Venue", &cme, 9000),
     ])
     .unwrap();
-    // `cme` sorts before `standard`, and each branch ascends by tag.
+    // Tags lead across branches; the digest only orders an equal tag.
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
-        ["TradeID", "Venue", "Account", "MsgType"]
+        ["Account", "MsgType", "TradeID", "Venue"]
     );
     let mut walked = Vec::new();
     let mut cursor = None;
-    while let Some(field) = registry.next_field_after(cursor.as_ref()) {
+    while let Some(field) = registry.next_field_after(cursor) {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, ["TradeID", "Venue", "Account", "MsgType"]);
+    assert_eq!(walked, ["Account", "MsgType", "TradeID", "Venue"]);
     let rendered = format!("{registry:?}");
-    assert!(rendered.starts_with("{\"cme:5001\": "), "{rendered}");
+    assert!(rendered.starts_with("{\"1:\": "), "{rendered}");
 }
 
 #[test]
@@ -1318,9 +1570,9 @@ fn nestedness_routes_a_field_by_the_core_predicate_alone() {
             field.name()
         );
         assert_eq!(
-            registry.indexed_as_nested(&id),
-            Some(*nested),
-            "{} landed in the wrong half",
+            registry.get_field_by_id(id).map(Field::name),
+            Some(field.name()),
+            "{} did not retain its indexed identity",
             field.name()
         );
     }
@@ -1328,10 +1580,9 @@ fn nestedness_routes_a_field_by_the_core_predicate_alone() {
 }
 
 #[test]
-fn the_primitive_half_is_read_first_without_reordering_the_tiers() {
-    // The split partitions each index; it is not a fifth tier above them. A
-    // canonical key of one half therefore still beats an alternate key of the
-    // other, in both directions.
+fn datatype_shape_does_not_reorder_the_resolution_tiers() {
+    // Scalar and nested fields share one identity space. A canonical key
+    // therefore beats an alternate key regardless of either field's shape.
     let mut shadowing = tagged("Shadow", 5);
     shadowing.as_fix_mut().set_tags(&[453]).unwrap();
     shadowing.as_fix_mut().set_aliases(["Parties"]).unwrap();
@@ -1346,7 +1597,7 @@ fn the_primitive_half_is_read_first_without_reordering_the_tiers() {
     );
     assert_eq!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "parties")
+            .get_field_by_name("parties", Some(&FixBranch::STANDARD))
             .map(Field::name),
         Some("Parties")
     );
@@ -1369,16 +1620,16 @@ fn the_primitive_half_is_read_first_without_reordering_the_tiers() {
     );
     assert_eq!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "PRICE")
+            .get_field_by_name("PRICE", Some(&FixBranch::STANDARD))
             .map(Field::name),
         Some("Price")
     );
     assert_eq!(
         registry
-            .get_field_by_name(&FixBranch::STANDARD, "rate")
+            .get_field_by_name("rate", Some(&FixBranch::STANDARD))
             .map(Field::name),
         Some("Price"),
-        "an alias the nested half does not hold still resolves"
+        "an alias held by another field still resolves"
     );
     assert_eq!(
         registry.get_field_by_tag(555).map(Field::name),
@@ -1397,13 +1648,10 @@ fn a_nested_field_can_never_claim_a_primitive_field_key() {
     let mut same_alias = component("Legs", 5_557);
     same_alias.as_fix_mut().set_aliases(["ticker"]).unwrap();
     let cases = [
-        (group("Parties", 55), "identifier standard:55"),
-        (
-            group("symbol", 5_555),
-            "name \"symbol\" in branch \"standard\"",
-        ),
-        (same_alternate, "alternate identifier standard:65"),
-        (same_alias, "alias \"ticker\" in branch \"standard\""),
+        (group("Parties", 55), "identifier 55:"),
+        (group("symbol", 5_555), "name \"symbol\" in branch \"\""),
+        (same_alternate, "alternate identifier 65:"),
+        (same_alias, "alias \"ticker\" in branch \"\""),
     ];
     for (claimant, key) in cases {
         let claiming = claimant.name().to_owned();
@@ -1426,13 +1674,13 @@ fn a_nested_field_can_never_claim_a_primitive_field_key() {
     let Error::Conflict { path, .. } = &error else {
         panic!("{error}");
     };
-    assert!(path.contains("identifier standard:453"), "{path}");
+    assert!(path.contains("identifier 453:"), "{path}");
     assert!(path.ends_with(", held by NoPartyIDs"), "{path}");
     assert_eq!(registry.len(), 1);
 }
 
 #[test]
-fn iteration_and_the_cursor_merge_both_halves_in_identifier_order() {
+fn iteration_and_the_cursor_walk_every_shape_in_identifier_order() {
     let registry = FixRegistry::from_fields([
         tagged("Account", 1),
         group("NoPartyIDs", 453),
@@ -1471,24 +1719,24 @@ fn iteration_and_the_cursor_merge_both_halves_in_identifier_order() {
     // The cursor a binding advances walks the merge too.
     let mut walked = Vec::new();
     let mut cursor = None;
-    while let Some(field) = registry.next_field_after(cursor.as_ref()) {
+    while let Some(field) = registry.next_field_after(cursor) {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
     assert_eq!(walked, expected);
 
-    // Equality and Debug span both halves.
+    // Equality and Debug span every field shape.
     let mut reversed: Vec<Field> = registry.iter().cloned().collect();
     reversed.reverse();
     assert_eq!(registry, FixRegistry::from_fields(reversed).unwrap());
     let rendered = format!("{registry:?}");
-    assert!(rendered.starts_with("{\"standard:1\": "), "{rendered}");
+    assert!(rendered.starts_with("{\"1:\": "), "{rendered}");
     assert!(
-        rendered.find("\"standard:453\"").unwrap() < rendered.find("\"standard:1000\"").unwrap(),
+        rendered.find("\"453:\"").unwrap() < rendered.find("\"1000:\"").unwrap(),
         "{rendered}"
     );
 
-    // One half alone still iterates whole.
+    // A nested-only registry still iterates whole.
     let nested_only =
         FixRegistry::from_fields([group("NoPartyIDs", 453), component("Instrument", 1_000)])
             .unwrap();
@@ -1564,15 +1812,11 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
     assert!(error.to_string().contains("scheme mem"), "{error}");
 
     // A malformed shard anywhere is an error naming the shard.
-    std::fs::write(
-        location.join("primitive").join("standard").join("0.json"),
-        b"not json",
-    )
-    .unwrap();
+    std::fs::write(location.join("primitive").join("0.json"), b"not json").unwrap();
     let error = autoload(Some(&location.to_string_lossy()), None).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("0.json"), "{message}");
-    std::fs::write(home.join(".config/fix/primitive/standard/0.json"), b"[1]").unwrap();
+    std::fs::write(home.join(".config/fix/primitive/0.json"), b"[1]").unwrap();
     let error = autoload(None, Some(config)).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("0.json"), "{message}");
@@ -1747,7 +1991,7 @@ fn a_message_rejects_a_value_its_field_refuses() {
 fn a_message_resolves_a_bare_tag_in_its_own_branch_then_the_standard_one() {
     let cme = cme();
     // Tag 5001 is defined in both dictionaries; 35 only in the standard one.
-    let mut venue_trade = identified("TradeID", &FixId::from_parts(cme.clone(), 5001).unwrap());
+    let mut venue_trade = identified("TradeID", &cme, 5001);
     venue_trade.as_fix_mut().set_aliases(["TID"]).unwrap();
     let mut spec_trade = tagged("SecondaryTradeID", 5001);
     spec_trade.as_fix_mut().set_aliases(["STID"]).unwrap();
@@ -1781,17 +2025,17 @@ fn a_message_resolves_a_bare_tag_in_its_own_branch_then_the_standard_one() {
     assert!(msg.get_by_name("stid").is_none());
 
     // An identifier is exact and never tiers.
-    let venue_id = FixId::from_parts(cme.clone(), 5001).unwrap();
-    assert_eq!(msg.by_id(&venue_id).unwrap(), &Scalar::from("T-1"));
+    let venue_id = FixId::from_parts(&cme, 5001).unwrap();
+    assert_eq!(msg.by_id(venue_id).unwrap(), &Scalar::from("T-1"));
     assert!(
-        msg.get_by_id(&FixId::standard(5001)).is_none(),
+        msg.get_by_id(FixId::standard(5001)).is_none(),
         "a foreign branch misses"
     );
-    assert_eq!(msg.get(&venue_id), msg.get_by_id(&venue_id));
-    assert_eq!(msg.value(&venue_id).unwrap(), msg.by_id(&venue_id).unwrap());
-    let error = msg.by_id(&FixId::standard(5001)).unwrap_err();
+    assert_eq!(msg.get(venue_id), msg.get_by_id(venue_id));
+    assert_eq!(msg.value(venue_id).unwrap(), msg.by_id(venue_id).unwrap());
+    let error = msg.by_id(FixId::standard(5001)).unwrap_err();
     assert!(
-        matches!(&error, Error::Absent { expected: "fix value", path } if path == "identifier standard:5001"),
+        matches!(&error, Error::Absent { expected: "fix value", path } if path == "identifier 5001:"),
         "{error}"
     );
 
@@ -1813,7 +2057,7 @@ fn a_message_resolves_a_bare_tag_in_its_own_branch_then_the_standard_one() {
     assert_eq!(plain.by_tag(5001).unwrap(), &Scalar::from("S-1"));
     assert_eq!(plain.by_name("stid").unwrap(), &Scalar::from("S-1"));
     assert!(plain.get_by_name("tid").is_none());
-    assert!(plain.get_by_id(&venue_id).is_none());
+    assert!(plain.get_by_id(venue_id).is_none());
 }
 
 #[test]

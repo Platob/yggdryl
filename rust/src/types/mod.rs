@@ -30,6 +30,7 @@ pub mod text;
 mod typed;
 pub mod uuid;
 mod value;
+pub mod version;
 mod vocabulary;
 
 #[cfg(feature = "arrow")]
@@ -102,6 +103,8 @@ pub use uuid::UuidScalar;
 pub use uuid::*;
 pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
 pub(crate) use value::{dtype_scalar, validate_dtype_value_for};
+pub(crate) use version::VERSION_EXTENSION_NAME;
+pub use version::*;
 
 #[cfg(test)]
 mod tests;

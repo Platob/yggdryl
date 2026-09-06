@@ -12,6 +12,7 @@ use criterion::{criterion_group, criterion_main};
 
 criterion_group!(
     holder,
+    fs::local_parity::local_parity_benchmarks,
     fs::bytes::byte_benchmarks,
     fs::record::record_benchmarks,
     fs::listing::listing_benchmarks,

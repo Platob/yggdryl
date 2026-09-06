@@ -62,7 +62,10 @@ pub use fix::{FixAliases, FixBranch, FixFieldIter, FixId, FixKey, FixMsg, FixReg
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
-pub use iobase::{DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty, skip_absent};
+pub use iobase::{
+    DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, Reader, Writer, not_empty,
+    skip_absent,
+};
 pub use iocursor::{Cursor, IOCursor};
 pub use iofile::IOFile;
 pub use iofolder::IOFolder;
@@ -86,13 +89,13 @@ pub use timezone::Timezone;
 pub use types::cast::{ArrowCast, ArrowFieldType};
 pub use types::floating::scalars::{Float16, Float32, Float64};
 pub use types::protocol::{
-    ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, FieldPropertiesField,
-    FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut, GlueField,
-    GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField, IcebergFieldMut,
-    MysqlField, MysqlFieldMut, PandasField, PandasFieldMut, PolarsField, PolarsFieldMut,
-    PostgresField, PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField,
-    ProtocolFieldMut, S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut,
-    UrnField, UrnFieldMut,
+    ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,
+    FieldPropertiesField, FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut,
+    GlueField, GlueFieldMut, GsField, GsFieldMut, HttpField, HttpFieldMut, IcebergField,
+    IcebergFieldMut, IdentityField, IdentityFieldMut, MysqlField, MysqlFieldMut, PandasField,
+    PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
+    PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
+    S3Field, S3FieldMut, SparkField, SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
     AnyType, AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRef,
@@ -103,12 +106,14 @@ pub use types::{
 pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields,
+    TemporalType, TextType, UnionFields, Version, VersionField, VersionScalar, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{
-    Authority, Extensions, Parents, PathSegments, Uri, UriParents, UriPath, Url, UrlParents, Urn,
+    Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, Url,
+    UrlParents, Urn,
 };
+pub use xxhash::{DigestFieldNames, DigestFields};
 
 #[cfg(test)]
 mod tests {

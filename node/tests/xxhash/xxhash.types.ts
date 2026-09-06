@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer'
+import type { RecordBatch as ArrowRecordBatch } from 'apache-arrow'
 
-import { Digest, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, xxhash } from 'yggdryl'
+import { Digest, Field, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, xxhash } from 'yggdryl'
 
 const payload = Buffer.from('AAPL,187.23')
 
@@ -70,6 +71,15 @@ void seed64
 void custom
 void copied
 void state3_64.algorithm
+
+declare const root: Field
+declare const batch: ArrowRecordBatch
+const filled: ArrowRecordBatch = state3_64.fillArrowBatch(root, batch)
+const forced: ArrowRecordBatch = state3_64.fillArrowBatch(root, batch, true)
+void filled
+void forced
+// @ts-expect-error force is boolean
+state3_64.fillArrowBatch(root, batch, 'yes')
 
 // The classes are also reachable through the namespace.
 void new xxhash.Xxh3()

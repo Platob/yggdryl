@@ -23,8 +23,9 @@ pub(crate) const DEFAULT_BATCH_ROW_SIZE: usize = crate::media::DEFAULT_RECORD_BA
 ///
 /// Only the current batch is held.  The source is not touched during
 /// construction, and each call to `next` pulls at most `batch_row_size` rows.
-/// After the first conversion, validation, or materialization failure the
-/// reader is fused.
+/// A conversion or validation failure after completed rows yields that bounded
+/// prefix first, then the error, and fuses the reader. A materialization
+/// failure is immediate because no prefix batch exists yet.
 pub(crate) fn reader<I, R>(
     field: &Field,
     rows: I,
@@ -47,6 +48,7 @@ where
         commit_row_size,
         rows_to_commit: commit_row_size,
         remaining_rows: max_row_size,
+        pending_error: None,
         done: false,
     }))
 }
@@ -91,6 +93,7 @@ struct Rows<I> {
     commit_row_size: Option<usize>,
     rows_to_commit: Option<usize>,
     remaining_rows: Option<u64>,
+    pending_error: Option<ArrowError>,
     done: bool,
 }
 
@@ -103,6 +106,10 @@ where
     type Item = std::result::Result<RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if let Some(error) = self.pending_error.take() {
+            self.done = true;
+            return Some(Err(error));
+        }
         if self.done {
             return None;
         }
@@ -137,22 +144,37 @@ where
             let value = match row.try_into().map_err(Into::into) {
                 Ok(value) => value,
                 Err(error) => {
-                    self.done = true;
-                    return Some(Err(external(error)));
+                    let error = external(error);
+                    if values.is_empty() {
+                        self.done = true;
+                        return Some(Err(error));
+                    }
+                    self.pending_error = Some(error);
+                    break;
                 }
             };
             // Validation owns shape, arity, nullability, and the error path.
             // Canonicalization then narrows values into their declared native
             // representation without repeating that validation walk.
             if let Err(error) = self.field.validate_value(&value) {
-                self.done = true;
-                return Some(Err(external(error)));
+                let error = external(error);
+                if values.is_empty() {
+                    self.done = true;
+                    return Some(Err(error));
+                }
+                self.pending_error = Some(error);
+                break;
             }
             match self.field.canonicalize_value(value) {
                 Ok(value) => values.push(value),
                 Err(error) => {
-                    self.done = true;
-                    return Some(Err(external(error)));
+                    let error = external(error);
+                    if values.is_empty() {
+                        self.done = true;
+                        return Some(Err(error));
+                    }
+                    self.pending_error = Some(error);
+                    break;
                 }
             }
         }
@@ -164,6 +186,7 @@ where
             .map_err(|error| ArrowError::ExternalError(Box::new(error)));
         if batch.is_err() {
             self.done = true;
+            self.pending_error = None;
         } else {
             let accepted = values.len();
             if let Some(remaining) = &mut self.remaining_rows {
@@ -328,13 +351,24 @@ mod tests {
     }
 
     #[test]
-    fn invalid_row_is_typed_and_fuses_the_reader() {
+    fn an_invalid_row_follows_the_completed_batch_prefix_and_fuses_the_reader() {
         let rows = [
             Scalar::from_sequence([Scalar::from(1_i32), Scalar::from("ok")]),
             Scalar::from_sequence([Scalar::from("wrong"), Scalar::from("bad")]),
             Scalar::from_sequence([Scalar::from(3_i32), Scalar::from("unread")]),
         ];
         let mut batches = reader(&field(), rows, Some(3), None, None).unwrap();
+        let prefix = batches.next().unwrap().unwrap();
+        assert_eq!(prefix.num_rows(), 1);
+        assert_eq!(
+            prefix
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .values(),
+            &[1]
+        );
         let error = batches.next().unwrap().unwrap_err();
         let ArrowError::ExternalError(error) = error else {
             panic!("expected a typed external error")

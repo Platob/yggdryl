@@ -1,0 +1,53 @@
+[
+  {
+    "name": "HeartBtInt",
+    "dtype": {
+      "type": "int32"
+    },
+    "nullable": false,
+    "metadata": {
+      "display": "Heartbeat interval",
+      "fix:description": "Heartbeat interval in seconds.",
+      "fix:tag": "108"
+    }
+  },
+  {
+    "name": "TestReqID",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Test request ID",
+      "fix:description": "Identifier included in a Test Request message to be returned in the resulting Heartbeat.",
+      "fix:tag": "112"
+    }
+  },
+  {
+    "name": "ExecType",
+    "dtype": {
+      "type": "utf8"
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Execution type",
+      "fix:description": "Describes the specific Execution Report; alternate tag 20 is the pre-4.3 ExecTransType whose role this field absorbed.",
+      "fix:tag": "150",
+      "fix:tags": "20"
+    }
+  },
+  {
+    "name": "LeavesQty",
+    "dtype": {
+      "type": "decimal128",
+      "precision": 20,
+      "scale": 8
+    },
+    "nullable": true,
+    "metadata": {
+      "display": "Leaves quantity",
+      "fix:description": "Quantity open for further execution.",
+      "fix:tag": "151"
+    }
+  }
+]

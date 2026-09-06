@@ -51,7 +51,7 @@ Apply `@scalar` to the subclass when its annotations should declare a distinct
 Struct field.
 
 The canonical cross-runtime signatures and error contract live in
-[the core field guide](../docs/types.md#converting-to-one-native-field).
+[the core field page](../docs/types/field.md).
 Python accepts a native `Field`, a PyArrow Schema/Field/DataType, or a
 dataclass class/instance; `name` uniformly renames the result, including to the
 empty string.
@@ -141,7 +141,7 @@ The native import preserves physical widths, nested layout, metadata,
 extension identity, and dictionary transport state. `into_dataclass()` derives
 Python annotations from that exact graph rather than re-inferring the schema.
 
-See the [Field guide](../docs/types.md) and the
+See the [Field page](../docs/types/field.md) and the
 [Python boundary guide](../docs/extensions/python.md) for the complete API.
 The reproducible decorator benchmarks are:
 

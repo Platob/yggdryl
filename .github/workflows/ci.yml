@@ -16,12 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
 jobs:
   rust:
-    # Keep the core's non-default Parquet/Iceberg contract explicit. The
-    # bindings enable it too, then exercise their runtime surfaces below.
+    # The default lane selects only the core, otherwise the bindings would
+    # unify Parquet and Iceberg into it. The full lane also lints binding Rust.
     name: Rust quality (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -29,25 +30,36 @@ jobs:
       matrix:
         include:
           - name: default features
+            cache_key: default
+            clippy_packages: -p yggdryl
+            doc_packages: -p yggdryl
             flags: ""
-          - name: parquet iceberg
-            flags: --features "parquet iceberg"
+          - name: all features
+            cache_key: full
+            clippy_packages: --workspace
+            doc_packages: --workspace
+            flags: --all-features
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-${{ matrix.cache_key }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Formatting
-        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+        if: matrix.name == 'default features'
+        run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --locked --manifest-path rust/Cargo.toml --workspace --all-targets ${{ matrix.flags }} -- -D warnings
-      - name: Tests
-        run: cargo test --locked --manifest-path rust/Cargo.toml --workspace --all-targets ${{ matrix.flags }}
+        run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
+      - name: Tests and benchmark smoke tests
+        run: cargo test --locked -p yggdryl --all-targets ${{ matrix.flags }}
       - name: Documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --locked --manifest-path rust/Cargo.toml --workspace --no-deps ${{ matrix.flags }}
-      - name: Compile benchmarks
-        run: cargo bench --locked --manifest-path rust/Cargo.toml --benches --no-run ${{ matrix.flags }}
+        run: cargo doc --locked ${{ matrix.doc_packages }} --no-deps ${{ matrix.flags }}
+      - name: Check optimized benchmark configuration
+        run: cargo check --locked -p yggdryl --profile bench --benches ${{ matrix.flags }}
 
   core-msrv:
     name: Core Rust 1.85
@@ -81,14 +93,47 @@ jobs:
           python-version: "3.12"
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
       - name: Install the external implementation
         run: python -m pip install "pyiceberg[pyarrow,sql-sqlite]==0.11.1" "pyarrow==25.0.1"
       - name: Exchange v1, v2, and v3 tables
         run: python scripts/check_iceberg_interop.py
 
+  python-wheel:
+    name: Python binding wheel
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
+      - name: Install Maturin
+        run: python -m pip install "maturin>=1.9,<2"
+      - name: Build wheel
+        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-ci-wheel
+          path: python/dist/*.whl
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
   python:
     name: Python binding (${{ matrix.pyarrow }})
-    runs-on: ubuntu-latest
+    needs: python-wheel
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -100,18 +145,20 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-ci-wheel
+          path: python/dist
       # `pandas` and `polars` are not runtime dependencies; they are installed
       # so the tests covering the frame entry points run here instead of
       # skipping. Both are optional for PyArrow itself, so the pinned PyArrow
       # in the matrix still decides which one is used.
-      - name: Install build and test tools
+      - name: Install test tools
         run: >-
-          python -m pip install "maturin>=1.9,<2" "${{ matrix.pyarrow }}"
+          python -m pip install "${{ matrix.pyarrow }}"
           "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata
-      - name: Build wheel
-        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       - name: Smoke tests
@@ -122,7 +169,7 @@ jobs:
           --config-file python/pyproject.toml
           python/yggdryl
           python/tests/typing_bindings.py
-          python/tests/typing_fields.py
+          python/tests/types/typing_fields.py
 
   spark-interop:
     # The Iceberg exchange with Apache Spark, the format's reference
@@ -131,7 +178,8 @@ jobs:
     # pytest run above deselects it, this dedicated job provisions Spark with
     # scripts/setup_spark_interop.py and runs exactly it.
     name: Spark interop
-    runs-on: ubuntu-latest
+    needs: python-wheel
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -141,12 +189,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: Install Rust
-        run: rustup toolchain install stable --profile minimal
-      - name: Install build and test tools
-        run: python -m pip install "maturin>=1.9,<2" "pyarrow>=18" "pytest>=8"
-      - name: Build wheel
-        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-ci-wheel
+          path: python/dist
+      - name: Install test tools
+        run: python -m pip install "pyarrow>=18" "pytest>=8"
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       - name: Provision Spark and the Iceberg runtime
@@ -156,7 +204,7 @@ jobs:
       # tree - the other modules' imports (pandas, typing_extensions) are the
       # default job's business, not this one's.
       - name: Exchange tables with Spark
-        run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
+        run: python -m pytest python/tests/media/test_spark_interop.py -m spark_interop
 
   node:
     name: Node.js binding
@@ -169,10 +217,16 @@ jobs:
           package-manager-cache: false
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-full
+          save-if: false
       - name: Install Node.js build tooling
         run: npm ci --prefix node
       - name: Regenerate native module and audit package
-        run: npm run --prefix node test:package
+        run: npm run --prefix node test:package:debug
+      - name: Generated loader and declarations are current
+        run: git diff --exit-code -- node/index.js node/index.d.ts
       - name: Smoke tests
         run: npm test --prefix node
       # The interactive documentation is generated by this addon, and the docs

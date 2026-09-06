@@ -1,6 +1,7 @@
 //! Plain-text rows reached through the shared record-media surface.
 
 mod handle;
+mod leading;
 mod options;
 mod reader;
 mod sep;
@@ -9,6 +10,7 @@ mod sep;
 pub(crate) mod arrow;
 
 pub use handle::Text;
+pub use leading::LeadingFragment;
 pub use options::TextOptions;
 pub use sep::LineSep;
 

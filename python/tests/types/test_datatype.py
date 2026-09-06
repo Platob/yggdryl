@@ -363,6 +363,28 @@ def test_the_uuid_is_sixteen_bytes_spelled_as_one_identifier() -> None:
         field.cast_arrow_array(pa.array(["not-a-uuid"]))
 
 
+def test_version_is_canonical_numeric_text_in_sixteen_native_bytes() -> None:
+    dtype = DataType("version")
+    field = Field("version", dtype, nullable=False)
+
+    assert dtype.id == "version"
+    assert dtype.kind == "text"
+    assert str(dtype) == "version"
+    assert dtype.ascii_width is None
+    assert field.default_pyvalue() == "0"
+    assert field.arrow_scalar("5.0.SP1") == pa.scalar("5.0SP1")
+    assert field.cast_arrow_array(pa.array(["5.0.SP1", "5.0SP10"])).to_pylist() == [
+        "5.0SP1",
+        "5.0SP10",
+    ]
+
+    arrow = field.into_arrow()
+    assert arrow.type == pa.string()
+    assert Field.from_arrow(arrow) == field
+    with pytest.raises(ValueError, match="version"):
+        field.cast_arrow_array(pa.array(["5.0+"]))
+
+
 def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:
     ascii_text = DataType("ascii")
     fixed = DataType.ascii(3)

@@ -35,8 +35,52 @@
   box-shadow: none;
 }
 
+/* The top bar is the layer switch: one tab per layer, the active one in red. */
 .md-tabs {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.md-tabs__list {
+  gap: 0.2rem;
+}
+
+.md-tabs__link {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-top: 0.55rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid transparent;
+  opacity: 0.75;
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+
+.md-tabs__link:hover,
+.md-tabs__link--active {
+  opacity: 1;
+}
+
+.md-tabs__link--active {
+  color: var(--yggdryl-red-bright);
+  border-bottom-color: var(--yggdryl-red-bright);
+}
+
+/* The sidebar lists one layer's families; section labels are small caps. */
+.md-nav--primary .md-nav__item--section > .md-nav__link {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+  margin-top: 0.4rem;
+}
+
+.md-nav--primary .md-nav__item--section > .md-nav__link:first-child {
+  margin-top: 0;
+}
+
+.md-nav--primary .md-nav__item .md-nav__link {
+  margin-top: 0.35em;
 }
 
 /* Headings: tighter tracking, and a red rule under the page title. */
@@ -51,7 +95,9 @@
 .md-typeset h2 {
   font-weight: 650;
   letter-spacing: -0.01em;
-  margin-top: 2.2em;
+  margin-top: 1.8em;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
 }
 
 .md-typeset h3 {
@@ -60,9 +106,20 @@
 
 /* The lead sentence under an H1 carries the page, so it reads a size up. */
 .md-typeset h1 + p {
-  font-size: 1.05rem;
-  line-height: 1.65;
+  font-size: 1rem;
+  line-height: 1.6;
   color: var(--md-default-fg-color--light);
+}
+
+/* Prose is short by design; a paragraph is one or two sentences between blocks. */
+.md-typeset p {
+  margin: 0.6em 0;
+}
+
+.md-typeset .tabbed-set,
+.md-typeset .highlight {
+  margin-top: 0.6em;
+  margin-bottom: 0.9em;
 }
 
 /* Code: a defined surface rather than a floating block. */
@@ -97,11 +154,30 @@
   padding-top: 0.4rem;
 }
 
-/* Tables: header rules instead of fills, which keeps the page quiet. */
+/* Tables: header rules instead of fills, which keeps the page quiet. Contract,
+ * edge, and benchmark tables share one compact size so a page scans as a grid. */
 .md-typeset table:not([class]) {
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.3rem;
   overflow: hidden;
+  font-size: 0.68rem;
+  display: inline-table;
+  max-width: 100%;
+}
+
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  padding: 0.45em 0.9em;
+  vertical-align: top;
+}
+
+.md-typeset table:not([class]) td code {
+  white-space: nowrap;
+}
+
+.md-typeset .md-typeset__table {
+  display: block;
+  overflow-x: auto;
 }
 
 .md-typeset table:not([class]) th {

@@ -10,7 +10,9 @@ use std::hash::Hash;
 use std::sync::Arc;
 
 use super::{Bound, Bounds, ColumnBounds, Expression, Residual, Safety, Selector, Statement};
-use crate::{DataType, DataTypeId, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
+use crate::{
+    DataType, DataTypeId, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url, Version,
+};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -380,6 +382,49 @@ fn scalar_casts_return_the_exact_target_leaf() {
     for (target, input, id) in cases {
         let converted = super::eval::convert(&target, &input, Safety::Strict).unwrap();
         assert_eq!(converted.id(), id, "cast to {target}");
+    }
+}
+
+#[test]
+fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
+    let sp2 = Scalar::from("5.0SP2".parse::<Version>().unwrap());
+    let sp10 = Scalar::from("5.0SP10".parse::<Version>().unwrap());
+
+    assert_eq!(
+        super::eval::convert(&DataType::Version, &Scalar::from("5.0.SP2"), Safety::Strict).unwrap(),
+        sp2
+    );
+    assert_eq!(
+        super::eval::convert(&DataType::Version, &sp2, Safety::Strict).unwrap(),
+        sp2
+    );
+    assert_eq!(
+        super::eval::convert(&DataType::Utf8, &sp2, Safety::Strict).unwrap(),
+        Scalar::from("5.0SP2")
+    );
+    assert!(super::eval::convert(&DataType::Version, &Scalar::from(5), Safety::Strict).is_err());
+    assert_eq!(
+        super::eval::order(&DataType::Version, &sp2, &sp10),
+        Some(std::cmp::Ordering::Less)
+    );
+
+    let schema = DataType::from_fields([DataType::Version.required_field("v")])
+        .unwrap()
+        .required_field("row");
+    let row = Scalar::from_sequence([sp2]);
+    for (text, expected) in [
+        ("v < version '5.0SP10'", Scalar::from(true)),
+        ("length(v)", Scalar::from(6_i64)),
+        ("v like '5.0%'", Scalar::from(true)),
+    ] {
+        let answer = text
+            .parse::<Expression>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap()
+            .eval(&row)
+            .unwrap();
+        assert_eq!(answer, expected, "{text}");
     }
 }
 

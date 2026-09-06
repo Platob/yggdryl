@@ -159,6 +159,30 @@ macro_rules! for_each_well_known_protocol {
             FieldPropertiesFieldMut,
             "Yggdryl field"
         );
+        $emit!(
+            as_digest,
+            as_digest_mut,
+            DIGEST,
+            DigestField,
+            DigestFieldMut,
+            "row digest"
+        );
+        $emit!(
+            as_identity,
+            as_identity_mut,
+            IDENTITY,
+            IdentityField,
+            IdentityFieldMut,
+            "identity"
+        );
+        $emit!(
+            as_partition,
+            as_partition_mut,
+            PARTITION,
+            PartitionField,
+            PartitionFieldMut,
+            "partition"
+        );
         $emit!(as_s3, as_s3_mut, S3, S3Field, S3FieldMut, "Amazon S3");
         $emit!(
             as_gs,

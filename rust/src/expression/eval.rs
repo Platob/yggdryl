@@ -22,8 +22,10 @@
 //! it. Two tiers that disagree about `nan` disagree about a filter, so this is
 //! stated rather than inherited.
 
-use smol_str::{SmolStr, format_smolstr};
+use std::borrow::Cow;
 use std::cmp::Ordering;
+
+use smol_str::{SmolStr, format_smolstr};
 
 use super::bind::{Kind, Node};
 use super::selector::Attributes;
@@ -178,11 +180,11 @@ impl Node {
                 escape,
             } => {
                 let held = value.eval(row)?;
-                let Some(text) = held.as_str() else {
+                let Some(text) = scalar_text(&held) else {
                     return Ok(Scalar::Null);
                 };
                 Ok(Scalar::from(like_matches(
-                    text,
+                    text.as_ref(),
                     pattern,
                     *case_insensitive,
                     *escape,
@@ -190,11 +192,12 @@ impl Node {
             }
             Kind::Glob(value, pattern) => {
                 let held = value.eval(row)?;
-                let Some(text) = held.as_str() else {
+                let Some(text) = scalar_text(&held) else {
                     return Ok(Scalar::Null);
                 };
                 Ok(Scalar::from(crate::uri::pattern::matches_glob_text(
-                    text, pattern,
+                    text.as_ref(),
+                    pattern,
                 )))
             }
             Kind::Arithmetic(left, operator, right) => arithmetic(
@@ -389,6 +392,10 @@ pub(crate) fn order(dtype: &DataType, left: &Scalar, right: &Scalar) -> Option<O
         DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => {
             Some(left.as_u128()?.cmp(&right.as_u128()?))
         }
+        DataType::Version => match (left, right) {
+            (Scalar::Version(left), Scalar::Version(right)) => Some(left.cmp(right)),
+            _ => None,
+        },
         other if is_text(other) => Some(left.as_str()?.cmp(right.as_str()?)),
         other if is_binary(other) => Some(left.as_bytes()?.cmp(right.as_bytes()?)),
         _ => Some(left.as_i128()?.cmp(&right.as_i128()?)),
@@ -616,12 +623,12 @@ fn call(
             Scalar::Bytes(bytes) => {
                 Scalar::from(i64::try_from(bytes.as_bytes().len()).unwrap_or(i64::MAX))
             }
-            other => other.as_str().map_or(Scalar::Null, |text| {
+            other => scalar_text(other).map_or(Scalar::Null, |text| {
                 Scalar::from(i64::try_from(text.chars().count()).unwrap_or(i64::MAX))
             }),
         },
         Function::Substring => {
-            let Some(text) = first.as_str() else {
+            let Some(text) = scalar_text(first) else {
                 return Ok(Scalar::Null);
             };
             // SQL counts from one here, deliberately unlike the zero-based `[]`
@@ -666,10 +673,10 @@ fn call(
         Function::Concat => {
             let mut joined = String::new();
             for value in values {
-                let Some(text) = value.as_str() else {
+                let Some(text) = scalar_text(value) else {
                     return Ok(Scalar::Null);
                 };
-                joined.push_str(text);
+                joined.push_str(text.as_ref());
             }
             Scalar::from(SmolStr::new(joined))
         }
@@ -703,18 +710,26 @@ fn call(
 }
 
 fn text_value(value: &Scalar, rewrite: impl Fn(&str) -> String) -> Scalar {
-    value.as_str().map_or(Scalar::Null, |text| {
-        Scalar::from(SmolStr::new(rewrite(text)))
+    scalar_text(value).map_or(Scalar::Null, |text| {
+        Scalar::from(SmolStr::new(rewrite(text.as_ref())))
     })
 }
 
 fn text_pair(values: &[Scalar], answer: impl Fn(&str, &str) -> bool) -> Scalar {
     match (
-        values.first().and_then(Scalar::as_str),
-        values.get(1).and_then(Scalar::as_str),
+        values.first().and_then(scalar_text),
+        values.get(1).and_then(scalar_text),
     ) {
-        (Some(text), Some(other)) => Scalar::from(answer(text, other)),
+        (Some(text), Some(other)) => Scalar::from(answer(text.as_ref(), other.as_ref())),
         _ => Scalar::Null,
+    }
+}
+
+/// Borrow ordinary text and render compact value-backed text only when needed.
+fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
+    match value {
+        Scalar::Version(value) => Some(Cow::Owned(value.to_string())),
+        _ => value.as_str().map(Cow::Borrowed),
     }
 }
 
@@ -941,6 +956,10 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi => {
             canonical(value.clone())
         }
+        DataType::Version => match value {
+            Scalar::Version(_) | Scalar::Text(_) => canonical(value.clone()),
+            _ => refuse("version text"),
+        },
         other if is_text(other) => {
             if let Some(text) = value.as_str() {
                 return canonical(Scalar::from(SmolStr::new(text)));

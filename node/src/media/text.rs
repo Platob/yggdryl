@@ -3,7 +3,7 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Either, Error, Result, Uint8Array};
 use napi_derive::napi;
 use yggdryl::media::IORecordOptions;
-use yggdryl::media::text::TextOptions as CoreTextOptions;
+use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Level, Metadata, MimeType};
 
 use crate::enums::JsMimeType;
@@ -14,7 +14,7 @@ use crate::types::datatype::{DataTypeInput, JsDataType, dtype_from_input};
 use crate::types::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
 use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
-/// Flat settings for physical-line `text/plain` records.
+/// Flat settings for physical-line or framed `text/plain` records.
 #[napi(js_name = "TextOptions")]
 pub struct JsTextOptions {
     pub(crate) inner: CoreTextOptions,
@@ -276,6 +276,53 @@ impl JsTextOptions {
                     .map_err(|_| Error::from_reason("withRownum must be a signed 64-bit integer"))
             })
             .transpose()?;
+        Ok(())
+    }
+
+    /// Return whether physical lines are framed into logical records.
+    #[napi(getter)]
+    pub fn framing(&self) -> bool {
+        self.inner.framing()
+    }
+
+    /// Enable or disable logical-record framing.
+    #[napi(setter)]
+    pub fn set_framing(&mut self, framing: bool) {
+        self.inner.set_framing(framing);
+    }
+
+    /// Return the canonical treatment for a leading unmatched fragment.
+    #[napi(getter, ts_return_type = "'keep' | 'drop' | 'error'")]
+    pub fn leading_fragment(&self) -> String {
+        self.inner.leading_fragment().as_str().to_owned()
+    }
+
+    /// Set how framing handles physical lines before the first header.
+    #[napi(setter)]
+    pub fn set_leading_fragment(
+        &mut self,
+        #[napi(ts_arg_type = "'keep' | 'drop' | 'error'")] value: String,
+    ) -> Result<()> {
+        self.inner
+            .set_leading_fragment(LeadingFragment::from_str(&value).map_err(napi_error)?);
+        Ok(())
+    }
+
+    /// Return the retained decoded-body byte limit for each logical record.
+    #[napi(getter)]
+    pub fn max_record_byte_size(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.max_record_byte_size().map(|bytes| bytes as f64)
+    }
+
+    /// Set or clear the retained decoded-body byte limit for each logical record.
+    #[napi(setter)]
+    pub fn set_max_record_byte_size(&mut self, value: Option<f64>) -> Result<()> {
+        self.inner.set_max_record_byte_size(
+            value
+                .map(|bytes| crate::exact_u64(bytes, "maxRecordByteSize"))
+                .transpose()?,
+        );
         Ok(())
     }
 

@@ -6,15 +6,20 @@
 //! the one thing this module composes, and it is rendered indented so the
 //! tracked seed reads in a diff.
 //!
-//! The layout is `<root>/primitive/<branch>/<shard>.json` and
-//! `<root>/nested/<branch>/<shard>.json`: a shard index is only unique inside
-//! one dictionary, and the two trees separate the scalar fields a transcriber
-//! resolves per wire tag from the components and repeating groups that carry a
-//! whole subtree. Either tree may be absent - a dictionary of only scalars
-//! writes no `nested/`, and a root with neither loads as the empty registry.
+//! Standard fields have no branch name and live directly at
+//! `<root>/primitive/<shard>.json` or `<root>/nested/<shard>.json`. Named
+//! branches add one folder between the tree and shard. The two trees separate
+//! scalar fields from components and repeating groups. Either tree may be
+//! absent - a dictionary of only scalars writes no `nested/`, and a root with
+//! neither loads as the empty registry.
 //! The record is authoritative and the folder is layout: a field whose
 //! `fix:branch` contradicts the branch folder it was read from, or whose
 //! datatype contradicts the tree, is a typed error naming both.
+//!
+//! `<root>/branches.json` is the optional dialect manifest. It is a generic
+//! [`Scalar`] JSON array ordered by canonical branch name; absence retains the
+//! bare branch records derived from fields. A record for a branch with no
+//! field is refused rather than retained as orphan state.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -26,7 +31,7 @@ use super::{FixBranch, FixRegistry};
 use crate::IOBase;
 use crate::holder::Holder;
 use crate::text::Formatting;
-use crate::{Error, Field, Result, Scalar, Url};
+use crate::{Error, Field, Result, Scalar, Url, Version};
 
 /// The tree under a registry root holding the branch folders of the fields
 /// whose datatype is one scalar value.
@@ -42,6 +47,8 @@ const TREES: [&str; 2] = [PRIMITIVE, NESTED];
 /// written by a retired layout, and answering that with an empty dictionary
 /// would turn every later lookup into a wrong answer instead of a failure.
 const RETIRED: &str = "records";
+/// The branch dialect table, beside rather than inside the two trees.
+const BRANCHES: &str = "branches.json";
 /// How many consecutive tags one shard holds.
 const SHARD_WIDTH: i32 = 100;
 /// The extension every shard carries.
@@ -84,8 +91,7 @@ fn branch_of(entry: &Holder) -> Result<FixBranch> {
 
 /// The tree a field's definition belongs in.
 ///
-/// One predicate decides both the registry half and the file, so a field
-/// cannot be indexed as one thing and written as another.
+/// The one predicate that decides which storage tree holds a field.
 fn tree_of(field: &Field) -> &'static str {
     if is_nested(field) { NESTED } else { PRIMITIVE }
 }
@@ -159,14 +165,12 @@ impl FixRegistry {
     /// that does not exist lists nothing, so a dictionary of only scalars and
     /// a root with neither tree both load without a failure - every handle's
     /// laziness contract. Both trees are read whole, because a name has no
-    /// numeric structure to pick a shard with; what the split buys the loader
-    /// is that the nested definitions are a contiguous, skippable half.
+    /// numeric structure to pick a shard with.
     ///
     /// # Errors
     ///
-    /// Returns a typed error naming the URL when a tree holds a leaf rather
-    /// than only branch folders, when a folder's name is not a branch, or
-    /// when a shard is not a JSON array of field documents, holds a field
+    /// Returns a typed error naming the URL when a shard is not a JSON array
+    /// of field documents, holds a field
     /// without a `fix:tag`, with a tag another shard owns, with a branch its
     /// folder contradicts, with a datatype its tree contradicts, or that the
     /// registry refuses.
@@ -191,36 +195,73 @@ impl FixRegistry {
         }
         for tree in TREES {
             let root = handle.child_by_path(tree)?;
-            for folder in root.ls(false, false) {
-                let folder = folder?;
-                if !folder.is_container() {
-                    return Err(Error::InvalidRecord {
-                        path: root
-                            .url()
-                            .map_or_else(|| SmolStr::new(tree), |url| format_smolstr!("{url}")),
-                        reason: crate::text::expected_got(
-                            "only branch folders",
-                            format_args!(
-                                "the leaf {:?}",
-                                folder.url().and_then(Url::file_name).unwrap_or_default()
-                            ),
-                        ),
-                    });
+            for entry in root.ls(false, false) {
+                let entry = entry?;
+                if !entry.is_container() {
+                    if let Some(shard) = shard_index(&entry) {
+                        registry
+                            .load_shard(&entry, tree, &FixBranch::STANDARD, shard)
+                            .map_err(|error| in_shard(error, At("shard", entry.url())))?;
+                    }
+                    continue;
                 }
-                let branch = branch_of(&folder)
-                    .map_err(|error| in_shard(error, At("folder", folder.url())))?;
-                for entry in folder.ls(false, false) {
-                    let entry = entry?;
-                    let Some(shard) = shard_index(&entry) else {
+                let branch = branch_of(&entry)
+                    .map_err(|error| in_shard(error, At("folder", entry.url())))?;
+                for shard_entry in entry.ls(false, false) {
+                    let shard_entry = shard_entry?;
+                    let Some(shard) = shard_index(&shard_entry) else {
                         continue;
                     };
                     registry
-                        .load_shard(&entry, tree, &branch, shard)
-                        .map_err(|error| in_shard(error, At("shard", entry.url())))?;
+                        .load_shard(&shard_entry, tree, &branch, shard)
+                        .map_err(|error| in_shard(error, At("shard", shard_entry.url())))?;
                 }
             }
         }
+        let manifest = handle.child_by_path(BRANCHES)?;
+        let bytes = manifest.read_all_bytes()?;
+        if !bytes.is_empty() {
+            registry
+                .load_branch_manifest(&bytes)
+                .map_err(|error| in_shard(error, At("manifest", manifest.url())))?;
+        }
         Ok(registry)
+    }
+
+    fn load_branch_manifest(&mut self, bytes: &[u8]) -> Result<()> {
+        let document = crate::from_json_scalar(bytes)?;
+        let Some(entries) = document.as_sequence() else {
+            return Err(Error::InvalidRecord {
+                path: BRANCHES.into(),
+                reason: crate::text::expected_got(
+                    "an array of FIX branch records",
+                    document.kind(),
+                ),
+            });
+        };
+        let mut seen = BTreeSet::new();
+        for value in entries {
+            let branch = branch_from_value(value)?;
+            if !seen.insert(branch.name().to_owned()) {
+                return Err(Error::InvalidRecord {
+                    path: branch.name().into(),
+                    reason: "the branch manifest declares each branch once".into(),
+                });
+            }
+            if !self.iter().any(|field| {
+                field
+                    .as_fix()
+                    .branch()
+                    .is_ok_and(|held| held.has_identity(&branch))
+            }) {
+                return Err(Error::InvalidRecord {
+                    path: branch.name().into(),
+                    reason: "the branch manifest names a branch no field belongs to".into(),
+                });
+            }
+            self.set_branch(branch)?;
+        }
+        Ok(())
     }
 
     /// Read one shard's fields into this registry.
@@ -258,12 +299,13 @@ impl FixRegistry {
                     ),
                 });
             }
-            if id.branch() != branch {
+            let declared = field.as_fix().branch()?;
+            if !declared.has_identity(branch) {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
                     reason: crate::text::expected_got(
-                        format_args!("the branch {:?} its folder names", branch.as_str()),
-                        format_args!("{:?}", id.branch().as_str()),
+                        format_args!("the branch {:?} its folder names", branch.name()),
+                        format_args!("{:?}", declared.name()),
                     ),
                 });
             }
@@ -281,8 +323,8 @@ impl FixRegistry {
         Ok(())
     }
 
-    /// Writes every populated shard under `<root>/<tree>/<branch>` and removes
-    /// the shards, branch folders and whole trees no field populates any more.
+    /// Writes standard shards under `<root>/<tree>` and named-branch shards
+    /// one folder lower, removing shards and folders no field populates.
     ///
     /// Each field is routed to its tree by the one predicate the registry
     /// indexes it with, so a field whose datatype changed from scalar to
@@ -301,8 +343,9 @@ impl FixRegistry {
         let mut shards: BTreeMap<(&'static str, FixBranch, i32), Vec<&Field>> = BTreeMap::new();
         for field in self {
             let id = canonical_id(field)?;
+            let branch = field.as_fix().branch()?;
             shards
-                .entry((tree_of(field), id.branch().clone(), shard_of(id.tag())))
+                .entry((tree_of(field), branch, shard_of(id.tag())))
                 .or_default()
                 .push(field);
         }
@@ -311,8 +354,12 @@ impl FixRegistry {
                 Scalar::from_sequence(fields.iter().map(|field| (*field).clone().into_value()));
             let bytes =
                 crate::text::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
-            root.child_by_path(&format!("{tree}/{branch}/{shard}.{EXTENSION}"))?
-                .write_all_bytes(&bytes)?;
+            let path = if branch.is_standard() {
+                format!("{tree}/{shard}.{EXTENSION}")
+            } else {
+                format!("{tree}/{branch}/{shard}.{EXTENSION}")
+            };
+            root.child_by_path(&path)?.write_all_bytes(&bytes)?;
         }
         for tree in TREES {
             let held: BTreeSet<&FixBranch> = shards
@@ -329,31 +376,148 @@ impl FixRegistry {
                 root.remove(true)?;
                 continue;
             }
-            for folder in root.ls(false, false) {
-                let mut folder = folder?;
-                // A leaf here is what `from_handle` refuses, and a folder whose
-                // name is not a branch is nothing this registry wrote: the
-                // writer neither owns either nor deletes them.
-                if !folder.is_container() {
+            for entry in root.ls(false, false) {
+                let mut entry = entry?;
+                if !entry.is_container() {
+                    if shard_index(&entry).is_some_and(|shard| {
+                        !shards.contains_key(&(tree, FixBranch::STANDARD, shard))
+                    }) {
+                        entry.remove(false)?;
+                    }
                     continue;
                 }
-                let Ok(branch) = branch_of(&folder) else {
+                let Ok(branch) = branch_of(&entry) else {
                     continue;
                 };
                 if !held.contains(&branch) {
-                    folder.remove(true)?;
+                    entry.remove(true)?;
                     continue;
                 }
-                for entry in folder.ls(false, false) {
-                    let mut entry = entry?;
-                    if shard_index(&entry)
+                for shard_entry in entry.ls(false, false) {
+                    let mut shard_entry = shard_entry?;
+                    if shard_index(&shard_entry)
                         .is_some_and(|shard| !shards.contains_key(&(tree, branch.clone(), shard)))
                     {
-                        entry.remove(false)?;
+                        shard_entry.remove(false)?;
                     }
                 }
             }
         }
+        self.write_branch_manifest(root)?;
         Ok(())
     }
+
+    fn write_branch_manifest(&self, root: &mut dyn IOBase) -> Result<()> {
+        let mut branches: Vec<&FixBranch> = self
+            .branch_values()
+            .filter(|branch| !branch.is_standard())
+            .collect();
+        branches.sort_by_key(|branch| branch.name());
+        let mut values = Vec::with_capacity(branches.len());
+        for branch in branches {
+            if !self.iter().any(|field| {
+                field
+                    .as_fix()
+                    .branch()
+                    .is_ok_and(|held| held.has_identity(branch))
+            }) {
+                return Err(Error::InvalidRecord {
+                    path: branch.name().into(),
+                    reason: "a branch record must belong to at least one FIX field".into(),
+                });
+            }
+            values.push(branch_into_value(branch)?);
+        }
+        let mut manifest = root.child_by_path(BRANCHES)?;
+        if values.is_empty() {
+            manifest.remove(false)?;
+            return Ok(());
+        }
+        let document = Scalar::from_sequence(values);
+        let bytes =
+            crate::text::json::into_bytes_with_formatting(&document, Formatting::indented(2))?;
+        manifest.write_all_bytes(&bytes)
+    }
+}
+
+fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
+    Scalar::from_record([
+        ("name", Scalar::from(branch.name())),
+        ("digest", Scalar::from(branch.digest())),
+        ("version", Scalar::from(branch.version())),
+        ("targetcompid", Scalar::from(branch.target_comp_id())),
+        ("sendercompid", Scalar::from(branch.sender_comp_id())),
+    ])
+}
+
+fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
+    let Some(record) = value.as_record() else {
+        return Err(Error::InvalidRecord {
+            path: BRANCHES.into(),
+            reason: crate::text::expected_got("a FIX branch record", value.kind()),
+        });
+    };
+    const KEYS: [&str; 5] = ["name", "digest", "version", "targetcompid", "sendercompid"];
+    if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
+        return Err(Error::InvalidRecord {
+            path: key.clone(),
+            reason: "an unknown FIX branch manifest property".into(),
+        });
+    }
+    let name = record
+        .get("name")
+        .and_then(Scalar::as_str)
+        .ok_or_else(|| Error::InvalidRecord {
+            path: "name".into(),
+            reason: "a branch record requires a UTF-8 name".into(),
+        })?;
+    let version = record
+        .get("version")
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| Error::InvalidRecord {
+                    path: "version".into(),
+                    reason: "a branch version must be text".into(),
+                })?
+                .parse::<Version>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    let text = |key: &'static str| -> Result<SmolStr> {
+        record
+            .get(key)
+            .map(|value| {
+                value
+                    .as_str()
+                    .map(SmolStr::new)
+                    .ok_or_else(|| Error::InvalidRecord {
+                        path: key.into(),
+                        reason: "a component id must be text".into(),
+                    })
+            })
+            .transpose()
+            .map(|value| value.unwrap_or_default())
+    };
+    let branch =
+        FixBranch::from_parts(name, version, text("targetcompid")?, text("sendercompid")?)?;
+    if let Some(digest) = record.get("digest") {
+        let declared = digest
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| Error::InvalidRecord {
+                path: "digest".into(),
+                reason: "a branch digest must be a uint32".into(),
+            })?;
+        if declared != branch.digest() {
+            return Err(Error::InvalidRecord {
+                path: branch.name().into(),
+                reason: crate::text::expected_got(
+                    format_args!("the derived digest {}", branch.digest()),
+                    format_args!("declared digest {declared}"),
+                ),
+            });
+        }
+    }
+    Ok(branch)
 }

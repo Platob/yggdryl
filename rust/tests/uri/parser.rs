@@ -25,6 +25,8 @@ fn authority_credentials_split_only_the_first_user_information_colon() {
     assert_eq!(authority.user(), Some("user"));
     assert_eq!(authority.password(), Some("pass:word"));
     assert_eq!(authority.host(), "example.test");
+    assert_eq!(authority.host_port(), "example.test:8443");
+    assert_eq!(authority.port(), Some(8443));
     assert_eq!(authority.as_str(), "user:pass:word@example.test:8443");
 
     let url = Url::from_str("https://user:pass:word@[2001:db8::1]:8443/data").unwrap();
@@ -52,6 +54,7 @@ fn authority_credentials_split_only_the_first_user_information_colon() {
 fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     let bucket = Uri::from_str("s3://market-data/year=2026/part.parquet").unwrap();
     assert_eq!(bucket.hostname(), None);
+    assert_eq!(bucket.s3_endpoint(), None);
     assert_eq!(bucket.bucket(), Some("market-data"));
     assert_eq!(bucket.region(), None);
 
@@ -59,6 +62,7 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
         Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data/year=2026/part.parquet")
             .unwrap();
     assert_eq!(endpoint.hostname(), Some("s3.eu-west-3.amazonaws.com"));
+    assert_eq!(endpoint.s3_endpoint(), Some("s3.eu-west-3.amazonaws.com"));
     assert_eq!(endpoint.bucket(), Some("market-data"));
     assert_eq!(endpoint.region(), Some("eu-west-3"));
 
@@ -70,6 +74,20 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     );
     assert_eq!(virtual_host.bucket(), Some("market-data"));
     assert_eq!(virtual_host.region(), Some("ap-south-1"));
+    assert_eq!(
+        virtual_host.s3_endpoint(),
+        Some("s3.dualstack.ap-south-1.amazonaws.com")
+    );
+    assert!(virtual_host.is_s3_virtual());
+
+    let port = Uri::from_str("s3://key:secret@minio:9000/archive/key").unwrap();
+    assert_eq!(port.hostname(), Some("minio"));
+    assert_eq!(port.s3_endpoint(), Some("minio:9000"));
+    assert_eq!(port.bucket(), Some("archive"));
+    assert!(!port.is_s3_virtual());
+
+    let alternate = Uri::from_str("s3a://archive/key").unwrap();
+    assert_eq!(alternate.bucket(), Some("archive"));
 
     let regional = Uri::from_str("s3://s3-us-gov-west-1.amazonaws.com/archive/key").unwrap();
     assert_eq!(regional.bucket(), Some("archive"));
@@ -214,8 +232,8 @@ fn uri_parsing_exposes_non_nullable_core_components() {
     assert_eq!(uri.scheme().as_str(), "https");
     assert_eq!(uri.authority().as_str(), "example.test");
     assert_eq!(uri.path().as_str(), "/archive/report.tar.gz");
-    assert_eq!(uri.query(), Some("q=1"));
-    assert_eq!(uri.fragment(), Some("summary"));
+    assert_eq!(uri.query(false).unwrap().as_deref(), Some("q=1"));
+    assert_eq!(uri.fragment(false).unwrap().as_deref(), Some("summary"));
     assert_eq!(
         uri.path_segments().collect::<Vec<_>>(),
         ["archive", "report.tar.gz"]
@@ -266,8 +284,8 @@ fn windows_drive_and_unc_paths_normalize_independently_of_host_os() {
         prefixed.to_string(),
         "file:///C:/Ada%20Lovelace/report.csv?raw=1#rows"
     );
-    assert_eq!(prefixed.query(), Some("raw=1"));
-    assert_eq!(prefixed.fragment(), Some("rows"));
+    assert_eq!(prefixed.query(false).unwrap().as_deref(), Some("raw=1"));
+    assert_eq!(prefixed.fragment(false).unwrap().as_deref(), Some("rows"));
     assert_eq!(
         Uri::from_str(r"file:c:\data\ticks.arrow")
             .unwrap()
@@ -806,7 +824,7 @@ fn urn_conversion_preserves_namespace_and_namespace_specific_string() {
     assert_eq!(urn.authority().as_str(), "");
     assert_eq!(urn.namespace(), "isbn");
     assert_eq!(urn.namespace_specific(), "9780131103627");
-    assert_eq!(urn.fragment(), Some("edition-2"));
+    assert_eq!(urn.fragment(false).unwrap().as_deref(), Some("edition-2"));
     assert_eq!(urn.clone().into_uri(), uri);
     assert_eq!(urn.clone().into_uri(), uri);
     assert_eq!(uri.clone().into_urn().unwrap(), urn);
@@ -1088,8 +1106,8 @@ fn uri_and_url_navigation_preserve_every_other_component() {
     let url = Url::from_str("https://example.com/a/b/c?q=1#frag").unwrap();
     let joined = url.joinpath("../d").unwrap();
     assert_eq!(joined.path().as_str(), "/a/b/d");
-    assert_eq!(joined.query(), Some("q=1"));
-    assert_eq!(joined.fragment(), Some("frag"));
+    assert_eq!(joined.query(false).unwrap().as_deref(), Some("q=1"));
+    assert_eq!(joined.fragment(false).unwrap().as_deref(), Some("frag"));
     assert_eq!(joined.authority().as_str(), "example.com");
 
     let parents: Vec<String> = url

@@ -18,7 +18,7 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
 
     let filesystem = memory();
     tree(filesystem.as_ref(), "lake");
-    let lake = Folder::from_location(filesystem, "lake").expect("a valid location");
+    let lake = Folder::from_path(filesystem, "lake", None).expect("a valid location");
 
     group.bench_function("ls_flat/fs_memory", |bencher| {
         bencher.iter(|| black_box(&lake).ls(false, false).count());
@@ -60,7 +60,8 @@ pub(crate) fn listing_benchmarks(criterion: &mut Criterion) {
     let (local_filesystem, root) = local();
     let location = local_location(&root, "lake");
     tree(local_filesystem.as_ref(), &location);
-    let local_lake = Folder::from_location(local_filesystem, &location).expect("a valid location");
+    let local_lake =
+        Folder::from_path(local_filesystem, &location, None).expect("a valid location");
 
     group.bench_function("ls_recursive/fs_local", |bencher| {
         bencher.iter(|| black_box(&local_lake).ls(true, false).count());

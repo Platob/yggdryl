@@ -21,6 +21,8 @@ const BRANCH: &str = "branch";
 pub(super) const BRANCH_KEY: &str = "fix:branch";
 /// The canonical tag.
 const TAG: &str = "tag";
+/// The full key the canonical tag is stored under.
+pub(super) const TAG_KEY: &str = "fix:tag";
 /// The alternate tags, comma-separated, highest priority first.
 const TAGS: &str = "tags";
 /// The alternate names, comma-separated, highest priority first.
@@ -83,7 +85,8 @@ impl<'field> FixField<'field> {
         let Some(tag) = self.tag()? else {
             return Ok(None);
         };
-        FixId::from_parts(self.branch()?, tag).map(Some)
+        let branch = self.branch()?;
+        FixId::from_parts(&branch, tag).map(Some)
     }
 
     /// Parses the canonical FIX tag.
@@ -154,8 +157,8 @@ impl<'field> FixField<'field> {
 impl FixFieldMut<'_> {
     /// Records the dictionary this field belongs to.
     ///
-    /// [`FixBranch::STANDARD`] removes the property rather than writing
-    /// `"standard"`, exactly as an empty tag or alias list removes its own, so
+    /// [`FixBranch::STANDARD`] removes the property rather than writing an
+    /// empty name, exactly as an empty tag or alias list removes its own, so
     /// one declaration has one stored form. The canonical tag and every
     /// alternate tag are held to the standard-tag rule against the new
     /// branch before anything is written.
@@ -169,10 +172,10 @@ impl FixFieldMut<'_> {
     pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()> {
         let view = self.as_protocol();
         if let Some(tag) = view.tag()? {
-            FixId::from_parts(branch.clone(), tag)?;
+            FixId::from_parts(branch, tag)?;
         }
         for tag in view.tags()? {
-            FixId::from_parts(branch.clone(), tag)?;
+            FixId::from_parts(branch, tag)?;
         }
         self.put_branch(branch)?;
         Ok(())
@@ -185,15 +188,16 @@ impl FixFieldMut<'_> {
     /// the standard-tag rule as it stands. This writes the branch, then the
     /// tag, and restores the prior branch entry if the tag write fails, so
     /// either move succeeds and a failure leaves the field unchanged. A
-    /// [`FixId`] is already legal, so nothing beyond the tag's own shape is
-    /// re-checked.
+    /// The two native parts pass through [`FixId::from_parts`] before either
+    /// property changes.
     ///
     /// # Errors
     ///
     /// Returns the tag write's refusal, having restored the branch.
-    pub fn set_id(&mut self, id: &FixId) -> Result<()> {
-        let prior = self.put_branch(id.branch())?;
-        match self.set_tag(id.tag()) {
+    pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()> {
+        FixId::from_parts(branch, tag)?;
+        let prior = self.put_branch(branch)?;
+        match self.set_tag(tag) {
             Ok(()) => Ok(()),
             Err(error) => {
                 self.restore_branch(prior);
@@ -207,15 +211,16 @@ impl FixFieldMut<'_> {
     /// # Errors
     ///
     /// Returns an error when the tag is negative, when this field's branch
-    /// may not claim it - a tag below [`FixId::STANDARD_TAG_LIMIT`] is the FIX
-    /// specification's own - or when the property write fails the validation
-    /// every metadata write goes through. Any of them leaves the field
-    /// unchanged.
+    /// may not claim it - a non-standard branch is limited to
+    /// [`FixId::USER_TAG_MIN`] through [`FixId::USER_TAG_MAX`] (exclusive) -
+    /// or when the property write fails the validation every metadata write
+    /// goes through. Any of them leaves the field unchanged.
     pub fn set_tag(&mut self, tag: i32) -> Result<()> {
         if tag < 0 {
             return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
-        FixId::from_parts(self.as_protocol().branch()?, tag)?;
+        let branch = self.as_protocol().branch()?;
+        FixId::from_parts(&branch, tag)?;
         self.store(TAG, tag.to_string())
     }
 
@@ -240,7 +245,7 @@ impl FixFieldMut<'_> {
             if *tag < 0 {
                 return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
             }
-            FixId::from_parts(branch.clone(), *tag)?;
+            FixId::from_parts(&branch, *tag)?;
             if tags[..index].contains(tag) {
                 return Err(self.rejected(
                     TAGS,
@@ -327,7 +332,7 @@ impl FixFieldMut<'_> {
         if branch.is_standard() {
             Ok(self.remove(BRANCH))
         } else {
-            self.insert(BRANCH, branch.as_str())
+            self.insert(BRANCH, branch.name())
         }
     }
 

@@ -48,7 +48,7 @@ use pyo3::types::{
 };
 
 use yggdryl::arrow::BatchReader;
-use yggdryl::media::text::TextOptions as CoreTextOptions;
+use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
@@ -1187,6 +1187,9 @@ impl PyRecordOptions {
         state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
         state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
         if let RecordOptions::Text(options) = &self.inner {
+            state.set_item("framing", options.framing())?;
+            state.set_item("leading_fragment", options.leading_fragment().as_str())?;
+            state.set_item("max_record_byte_size", options.max_record_byte_size())?;
             state.set_item("with_rownum", options.with_rownum)?;
             state.set_item("rowheader", options.rowheader())?;
             state.set_item("lstrip", options.lstrip())?;
@@ -1284,6 +1287,16 @@ impl PyRecordOptions {
         )?;
 
         if let RecordOptions::Text(text) = &mut options.inner {
+            text.set_framing(required_record_pickle_item(state, "framing")?.extract()?);
+            let leading_fragment =
+                required_record_pickle_item(state, "leading_fragment")?.extract::<String>()?;
+            text.set_leading_fragment(
+                LeadingFragment::from_str(&leading_fragment).map_err(value_error)?,
+            );
+            text.set_max_record_byte_size(
+                required_record_pickle_item(state, "max_record_byte_size")?.extract()?,
+            );
+
             let value = required_record_pickle_item(state, "with_rownum")?;
             text.with_rownum = if value.is_none() {
                 None
@@ -1702,7 +1715,7 @@ impl PyRecordOptions {
     }
 }
 
-/// Flat settings for physical-line `text/plain` records.
+/// Flat settings for physical-line and framed `text/plain` records.
 #[pyclass(name = "TextOptions", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyTextOptions {
     pub(crate) inner: CoreTextOptions,
@@ -1925,6 +1938,46 @@ impl PyTextOptions {
     fn set_filter_partitions(&mut self, partitions: Vec<(String, String)>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_filter_partitions(partitions);
+        Ok(())
+    }
+
+    /// Whether physical lines are framed into logical records.
+    #[getter]
+    fn framing(&self) -> bool {
+        self.inner.framing()
+    }
+
+    #[setter]
+    fn set_framing(&mut self, framing: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_framing(framing);
+        Ok(())
+    }
+
+    /// How framing handles physical lines before the first header.
+    #[getter]
+    fn leading_fragment(&self) -> &'static str {
+        self.inner.leading_fragment().as_str()
+    }
+
+    #[setter]
+    fn set_leading_fragment(&mut self, treatment: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_leading_fragment(LeadingFragment::from_str(treatment).map_err(value_error)?);
+        Ok(())
+    }
+
+    /// The retained decoded-body byte limit for each logical record.
+    #[getter]
+    fn max_record_byte_size(&self) -> Option<u64> {
+        self.inner.max_record_byte_size()
+    }
+
+    #[setter]
+    fn set_max_record_byte_size(&mut self, size: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_max_record_byte_size(size);
         Ok(())
     }
 

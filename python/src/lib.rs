@@ -20,7 +20,7 @@ use crate::types::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
 use crate::types::scalar::PyScalar;
-use crate::uri::{PyUri, PyUriPathIterator, PyUrl, PyUrn};
+use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
 mod coding;
 mod enums;
@@ -280,8 +280,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     // The two FIX facts a caller spells rather than derives: what an absent
     // `fix:branch` means, and where the FIX specification's own tag range ends.
-    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.as_str())?;
-    module.add("STANDARD_TAG_LIMIT", yggdryl::FixId::STANDARD_TAG_LIMIT)?;
+    module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
+    module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
+    module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
     Ok(())
 }
 
@@ -319,6 +320,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyUrl>()?;
     module.add_class::<PyUrn>()?;
     module.add_class::<PyUriPathIterator>()?;
+    module.add_class::<PyParameters>()?;
+    module.add_class::<PyParameterIterator>()?;
     module.add_class::<types::timezone::PyTimezone>()?;
     module.add_class::<iobase::PyIOBase>()?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;

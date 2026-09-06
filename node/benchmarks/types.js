@@ -1,6 +1,7 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
+const arrow = require('apache-arrow')
 const {
   AsciiEnum,
   DataType,
@@ -29,6 +30,8 @@ function benchmark(name, operation) {
 }
 
 const id = fields.int32('id', { nullable: false, metadata: { source: 'event' } })
+const digestBits = fields.int64('digest', { nullable: false })
+const unsignedDigest = arrow.vectorFromArray([2n ** 64n - 1n], new arrow.Uint64())
 const name = fields.utf8('name')
 const struct = DataType.fromFields([id, name])
 const structuralJson = struct.toJSON()
@@ -82,6 +85,9 @@ const contentType = 'text/csv; charset=utf-8'
 const contentEncoding = 'gzip, zstd'
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
+benchmark('schema/cast_arrow_array_bits', () =>
+  digestBits.castArrowArrayBits(unsignedDigest),
+)
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))

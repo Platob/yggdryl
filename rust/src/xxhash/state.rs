@@ -36,6 +36,30 @@ fn feed(source: &mut impl Read, mut sink: impl FnMut(&[u8])) -> Result<u64> {
     }
 }
 
+macro_rules! arrow_batch_fill {
+    () => {
+        /// Fill the digest holders in one Arrow batch under `root`.
+        ///
+        /// This state is a configuration prototype: its seed and secret are
+        /// used, but bytes already written to it are ignored and the state
+        /// remains unchanged. With `force` false, populated holder cells are
+        /// preserved; with it true, every visible holder is recomputed.
+        ///
+        /// # Errors
+        ///
+        /// Returns an error for an invalid root, holder, digest path, or batch.
+        #[cfg(feature = "arrow")]
+        pub fn fill_arrow_batch(
+            &self,
+            root: &crate::Field,
+            batch: arrow_array::RecordBatch,
+            force: bool,
+        ) -> crate::arrow::Result<arrow_array::RecordBatch> {
+            crate::xxhash::arrow::fill_arrow_batch_with(self, root, batch, force)
+        }
+    };
+}
+
 /// A resumable XXH32 state.
 ///
 /// ```
@@ -111,6 +135,8 @@ impl Xxh32 {
     pub fn clear(&mut self) {
         self.hasher = twox_hash::xxhash32::Hasher::with_seed(self.seed);
     }
+
+    arrow_batch_fill!();
 }
 
 impl Default for Xxh32 {
@@ -226,6 +252,8 @@ impl Xxh64 {
     pub fn clear(&mut self) {
         self.hasher = twox_hash::xxhash64::Hasher::with_seed(self.seed);
     }
+
+    arrow_batch_fill!();
 }
 
 impl Default for Xxh64 {
@@ -376,6 +404,8 @@ impl Xxh3 {
             None => twox_hash::xxhash3_64::Hasher::with_seed(self.seed),
         };
     }
+
+    arrow_batch_fill!();
 }
 
 /// Build an XXH3-64 accumulator over an already validated secret.
@@ -543,6 +573,8 @@ impl Xxh128 {
             None => twox_hash::xxhash3_128::Hasher::with_seed(self.seed),
         };
     }
+
+    arrow_batch_fill!();
 }
 
 /// Build an XXH3-128 accumulator over an already validated secret.

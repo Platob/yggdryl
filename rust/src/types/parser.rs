@@ -87,6 +87,7 @@ impl fmt::Display for DataType {
             D::Mic => formatter.write_str("mic"),
             D::Cfi => formatter.write_str("cfi"),
             D::Uuid => formatter.write_str("uuid"),
+            D::Version => formatter.write_str("version"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -359,6 +360,7 @@ impl<'a> Parser<'a> {
             "utf8view" | "stringview" => DataType::Utf8View,
 
             "uuid" => DataType::Uuid,
+            "version" => DataType::Version,
             // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
             // one of exactly N bytes.
             "ascii" => match self.consume_opening() {

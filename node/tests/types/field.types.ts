@@ -91,6 +91,7 @@ const properties: MetadataEntry[] = field.propertyIter('postgres')
 field.clearProperties('postgres')
 
 const iceberg: ProtocolField = field.iceberg
+const digest: ProtocolField = field.digest
 const namedProtocols: ProtocolField[] = [
   field.http,
   field.file,
@@ -104,6 +105,9 @@ const namedProtocols: ProtocolField[] = [
   field.iceberg,
   field.fix,
   field.fieldProperties,
+  field.digest,
+  field.identity,
+  field.partition,
   field.s3,
   field.gs,
   field.az,
@@ -130,6 +134,12 @@ const protocolText: string = iceberg.toString()
 const protocolJson: unknown = iceberg.toJSON()
 const protocolDeleted: boolean = iceberg.delete('doc')
 iceberg.clear()
+
+const digestFieldLen: number = field.digestFieldLen
+const digestFields: Field[] = field.digestFields()
+const digestFieldNames: string[] = field.digestFieldNames()
+const hasDigestComponents: boolean = field.hasDigestComponents
+const onlyDigestFields: Field = field.onlyDigestFields()
 
 const partitionRoot: Field = Field.from(
   'row: struct<year: int32 not null, price: float64 not null> not null',

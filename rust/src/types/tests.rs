@@ -573,6 +573,9 @@ mod ascii;
 /// The UUID: one 128-bit identifier, stored as its sixteen bytes.
 mod uuid;
 
+/// One sixteen-byte version with numeric ordering and canonical text storage.
+mod version;
+
 /// The enum a field declares, and the codes its members name.
 mod ascii_enum;
 

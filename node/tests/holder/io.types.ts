@@ -103,7 +103,7 @@ handle.append(12)
 handle.readRange(0, 6, String)
 // @ts-expect-error `{ text: true }` answers a string, never a Buffer
 const wrongRange: Buffer = handle.readRange(0, 6, { text: true })
-const copied: number = handle.copyInto(memory)
+const copied: bigint = handle.copyInto(memory)
 const asPath: string = handle.intoPath()
 const printed: string = handle.toString()
 
@@ -159,6 +159,10 @@ void patched
 void appended
 void copied
 const textOptions: TextOptions = new TextOptions()
+textOptions.framing = true
+textOptions.leadingFragment = 'drop'
+textOptions.maxRecordByteSize = 4096
+textOptions.maxRecordByteSize = null
 textOptions.rowheader = '\\[(?<level>[A-Z]+)\\]'
 textOptions.withRownum = 1n
 textOptions.lstrip = '^\\s+'
@@ -171,6 +175,10 @@ textOptions.timezone = Timezone.UTC
 textOptions.timezone = 'Europe/Paris'
 textOptions.timezone = null
 const textHeader: string | null = textOptions.rowheader
+const textFraming: boolean = textOptions.framing
+const textLeadingFragment: 'keep' | 'drop' | 'error' =
+  textOptions.leadingFragment
+const textMaxRecordByteSize: number | null = textOptions.maxRecordByteSize
 const textLstrip: string | null = textOptions.lstrip
 const textRstrip: string | null = textOptions.rstrip
 const textLinesep: Buffer | null = textOptions.linesep
@@ -187,6 +195,9 @@ handle.appendRecords([{ body: Buffer.from('two') }], textOptions)
 void lineBatches
 void lineRecords
 void textHeader
+void textFraming
+void textLeadingFragment
+void textMaxRecordByteSize
 void textLstrip
 void textRstrip
 void textLinesep
@@ -194,6 +205,9 @@ void textAutotype
 void textTimezone
 void textRownum
 void retainedText
+
+// @ts-expect-error leading fragments use the closed core vocabulary
+textOptions.leadingFragment = 'preserve'
 
 const coding: string | null = handle.codec
 const encoded: number = handle.compressInto(memory)

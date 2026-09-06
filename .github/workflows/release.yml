@@ -252,6 +252,7 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           args: >-
@@ -284,6 +285,7 @@ jobs:
           name: wheels-${{ matrix.label }}
           path: dist/*.whl
           if-no-files-found: error
+          compression-level: 0
 
   sdist:
     # The source distribution carries the whole workspace - maturin includes
@@ -305,6 +307,7 @@ jobs:
           name: wheels-sdist
           path: dist/*.tar.gz
           if-no-files-found: error
+          compression-level: 0
 
   publish-pypi:
     name: PyPI (yggdryl)
@@ -411,6 +414,8 @@ jobs:
             ls node/*.node
             exit 1
           fi
+      - name: Audit the npm package contents
+        run: npm run --prefix node test:package:files
       - name: The OIDC grant engaged
         run: |
           if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then

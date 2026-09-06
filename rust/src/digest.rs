@@ -533,6 +533,29 @@ impl Digester {
             DigesterKind::Xxh128(state) => state.clear(),
         }
     }
+
+    /// Fill the digest holders in one Arrow batch under `root`.
+    ///
+    /// This state is a configuration prototype: its algorithm, seed, and
+    /// secret are used, but bytes already written to it are ignored and the
+    /// state remains unchanged. With `force` false, populated holder cells are
+    /// preserved and only canonical defaults are computed; with it true,
+    /// every visible holder is recomputed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `root` is not a usable Struct schema, a holder
+    /// has the wrong width, a digest path cannot be resolved, or the batch
+    /// cannot be cast to `root`.
+    #[cfg(feature = "arrow")]
+    pub fn fill_arrow_batch(
+        &self,
+        root: &crate::Field,
+        batch: arrow_array::RecordBatch,
+        force: bool,
+    ) -> crate::arrow::Result<arrow_array::RecordBatch> {
+        crate::xxhash::arrow::fill_arrow_batch_with(self, root, batch, force)
+    }
 }
 
 impl std::hash::Hasher for Digester {

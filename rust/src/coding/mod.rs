@@ -18,7 +18,7 @@ pub mod zstd;
 
 pub use coded::Coded;
 
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 
 use crate::holder::Holder;
 use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
@@ -114,6 +114,50 @@ impl<H: IOBase> Coding<H> {
     /// per call.
     const fn materialized(&self) -> Option<&Vec<u8>> {
         self.plain.as_ref()
+    }
+
+    /// Open the decoded byte stream, fetching the transport `window` at a time.
+    ///
+    /// The caller's batch bounds decoded output; `window` bounds what the
+    /// backing store is asked for, and the two are deliberately separate. A
+    /// scan wants whole windows, while an eight-byte positional read wants
+    /// eight bytes' worth of transport - not a megabyte of it - even though
+    /// both decode from the beginning.
+    fn decoded_stream(
+        &self,
+        position: u64,
+        batch_size: usize,
+        window: usize,
+    ) -> Result<ByteStream<'_>> {
+        if let Some(plain) = self.materialized() {
+            let plain = usize::try_from(position)
+                .ok()
+                .and_then(|position| plain.get(position..))
+                .unwrap_or_default();
+            return ByteStream::from_reader(std::io::Cursor::new(plain), batch_size);
+        }
+        if self.codec.is_identity() {
+            return self.handle.pstream_bytes(position, batch_size);
+        }
+        let encoded = self.handle.pstream_bytes(0, window)?;
+        ByteStream::from_reader(
+            SkipReader::new(LazyDecoder::new(self.codec, encoded, window), position),
+            batch_size,
+        )
+    }
+
+    /// The transport window one positional read of `length` bytes asks for.
+    ///
+    /// Never less than one stream batch, never more than one fetch window: a
+    /// small read stays small, and a large one still fetches in windows.
+    const fn positional_window(length: usize) -> usize {
+        if length < DEFAULT_STREAM_BATCH_SIZE {
+            DEFAULT_STREAM_BATCH_SIZE
+        } else if length > crate::DEFAULT_FETCH_BYTE_SIZE {
+            crate::DEFAULT_FETCH_BYTE_SIZE
+        } else {
+            length
+        }
     }
 
     /// Count decoded bytes through one bounded window without retaining them.
@@ -295,7 +339,9 @@ impl<H: IOBase> IOBase for Coding<H> {
         if buffer.is_empty() {
             return Ok(0);
         }
-        Ok(self.pstream_bytes(offset, buffer.len())?.read(buffer)?)
+        Ok(self
+            .decoded_stream(offset, buffer.len(), Self::positional_window(buffer.len()))?
+            .read(buffer)?)
     }
 
     /// Stream decoded bytes without materializing the decoded value.
@@ -305,24 +351,8 @@ impl<H: IOBase> IOBase for Coding<H> {
     /// one bounded scratch buffer. An opened or dirty handle already owns its
     /// decoded snapshot and streams a borrowed suffix of that value instead.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<ByteStream<'_>> {
-        if let Some(plain) = self.materialized() {
-            let plain = usize::try_from(position)
-                .ok()
-                .and_then(|position| plain.get(position..))
-                .unwrap_or_default();
-            return ByteStream::from_reader(std::io::Cursor::new(plain), batch_size);
-        }
-        if self.codec.is_identity() {
-            return self.handle.pstream_bytes(position, batch_size);
-        }
-        // The caller's batch bounds decoded output. The encoded transport has
-        // its own fixed window: coupling it to a one-byte output request would
-        // turn one decode into one positional backend call per encoded byte.
-        let encoded = self.handle.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE)?;
-        ByteStream::from_reader(
-            SkipReader::new(LazyDecoder::new(self.codec, encoded), position),
-            batch_size,
-        )
+        // A stream is read to its end, so it fetches whole windows.
+        self.decoded_stream(position, batch_size, crate::DEFAULT_FETCH_BYTE_SIZE)
     }
 
     /// Materialize one streamed decode, without first materializing the
@@ -357,7 +387,11 @@ impl<H: IOBase> IOBase for Coding<H> {
         }
         let mut bytes = Vec::with_capacity(length.min(DEFAULT_STREAM_BATCH_SIZE));
         std::io::Read::take(
-            self.pstream_bytes(offset, length.clamp(1, DEFAULT_STREAM_BATCH_SIZE))?,
+            self.decoded_stream(
+                offset,
+                length.clamp(1, DEFAULT_STREAM_BATCH_SIZE),
+                Self::positional_window(length),
+            )?,
             length as u64,
         )
         .read_to_end(&mut bytes)?;
@@ -497,14 +531,16 @@ impl<H: IOBase> IOBase for Coding<H> {
 /// itself lazy.
 struct LazyDecoder<'source> {
     codec: Codec,
+    window: usize,
     source: Option<ByteStream<'source>>,
     decoder: Option<Box<dyn Read + 'source>>,
 }
 
 impl<'source> LazyDecoder<'source> {
-    const fn new(codec: Codec, source: ByteStream<'source>) -> Self {
+    const fn new(codec: Codec, source: ByteStream<'source>, window: usize) -> Self {
         Self {
             codec,
+            window,
             source: Some(source),
             decoder: None,
         }
@@ -517,22 +553,20 @@ impl Read for LazyDecoder<'_> {
             return Ok(0);
         }
         if self.decoder.is_none() {
-            let Some(mut source) = self.source.take() else {
+            let Some(source) = self.source.take() else {
                 return Ok(0);
             };
-            // Probe with enough bytes for every supported framing header. A
-            // one-byte probe costs a separate remote range request before the
-            // decoder's first useful read; replaying this owned prefix keeps
-            // absence lazy while making the first request useful.
-            let mut prefix = [0_u8; 64];
-            let read = source.read(&mut prefix)?;
-            if read == 0 {
+            // The window is allocated here rather than at construction, so a
+            // stream nobody reads costs nothing. The decoder pulls in its own
+            // small increments - 32 KiB for gzip - and this is what keeps every
+            // one of them from reaching the backing store; the first fill also
+            // answers absence, so an empty resource never builds a decoder and
+            // a present one is never probed with a smaller request.
+            let mut source = BufReader::with_capacity(self.window, source);
+            if source.fill_buf()?.is_empty() {
                 return Ok(0);
             }
-            self.decoder = Some(
-                self.codec
-                    .reader(std::io::Cursor::new(prefix).take(read as u64).chain(source)),
-            );
+            self.decoder = Some(self.codec.reader(source));
         }
         self.decoder
             .as_mut()

@@ -169,6 +169,11 @@ impl DataType {
         if matches!(other, Self::Null) {
             return Ok(self.clone());
         }
+        // A version has numeric ordering semantics that a text or numeric
+        // merge cannot preserve. Only the equal-type arm above may merge it.
+        if matches!(self, Self::Version) || matches!(other, Self::Version) {
+            return Err(unmergeable(self, other));
+        }
         if let Some(merged) = merge_encoded(self, other, how, recode)? {
             return Ok(merged);
         }

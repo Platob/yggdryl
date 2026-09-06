@@ -12,6 +12,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, IOBase, RecordOptions, TextOptions, Timezone
+from yggdryl.coding import gzip, zstd
 
 ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 
@@ -41,6 +42,13 @@ def test_datatype_from_regex_is_the_shared_pre_read_schema_inference() -> None:
 
 def test_text_options_are_flat_validated_values() -> None:
     options = text_options()
+    assert options.framing is False
+    assert options.leading_fragment == "keep"
+    assert options.max_record_byte_size is None
+
+    options.framing = True
+    options.leading_fragment = "drop"
+    options.max_record_byte_size = 4096
     options.rowheader = ROWHEADER
     options.lstrip = r"^\s+"
     options.rstrip = r"\s+$"
@@ -50,6 +58,9 @@ def test_text_options_are_flat_validated_values() -> None:
     options.with_rownum = -3
     options.batch_row_size = 7
 
+    assert options.framing is True
+    assert options.leading_fragment == "drop"
+    assert options.max_record_byte_size == 4096
     assert options.rowheader == ROWHEADER
     assert options.lstrip == r"^\s+"
     assert options.rstrip == r"\s+$"
@@ -64,12 +75,24 @@ def test_text_options_are_flat_validated_values() -> None:
         assert rebuilt.stable_hash() == options.stable_hash()
 
     constructor, [state] = options.__reduce__()
-    state["header"] = state.pop("rowheader")
-    with pytest.raises(ValueError, match='missing "rowheader"'):
-        constructor(state)
+    for name in (
+        "framing",
+        "leading_fragment",
+        "max_record_byte_size",
+        "rowheader",
+    ):
+        incomplete = state.copy()
+        incomplete.pop(name)
+        with pytest.raises(ValueError, match=rf'missing "{name}"'):
+            constructor(incomplete)
 
-    with pytest.raises(ValueError, match="distinct from url, rownum, and body"):
+    with pytest.raises(
+        ValueError, match="distinct from url, rownum, body, and dropped_byte_size"
+    ):
         options.rowheader = r"(?<body>.+)"
+    with pytest.raises(ValueError, match="expected one of keep, drop, error"):
+        options.leading_fragment = "merge"
+    assert options.leading_fragment == "drop"
     with pytest.raises(ValueError, match="valid byte regex"):
         options.lstrip = "("
     with pytest.raises(TypeError, match="not bool"):
@@ -85,6 +108,15 @@ def test_text_options_are_flat_validated_values() -> None:
     generic_text = RecordOptions("text/plain")
     generic_text.timezone = Timezone.UTC
     assert generic_text.timezone == Timezone.UTC
+    constructor, [state] = generic_text.__reduce__()
+    assert state["framing"] is False
+    assert state["leading_fragment"] == "keep"
+    assert state["max_record_byte_size"] is None
+    for name in ("framing", "leading_fragment", "max_record_byte_size"):
+        incomplete = state.copy()
+        incomplete.pop(name)
+        with pytest.raises(ValueError, match=rf'missing "{name}"'):
+            constructor(incomplete)
 
 
 def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
@@ -267,6 +299,98 @@ def test_pinned_line_separator_round_trips_through_generic_records(
         b"one",
         b"two",
     ]
+
+
+def test_framing_normalizes_terminators_and_reports_record_caps(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(
+        tmp_path, b"leading\r\n[A] abc\ndef\r\n[B] xyz\r", "framed.log"
+    )
+    base = TextOptions()
+    base.framing = True
+    base.leading_fragment = "drop"
+    base.rowheader = r"^\[(?<kind>[A-Z])\] "
+    base.with_rownum = 1
+    base.batch_row_size = 1
+
+    for limit, expected_bodies, expected_dropped in (
+        (7, [b"abc\ndef", b"xyz"], [None, None]),
+        (6, [b"abc\nde", b"xyz"], [1, None]),
+        (0, [b"", b""], [7, 3]),
+    ):
+        options = copy.copy(base)
+        options.max_record_byte_size = limit
+        reader = source.read_arrow_reader(options=options)
+        assert reader.schema.names == [
+            "url",
+            "rownum",
+            "body",
+            "dropped_byte_size",
+            "kind",
+        ]
+        batches = list(reader)
+        assert [batch.num_rows for batch in batches] == [1, 1]
+        table = pa.Table.from_batches(batches)
+        assert table.column("body").to_pylist() == expected_bodies
+        assert table.column("dropped_byte_size").to_pylist() == expected_dropped
+        assert table.column("rownum").to_pylist() == [2, 4]
+        assert table.column("kind").to_pylist() == ["A", "B"]
+
+    rejected = copy.copy(base)
+    rejected.leading_fragment = "error"
+    with pytest.raises(ValueError, match="leading physical line"):
+        source.read_arrow_reader(options=rejected).read_all()
+
+
+def test_compressed_logs_stream_their_records_without_naming_the_coding(
+    tmp_path: pathlib.Path,
+) -> None:
+    plain = b"[A] first\ncontinued\n[B] second\n"
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<kind>[A-Z])\] "
+    options.batch_row_size = 1
+
+    for name, encoded in (
+        ("records.log.gz", gzip.dumps(plain)),
+        ("records.log.zst", zstd.dumps(plain)),
+    ):
+        source = handle(tmp_path, encoded, name)
+        reader = source.read_arrow_reader(options=options)
+        assert reader.schema.names == ["url", "body", "kind"]
+
+        # The coding decodes as the batches are pulled, one record at a time.
+        batches = list(reader)
+        assert [batch.num_rows for batch in batches] == [1, 1]
+        table = pa.Table.from_batches(batches)
+        assert table.column("body").to_pylist() == [b"first\ncontinued", b"second"]
+        assert table.column("kind").to_pylist() == ["A", "B"]
+
+        # The property counts through the same decoded stream, under the
+        # options the handle infers for itself: physical lines, unframed.
+        assert source.row_size == 3
+
+        # The decoded view reads the same records off the same bytes.
+        coded = IOBase(tmp_path / name).into_coded()
+        assert coded.read_arrow_reader(options=options).read_all().num_rows == 2
+
+
+def test_an_empty_or_absent_compressed_log_keeps_its_schema(
+    tmp_path: pathlib.Path,
+) -> None:
+    options = TextOptions()
+    options.framing = True
+    options.rowheader = r"^\[(?<kind>[A-Z])\] "
+
+    for name, source in (
+        ("empty.log.gz", handle(tmp_path, gzip.dumps(b""), "empty.log.gz")),
+        ("absent.log.zst", IOBase(tmp_path / "absent.log.zst")),
+    ):
+        reader = source.read_arrow_reader(options=options)
+        assert reader.schema.names == ["url", "body", "kind"], name
+        assert reader.read_all().num_rows == 0, name
+        assert source.row_size == 0, name
 
 
 def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path) -> None:

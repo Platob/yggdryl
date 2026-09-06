@@ -1,6 +1,6 @@
 """Provision Apache Spark and the Iceberg Spark runtime for the interop suite.
 
-The Iceberg interop tests in ``python/tests/test_spark_interop.py`` exchange
+The Iceberg interop tests in ``python/tests/media/test_spark_interop.py`` exchange
 tables with Apache Spark, the format's reference implementation. Spark is a
 heavyweight dependency - a JVM, a few hundred megabytes of packages, and one
 runtime jar from Maven Central - so it is provisioned here, on demand, and

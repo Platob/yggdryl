@@ -1,10 +1,10 @@
 //! Native Python views of Yggdryl URI, URL, and URN values.
 
 use pyo3::class::basic::CompareOp;
-use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyString, PyTuple};
-use yggdryl::{Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
+use pyo3::types::{PyAny, PyBool, PyDict, PyString, PyTuple};
+use yggdryl::{Parameters as CoreParameters, Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -267,14 +267,52 @@ impl PyUri {
         self.inner.path().as_str()
     }
 
-    #[getter]
-    fn query(&self) -> Option<&str> {
-        self.inner.query()
+    /// Return query text without `?`, decoding its escapes when asked.
+    ///
+    /// `decode` chooses which text: the component's own bytes, or the text its
+    /// percent escapes stand for. Decoding reads the component as text -
+    /// `%26` becomes a literal `&`, not a new pair - so `parameters` is what
+    /// reads a query as its pairs.
+    #[pyo3(signature = (decode = false))]
+    fn query(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .query(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
     }
 
-    #[getter]
-    fn fragment(&self) -> Option<&str> {
-        self.inner.fragment()
+    /// Return fragment text without `#`, decoding its escapes when asked.
+    #[pyo3(signature = (decode = false))]
+    fn fragment(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .fragment(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
+    }
+
+    /// Address the query as the `key=value` pairs it spells.
+    ///
+    /// The view is live: it reads and writes this value's query rather than a
+    /// copy of it, so `parameters()["symbol"] = "MSFT"` changes this URI.
+    #[pyo3(signature = (decode = false))]
+    fn parameters(slf: &Bound<'_, Self>, decode: bool) -> PyParameters {
+        PyParameters::over_uri(slf.clone().unbind(), decode)
+    }
+
+    /// Return the path as text, decoding its escapes when asked.
+    ///
+    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
+    /// inside the segment that carried it, so `path_segments` stays the way to
+    /// walk structure.
+    #[pyo3(signature = (decode = false))]
+    fn path_text(&self, decode: bool) -> PyResult<String> {
+        Ok(self
+            .inner
+            .path_text(decode)
+            .map_err(value_error)?
+            .into_owned())
     }
 
     #[getter]
@@ -300,6 +338,16 @@ impl PyUri {
     #[getter]
     fn extensions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, ExactIterator::new(self.inner.extensions()))
+    }
+
+    /// Replace the query text, or clear it with `None`.
+    ///
+    /// The value is the component itself, without `?`. An error leaves the
+    /// value unchanged.
+    #[pyo3(signature = (query, /))]
+    fn set_query(&mut self, query: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_query(query).map_err(value_error)
     }
 
     fn set_file_name(&mut self, value: &str) -> PyResult<()> {
@@ -590,14 +638,52 @@ impl PyUrl {
         self.inner.path().as_str()
     }
 
-    #[getter]
-    fn query(&self) -> Option<&str> {
-        self.inner.query()
+    /// Return query text without `?`, decoding its escapes when asked.
+    ///
+    /// `decode` chooses which text: the component's own bytes, or the text its
+    /// percent escapes stand for. Decoding reads the component as text -
+    /// `%26` becomes a literal `&`, not a new pair - so `parameters` is what
+    /// reads a query as its pairs.
+    #[pyo3(signature = (decode = false))]
+    fn query(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .query(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
     }
 
-    #[getter]
-    fn fragment(&self) -> Option<&str> {
-        self.inner.fragment()
+    /// Return fragment text without `#`, decoding its escapes when asked.
+    #[pyo3(signature = (decode = false))]
+    fn fragment(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .fragment(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
+    }
+
+    /// Address the query as the `key=value` pairs it spells.
+    ///
+    /// The view is live: it reads and writes this value's query rather than a
+    /// copy of it, so `parameters()["symbol"] = "MSFT"` changes this URL.
+    #[pyo3(signature = (decode = false))]
+    fn parameters(slf: &Bound<'_, Self>, decode: bool) -> PyParameters {
+        PyParameters::over_url(slf.clone().unbind(), decode)
+    }
+
+    /// Return the path as text, decoding its escapes when asked.
+    ///
+    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
+    /// inside the segment that carried it, so `path_segments` stays the way to
+    /// walk structure.
+    #[pyo3(signature = (decode = false))]
+    fn path_text(&self, decode: bool) -> PyResult<String> {
+        Ok(self
+            .inner
+            .path_text(decode)
+            .map_err(value_error)?
+            .into_owned())
     }
 
     #[getter]
@@ -623,6 +709,16 @@ impl PyUrl {
     #[getter]
     fn stem(&self) -> Option<&str> {
         self.inner.stem()
+    }
+
+    /// Replace the query text, or clear it with `None`.
+    ///
+    /// The value is the component itself, without `?`. An error leaves the
+    /// value unchanged.
+    #[pyo3(signature = (query, /))]
+    fn set_query(&mut self, query: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_query(query).map_err(value_error)
     }
 
     fn set_file_name(&mut self, value: &str) -> PyResult<()> {
@@ -1038,14 +1134,43 @@ impl PyUrn {
         self.inner.path().as_str()
     }
 
-    #[getter]
-    fn query(&self) -> Option<&str> {
-        self.inner.query()
+    /// Return query text without `?`, decoding its escapes when asked.
+    ///
+    /// `decode` chooses which text: the component's own bytes, or the text its
+    /// percent escapes stand for. Decoding reads the component as text -
+    /// `%26` becomes a literal `&`, not a new pair - so `parameters` is what
+    /// reads a query as its pairs.
+    #[pyo3(signature = (decode = false))]
+    fn query(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .query(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
     }
 
-    #[getter]
-    fn fragment(&self) -> Option<&str> {
-        self.inner.fragment()
+    /// Return fragment text without `#`, decoding its escapes when asked.
+    #[pyo3(signature = (decode = false))]
+    fn fragment(&self, decode: bool) -> PyResult<Option<String>> {
+        Ok(self
+            .inner
+            .fragment(decode)
+            .map_err(value_error)?
+            .map(std::borrow::Cow::into_owned))
+    }
+
+    /// Return the path as text, decoding its escapes when asked.
+    ///
+    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
+    /// inside the segment that carried it, so `path_segments` stays the way to
+    /// walk structure.
+    #[pyo3(signature = (decode = false))]
+    fn path_text(&self, decode: bool) -> PyResult<String> {
+        Ok(self
+            .inner
+            .path_text(decode)
+            .map_err(value_error)?
+            .into_owned())
     }
 
     #[getter]
@@ -1238,5 +1363,407 @@ impl PyUriPathIterator {
 
     fn __length_hint__(&self) -> usize {
         self.remaining
+    }
+}
+
+/// Which value a [`PyParameters`] view reads and writes through.
+///
+/// The view holds the Python object, not a copy of its query, so a write is
+/// visible on the URL a caller already has and a read never goes stale.
+enum ParametersOwner {
+    Uri(Py<PyUri>),
+    Url(Py<PyUrl>),
+}
+
+/// A URL query, addressed as the `key=value` pairs it spells.
+///
+/// This is a live view of the value it was taken from - `url.parameters()` -
+/// so every read goes back to that URL's query and every write replaces it.
+/// Item syntax means a key: `parameters["symbol"]`, `del parameters["venue"]`,
+/// and the mapping methods `get`, `pop`, `setdefault`, `update` and `clear`
+/// behave as a `dict`'s do - a lookup that changes nothing writes nothing.
+/// `keys`, `values` and `items` answer with tuples rather than views, because
+/// a query may repeat a key.
+///
+/// A query may name one key more than once, which a `dict` cannot: `[]` and
+/// `get` answer with the first, `get_all` with every one, `[]=` replaces the
+/// first and drops the rest, and `append` adds another.
+///
+/// `decode` chooses the text the view speaks. A decoding view answers with the
+/// text the escapes stand for and encodes what it is given; a raw view answers
+/// with the query's own bytes and refuses text the query syntax cannot carry.
+#[pyclass(name = "Parameters", module = "yggdryl._native")]
+pub(crate) struct PyParameters {
+    owner: ParametersOwner,
+    decode: bool,
+}
+
+impl PyParameters {
+    pub(crate) const fn over_uri(owner: Py<PyUri>, decode: bool) -> Self {
+        Self {
+            owner: ParametersOwner::Uri(owner),
+            decode,
+        }
+    }
+
+    pub(crate) const fn over_url(owner: Py<PyUrl>, decode: bool) -> Self {
+        Self {
+            owner: ParametersOwner::Url(owner),
+            decode,
+        }
+    }
+
+    /// Read the pairs the owner's query holds right now.
+    ///
+    /// The snapshot owns its pairs: the borrow on the Python object ends with
+    /// this call, which is what lets an edited snapshot be written straight
+    /// back to the same object.
+    fn pairs(&self, py: Python<'_>) -> PyResult<CoreParameters<'static>> {
+        match &self.owner {
+            ParametersOwner::Uri(owner) => Ok(owner
+                .bind(py)
+                .try_borrow()?
+                .inner
+                .parameters(self.decode)
+                .map_err(value_error)?
+                .into_owned()),
+            ParametersOwner::Url(owner) => Ok(owner
+                .bind(py)
+                .try_borrow()?
+                .inner
+                .parameters(self.decode)
+                .map_err(value_error)?
+                .into_owned()),
+        }
+    }
+
+    /// Replace the owner's query with these pairs, refusing a frozen value.
+    fn write(&self, py: Python<'_>, pairs: &CoreParameters<'_>) -> PyResult<()> {
+        match &self.owner {
+            ParametersOwner::Uri(owner) => {
+                let mut owner = owner.bind(py).try_borrow_mut()?;
+                owner.require_mutable()?;
+                owner.inner.set_parameters(pairs).map_err(value_error)
+            }
+            ParametersOwner::Url(owner) => {
+                let mut owner = owner.bind(py).try_borrow_mut()?;
+                owner.require_mutable()?;
+                owner.inner.set_parameters(pairs).map_err(value_error)
+            }
+        }
+    }
+
+    /// Read, edit, and write back in one step.
+    fn edit<R>(
+        &self,
+        py: Python<'_>,
+        edit: impl FnOnce(&mut CoreParameters<'static>) -> PyResult<R>,
+    ) -> PyResult<R> {
+        self.edit_if(py, |pairs| Ok((edit(pairs)?, true)))
+    }
+
+    /// Read and edit, writing back only when the edit changed something.
+    ///
+    /// A lookup that finds nothing to do is a read, and a read must not
+    /// rewrite the value it read: the query would be respelled - `flag`
+    /// becomes `flag=`, `a&&b` loses its empty pair - and a frozen owner would
+    /// refuse an operation that changes nothing.
+    fn edit_if<R>(
+        &self,
+        py: Python<'_>,
+        edit: impl FnOnce(&mut CoreParameters<'static>) -> PyResult<(R, bool)>,
+    ) -> PyResult<R> {
+        let mut pairs = self.pairs(py)?;
+        let (answer, changed) = edit(&mut pairs)?;
+        if changed {
+            self.write(py, &pairs)?;
+        }
+        Ok(answer)
+    }
+}
+
+#[pymethods]
+impl PyParameters {
+    // A live view of a mutable query cannot promise a stable hash.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// Return whether this view speaks decoded text.
+    #[getter]
+    const fn decode(&self) -> bool {
+        self.decode
+    }
+
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        Ok(self.pairs(py)?.len())
+    }
+
+    fn __bool__(&self, py: Python<'_>) -> PyResult<bool> {
+        Ok(!self.pairs(py)?.is_empty())
+    }
+
+    fn __contains__(&self, py: Python<'_>, key: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let Ok(key) = key.extract::<&str>() else {
+            return Ok(false);
+        };
+        Ok(self.pairs(py)?.contains_key(key))
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<String> {
+        self.pairs(py)?
+            .get(key)
+            .map(str::to_owned)
+            .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+    }
+
+    fn __setitem__(&self, py: Python<'_>, key: &str, value: &str) -> PyResult<()> {
+        self.edit(py, |pairs| {
+            pairs.insert(key, value).map_err(value_error)?;
+            Ok(())
+        })
+    }
+
+    fn __delitem__(&self, py: Python<'_>, key: &str) -> PyResult<()> {
+        self.edit(py, |pairs| {
+            pairs
+                .remove(key)
+                .map(|_| ())
+                .ok_or_else(|| PyKeyError::new_err(key.to_owned()))
+        })
+    }
+
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PyParameterIterator> {
+        Ok(PyParameterIterator::new(
+            self.pairs(py)?.keys().map(str::to_owned).collect(),
+        ))
+    }
+
+    /// Return every key, in the order the query spells them.
+    ///
+    /// The three come back as tuples rather than as one-shot iterators: a
+    /// query may repeat a key, so these are sequences, and a caller reads them
+    /// more than once the way a `dict` view is read more than once.
+    fn keys<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let keys: Vec<String> = self.pairs(py)?.keys().map(str::to_owned).collect();
+        PyTuple::new(py, keys)
+    }
+
+    /// Return every value, in order, repeated keys included.
+    fn values<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let values: Vec<String> = self.pairs(py)?.values().map(str::to_owned).collect();
+        PyTuple::new(py, values)
+    }
+
+    /// Return every `(key, value)` pair, in order.
+    fn items<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let items: Vec<(String, String)> = self
+            .pairs(py)?
+            .iter()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect();
+        PyTuple::new(py, items)
+    }
+
+    /// Return the first value named `key`, or `default` when there is none.
+    #[pyo3(signature = (key, default=None, /))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        Ok(self.pairs(py)?.get(key).map_or_else(
+            || default.unwrap_or_else(|| py.None()),
+            |value| PyString::new(py, value).into_any().unbind(),
+        ))
+    }
+
+    /// Return every value named `key`, in order.
+    fn get_all<'py>(&self, py: Python<'py>, key: &str) -> PyResult<Bound<'py, PyTuple>> {
+        let values: Vec<String> = self.pairs(py)?.get_all(key).map(str::to_owned).collect();
+        PyTuple::new(py, values)
+    }
+
+    /// Add another pair named `key`, keeping the pairs already there.
+    fn append(&self, py: Python<'_>, key: &str, value: &str) -> PyResult<()> {
+        self.edit(py, |pairs| pairs.append(key, value).map_err(value_error))
+    }
+
+    /// Remove every pair named `key`, returning the first value removed.
+    ///
+    /// A key the query does not hold raises unless a default is passed, which
+    /// is what `dict.pop` does - and why the default is variadic: passing
+    /// `None` as the default has to mean `None`, not "no default".
+    #[pyo3(signature = (key, /, *default))]
+    fn pop(&self, py: Python<'_>, key: &str, default: &Bound<'_, PyTuple>) -> PyResult<Py<PyAny>> {
+        if default.len() > 1 {
+            return Err(PyTypeError::new_err(format!(
+                "pop expected at most 2 arguments, got {}",
+                default.len() + 1
+            )));
+        }
+        let removed = self.edit_if(py, |pairs| {
+            let removed = pairs.remove(key);
+            let changed = removed.is_some();
+            Ok((removed, changed))
+        })?;
+        if let Some(value) = removed {
+            return Ok(PyString::new(py, &value).into_any().unbind());
+        }
+        default
+            .get_item(0)
+            .map(Bound::unbind)
+            .map_err(|_| PyKeyError::new_err(key.to_owned()))
+    }
+
+    /// Return the value named `key`, setting it to `default` when absent.
+    #[pyo3(signature = (key, default="", /))]
+    fn setdefault(&self, py: Python<'_>, key: &str, default: &str) -> PyResult<String> {
+        self.edit_if(py, |pairs| {
+            if let Some(value) = pairs.get(key) {
+                return Ok((value.to_owned(), false));
+            }
+            pairs.append(key, default).map_err(value_error)?;
+            Ok((default.to_owned(), true))
+        })
+    }
+
+    /// Set every pair `values` and the keyword arguments name.
+    #[pyo3(signature = (values=None, /, **kwargs))]
+    fn update(
+        &self,
+        py: Python<'_>,
+        values: Option<&Bound<'_, PyAny>>,
+        kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<()> {
+        let mut entries: Vec<(String, String)> = Vec::new();
+        if let Some(values) = values {
+            // A mapping is whatever answers `keys`, which is how `dict.update`
+            // itself tells one from a sequence of pairs.
+            if let Ok(keys) = values.call_method0("keys") {
+                for key in keys.try_iter()? {
+                    let key = key?;
+                    let value = values.get_item(&key)?;
+                    entries.push((key.extract()?, value.extract()?));
+                }
+            } else {
+                for entry in values.try_iter()? {
+                    let entry = entry?;
+                    let pair = entry.extract::<(String, String)>().map_err(|_| {
+                        PyTypeError::new_err(
+                            "expected a mapping or an iterable of (key, value) pairs",
+                        )
+                    })?;
+                    entries.push(pair);
+                }
+            }
+        }
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                entries.push((key.extract()?, value.extract()?));
+            }
+        }
+        let changed = !entries.is_empty();
+        self.edit_if(py, |pairs| {
+            for (key, value) in &entries {
+                pairs.insert(key, value).map_err(value_error)?;
+            }
+            Ok(((), changed))
+        })
+    }
+
+    /// Drop every pair, clearing the query.
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        self.edit_if(py, |pairs| {
+            let changed = !pairs.is_empty();
+            pairs.clear();
+            Ok(((), changed))
+        })
+    }
+
+    /// Return the pairs as a `dict`, keeping the first value of a repeated key.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_dict<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let dict = PyDict::new(py);
+        for (key, value) in self.pairs(py)?.iter() {
+            if !dict.contains(key)? {
+                dict.set_item(key, value)?;
+            }
+        }
+        Ok(dict)
+    }
+
+    /// Return the query component these pairs spell, or `None` when empty.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_query(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        Ok(self.pairs(py)?.into_query().map(Into::into))
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let pairs = self.pairs(py)?;
+        let entries: Vec<String> = pairs
+            .iter()
+            .map(|(key, value)| format!("{key:?}: {value:?}"))
+            .collect();
+        Ok(format!("Parameters({{{}}})", entries.join(", ")))
+    }
+
+    /// Compare the pairs, independently of the values holding them.
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let left = self.pairs(py)?;
+        if let Ok(other) = other.extract::<PyRef<'_, Self>>() {
+            let right = other.pairs(py)?;
+            let equal = left.iter().eq(right.iter());
+            return Ok(PyBool::new(py, equal).to_owned().into_any().unbind());
+        }
+        let Ok(mapping) = other.cast::<PyDict>() else {
+            return Ok(py.NotImplemented());
+        };
+        // A query may name one key twice, which no dict can, so such a query
+        // equals no dict at all - and comparing pair by pair would call two
+        // pairs of the same name a match for one entry, leaving room for a
+        // key the dict holds and the query does not.
+        let mut names: Vec<&str> = left.keys().collect();
+        names.sort_unstable();
+        let repeats = names.windows(2).any(|pair| pair[0] == pair[1]);
+        let equal = !repeats
+            && left.len() == mapping.len()
+            && left.iter().try_fold(true, |equal, (key, value)| {
+                Ok::<bool, PyErr>(
+                    equal
+                        && mapping.get_item(key)?.is_some_and(|held| {
+                            held.extract::<&str>().is_ok_and(|held| held == value)
+                        }),
+                )
+            })?;
+        Ok(PyBool::new(py, equal).to_owned().into_any().unbind())
+    }
+}
+
+/// Iterator over a query's keys, in the order the query spells them.
+#[pyclass(module = "yggdryl._native")]
+pub(crate) struct PyParameterIterator {
+    keys: std::vec::IntoIter<String>,
+}
+
+impl PyParameterIterator {
+    fn new(keys: Vec<String>) -> Self {
+        Self {
+            keys: keys.into_iter(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyParameterIterator {
+    // Consumption changes iterator state.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> Option<Py<PyString>> {
+        Some(PyString::new(py, &self.keys.next()?).unbind())
+    }
+
+    fn __length_hint__(&self) -> usize {
+        self.keys.len()
     }
 }

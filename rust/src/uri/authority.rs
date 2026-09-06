@@ -48,24 +48,16 @@ impl Authority {
             .map(|(_, password)| password)
     }
 
-    /// Return whether this authority can only be an endpoint, never a bucket.
-    ///
-    /// An explicit port or an IPv6 literal is something no bucket name carries,
-    /// so an `s3` URI spelling one names a host before any suffix rule runs.
-    pub(super) fn names_host(&self) -> bool {
-        let host_port = self
-            .as_str()
+    /// Return the host and optional port without user information.
+    pub fn host_port(&self) -> &str {
+        self.as_str()
             .rsplit_once('@')
-            .map_or(self.as_str(), |(_, host_port)| host_port);
-        host_port.starts_with('[') || host_port.contains(':') || is_s3_hostname(self.host())
+            .map_or(self.as_str(), |(_, host_port)| host_port)
     }
 
     /// Return the host without user information, brackets, or a port.
     pub fn host(&self) -> &str {
-        let host_port = self
-            .as_str()
-            .rsplit_once('@')
-            .map_or(self.as_str(), |(_, host_port)| host_port);
+        let host_port = self.host_port();
         if let Some(bracketed) = host_port.strip_prefix('[') {
             return bracketed
                 .split_once(']')
@@ -74,6 +66,18 @@ impl Authority {
         host_port
             .rsplit_once(':')
             .map_or(host_port, |(host, _)| host)
+    }
+
+    /// Return the explicit numeric port, when one was written.
+    pub fn port(&self) -> Option<u16> {
+        let host_port = self.host_port();
+        let port = if let Some(bracketed) = host_port.strip_prefix('[') {
+            let close = bracketed.find(']')?;
+            bracketed[close + 1..].strip_prefix(':')?
+        } else {
+            host_port.rsplit_once(':')?.1
+        };
+        port.parse().ok()
     }
 
     /// Return a deterministic cross-language hash of the authority.
@@ -138,14 +142,15 @@ pub(super) fn validate_authority(value: &str) -> Result<()> {
         let literal = &bracketed[..close];
         validate_ip_literal(literal, value.len() - host_port.len() + 1)?;
         let suffix = &bracketed[close + 1..];
-        if !suffix.is_empty()
-            && (!suffix.starts_with(':') || !suffix[1..].bytes().all(|byte| byte.is_ascii_digit()))
-        {
-            return Err(parse_error(
-                "authority",
-                value.len() - suffix.len(),
-                "characters after a bracketed host must form a numeric port",
-            ));
+        if !suffix.is_empty() {
+            let port = suffix.strip_prefix(':').ok_or_else(|| {
+                parse_error(
+                    "authority",
+                    value.len() - suffix.len(),
+                    "characters after a bracketed host must form a numeric port",
+                )
+            })?;
+            validate_port(port, value.len() - port.len())?;
         }
     } else {
         if let Some(position) = host_port.find(['[', ']']) {
@@ -171,16 +176,28 @@ pub(super) fn validate_authority(value: &str) -> Result<()> {
                     "authority host must not be empty",
                 ));
             }
-            if !port.bytes().all(|byte| byte.is_ascii_digit()) {
-                return Err(parse_error(
-                    "authority",
-                    value.len() - port.len(),
-                    "authority port must contain only decimal digits",
-                ));
-            }
+            validate_port(port, value.len() - port.len())?;
         }
     }
 
+    Ok(())
+}
+
+fn validate_port(port: &str, position: usize) -> Result<()> {
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(parse_error(
+            "authority",
+            position,
+            "authority port must contain one or more decimal digits",
+        ));
+    }
+    if port.parse::<u16>().is_err() {
+        return Err(parse_error(
+            "authority",
+            position,
+            "authority port must be between 0 and 65535",
+        ));
+    }
     Ok(())
 }
 
@@ -264,51 +281,82 @@ impl<'de> Deserialize<'de> for Authority {
 }
 
 impl Uri {
-    /// Interpret an `s3` URI as endpoint, bucket, and object key.
-    ///
-    /// The key is the path left after the segments the endpoint and bucket
-    /// consumed, spelled exactly as the path spells it - percent escapes and a
-    /// trailing slash retained - so the bucket root reads as `""`.
     pub(super) fn s3_location(&self) -> Option<S3Location<'_>> {
-        if self.scheme != Scheme::S3 {
+        if !matches!(self.scheme.as_str(), "s3" | "s3a" | "s3n") {
             return None;
         }
 
-        let (first, mut cursor, explicit_host) =
-            if self.has_authority && !self.authority.is_empty() {
-                (self.authority.host(), 0, self.authority.names_host())
-            } else {
-                let (next, segment) = self.path.next_segment(0)?;
-                (segment, next, false)
-            };
+        // The cursor walks the path so whatever the endpoint and the bucket do
+        // not consume is the key, spelled exactly as the path spells it.
+        let mut cursor = 0;
         let next_segment = |cursor: &mut usize| {
             let (next, segment) = self.path.next_segment(*cursor)?;
             *cursor = next;
             Some(segment)
         };
+        let key_of = |cursor: usize| {
+            self.path
+                .as_str()
+                .get(cursor..)
+                .unwrap_or_default()
+                .trim_start_matches('/')
+        };
 
-        let (hostname, bucket, region) = if let Some(aws) = parse_aws_s3_hostname(first) {
+        let authority = (self.has_authority && !self.authority.is_empty()).then(|| &self.authority);
+        // A port is something no bucket name carries, so it names the endpoint
+        // before any suffix rule runs.
+        if let Some(authority) = authority.filter(|authority| authority.port().is_some()) {
+            let bucket = next_segment(&mut cursor);
+            return Some(S3Location {
+                hostname: Some(authority.host()),
+                endpoint: Some(authority.host_port()),
+                bucket,
+                region: None,
+                virtual_addressing: false,
+                key: key_of(cursor),
+            });
+        }
+
+        let first = match authority {
+            Some(authority) => authority.host(),
+            None => next_segment(&mut cursor)?,
+        };
+
+        if let Some(aws) = parse_aws_s3_hostname(first) {
+            let endpoint = aws
+                .bucket
+                .map_or(first, |bucket| &first[bucket.len() + 1..]);
             let bucket = match aws.bucket {
                 Some(bucket) => Some(bucket),
                 None => next_segment(&mut cursor),
             };
-            (Some(first), bucket, aws.region)
-        } else if explicit_host || is_s3_hostname(first) {
-            (Some(first), next_segment(&mut cursor), None)
-        } else {
-            (None, Some(first), None)
-        };
-        let key = self
-            .path
-            .as_str()
-            .get(cursor..)
-            .unwrap_or("")
-            .trim_start_matches('/');
+            return Some(S3Location {
+                hostname: Some(first),
+                endpoint: Some(endpoint),
+                bucket,
+                region: aws.region,
+                virtual_addressing: aws.bucket.is_some(),
+                key: key_of(cursor),
+            });
+        }
+        if is_s3_hostname(first) {
+            let bucket = next_segment(&mut cursor);
+            return Some(S3Location {
+                hostname: Some(first),
+                endpoint: Some(first),
+                bucket,
+                region: None,
+                virtual_addressing: false,
+                key: key_of(cursor),
+            });
+        }
         Some(S3Location {
-            hostname,
-            bucket,
-            region,
-            key,
+            hostname: None,
+            endpoint: None,
+            bucket: Some(first),
+            region: None,
+            virtual_addressing: false,
+            key: key_of(cursor),
         })
     }
 }
@@ -316,8 +364,10 @@ impl Uri {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct S3Location<'a> {
     pub(super) hostname: Option<&'a str>,
+    pub(super) endpoint: Option<&'a str>,
     pub(super) bucket: Option<&'a str>,
     pub(super) region: Option<&'a str>,
+    pub(super) virtual_addressing: bool,
     pub(super) key: &'a str,
 }
 
@@ -329,9 +379,10 @@ struct AwsS3Hostname<'a> {
 
 /// Return whether a first component spells an endpoint rather than a bucket.
 ///
-/// A name ending in `.com` or `.io` is a hostname, and so is `localhost` or
-/// an IP literal: no bucket is named either, and a local S3-compatible
-/// store is what those spellings mean.
+/// A name ending in `.com` or `.io` is a hostname, and so is `localhost` or an
+/// IP literal: no bucket is named either, and a local S3-compatible store is
+/// what those spellings mean. A port settles it earlier still, in
+/// [`Uri::s3_location`].
 fn is_s3_hostname(value: &str) -> bool {
     if value.eq_ignore_ascii_case("localhost") || value.parse::<std::net::IpAddr>().is_ok() {
         return true;

@@ -127,7 +127,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 58] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 55] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -186,6 +186,7 @@ pub enum DigestAlgorithm
   pub fn write_reader(&mut self, source: &mut impl Read) -> Result<u64>
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
+  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::root::edge_algorithm  [rust\src\edge_algorithm.rs]
 pub enum EdgeAlgorithm
@@ -1164,10 +1165,25 @@ pub struct Text<H: IOBase>
   pub const fn into_text(self) -> Self
   pub fn into_text_with(self, options: TextOptions) -> Self
 
+### yggdryl::media::text::leading  [rust\src\media\text\leading.rs]
+pub enum LeadingFragment
+  pub const ALL: [Self; 3] = [Self::Keep, Self::Drop, Self::Error];
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+
 ### yggdryl::media::text::options  [rust\src\media\text\options.rs]
 pub struct TextOptions
   pub with_rownum: Option<i64>
   pub fn new() -> Self
+  pub const fn framing(&self) -> bool
+  pub const fn set_framing(&mut self, framing: bool)
+  pub const fn with_framing(self, framing: bool) -> Self
+  pub const fn leading_fragment(&self) -> LeadingFragment
+  pub const fn set_leading_fragment(&mut self, treatment: LeadingFragment)
+  pub const fn with_leading_fragment(self, treatment: LeadingFragment) -> Self
+  pub const fn max_record_byte_size(&self) -> Option<u64>
+  pub const fn set_max_record_byte_size(&mut self, size: Option<u64>)
+  pub const fn with_max_record_byte_size(self, size: u64) -> Self
   pub fn rowheader(&self) -> Option<&str>
   pub fn set_rowheader(&mut self, rowheader: Option<&str>) -> Result<()>
   pub fn try_with_rowheader(self, rowheader: &str) -> Result<Self>
@@ -1226,6 +1242,9 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn as_iceberg(&self) -> ProtocolMetadata<'_>
   pub fn as_fix(&self) -> ProtocolMetadata<'_>
   pub fn as_field_properties(&self) -> ProtocolMetadata<'_>
+  pub fn as_digest(&self) -> ProtocolMetadata<'_>
+  pub fn as_identity(&self) -> ProtocolMetadata<'_>
+  pub fn as_partition(&self) -> ProtocolMetadata<'_>
   pub fn as_s3(&self) -> ProtocolMetadata<'_>
   pub fn as_gs(&self) -> ProtocolMetadata<'_>
   pub fn as_az(&self) -> ProtocolMetadata<'_>
@@ -1367,6 +1386,9 @@ pub struct Scheme(SchemeValue);
   pub const ICEBERG: Self = Self(SchemeValue::Iceberg);
   pub const FIX: Self = Self(SchemeValue::Fix);
   pub const FIELD: Self = Self(SchemeValue::Field);
+  pub const DIGEST: Self = Self(SchemeValue::Digest);
+  pub const IDENTITY: Self = Self(SchemeValue::Identity);
+  pub const PARTITION: Self = Self(SchemeValue::Partition);
   pub const S3: Self = Self(SchemeValue::S3);
   pub const GS: Self = Self(SchemeValue::Gs);
   pub const AZ: Self = Self(SchemeValue::Az);
@@ -1738,6 +1760,15 @@ pub const CURRENCIES: &'static [&'static str]
 
 ### yggdryl::types::cast  [rust\src\types\cast.rs]
 pub trait ArrowFieldType: FieldType
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<ArrayRef>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
+  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
   pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
   pub fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<K::Array>>
   pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
@@ -1847,6 +1878,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type RunEndEncodedField = TypedField<nested::RunEndEncoded>;
   pub type VariantField = TypedField<nested::Variant>;
   pub type UuidField = TypedField<nested::Uuid>;
+  pub type VersionField = TypedField<version::VersionType>;
   pub type GeometryField = TypedField<geospatial::Geometry>;
   pub type GeographyField = TypedField<geospatial::Geography>;
   pub type FieldRef = Arc<ArrowField>;
@@ -1874,6 +1906,11 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn unnest_fields(&self) -> Vec<Self>
   pub fn explode_fields(&self) -> Vec<Self>
   pub fn without_fields(&self, names: &[&str]) -> Result<Self>
+  pub fn digest_fields(&self) -> DigestFields<'_>
+  pub fn digest_field_names(&self) -> DigestFieldNames<'_>
+  pub fn digest_field_len(&self) -> usize
+  pub fn has_digest_components(&self) -> bool
+  pub fn only_digest_fields(&self) -> Result<Self>
   pub fn is_partition(&self) -> bool
   pub fn partition_fields(&self) -> PartitionFields<'_>
   pub fn partition_field_names(&self) -> PartitionFieldNames<'_>
@@ -1936,6 +1973,12 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn as_fix_mut(&mut self) -> protocol::FixFieldMut<'_>
   pub fn as_field_properties(&self) -> protocol::FieldPropertiesField<'_>
   pub fn as_field_properties_mut(&mut self) -> protocol::FieldPropertiesFieldMut<'_>
+  pub fn as_digest(&self) -> protocol::DigestField<'_>
+  pub fn as_digest_mut(&mut self) -> protocol::DigestFieldMut<'_>
+  pub fn as_identity(&self) -> protocol::IdentityField<'_>
+  pub fn as_identity_mut(&mut self) -> protocol::IdentityFieldMut<'_>
+  pub fn as_partition(&self) -> protocol::PartitionField<'_>
+  pub fn as_partition_mut(&mut self) -> protocol::PartitionFieldMut<'_>
   pub fn as_s3(&self) -> protocol::S3Field<'_>
   pub fn as_s3_mut(&mut self) -> protocol::S3FieldMut<'_>
   pub fn as_gs(&self) -> protocol::GsField<'_>
@@ -2019,6 +2062,15 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
 pub const fn uuid() -> Self
   pub fn uuid_packed(&self, value: &[u8]) -> Result<u128>
   pub fn uuid_value(&self, packed: u128) -> Result<SmolStr>
+
+### yggdryl::types::version  [rust\src\types\version\mod.rs]
+pub struct Version
+  pub const MAX_PARTS: usize = 4;
+  pub const MIN: Self
+  pub const MAX: Self
+  pub struct VersionType
+  pub type VersionScalar = TypedScalar<VersionType>;
+  pub type VersionField = TypedField<VersionType>;
 
 ### yggdryl::types::integer  [rust\src\types\integer\dtypes.rs]
 pub const fn is_integer(&self) -> bool
@@ -2227,6 +2279,15 @@ pub struct ProtocolField<'field>
   pub struct FieldPropertiesField<'field>(ProtocolField<'field>);
   pub struct FieldPropertiesFieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> FieldPropertiesField<'_>
+  pub struct DigestField<'field>(ProtocolField<'field>);
+  pub struct DigestFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> DigestField<'_>
+  pub struct IdentityField<'field>(ProtocolField<'field>);
+  pub struct IdentityFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> IdentityField<'_>
+  pub struct PartitionField<'field>(ProtocolField<'field>);
+  pub struct PartitionFieldMut<'field>(ProtocolFieldMut<'field>);
+  pub fn as_protocol(&self) -> PartitionField<'_>
   pub struct S3Field<'field>(ProtocolField<'field>);
   pub struct S3FieldMut<'field>(ProtocolFieldMut<'field>);
   pub fn as_protocol(&self) -> S3Field<'_>
@@ -2404,7 +2465,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>
@@ -2595,6 +2656,28 @@ pub struct Authority(SmolStr);
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
   pub fn column_digests(array: &dyn Array, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
 
+### yggdryl::xxhash::field  [rust\src\xxhash\field.rs]
+impl DigestField<'_>
+  pub fn is_holder(&self) -> bool
+  pub fn is_component(&self) -> bool
+  pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
+  pub fn paths(&self) -> Result<Option<Vec<String>>>
+  impl DigestFieldMut<'_>
+  pub fn set_holder(&mut self) -> Result<()>
+  pub fn set_component(&mut self) -> Result<()>
+  pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()>
+  pub fn remove_algorithm(&mut self) -> Option<String>
+  pub fn set_paths<I, P>(&mut self, paths: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
+  pub fn remove_paths(&mut self) -> Option<String>
+  pub fn remove_role(&mut self) -> Result<Option<String>>
+  pub fn digest_fields(&self) -> DigestFields<'_>
+  pub fn digest_field_names(&self) -> DigestFieldNames<'_>
+  pub fn digest_field_len(&self) -> usize
+  pub fn has_digest_components(&self) -> bool
+  pub fn only_digest_fields(&self) -> Result<Self>
+  pub struct DigestFields<'field>
+  pub struct DigestFieldNames<'field>(DigestFields<'field>);
+
 ### yggdryl::xxhash::handle  [rust\src\xxhash\handle.rs]
 pub struct Hashed<H: IOBase>
   pub fn new(handle: H, algorithm: DigestAlgorithm) -> Self
@@ -2647,6 +2730,7 @@ pub struct Xxh32
   pub fn as_u128(&self) -> u128
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
+  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::xxhash::stream  [rust\src\xxhash\stream.rs]
 pub struct DigestReader<R: Read>

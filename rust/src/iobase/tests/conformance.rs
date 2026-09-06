@@ -20,6 +20,8 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
     std::fs::create_dir_all(&root).expect("a writable temporary root");
 
     let memory = Arc::new(crate::holder::fs::MemoryFileSystem::new());
+    crate::holder::fs::FileSystem::create_dir(memory.as_ref(), "bench", false)
+        .expect("a writable memory root");
     vec![
         ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
         (
@@ -32,7 +34,7 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
         (
             "fs::File",
             Box::new(
-                crate::holder::fs::File::from_location(memory, &format!("bench/{label}.bin"))
+                crate::holder::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
                     .expect("a valid location"),
             ),
         ),
@@ -48,6 +50,15 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
             ),
         ),
     ]
+}
+
+/// Backends that provide arbitrary positional mutation rather than only the
+/// sequential Arrow output and append stream capabilities.
+fn positional_backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
+    backends(label)
+        .into_iter()
+        .filter(|(name, _)| *name != "fs::File")
+        .collect()
 }
 
 /// Remove whatever the local backend left behind.
@@ -69,7 +80,7 @@ fn cleanup(label: &str) {
 
 #[test]
 fn every_backend_grows_and_zero_fills_a_write_gap() {
-    for (name, mut handle) in backends("gap") {
+    for (name, mut handle) in positional_backends("gap") {
         handle.pwrite(0, b"trade").expect("a writable handle");
         assert_eq!(handle.size(), 5, "{name}");
 
@@ -138,7 +149,7 @@ fn every_backend_reads_a_missing_resource_as_empty() {
         (
             "fs::File",
             Box::new(
-                crate::holder::fs::File::from_location(memory, "nowhere/absent.bin")
+                crate::holder::fs::File::from_path(memory, "nowhere/absent.bin", None)
                     .expect("a valid location"),
             ),
         ),
@@ -166,7 +177,7 @@ fn every_backend_reads_a_missing_resource_as_empty() {
 
 #[test]
 fn every_backend_truncates_shrinking_and_extending() {
-    for (name, mut handle) in backends("truncate") {
+    for (name, mut handle) in positional_backends("truncate") {
         handle
             .write_all_bytes(b"0123456789")
             .expect("a writable handle");
@@ -194,7 +205,7 @@ fn every_backend_truncates_shrinking_and_extending() {
 
 #[test]
 fn every_backend_keeps_capacity_at_or_above_size() {
-    for (name, mut handle) in backends("capacity") {
+    for (name, mut handle) in positional_backends("capacity") {
         handle.reserve(4_096).expect("a reservable handle");
         assert!(handle.capacity() >= 4_096, "{name}");
         assert_eq!(handle.size(), 0, "{name}");
@@ -216,6 +227,9 @@ fn every_backend_keeps_capacity_at_or_above_size() {
 #[test]
 fn every_backend_appends_where_it_says_it_did() {
     for (name, mut handle) in backends("append") {
+        handle
+            .write_all_bytes(b"")
+            .expect("an initialized append target");
         assert_eq!(
             handle.append_bytes(b"first").expect("a writable handle"),
             0,
@@ -233,6 +247,23 @@ fn every_backend_appends_where_it_says_it_did() {
         );
     }
     cleanup("append");
+}
+
+#[test]
+fn arrow_filesystem_handles_reject_unavailable_random_mutation() {
+    let filesystem = Arc::new(crate::holder::fs::MemoryFileSystem::new());
+    crate::holder::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
+        .expect("a writable memory root");
+    let mut handle = crate::holder::fs::File::from_path(filesystem, "bench/random.bin", None)
+        .expect("a valid location");
+    handle
+        .write_all_bytes(b"value")
+        .expect("a sequential output stream");
+
+    assert!(handle.pwrite(1, b"x").unwrap_err().is_unsupported());
+    assert!(handle.truncate(2).unwrap_err().is_unsupported());
+    assert!(handle.reserve(16).unwrap_err().is_unsupported());
+    assert_eq!(handle.read_all_bytes().unwrap(), b"value");
 }
 
 #[test]

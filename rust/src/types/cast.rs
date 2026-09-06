@@ -45,6 +45,7 @@ use crate::types::temporal::casts::{
     holds_temporal, holds_text, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
 use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
+use crate::types::version::casts::{ingest_version_array, is_text_storage};
 use crate::types::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH, code_refusal};
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field};
@@ -248,6 +249,8 @@ enum ArrayCastKind {
     UuidIngest,
     /// A recognized UUID source rendering as its hyphenated spelling.
     UuidText,
+    /// Text entering a version is parsed and rewritten to its canonical text.
+    VersionIngest,
     /// Text entering a temporal: every exposed value is read through the
     /// crate's own spellings, which are wider than Arrow's. Arrow's kernel
     /// stays behind them for the spellings only it knows, so the reading is
@@ -385,6 +388,10 @@ impl ArrayCastPlan {
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
             DataType::Uuid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid)),
+            DataType::Version => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Version)
+            ),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -539,6 +546,10 @@ impl ArrayCastPlan {
                     }
                 }
             }
+            (DataType::Version, source) if is_text_storage(source) => ArrayCastKind::VersionIngest,
+            (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to version is not supported"),
+            },
             (
                 DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
                 ArrowDataType::FixedSizeBinary(16),
@@ -869,6 +880,9 @@ impl ArrayCastPlan {
             ArrayCastKind::UuidText => {
                 render_uuid_text(&array, &self.expected, &self.field, exposure, budget)?
             }
+            ArrayCastKind::VersionIngest => {
+                ingest_version_array(&array, &self.field, exposure, budget)?
+            }
             ArrayCastKind::AsciiText => {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
@@ -1069,6 +1083,14 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
+        (
+            DataType::Version | DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+            RecognizedExtension::Version,
+        ) => Ok(()),
+        (other, RecognizedExtension::Version) => Err(Error::Unsupported {
+            kind: "version",
+            reason: format!("casting version to {} is not supported", other.name()),
+        }),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(
