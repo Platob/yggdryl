@@ -110,6 +110,17 @@ impl PyTimezone {
         Self::from_core(Timezone::UTC)
     }
 
+    /// The explicit zone-free marker.
+    ///
+    /// A wall-clock value with no time-zone interpretation. A `datetime64`
+    /// always carries a zone, so this is what it carries when there is none
+    /// to carry - never a null.
+    #[classattr]
+    #[allow(non_snake_case)]
+    fn NAIVE() -> Self {
+        Self::from_core(Timezone::NAIVE)
+    }
+
     /// The canonical name.
     #[getter]
     fn key(&self) -> &str {
@@ -121,6 +132,11 @@ impl PyTimezone {
     /// Whether this zone is UTC itself.
     fn is_utc(&self) -> bool {
         self.inner.is_utc()
+    }
+
+    /// Whether this is the explicit zone-free marker rather than a zone.
+    fn is_naive(&self) -> bool {
+        self.inner.is_naive()
     }
 
     /// Whether this build knows the offset rules for this zone.

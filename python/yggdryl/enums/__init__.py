@@ -48,6 +48,18 @@ UNION_MODES: tuple[str, ...] = tuple(_LISTING["union_modes"])
 #: Every generic I/O intent.
 IO_MODES: tuple[str, ...] = tuple(_LISTING["io_modes"])
 
+#: The subset of :data:`IO_MODES` a record write accepts.
+IO_WRITE_MODES: tuple[str, ...] = tuple(_LISTING["io_write_modes"])
+
+#: What a text read does with a first line that is only part of a record.
+LEADING_FRAGMENTS: tuple[str, ...] = tuple(_LISTING["leading_fragments"])
+
+#: Every geography edge-interpolation algorithm.
+EDGE_ALGORITHMS: tuple[str, ...] = tuple(_LISTING["edge_algorithms"])
+
+#: Every structured text format, e.g. ``"json"``, ``"yaml"``.
+FORMATS: tuple[str, ...] = tuple(_LISTING["formats"])
+
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
@@ -59,6 +71,12 @@ IO_KINDS: tuple[str, ...] = tuple(_LISTING["io_kinds"])
 
 #: The compatibility targets ``into_scheme_compat`` accepts, e.g. ``"arrow"``.
 COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"])
+
+#: What a cast does with a declared value the source cannot fill.
+NULLABILITIES: tuple[str, ...] = tuple(_LISTING["nullabilities"])
+
+#: What a cast makes a same-width pair carry.
+REPRESENTATIONS: tuple[str, ...] = tuple(_LISTING["representations"])
 
 #: The named points of the shared 0-to-9 compression scale.
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
@@ -81,7 +99,13 @@ __all__ = [
     "DIGEST_ALGORITHMS",
     "IO_KINDS",
     "LEVELS",
+    "NULLABILITIES",
+    "REPRESENTATIONS",
     "TIME_UNITS",
     "UNION_MODES",
     "IO_MODES",
+    "IO_WRITE_MODES",
+    "EDGE_ALGORITHMS",
+    "FORMATS",
+    "LEADING_FRAGMENTS",
 ]

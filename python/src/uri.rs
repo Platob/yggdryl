@@ -4,7 +4,10 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyString, PyTuple};
-use yggdryl::{Parameters as CoreParameters, Uri as CoreUri, Url as CoreUrl, Urn as CoreUrn};
+use yggdryl::{
+    Authority as CoreAuthority, Parameters as CoreParameters, Scheme as CoreScheme, Uri as CoreUri,
+    UriPath as CoreUriPath, Url as CoreUrl, Urn as CoreUrn,
+};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -121,6 +124,20 @@ pub(crate) fn path_string_from_value(value: &Bound<'_, PyAny>) -> PyResult<Strin
     Err(PyTypeError::new_err("expected str or os.PathLike[str]"))
 }
 
+/// Extend `url` with one component, choosing the core join the value names.
+///
+/// A `str` is one URL path component and joins as written. An `os.PathLike`
+/// is an operating-system path, so it joins through `Url::join_path`, which
+/// reads its own separators and its drive prefix rather than treating the
+/// whole path as one segment.
+fn join_url_component(url: &CoreUrl, value: &Bound<'_, PyAny>) -> PyResult<CoreUrl> {
+    if let Ok(text) = value.extract::<&str>() {
+        return url.joinpath(text).map_err(value_error);
+    }
+    url.join_path(path_string_from_value(value)?)
+        .map_err(value_error)
+}
+
 fn path_string_from_core(value: std::path::PathBuf) -> PyResult<String> {
     value.into_os_string().into_string().map_err(|_| {
         PyValueError::new_err("file URI path cannot be represented as a Python string")
@@ -184,11 +201,42 @@ impl PyUri {
             .map_err(value_error)
     }
 
+    /// Build a validated URI from its five components.
+    ///
+    /// Each component crosses as the text it is written as, and the core
+    /// validates them against one another: a non-empty authority requires the
+    /// `//` marker, a path after an authority is empty or slash-rooted, and a
+    /// marker-less path does not begin with `//`.
+    #[staticmethod]
+    #[pyo3(signature = (scheme, authority, path, query = None, fragment = None))]
+    fn from_parts(
+        scheme: &str,
+        authority: &str,
+        path: &str,
+        query: Option<&str>,
+        fragment: Option<&str>,
+    ) -> PyResult<Self> {
+        CoreUri::from_parts(
+            CoreScheme::from_str(scheme).map_err(value_error)?,
+            CoreAuthority::from_str(authority).map_err(value_error)?,
+            CoreUriPath::from_str(path).map_err(value_error)?,
+            query.map(Into::into),
+            fragment.map(Into::into),
+        )
+        .map(Self::from_core)
+        .map_err(value_error)
+    }
+
     #[staticmethod]
     fn from_json(value: &str) -> PyResult<Self> {
         CoreUri::from_json(value)
             .map(Self::from_core)
             .map_err(value_error)
+    }
+
+    /// Re-check every cross-component invariant, raising `ValueError` on one.
+    fn validate(&self) -> PyResult<()> {
+        self.inner.validate().map_err(value_error)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -267,6 +315,52 @@ impl PyUri {
         self.inner.region()
     }
 
+    /// The S3 endpoint host with its explicit port, without a virtual bucket.
+    #[getter]
+    fn s3_endpoint(&self) -> Option<&str> {
+        self.inner.s3_endpoint()
+    }
+
+    /// Return whether an S3 location writes its bucket into the hostname.
+    fn is_s3_virtual(&self) -> bool {
+        self.inner.is_s3_virtual()
+    }
+
+    /// The host with its optional port, without user information.
+    #[getter]
+    fn host_port(&self) -> &str {
+        self.inner.authority().host_port()
+    }
+
+    /// The explicit port written in the authority, when one was written.
+    #[getter]
+    fn port(&self) -> Option<u16> {
+        self.inner.authority().port()
+    }
+
+    /// The port a client dials when the authority omits one.
+    ///
+    /// This is the scheme's registered default, never a port written into the
+    /// authority, which `port` answers.
+    #[getter]
+    fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// Return whether the scheme addresses byte-oriented storage.
+    fn is_storage(&self) -> bool {
+        self.inner.scheme().is_storage()
+    }
+
+    /// Whether canonical syntax carries the `//` authority marker.
+    ///
+    /// This is the difference between an explicitly empty authority
+    /// (`file:///x`) and no authority at all (`mailto:a@b`).
+    #[getter]
+    fn has_authority(&self) -> bool {
+        self.inner.has_authority()
+    }
+
     #[getter]
     fn path(&self) -> &str {
         self.inner.path().as_str()
@@ -323,6 +417,27 @@ impl PyUri {
     #[getter]
     fn path_segments<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, ExactIterator::new(self.inner.path_segments()))
+    }
+
+    /// The names the path addresses, with `.` and `..` resolved.
+    ///
+    /// `path_segments` is the literal text; this is what the path reaches.
+    #[getter]
+    fn parts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.inner.parts())
+    }
+
+    /// The containing location, which at the root is this location itself.
+    #[getter]
+    fn parent(&self) -> Self {
+        Self::from_core(self.inner.parent().unwrap_or_else(|| self.inner.clone()))
+    }
+
+    /// Every containing location, closest first.
+    #[getter]
+    fn parents<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        let parents: Vec<Self> = self.inner.parents().map(Self::from_core).collect();
+        PyTuple::new(py, parents)
     }
 
     #[getter]
@@ -643,6 +758,43 @@ impl PyUrl {
         self.inner.region()
     }
 
+    /// The S3 endpoint host with its explicit port, without a virtual bucket.
+    #[getter]
+    fn s3_endpoint(&self) -> Option<&str> {
+        self.inner.s3_endpoint()
+    }
+
+    /// Return whether an S3 location writes its bucket into the hostname.
+    fn is_s3_virtual(&self) -> bool {
+        self.inner.is_s3_virtual()
+    }
+
+    /// The host with its optional port, without user information.
+    #[getter]
+    fn host_port(&self) -> &str {
+        self.inner.authority().host_port()
+    }
+
+    /// The explicit port written in the authority, when one was written.
+    #[getter]
+    fn port(&self) -> Option<u16> {
+        self.inner.authority().port()
+    }
+
+    /// The port a client dials when the authority omits one.
+    ///
+    /// This is the scheme's registered default, never a port written into the
+    /// authority, which `port` answers.
+    #[getter]
+    fn default_port(&self) -> Option<u16> {
+        self.inner.default_port()
+    }
+
+    /// Return whether the scheme addresses byte-oriented storage.
+    fn is_storage(&self) -> bool {
+        self.inner.scheme().is_storage()
+    }
+
     #[getter]
     fn path(&self) -> &str {
         self.inner.path().as_str()
@@ -823,9 +975,12 @@ impl PyUrl {
     }
 
     /// The path components, as `PurePath.parts`.
+    ///
+    /// These are the names the path addresses, so `.` is dropped and `..`
+    /// pops the name before it; `path_segments` is the literal text.
     #[getter]
     fn parts<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        self.path_segments(py)
+        PyTuple::new(py, self.inner.parts())
     }
 
     /// The containing location, as `PurePath.parent`.
@@ -844,23 +999,21 @@ impl PyUrl {
     }
 
     /// Join path components onto this location, as `PurePath.joinpath`.
+    ///
+    /// A `str` is one URL path component; an `os.PathLike` is an operating
+    /// system path, joined component by component with its own separators.
     #[pyo3(signature = (*others))]
     fn joinpath(&self, others: &Bound<'_, PyTuple>) -> PyResult<Self> {
         let mut joined = self.inner.clone();
         for other in others {
-            joined = joined
-                .joinpath(&path_string_from_value(&other)?)
-                .map_err(value_error)?;
+            joined = join_url_component(&joined, &other)?;
         }
         Ok(Self::from_core(joined))
     }
 
     /// `url / "child"`, as `PurePath.__truediv__`.
     fn __truediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
-        self.inner
-            .joinpath(&path_string_from_value(other)?)
-            .map(Self::from_core)
-            .map_err(value_error)
+        join_url_component(&self.inner, other).map(Self::from_core)
     }
 
     /// This location with a different final component, as `with_name`.
@@ -926,6 +1079,43 @@ impl PyUrl {
         self.inner.is_glob()
     }
 
+    /// Return whether the pattern crosses directory boundaries.
+    ///
+    /// A `**` segment is what makes a walk recurse rather than list one level.
+    fn is_recursive_glob(&self) -> bool {
+        self.inner.is_recursive_glob()
+    }
+
+    /// Return whether `text` is a pattern rather than one plain name.
+    ///
+    /// This is what a walk asks of each pattern segment to decide whether it
+    /// can descend into it directly or has to list and filter.
+    #[staticmethod]
+    fn is_pattern(text: &str) -> bool {
+        CoreUrl::is_pattern(text)
+    }
+
+    /// Split a glob into the fixed location it starts from and its pattern.
+    ///
+    /// The root is the deepest place a listing can start; the pattern is the
+    /// rest, written relative to that root, which is what `full_match_under`
+    /// takes. A location that is not a glob is its own root with no pattern.
+    fn glob_parts(&self) -> PyResult<(Self, Option<String>)> {
+        let (root, pattern) = self.inner.glob_parts().map_err(value_error)?;
+        Ok((Self::from_core(root), pattern))
+    }
+
+    /// Return whether the path below `root` matches `pattern`.
+    ///
+    /// The pattern is anchored at `root` rather than at the path root, which
+    /// is how a listing filters what `glob_parts` handed it. A location
+    /// outside `root` never matches.
+    fn full_match_under(&self, root: &Bound<'_, PyAny>, pattern: &str) -> PyResult<bool> {
+        Ok(self
+            .inner
+            .matches_glob_under(&core_url_from_value(root)?, pattern))
+    }
+
     /// Return this location relative to `other`, as `PurePath.relative_to`.
     ///
     /// Raises `ValueError` when this location is not below `other`, which is
@@ -971,6 +1161,23 @@ impl PyUrl {
         self.inner.is_private()
     }
 
+    /// Return whether this location is on the local file system.
+    ///
+    /// Only a local URL converts to a path; every other scheme needs a client.
+    fn is_local(&self) -> bool {
+        self.inner.is_local()
+    }
+
+    /// The MIME type of the local entry this location addresses.
+    ///
+    /// An existing directory is `application/x-directory`; another local entry
+    /// is identified from its name, falling back to the generic file type. A
+    /// remote location answers `mime_type`, with no network call.
+    #[getter]
+    fn local_mime_type(&self) -> PyMimeType {
+        PyMimeType::from_core(self.inner.local_mime_type())
+    }
+
     /// The Hive partition pairs this location's path spells out.
     #[getter]
     fn partitions<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
@@ -980,6 +1187,36 @@ impl PyUrl {
     /// Return the value of one Hive partition column, when the path has it.
     fn partition(&self, column: &str) -> Option<String> {
         self.inner.hive_partition(column)
+    }
+
+    /// The Hive partition pairs this location spells out below `root`.
+    ///
+    /// A directory that is part of the table's address is not a partition of
+    /// it, so `/lake/year=2024` under `/lake/year=2024` spells out nothing. A
+    /// location outside `root` spells out nothing either.
+    fn partitions_under<'py>(
+        &self,
+        py: Python<'py>,
+        root: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(
+            py,
+            self.inner
+                .hive_partitions_under(&core_url_from_value(root)?),
+        )
+    }
+
+    /// Return whether any path segment is a `column=value` partition.
+    fn is_partitioned(&self) -> bool {
+        self.inner.is_hive_partitioned()
+    }
+
+    /// Extend this location with one `column=value` partition directory.
+    fn with_partition(&self, column: &str, value: &str) -> PyResult<Self> {
+        self.inner
+            .with_hive_partition(column, value)
+            .map(Self::from_core)
+            .map_err(value_error)
     }
 
     fn __len__(&self) -> usize {

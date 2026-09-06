@@ -799,17 +799,12 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
         expected: SmolStr::new_static("a sequence of array values"),
         actual: SmolStr::new(values.kind()),
     })?;
-    let root = DataType::from_fields([field.clone()])?.required_field("row");
     let mut canonical = Vec::with_capacity(values.len());
     for value in values {
-        let row = Scalar::from_sequence([value.clone()]);
-        let row = root.canonicalize_value(row)?;
-        canonical.push(
-            row.as_sequence()
-                .and_then(|row| row.first())
-                .cloned()
-                .ok_or_else(|| Error::internal("arrow::array_from_value"))?,
-        );
+        // The field's own value contract, one value at a time: a synthetic row
+        // around each element would allocate a sequence per value and answer
+        // the same thing.
+        canonical.push(field.scalar(value.clone())?);
     }
     let borrowed = canonical.iter().collect::<Vec<_>>();
     value::array_from_values(field, &borrowed)

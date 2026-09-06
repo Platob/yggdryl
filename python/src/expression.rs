@@ -14,7 +14,10 @@ use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use yggdryl::expression::{
-    Bound as CoreBound, BoundStatement as CoreBoundStatement, Direction, NullsOrder, Operator,
+    Bound as CoreBound, BoundStatement as CoreBoundStatement, Bounds as CoreBounds,
+    ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, Direction,
+    Function as CoreFunction, NullsOrder, Operator, Order as CoreOrder,
+    Projection as CoreProjection, Segment as CoreSegment, Selector as CoreSelector,
     Statement as CoreStatement,
 };
 use yggdryl::{Expression as CoreExpression, Scalar};
@@ -23,7 +26,9 @@ use crate::iomedia::{
     batch_reader_from_arrow_reader, batch_reader_from_arrow_table, batch_reader_to_pyarrow,
     record_batch_from_value,
 };
+use crate::types::datatype::{PyDataType, core_dtype_from_value};
 use crate::types::field::core_field_from_value;
+use crate::types::scalar::PyScalar;
 use crate::value_error;
 
 /// Read late-bound values once, before either expression or statement binding.
@@ -95,6 +100,39 @@ fn arithmetic_expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
     Ok(CoreExpression::literal(crate::types::scalar::from_py(
         value,
     )?))
+}
+
+/// Read one comparison from the grammar's own spelling of it.
+fn comparison_from_str(value: &str) -> PyResult<CoreComparison> {
+    CoreComparison::ALL
+        .into_iter()
+        .find(|comparison| comparison.as_str().eq_ignore_ascii_case(value))
+        .ok_or_else(|| {
+            value_error(format!(
+                "unknown comparison {value:?}; expected one of {}",
+                CoreComparison::ALL.map(CoreComparison::as_str).join(", ")
+            ))
+        })
+}
+
+/// Read a list of operands, each an expression or a value.
+fn operands_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<CoreExpression>> {
+    let mut operands = Vec::new();
+    for operand in value.try_iter()? {
+        operands.push(arithmetic_expression_from_value(&operand?)?);
+    }
+    Ok(operands)
+}
+
+/// Read one path step: a struct child, a list position, or a map key.
+fn segment_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSegment> {
+    if value.is_instance_of::<PyString>() {
+        return Ok(CoreSegment::field(value.extract::<String>()?));
+    }
+    if let Ok(index) = value.extract::<i64>() {
+        return Ok(CoreSegment::index(index));
+    }
+    CoreSegment::key(crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// A recursive, typed filter and projection tree.
@@ -310,6 +348,271 @@ impl PyExpression {
     }
 
     /// Build `-self`, folding a numeric literal in the native core.
+    /// Compare this expression with another under a named comparison.
+    ///
+    /// The vocabulary is the grammar's own - `=`, `<>`, `<`, `<=`, `>`, `>=`,
+    /// `is distinct from`, `is not distinct from` - and `eq` through `ge` are
+    /// the six spellings that name one each.
+    fn compare(&self, comparison: &str, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let comparison = comparison_from_str(comparison)?;
+        Ok(Self::from_core(self.inner.clone().compare(
+            comparison,
+            arithmetic_expression_from_value(other)?,
+        )))
+    }
+
+    /// `self = other`.
+    fn eq(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .eq(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self <> other`.
+    fn ne(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .ne(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self < other`.
+    fn lt(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .lt(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self <= other`.
+    fn le(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .le(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self > other`.
+    fn gt(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .gt(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self >= other`.
+    fn ge(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .ge(arithmetic_expression_from_value(other)?),
+        ))
+    }
+
+    /// `self in (...)`, over the values or expressions given.
+    fn is_in(&self, values: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner.clone().is_in(operands_from_value(values)?),
+        ))
+    }
+
+    /// `self between low and high`, inclusive at both ends.
+    fn between(&self, low: &Bound<'_, PyAny>, high: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(self.inner.clone().between(
+            arithmetic_expression_from_value(low)?,
+            arithmetic_expression_from_value(high)?,
+        )))
+    }
+
+    /// `self is null`, which answers true or false and never unknown.
+    fn is_null(&self) -> Self {
+        Self::from_core(self.inner.clone().is_null())
+    }
+
+    /// `self is not null`.
+    fn is_not_null(&self) -> Self {
+        Self::from_core(self.inner.clone().is_not_null())
+    }
+
+    /// `self like pattern`, with SQL's `%` and `_` wildcards.
+    fn like(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .like(arithmetic_expression_from_value(pattern)?),
+        ))
+    }
+
+    /// `self ilike pattern`, folding ASCII case.
+    fn ilike(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .ilike(arithmetic_expression_from_value(pattern)?),
+        ))
+    }
+
+    /// `self glob pattern`, under the `.gitignore` path rule.
+    fn glob(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .glob(arithmetic_expression_from_value(pattern)?),
+        ))
+    }
+
+    /// Cast this expression to a datatype, refusing what it cannot hold.
+    fn cast(&self, dtype: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner.clone().cast(core_dtype_from_value(dtype)?),
+        ))
+    }
+
+    /// Cast this expression to a datatype, nulling what it cannot hold.
+    fn try_cast(&self, dtype: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner.clone().try_cast(core_dtype_from_value(dtype)?),
+        ))
+    }
+
+    /// Read a struct child by name, resolved case-insensitively.
+    fn child(&self, name: &str) -> Self {
+        Self::from_core(self.inner.clone().child(name))
+    }
+
+    /// Read a list element by position, counting back from the end when
+    /// negative.
+    fn at(&self, index: i64) -> Self {
+        Self::from_core(self.inner.clone().at(index))
+    }
+
+    /// Append a whole path of steps at once.
+    ///
+    /// A `str` step is a struct child, an `int` is a list position, and any
+    /// other value is a map key, typed through the shared value rules.
+    fn path(&self, segments: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut steps = Vec::new();
+        for step in segments.try_iter()? {
+            steps.push(segment_from_value(&step?)?);
+        }
+        Ok(Self::from_core(self.inner.clone().path(steps)))
+    }
+
+    /// Conjoin many operands into one flattened node; empty is true.
+    #[staticmethod]
+    fn all(operands: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(CoreExpression::all(operands_from_value(
+            operands,
+        )?)))
+    }
+
+    /// Disjoin many operands into one flattened node; empty is false.
+    #[staticmethod]
+    fn any(operands: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(CoreExpression::any(operands_from_value(
+            operands,
+        )?)))
+    }
+
+    /// Call one function of the closed scalar set.
+    #[staticmethod]
+    fn call(function: &str, arguments: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let function = CoreFunction::from_name(function).ok_or_else(|| {
+            value_error(format!(
+                "unknown function {function:?}; expected one of {}",
+                CoreFunction::vocabulary()
+            ))
+        })?;
+        Ok(Self::from_core(CoreExpression::call(
+            function,
+            operands_from_value(arguments)?,
+        )))
+    }
+
+    /// Build a searched conditional from `(when, then)` pairs, tried in order.
+    ///
+    /// An absent `otherwise` means null, which is what SQL's `CASE` means.
+    #[staticmethod]
+    #[pyo3(signature = (branches, otherwise = None))]
+    fn case(branches: &Bound<'_, PyAny>, otherwise: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
+        let mut pairs = Vec::new();
+        for branch in branches.try_iter()? {
+            let branch = branch?;
+            let (when, then): (Bound<'_, PyAny>, Bound<'_, PyAny>) = branch.extract()?;
+            pairs.push((
+                expression_from_value(&when)?,
+                arithmetic_expression_from_value(&then)?,
+            ));
+        }
+        let otherwise = otherwise
+            .map(arithmetic_expression_from_value)
+            .transpose()?;
+        Ok(Self::from_core(CoreExpression::case(pairs, otherwise)))
+    }
+
+    /// Hold a constant in an explicitly named datatype.
+    ///
+    /// `literal` infers the datatype from the value; this declares it, and
+    /// the value is checked against it.
+    #[staticmethod]
+    fn typed_literal(dtype: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        CoreExpression::typed_literal(
+            core_dtype_from_value(dtype)?,
+            crate::types::scalar::from_py(value)?,
+        )
+        .map(Self::from_core)
+        .map_err(value_error)
+    }
+
+    /// Whether this node is a constant.
+    #[getter]
+    fn is_literal(&self) -> bool {
+        self.inner.is_literal()
+    }
+
+    /// The constant this node holds, as `(value, dtype)`, or `None`.
+    fn as_literal(&self) -> Option<(PyScalar, PyDataType)> {
+        self.inner.as_literal().map(|typed| {
+            (
+                PyScalar::from_inner(typed.value().clone()),
+                PyDataType::from_inner(typed.dtype().clone()),
+            )
+        })
+    }
+
+    /// The column name this node reads directly, or `None`.
+    fn as_column(&self) -> Option<&str> {
+        self.inner.as_column()
+    }
+
+    /// Whether this node is the constant true; an empty `all()` counts.
+    #[getter]
+    fn is_always_true(&self) -> bool {
+        self.inner.is_always_true()
+    }
+
+    /// Whether this node is the constant false; an empty `any()` counts.
+    #[getter]
+    fn is_always_false(&self) -> bool {
+        self.inner.is_always_false()
+    }
+
+    /// The number of nodes this expression holds.
+    fn node_count(&self) -> usize {
+        self.inner.node_count()
+    }
+
+    /// Refuse an expression past the depth or node limit, before a walk.
+    fn check_budget(&self) -> PyResult<()> {
+        self.inner.check_budget().map_err(value_error)
+    }
+
     fn negate(&self) -> Self {
         Self::from_core(self.inner.clone().neg())
     }
@@ -503,6 +806,88 @@ impl PyBound {
         )
     }
 
+    /// The struct root this expression was bound against.
+    #[getter]
+    fn schema(&self) -> crate::types::field::PyField {
+        crate::types::field::PyField::from_inner(self.inner.schema().clone())
+    }
+
+    /// The schema column indices this expression reads, ascending.
+    ///
+    /// This is projection pushdown: a reader decodes these and no others.
+    #[getter]
+    fn column_indices(&self) -> Vec<usize> {
+        self.inner.column_indices()
+    }
+
+    /// Run the vectorized tier over one batch, answering one value per row.
+    fn evaluate_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = record_batch_from_value(batch)?;
+        let values = self.inner.evaluate(&batch).map_err(value_error)?;
+        crate::types::datatype::arrow_array_to_pyarrow(py, &values, None)
+    }
+
+    /// The selection this predicate makes over one batch, as a mask.
+    ///
+    /// The mask is null-free: an unknown answer folds to false, which is what
+    /// keeps a filter from keeping a row it cannot judge.
+    fn filter_mask_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = record_batch_from_value(batch)?;
+        let mask = self.inner.filter_mask(&batch).map_err(value_error)?;
+        let array: arrow_array::ArrayRef = std::sync::Arc::new(mask);
+        crate::types::datatype::arrow_array_to_pyarrow(py, &array, None)
+    }
+
+    /// Keep the rows of one batch this predicate answers true for.
+    ///
+    /// A mask that keeps every row hands the caller's own batch back.
+    fn filter_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = record_batch_from_value(batch)?;
+        let filtered = self.inner.filter(&source).map_err(value_error)?;
+        if filtered.num_rows() == source.num_rows() {
+            return Ok(batch.clone());
+        }
+        filtered.into_pyarrow(py)
+    }
+
+    /// Filter every batch a reader yields, lazily.
+    fn filter_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        reader: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = batch_reader_from_arrow_reader(reader)?;
+        batch_reader_to_pyarrow(py, self.inner.clone().filter_reader(reader))
+    }
+
+    /// Whether a container's statistics leave any row that could match.
+    ///
+    /// False is a proof: the container can be skipped without reading it.
+    /// True only means the statistics do not rule it out.
+    fn statistics_prune(&self, bounds: &PyBounds) -> bool {
+        self.inner.statistics_prune(&bounds.inner)
+    }
+
+    /// What a container's statistics settle, three-valued.
+    ///
+    /// `True` every row matches, `False` none does, `None` the statistics do
+    /// not say and the rows have to be read.
+    fn statistics_certainty(&self, bounds: &PyBounds) -> Option<bool> {
+        self.inner.statistics_certainty(&bounds.inner)
+    }
+
     fn __str__(&self) -> String {
         self.inner.to_string()
     }
@@ -547,6 +932,12 @@ pub(crate) struct PyStatement {
     inner: CoreStatement,
 }
 
+impl PyStatement {
+    const fn from_core(inner: CoreStatement) -> Self {
+        Self { inner }
+    }
+}
+
 #[pymethods]
 impl PyStatement {
     /// Parse one statement from its canonical text.
@@ -558,6 +949,53 @@ impl PyStatement {
     }
 
     /// Read one statement from its structural JSON document.
+    /// The statement that selects every column, filters nothing, orders
+    /// nothing, and limits nothing.
+    #[staticmethod]
+    fn all() -> Self {
+        Self::from_core(CoreStatement::all())
+    }
+
+    /// Select a projection list.
+    ///
+    /// Each projection is an expression, or a `(expression, alias)` pair when
+    /// the output column publishes a name of its own.
+    #[staticmethod]
+    fn select(projections: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut selected = Vec::new();
+        for projection in projections.try_iter()? {
+            selected.push(projection_from_value(&projection?)?);
+        }
+        Ok(Self::from_core(CoreStatement::select(selected)))
+    }
+
+    /// This statement with a predicate, replacing any it already carries.
+    fn with_predicate(&self, predicate: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .with_predicate(expression_from_value(predicate)?),
+        ))
+    }
+
+    /// This statement with an ordering, replacing any it already carries.
+    ///
+    /// Each key is an expression, or a `(expression, direction)` or
+    /// `(expression, direction, nulls)` tuple; `direction` is `"asc"` or
+    /// `"desc"` and `nulls` is `"first"` or `"last"`.
+    fn with_ordering(&self, ordering: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut keys = Vec::new();
+        for key in ordering.try_iter()? {
+            keys.push(order_from_value(&key?)?);
+        }
+        Ok(Self::from_core(self.inner.clone().with_ordering(keys)))
+    }
+
+    /// This statement with a row limit.
+    fn with_limit(&self, limit: u64) -> Self {
+        Self::from_core(self.inner.clone().with_limit(limit))
+    }
+
     #[staticmethod]
     fn from_json(document: &str) -> PyResult<Self> {
         Ok(Self {
@@ -822,4 +1260,200 @@ impl PyBoundStatement {
             .map_err(value_error)?
             .into_pyarrow(py)
     }
+}
+
+/// Read one projection: an expression, or an `(expression, alias)` pair.
+fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
+    if let Ok((expression, alias)) = value.extract::<(Bound<'_, PyAny>, String)>() {
+        return Ok(CoreProjection::aliased(
+            expression_from_value(&expression)?,
+            alias,
+        ));
+    }
+    Ok(CoreProjection::new(expression_from_value(value)?))
+}
+
+/// Read one ordering key and its optional direction and null placement.
+fn order_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreOrder> {
+    let (expression, direction, nulls) =
+        if let Ok(parts) = value.extract::<(Bound<'_, PyAny>, String, String)>() {
+            (parts.0, Some(parts.1), Some(parts.2))
+        } else if let Ok(parts) = value.extract::<(Bound<'_, PyAny>, String)>() {
+            (parts.0, Some(parts.1), None)
+        } else {
+            (value.clone(), None, None)
+        };
+    let mut order = CoreOrder::new(expression_from_value(&expression)?);
+    if let Some(direction) = direction {
+        order = order.with_direction(match direction.to_ascii_lowercase().as_str() {
+            "asc" | "ascending" => Direction::Ascending,
+            "desc" | "descending" => Direction::Descending,
+            other => {
+                return Err(value_error(format!(
+                    "unknown sort direction {other:?}; expected \"asc\" or \"desc\""
+                )));
+            }
+        });
+    }
+    if let Some(nulls) = nulls {
+        order = order.with_nulls(match nulls.to_ascii_lowercase().as_str() {
+            "first" => NullsOrder::First,
+            "last" => NullsOrder::Last,
+            other => {
+                return Err(value_error(format!(
+                    "unknown null placement {other:?}; expected \"first\" or \"last\""
+                )));
+            }
+        });
+    }
+    Ok(order)
+}
+
+/// Return whether an identifier has to be quoted to survive the grammar.
+#[pyfunction]
+#[pyo3(name = "expression_needs_quoting")]
+pub(crate) fn expression_needs_quoting(name: &str) -> bool {
+    yggdryl::expression::needs_quoting(name)
+}
+
+/// The grammar's own vocabularies, as the canonical spellings they cross as.
+#[pyfunction]
+#[pyo3(name = "expression_vocabularies")]
+pub(crate) fn expression_vocabularies(py: Python<'_>) -> PyResult<Py<PyDict>> {
+    let listing = PyDict::new(py);
+    listing.set_item(
+        "comparisons",
+        CoreComparison::ALL.map(CoreComparison::as_str).to_vec(),
+    )?;
+    listing.set_item(
+        "functions",
+        CoreFunction::ALL.map(CoreFunction::as_str).to_vec(),
+    )?;
+    let attributes: Vec<&str> = CoreSelector::ALL.iter().map(CoreSelector::as_str).collect();
+    listing.set_item("holder_attributes", attributes)?;
+    Ok(listing.into())
+}
+
+/// One column's recorded statistics as Python reads them.
+type ColumnStatistics = (Option<PyScalar>, Option<PyScalar>, Option<u64>);
+
+/// One container's per-column statistics, as a pushdown reads them.
+///
+/// The same shape whether the numbers came from a Parquet footer, an Iceberg
+/// manifest, or a Hive path: what a column holds at least, at most, and how
+/// many of its rows are null.
+#[pyclass(name = "Bounds", module = "yggdryl._native", skip_from_py_object)]
+#[derive(Clone)]
+pub(crate) struct PyBounds {
+    inner: CoreBounds,
+}
+
+#[pymethods]
+impl PyBounds {
+    /// Start from a container of a known - or unknown - number of rows.
+    #[new]
+    #[pyo3(signature = (rows = None))]
+    fn new(rows: Option<u64>) -> Self {
+        Self {
+            inner: CoreBounds::new(rows),
+        }
+    }
+
+    /// Read the bounds a path's partition values imply under a schema.
+    ///
+    /// A partition column holds exactly one value in every row it covers, so
+    /// its minimum and maximum are that value.
+    #[staticmethod]
+    fn from_partitions(schema: &Bound<'_, PyAny>, partitions: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let schema = core_field_from_value(schema)?;
+        let mut pairs = Vec::new();
+        for entry in partitions.try_iter()? {
+            let (column, value): (String, String) = entry?.extract()?;
+            pairs.push((column, value));
+        }
+        Ok(Self {
+            inner: CoreBounds::from_partitions(&schema, &pairs),
+        })
+    }
+
+    /// Record one column's minimum, maximum, and null count.
+    #[pyo3(signature = (name, minimum = None, maximum = None, nulls = None))]
+    fn with_column(
+        &self,
+        name: &str,
+        minimum: Option<&Bound<'_, PyAny>>,
+        maximum: Option<&Bound<'_, PyAny>>,
+        nulls: Option<u64>,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            inner: self.inner.clone().with_column(
+                name,
+                minimum.map(crate::types::scalar::from_py).transpose()?,
+                maximum.map(crate::types::scalar::from_py).transpose()?,
+                nulls,
+            ),
+        })
+    }
+
+    /// Record one holder attribute's minimum, maximum, and null count.
+    #[pyo3(signature = (name, minimum = None, maximum = None, nulls = None))]
+    fn with_attribute(
+        &self,
+        name: &str,
+        minimum: Option<&Bound<'_, PyAny>>,
+        maximum: Option<&Bound<'_, PyAny>>,
+        nulls: Option<u64>,
+    ) -> PyResult<Self> {
+        let selector = CoreSelector::from_name(name).ok_or_else(|| {
+            value_error(format!(
+                "unknown holder attribute {name:?}; expected one of {}",
+                CoreSelector::vocabulary()
+            ))
+        })?;
+        Ok(Self {
+            inner: self.inner.clone().with_attribute(
+                selector,
+                minimum.map(crate::types::scalar::from_py).transpose()?,
+                maximum.map(crate::types::scalar::from_py).transpose()?,
+                nulls,
+            ),
+        })
+    }
+
+    /// One column's recorded statistics, as `(minimum, maximum, nulls)`.
+    fn column(&self, name: &str) -> Option<ColumnStatistics> {
+        self.inner.column(name).map(column_bounds_parts)
+    }
+
+    /// One attribute's recorded statistics, as `(minimum, maximum, nulls)`.
+    fn attribute(&self, name: &str) -> PyResult<Option<ColumnStatistics>> {
+        let selector = CoreSelector::from_name(name).ok_or_else(|| {
+            value_error(format!(
+                "unknown holder attribute {name:?}; expected one of {}",
+                CoreSelector::vocabulary()
+            ))
+        })?;
+        Ok(self.inner.attribute(&selector).map(column_bounds_parts))
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.inner)
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// Project one column's statistics as the plain triple Python reads.
+fn column_bounds_parts(bounds: &CoreColumnBounds) -> ColumnStatistics {
+    (
+        bounds.minimum().cloned().map(PyScalar::from_inner),
+        bounds.maximum().cloned().map(PyScalar::from_inner),
+        bounds.nulls(),
+    )
 }

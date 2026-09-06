@@ -218,7 +218,7 @@ The media type names the encoding, so no format argument is passed.
 
 A field shapes rows by applying, not by casting: a declaration is the cast *and* the `partition:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection in between only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use arrow_array::RecordBatch;
@@ -269,7 +269,7 @@ assert_eq!(options.commit_row_size(), Some(10_000));
 
 `require_field` is what a write calls, and a datatype is the one part with no default.
 
-Rust only.
+Rust and Python; JavaScript is Rust-only here.
 
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};

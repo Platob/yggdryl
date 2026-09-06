@@ -772,7 +772,9 @@ test('a message refuses a value its field refuses', () => {
   const registry = seed()
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
 
-  assert.throws(() => new fix.FixMsg(root, { Symbol: 5 }, registry), /Symbol/)
+  // A text field reads any value that spells text, a number included, so what
+  // it refuses is a value with no spelling at all.
+  assert.throws(() => new fix.FixMsg(root, { Symbol: [1] }, registry), /Symbol/)
   assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { Symbol: 'AAPL' }, registry))
   assert.throws(() => fix.FixMsg(root, { Symbol: 'AAPL' }, registry), /without 'new'/)
 

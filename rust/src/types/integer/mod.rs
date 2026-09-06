@@ -11,6 +11,6 @@ pub use scalars::{
     UInt128,
 };
 pub(crate) use scalars::{
-    canonical_signed, canonical_unsigned, validate_integer_tuple, validate_signed,
-    validate_unsigned,
+    canonical_signed, canonical_unsigned, integer_from_text, validate_integer_tuple,
+    validate_signed, validate_unsigned,
 };

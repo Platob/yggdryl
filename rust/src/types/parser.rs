@@ -363,6 +363,11 @@ impl<'a> Parser<'a> {
             "version" => DataType::Version,
             // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
             // one of exactly N bytes.
+            "fixedascii" => {
+                let position = self.current_position();
+                DataType::ascii(self.parse_single_i32_parameter("ASCII width")?)
+                    .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?
+            }
             "ascii" => match self.consume_opening() {
                 Some(close) => {
                     let position = self.current_position();
@@ -471,7 +476,14 @@ impl<'a> Parser<'a> {
         let Some(close) = self.consume_opening() else {
             return Ok(());
         };
-        let _ = self.parse_integer("length")?;
+        // The length says nothing this crate's variable storage stores, but a
+        // declaration it could never have meant is still a malformed one, and
+        // the grammar refuses malformed numbers rather than dropping them.
+        let position = self.current_position();
+        let length = self.parse_integer("length")?;
+        if length < 1 {
+            return Err(self.error_at(position, "length must be a positive number of bytes"));
+        }
         self.expect_symbol(close)
     }
 
@@ -525,15 +537,22 @@ impl<'a> Parser<'a> {
         let name = self.parse_text("field name")?;
         self.expect_separator("expected datatype after field name")?;
         let dtype = self.parse_type(depth)?;
-        self.expect_separator("expected nullable= after datatype")?;
-        self.consume_label("nullable");
-        let nullable = self.parse_bool("field nullability")?;
+        // Nullability is an argument like the others: a field spelled without
+        // it is nullable, which is what the standalone reading of this same
+        // form answers, so `list(field("a",int32))` is a field either way.
+        let mut nullable = true;
+        let mut saw_nullable = false;
         let mut metadata = Vec::new();
         let mut saw_metadata = false;
         let mut dictionary_id = None;
         let mut dictionary_is_ordered = None;
         while self.consume_separator() {
-            if self.consume_label("dictionary_id") || self.consume_label("dict_id") {
+            // The canonical spelling names the nullability first, so it is
+            // probed first: every other argument is rarer than this one.
+            if !saw_nullable && self.consume_label("nullable") {
+                nullable = self.parse_bool("field nullability")?;
+                saw_nullable = true;
+            } else if self.consume_label("dictionary_id") || self.consume_label("dict_id") {
                 if dictionary_id.is_some() {
                     return Err(self.error_here("duplicate dictionary id"));
                 }
@@ -551,8 +570,13 @@ impl<'a> Parser<'a> {
                 }
                 metadata = self.parse_metadata()?;
                 saw_metadata = true;
-            } else {
+            } else if saw_nullable {
                 return Err(self.error_here("unknown field argument"));
+            } else {
+                // A bare argument in this position is the nullability, which
+                // the canonical spelling labels and the SQL-ish ones do not.
+                nullable = self.parse_bool("field nullability")?;
+                saw_nullable = true;
             }
         }
         self.expect_symbol(close)?;
@@ -594,15 +618,15 @@ impl<'a> Parser<'a> {
                 }
                 // arrow-rs spells this property `data_type` in the Debug
                 // output this form parses, and key normalization drops the
-                // underscore. That spelling is Arrow's, not this crate's, so
-                // it does not follow `Field`'s own `dtype`.
-                "datatype" | "type" => {
+                // underscore; `dtype` is this crate's own spelling of the same
+                // property, and one form answers to both.
+                "datatype" | "dtype" | "type" => {
                     if dtype.is_some() {
                         return Err(self.error_here("duplicate field datatype"));
                     }
                     dtype = Some(self.parse_type(depth)?);
                 }
-                "nullable" => {
+                "nullable" | "isnullable" => {
                     if nullable.is_some() {
                         return Err(self.error_here("duplicate field nullability"));
                     }

@@ -15,7 +15,7 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 | `apply_arrow_batch` | fills every holder in a batch under a non-null Struct root; the state's running digest is untouched |
 | Arrow column | `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
 | Feature flag | `xxhash::arrow` needs the default `arrow` feature |
-| Bindings | `Scalar.digest`, `stable_hash`, a [state's](streaming.md) `write_scalar`, and `apply_arrow_batch`; `as_value_bytes` and the digest arrays are Rust only |
+| Bindings | `Scalar.digest`, `stable_hash`, a [state's](streaming.md) `write_scalar`, and `apply_arrow_batch`; Python adds `as_value_bytes` and the digest arrays, which stay Rust-only in JavaScript |
 
 ## Use
 

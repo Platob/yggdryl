@@ -273,3 +273,43 @@ define_scalar_type!(
     "utf8_view",
     crate::DataType::Utf8View
 );
+
+/// The canonical text a value spells, shared rather than rebuilt.
+///
+/// A text column stores one string per row, and this is the spelling every
+/// tier prints: the canonical [`std::fmt::Display`] each family owns for the
+/// numbers and the boolean, [`Scalar::into_temporal_text`] for a temporal -
+/// which is what a temporal *column* renders too, zone rules included - the
+/// WKT a geometry column renders, and the payload's own characters for bytes.
+/// Text, ASCII and a generic enum member already hold their storage and hand
+/// it over without allocating.
+///
+/// `None` is a kind that spells no text at all; `Some(Err)` is a payload that
+/// was read and refused, so the refusal names what was wrong with it rather
+/// than which kind arrived.
+pub(crate) fn text_from_value(value: &Scalar) -> Option<Result<SmolStr>> {
+    Some(match value {
+        Scalar::Text(text) => Ok(text.storage().clone()),
+        Scalar::Ascii(ascii) => Ok(ascii.storage().clone()),
+        Scalar::Enum(member) => Ok(SmolStr::new_static(member.as_str())),
+        Scalar::Integer(number) => Ok(smol_str::format_smolstr!("{number}")),
+        Scalar::Floating(number) => Ok(smol_str::format_smolstr!("{number}")),
+        Scalar::Decimal(number) => Ok(smol_str::format_smolstr!("{number}")),
+        Scalar::Boolean(flag) => Ok(smol_str::format_smolstr!("{flag}")),
+        Scalar::Uuid(uuid) => Ok(smol_str::format_smolstr!("{uuid}")),
+        Scalar::Version(version) => Ok(smol_str::format_smolstr!("{version}")),
+        // An interval has no classic spelling, so a temporal answers for the
+        // seven that do and leaves the rest to the ordinary refusal.
+        Scalar::Temporal(_) => return value.into_temporal_text().map(Ok),
+        Scalar::Bytes(bytes) => std::str::from_utf8(bytes.as_bytes())
+            .map(SmolStr::new)
+            .map_err(|error| crate::Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: smol_str::format_smolstr!("payload is not UTF-8: {error}"),
+            }),
+        Scalar::Geospatial(geospatial) => {
+            crate::types::geospatial::wkb::into_wkt(geospatial.as_bytes()).map(SmolStr::new)
+        }
+        _ => return None,
+    })
+}

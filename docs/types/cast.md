@@ -14,6 +14,8 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 | `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
 | Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
+| One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
+| Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip` |
 | Bindings | `Scalar` rows Rust only; [Python](../extensions/python.md), [JavaScript](../extensions/javascript.md) cast Arrow data and pass both answers explicitly |
@@ -202,6 +204,33 @@ recognized from the value in hand rather than rebuilt and compared. A column tha
 layout - `utf8` to `large_utf8`, `binary` to `binary_view`, bytes to a geometry - retags the
 storage handle it was given, so the payload is never copied. `rust/tests/allocations.rs` counts
 both.
+
+`DataType::scalar` and `Field::scalar` are the one value contract, and they read every spelling
+the column tier reads. Text becomes the number, boolean, decimal or temporal a column declares -
+through this crate's own readers, so a digit a scale cannot hold is refused rather than rounded.
+Any value that prints a spelling enters a text column as that spelling, a geometry included.
+Any value that carries bytes enters a byte column as that payload, and an ASCII value carries the
+width it declares, padded, because that is what the fixed column stores.
+
+```rust
+use yggdryl::{DataType, Scalar};
+
+let money: DataType = "decimal128(10, 2)".parse()?;
+assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
+// A digit the declared scale cannot state is a value change, so it is refused.
+assert!(money.scalar("1.005").is_err());
+
+assert_eq!(DataType::Date32.scalar("1970-01-02")?, Scalar::date32(1));
+assert_eq!(DataType::Utf8.scalar(7_i64)?, Scalar::from("7"));
+assert_eq!(DataType::Binary.scalar("hi")?, Scalar::from(b"hi".to_vec()));
+
+// A record is a map keyed by name, so a map column reads one.
+let prices: DataType = "map<utf8, int32>".parse()?;
+assert_eq!(
+    prices.scalar(Scalar::from_record([("a", Scalar::from(1_i32))])?)?,
+    Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))])?
+);
+```
 
 ```rust
 use yggdryl::{DataType, Field, Scalar};
@@ -567,6 +596,13 @@ no behavior of its own.
 - Nullable field, `safe` -> the null stays.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../text/index.md) accepts, a duration included, which Arrow reads into none.
+- Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
+- Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
+- Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
+- A byte source entering an ASCII width, a code or a UUID -> read as bytes under all four binary framings, so a payload that is not UTF-8 is refused rather than nulled.
+- A dictionary or run-end target -> its values' own rule runs, then the encoding; a `dictionary<int32, ascii>` refuses what `ascii` refuses.
+- An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
+- A bare null into a `union` or a `run_end_encoded` -> refused: both spell absence inside a child, so the value is the pair or the values entry that carries it.
 - A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
 - Bare date into a datetime, twelve-hour clock, compact `YYYYMMDD` -> Arrow's kernel.
 - Temporal to text -> the classic form, zoned instants included.

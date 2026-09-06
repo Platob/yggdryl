@@ -7,4 +7,4 @@ pub(crate) mod scalars;
 pub use dtypes::FloatingType;
 pub use fields::*;
 pub use scalars::{Float16, Float32, Float64, Floating, FloatingValue};
-pub(crate) use scalars::{FloatWidth, canonical_float};
+pub(crate) use scalars::{FloatWidth, canonical_float, float_from_text};

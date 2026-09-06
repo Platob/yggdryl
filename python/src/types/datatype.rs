@@ -11,7 +11,7 @@ use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString};
+use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple};
 use yggdryl::ArrowCast;
 use yggdryl::{
     AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
@@ -641,6 +641,15 @@ impl PyDataType {
 
     /// The registered logical names mapped to the datatype each spells, in
     /// registration order.
+    /// The hard nesting depth the schema grammar refuses past.
+    ///
+    /// Parsing, default construction, and every compatibility walk share this
+    /// one budget, so a caller generating nested schemas knows the ceiling
+    /// before it hits it.
+    #[classattr]
+    #[pyo3(name = "PARSE_RECURSION_LIMIT")]
+    const PARSE_RECURSION_LIMIT: usize = CoreDataType::PARSE_RECURSION_LIMIT;
+
     #[staticmethod]
     fn logical_names(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let names = PyDict::new(py);
@@ -825,6 +834,38 @@ impl PyDataType {
             .map_err(value_error)
     }
 
+    /// Check one value against this datatype and restate it as it declares.
+    ///
+    /// This is the one value contract: an integer is narrowed, a decimal is
+    /// restated at its scale, a temporal at its unit, and an ASCII value is
+    /// trimmed of its padding, while a value already in that form crosses
+    /// unchanged. Anything a caller stores goes through here, never through
+    /// `PyArrow`, which knows none of these rules.
+    fn scalar(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
+        self.inner
+            .scalar(from_py(value)?)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Return whether `value` is this datatype's canonical default.
+    ///
+    /// The comparison reuses the bounded default planner, so a wide or deeply
+    /// nested default is never materialized to answer it.
+    fn is_default_value(&self, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+        self.inner
+            .is_default_value(&from_py(value)?)
+            .map_err(value_error)
+    }
+
+    /// Re-check every parameter and child, raising `ValueError` on one.
+    ///
+    /// Construction validates already; this catches a state assembled from
+    /// parts, such as a `Time32` at nanoseconds or a zero-precision decimal.
+    fn validate(&self) -> PyResult<()> {
+        self.inner.validate().map_err(value_error)
+    }
+
     /// Returns a recursively normalized datatype for a named compatibility target.
     #[allow(clippy::wrong_self_convention)]
     fn into_scheme_compat(&self, target: &str) -> PyResult<Self> {
@@ -845,6 +886,33 @@ impl PyDataType {
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         arrow_scalar_from_core_type(py, value, &self.inner, safe)
+    }
+
+    /// Casts one value or one-row `PyArrow` Array to this datatype.
+    ///
+    /// This is `cast_arrow_array` plus the length check that makes a scalar
+    /// answer honest; `Field.cast_arrow_scalar` is the same call with the
+    /// field's name and nullability on top.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_scalar<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        cast_options(safe, nullability, representation)?;
+        if value.is_instance(&py.import("pyarrow")?.getattr("Array")?)? {
+            if value.len()? != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "a scalar cast takes exactly one row, got {}",
+                    value.len()?
+                )));
+            }
+            return self.arrow_scalar(py, &value.get_item(0)?, safe);
+        }
+        self.arrow_scalar(py, value, safe)
     }
 
     /// Casts one `PyArrow` Array through Yggdryl's native Arrow kernels.
@@ -902,6 +970,41 @@ impl PyDataType {
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         core_dtype_to_pyarrow(py, &self.inner)
+    }
+
+    /// Rebuild this nested datatype with replacement children.
+    ///
+    /// The layout is kept, so exactly as many children as it declares are
+    /// required, and the rebuilt datatype is validated - a `list` still holds
+    /// one item field and a `map` still holds its entry struct.
+    fn with_fields(&self, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut children = Vec::new();
+        for field in fields.try_iter()? {
+            children.push(crate::types::field::core_field_from_value(&field?)?);
+        }
+        self.inner
+            .with_fields(children)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Projects a Struct datatype as a `pyarrow.Schema`.
+    ///
+    /// This is what a non-null Struct `Field` projects, under the core's
+    /// default root name and with no metadata; a non-Struct datatype raises
+    /// `ValueError`.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_arrow_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        crate::types::field::core_schema_to_pyarrow(
+            py,
+            &yggdryl::Field::new(yggdryl::media::DEFAULT_ROOT_NAME, self.inner.clone(), false),
+        )
+    }
+
+    /// Materializes the canonical default as a one-row `pyarrow.Array`.
+    fn default_arrow_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let array = self.inner.default_arrow_array().map_err(value_error)?;
+        arrow_array_to_pyarrow(py, &array, None)
     }
 
     /// Serialize as deterministic structural JSON.
@@ -1037,6 +1140,117 @@ impl PyDataType {
         self.inner.is_nested()
     }
 
+    /// Whether the variant carries parameters beyond its identity.
+    ///
+    /// A parameterized identity cannot round-trip from `id` alone, which is
+    /// what a caller reading `id` needs to know before it tries.
+    #[getter]
+    fn is_parameterized(&self) -> bool {
+        self.inner.id().is_parameterized()
+    }
+
+    /// Whether this transparently encodes another value type.
+    ///
+    /// `dictionary` and `run_end_encoded` are encodings, so the datatype they
+    /// wrap is what the values actually are.
+    #[getter]
+    fn is_wrapper(&self) -> bool {
+        self.inner.id().is_wrapper()
+    }
+
+    /// Whether this is a signed or unsigned fixed-width integer.
+    #[getter]
+    fn is_integer(&self) -> bool {
+        self.inner.id().is_integer()
+    }
+
+    /// Whether this is a signed integer specifically.
+    #[getter]
+    fn is_signed_integer(&self) -> bool {
+        self.inner.id().is_signed_integer()
+    }
+
+    /// Whether this is an unsigned integer specifically.
+    #[getter]
+    fn is_unsigned_integer(&self) -> bool {
+        self.inner.id().is_unsigned_integer()
+    }
+
+    /// Whether this is IEEE binary floating point.
+    #[getter]
+    fn is_floating(&self) -> bool {
+        self.inner.id().is_floating()
+    }
+
+    /// Whether this is an exact base-10 decimal.
+    #[getter]
+    fn is_decimal(&self) -> bool {
+        self.inner.id().is_decimal()
+    }
+
+    /// Whether this is a date, time, datetime, duration, or interval.
+    #[getter]
+    fn is_temporal(&self) -> bool {
+        self.inner.id().is_temporal()
+    }
+
+    /// Whether this stores opaque bytes.
+    #[getter]
+    fn is_binary(&self) -> bool {
+        self.inner.id().is_binary()
+    }
+
+    /// Whether this stores text, ASCII datatypes included.
+    #[getter]
+    fn is_string(&self) -> bool {
+        self.inner.id().is_string()
+    }
+
+    /// Whether the family is a fixed-width or exact number.
+    #[getter]
+    fn is_numeric(&self) -> bool {
+        self.inner.kind().is_numeric()
+    }
+
+    /// Whether the family stores an opaque or textual byte payload.
+    #[getter]
+    fn is_bytes(&self) -> bool {
+        self.inner.kind().is_bytes()
+    }
+
+    /// Whether values of this family have a total order.
+    #[getter]
+    fn is_ordered(&self) -> bool {
+        self.inner.kind().is_ordered()
+    }
+
+    /// The byte width of one value, `None` when the layout has no fixed one.
+    #[getter]
+    fn fixed_byte_width(&self) -> Option<usize> {
+        self.inner.id().fixed_byte_width()
+    }
+
+    /// Whether this is any ASCII datatype, a registered code included.
+    #[getter]
+    fn is_ascii(&self) -> bool {
+        self.inner.is_ascii()
+    }
+
+    /// Whether this is one of the four registered code vocabularies.
+    #[getter]
+    fn is_code(&self) -> bool {
+        self.inner.is_code()
+    }
+
+    /// The registered code vocabulary this is, `None` for every other.
+    ///
+    /// A bare fixed ASCII of the same width is not a code, because a code
+    /// carries the vocabulary its values are drawn from.
+    #[getter]
+    fn code_name(&self) -> Option<&'static str> {
+        self.inner.code_name()
+    }
+
     /// The storage width of an ASCII datatype in bytes, ``None`` for every other.
     #[getter]
     fn ascii_width(&self) -> Option<i32> {
@@ -1058,6 +1272,24 @@ impl PyDataType {
     fn ascii_value(&self, packed: i128) -> PyResult<String> {
         self.inner
             .ascii_value(packed)
+            .map(|value| value.to_string())
+            .map_err(value_error)
+    }
+
+    /// The integer a UUID value packs into: its storage bytes, big-endian.
+    ///
+    /// The hyphenated spelling, bare hex, either case, and the raw sixteen
+    /// bytes all name the same identifier and pack to the same integer.
+    fn uuid_packed(&self, value: &Bound<'_, PyAny>) -> PyResult<u128> {
+        self.inner
+            .uuid_packed(&text_or_bytes(value, "a UUID value must be str or bytes")?)
+            .map_err(value_error)
+    }
+
+    /// The canonical hyphenated UUID a packed integer carries.
+    fn uuid_value(&self, packed: u128) -> PyResult<String> {
+        self.inner
+            .uuid_value(packed)
             .map(|value| value.to_string())
             .map_err(value_error)
     }
@@ -1089,6 +1321,94 @@ impl PyDataType {
         match &self.inner {
             CoreDataType::DateTime64 { timezone, .. } => {
                 Some(crate::types::timezone::PyTimezone::from_core(*timezone))
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a `map` declares its keys sorted, `None` for every other.
+    #[getter]
+    fn keys_sorted(&self) -> Option<bool> {
+        match &self.inner {
+            CoreDataType::Map(map) => Some(map.keys_sorted()),
+            _ => None,
+        }
+    }
+
+    /// The index datatype of a `dictionary`, `None` for every other.
+    #[getter]
+    fn dictionary_key(&self) -> Option<Self> {
+        match &self.inner {
+            CoreDataType::Dictionary(dictionary) => {
+                Some(Self::from_inner(dictionary.key().clone()))
+            }
+            _ => None,
+        }
+    }
+
+    /// The encoded value datatype of a `dictionary`, `None` for every other.
+    #[getter]
+    fn dictionary_value(&self) -> Option<Self> {
+        match &self.inner {
+            CoreDataType::Dictionary(dictionary) => {
+                Some(Self::from_inner(dictionary.value().clone()))
+            }
+            _ => None,
+        }
+    }
+
+    /// The branch type ids a `union` declares, `None` for every other.
+    ///
+    /// The ids are the wire identity of each branch, so they travel with the
+    /// member order rather than being derived from it.
+    #[getter]
+    fn union_type_ids<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        match &self.inner {
+            CoreDataType::Union(fields, _) => {
+                let ids: Vec<i8> = fields.iter().map(|(type_id, _)| type_id).collect();
+                PyTuple::new(py, ids).map(Some)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// The union mode, `sparse` or `dense`, `None` for every other datatype.
+    #[getter]
+    fn union_mode(&self) -> Option<&'static str> {
+        match &self.inner {
+            CoreDataType::Union(_, mode) => Some(mode.as_str()),
+            _ => None,
+        }
+    }
+
+    /// The coordinate reference system a geospatial datatype declares.
+    #[getter]
+    fn crs(&self) -> Option<&str> {
+        match &self.inner {
+            CoreDataType::Geometry(parameters) | CoreDataType::Geography(parameters) => {
+                Some(parameters.crs())
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the declared CRS is the family default rather than an explicit one.
+    #[getter]
+    fn has_default_crs(&self) -> Option<bool> {
+        match &self.inner {
+            CoreDataType::Geometry(parameters) | CoreDataType::Geography(parameters) => {
+                Some(parameters.has_default_crs())
+            }
+            _ => None,
+        }
+    }
+
+    /// The edge algorithm a `geography` declares, `None` for every other.
+    #[getter]
+    fn edge_algorithm(&self) -> Option<&'static str> {
+        match &self.inner {
+            CoreDataType::Geometry(parameters) | CoreDataType::Geography(parameters) => {
+                parameters.algorithm().map(CoreEdgeAlgorithm::as_str)
             }
             _ => None,
         }
@@ -1708,6 +2028,11 @@ impl PyDataTypeIterator {
 /// the width's own rule, which trims the storage padding and names the width
 /// when it refuses.
 fn ascii_value_of(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    text_or_bytes(value, "an ASCII dictionary value must be str or bytes")
+}
+
+/// Read one value written as either text or raw bytes, as its bytes.
+fn text_or_bytes(value: &Bound<'_, PyAny>, expected: &'static str) -> PyResult<Vec<u8>> {
     if let Ok(text) = value.cast::<PyString>() {
         return Ok(text.to_cow()?.as_bytes().to_vec());
     }
@@ -1717,7 +2042,5 @@ fn ascii_value_of(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     if let Ok(bytes) = value.cast::<PyByteArray>() {
         return Ok(bytes.to_vec());
     }
-    Err(PyTypeError::new_err(
-        "an ASCII dictionary value must be str or bytes",
-    ))
+    Err(PyTypeError::new_err(expected))
 }
