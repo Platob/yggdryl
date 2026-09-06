@@ -236,8 +236,8 @@ impl super::FixRegistry {
         let value = crate::types::MsgType::coerce(spelling);
         if let Some(taken) = view.code_name(value.as_str()) {
             return Err(crate::Error::Conflict {
-                expected: "a free message type value".into(),
-                actual: "one another spelling holds".into(),
+                expected: "a free message type value",
+                actual: "one another spelling holds",
                 path: crate::text::expected_got(
                     format_args!("{spelling:?} at {:?}", value.as_str()),
                     format_args!("{taken:?}"),

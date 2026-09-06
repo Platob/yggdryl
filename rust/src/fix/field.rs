@@ -313,6 +313,7 @@ impl<'field> FixField<'field> {
     /// because a value in the data is a fact and a version in the frame is an
     /// assertion.
     pub fn code_at(&self, at: Version, value: &str) -> Option<FixCodeValue<'field>> {
+        let _ = at;
         self.code(value)
     }
 
