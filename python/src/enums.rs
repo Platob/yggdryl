@@ -91,6 +91,20 @@ impl PyMimeType {
         Self::from_core(CoreMimeType::OCTET_STREAM)
     }
 
+    /// A file system directory, which holds entries rather than bytes.
+    #[classattr]
+    #[pyo3(name = "DIRECTORY")]
+    fn directory_constant() -> Self {
+        Self::from_core(CoreMimeType::DIRECTORY)
+    }
+
+    /// A regular file whose contents are not identified any further.
+    #[classattr]
+    #[pyo3(name = "FILE")]
+    fn file_constant() -> Self {
+        Self::from_core(CoreMimeType::FILE)
+    }
+
     #[classattr]
     #[pyo3(name = "JSON")]
     fn json_constant() -> Self {
@@ -486,6 +500,18 @@ impl PyMimeType {
             .map_err(value_error)
     }
 
+    /// Report the MIME type of one local path from the file system.
+    ///
+    /// An existing directory is `DIRECTORY`; anything else is identified from
+    /// its name, falling back to `FILE`. `from_path` alone cannot tell a
+    /// container from a leaf, because it never looks at the file system.
+    #[staticmethod]
+    fn from_local_path(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        Ok(Self::from_core(CoreMimeType::from_local_path(
+            path_string_from_value(value)?,
+        )))
+    }
+
     #[staticmethod]
     fn from_content_type(value: &str) -> PyResult<Self> {
         CoreMimeType::from_content_type(value)
@@ -544,6 +570,16 @@ impl PyMimeType {
 
     fn is_known(&self) -> bool {
         self.inner.is_known()
+    }
+
+    /// Return whether this names a file system entry, not a content format.
+    fn is_filesystem(&self) -> bool {
+        self.inner.is_filesystem()
+    }
+
+    /// Return whether this names a directory rather than a leaf.
+    fn is_directory(&self) -> bool {
+        self.inner.is_directory()
     }
 
     fn is_application(&self) -> bool {

@@ -111,7 +111,10 @@ pub(crate) fn core_schema_from_pyarrow(value: &Bound<'_, PyAny>) -> PyResult<Arr
 /// Export a complete `PyArrow` Schema from exact standalone native Fields.
 /// The aggregate Arrow C Schema path drops nested datatype flags, so it is
 /// used only to calculate transport metadata (including reserved sidecars).
-fn core_schema_to_pyarrow<'py>(py: Python<'py>, root: &CoreField) -> PyResult<Bound<'py, PyAny>> {
+pub(crate) fn core_schema_to_pyarrow<'py>(
+    py: Python<'py>,
+    root: &CoreField,
+) -> PyResult<Bound<'py, PyAny>> {
     let transported = root
         .clone()
         .into_arrow_exchange_schema()
