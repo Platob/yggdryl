@@ -169,9 +169,9 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
         | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
         DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
-        DataType::Union(fields, _) => {
-            fields.iter().any(|(_, field)| holds_byte_leaf(field.dtype()))
-        }
+        DataType::Union(fields, _) => fields
+            .iter()
+            .any(|(_, field)| holds_byte_leaf(field.dtype())),
         DataType::Dictionary(dictionary) => holds_byte_leaf(dictionary.value()),
         DataType::Map(map) => holds_byte_leaf(map.entries().dtype()),
         _ => false,

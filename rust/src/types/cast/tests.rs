@@ -709,6 +709,41 @@ mod layouts {
     }
 
     #[test]
+    fn an_encoded_struct_source_is_decoded_and_reconciled_by_name() {
+        use arrow_array::{DictionaryArray, Int32Array, RunArray, types::Int32Type};
+
+        let fields: ArrowFields =
+            vec![Arc::new(ArrowField::new("key", ArrowDataType::Utf8, true))].into();
+        let values: ArrayRef = Arc::new(StructArray::new(
+            fields,
+            vec![Arc::new(StringArray::from(vec!["a", "b"])) as ArrayRef],
+            None,
+        ));
+        let dictionary: ArrayRef = Arc::new(
+            DictionaryArray::<Int32Type>::try_new(
+                Int32Array::from(vec![0, 1, 0]),
+                Arc::clone(&values),
+            )
+            .unwrap(),
+        );
+        let run: ArrayRef = Arc::new(
+            RunArray::<Int32Type>::try_new(&Int32Array::from(vec![1, 2]), values.as_ref()).unwrap(),
+        );
+
+        for source in [dictionary, run] {
+            // The decode happens first, so the Struct child the encoding was
+            // hiding is reconciled by name rather than positionally.
+            let cast = dtype("struct<KEY: utf8>")
+                .cast_arrow_array(Arc::clone(&source), strict())
+                .unwrap_or_else(|error| panic!("{:?}: {error}", source.data_type()));
+            let ArrowDataType::Struct(cast_fields) = cast.data_type() else {
+                panic!("a struct target answers a struct");
+            };
+            assert_eq!(cast_fields[0].name(), "KEY");
+        }
+    }
+
+    #[test]
     fn a_byte_framing_reaches_every_other_one_through_binary() {
         let text: ArrayRef = Arc::new(StringArray::from(vec!["abc"]));
         let fixed = dtype("fixed_size_binary(3)")

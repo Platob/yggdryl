@@ -917,6 +917,17 @@ impl ArrayCastPlan {
                     run_end_values,
                 )?),
             },
+            // An encoding hides a column: a target that is not that encoding
+            // reads the column rather than the index, so the values are decoded
+            // and then planned under the ordinary rules. This stays ahead of
+            // the Struct guard below because the decoded source is planned by
+            // name, which is exactly what that guard exists to protect.
+            (_, ArrowDataType::Dictionary(_, values)) => {
+                Self::decoded_kind(field, values, source_metadata, rules, path)?
+            }
+            (_, ArrowDataType::RunEndEncoded(_, values)) => {
+                Self::decoded_kind(field, values.data_type(), source_metadata, rules, path)?
+            }
             _ if contains_struct(dtype) => {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
@@ -951,17 +962,6 @@ impl ArrayCastPlan {
             // carry one payload under two framings that Arrow reads only
             // through its `Binary`. Taking that route is the same reading, so
             // the pair is supported rather than refused.
-            // The mirror of the two encoded-target arms: an encoding hides a
-            // column, and a target that is not that encoding reads the column
-            // rather than the index. Arrow's kernel takes the pairs it can, so
-            // only what it cannot reach - a recognized ASCII, code or UUID
-            // column under an index, rendering as text - decodes here.
-            (_, ArrowDataType::Dictionary(_, values)) => {
-                Self::decoded_kind(field, values, source_metadata, rules, path)?
-            }
-            (_, ArrowDataType::RunEndEncoded(_, values)) => {
-                Self::decoded_kind(field, values.data_type(), source_metadata, rules, path)?
-            }
             _ if bridges_through_binary(source_type, expected) => ArrayCastKind::ByteBridge,
             // A pair neither Arrow nor the byte bridge reads is refused when a
             // value actually arrives under it. A wrapper can hide every row of
@@ -1430,11 +1430,6 @@ pub(crate) fn named_cell<T>(field: &Field, index: usize, read: crate::Result<T>)
     })
 }
 
-/// The byte width of a datatype laid out as one fixed-width value buffer.
-///
-/// `None` is everything else - a bitmap, a variable-length payload, an
-/// encoding, or anything with children - because those have no single buffer
-/// two datatypes could share.
 /// The layout a list source is rebuilt in, before the target layout is read.
 fn source_list_kind(source_type: &ArrowDataType) -> Result<ListPlanKind> {
     Ok(match source_type {
@@ -1447,6 +1442,11 @@ fn source_list_kind(source_type: &ArrowDataType) -> Result<ListPlanKind> {
     })
 }
 
+/// The byte width of a datatype laid out as one fixed-width value buffer.
+///
+/// `None` is everything else - a bitmap, a variable-length payload, an
+/// encoding, or anything with children - because those have no single buffer
+/// two datatypes could share.
 fn bit_layout_width(dtype: &ArrowDataType) -> Option<usize> {
     match dtype {
         // Arrow answers the width for every fixed-width primitive, decimal and
