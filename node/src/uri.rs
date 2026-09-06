@@ -191,6 +191,12 @@ impl JsUri {
         self.inner.bucket().map(ToOwned::to_owned)
     }
 
+    /// S3 object key: the path below the bucket, as the path spells it.
+    #[napi(getter)]
+    pub fn key(&self) -> Option<String> {
+        self.inner.key().map(ToOwned::to_owned)
+    }
+
     /// AWS region inferred from a recognized S3 hostname.
     #[napi(getter)]
     pub fn region(&self) -> Option<String> {
@@ -526,6 +532,12 @@ impl JsUrl {
     #[napi(getter)]
     pub fn bucket(&self) -> Option<String> {
         self.inner.bucket().map(ToOwned::to_owned)
+    }
+
+    /// S3 object key: the path below the bucket, as the path spells it.
+    #[napi(getter)]
+    pub fn key(&self) -> Option<String> {
+        self.inner.key().map(ToOwned::to_owned)
     }
 
     /// AWS region inferred from a recognized S3 hostname.

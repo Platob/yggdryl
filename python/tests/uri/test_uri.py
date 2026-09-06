@@ -70,6 +70,20 @@ def test_credentials_and_s3_location_are_parsed_by_the_core() -> None:
     assert compatible.bucket == "archive"
     assert compatible.region is None
 
+    # The key is the path below the bucket, as the path spells it.
+    assert bucket.key == "year=2026/data.parquet"
+    assert endpoint.key == "data.parquet"
+    assert compatible.key == "data.parquet"
+    assert Uri("s3://market-data/lake/").key == "lake/"
+    assert Uri("s3://market-data/").key == ""
+    assert Uri("https://example.com/data.parquet").key is None
+
+    # A port, an IP literal, or `localhost` names an endpoint, never a bucket.
+    local = Uri("s3://localhost:9000/market-data/lake/part.parquet")
+    assert local.hostname == "localhost"
+    assert local.bucket == "market-data"
+    assert local.key == "lake/part.parquet"
+
 
 def test_uri_joinpath_and_division_use_the_core_path_resolver() -> None:
     base = Uri("https://example.com/a/b?q=1#rows")
