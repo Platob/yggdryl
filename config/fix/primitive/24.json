@@ -539,7 +539,7 @@
     "name": "aggressortime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -828,7 +828,7 @@
     "name": "mdstatisticstartdate",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -842,7 +842,7 @@
     "name": "mdstatisticenddate",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -920,7 +920,7 @@
     "name": "mdstatistictime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,

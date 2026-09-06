@@ -102,7 +102,7 @@
               "name": "executiontimestamp",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -570,7 +570,7 @@
               "name": "validuntiltime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -582,7 +582,7 @@
               "name": "expiretime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -594,7 +594,7 @@
               "name": "responsetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -606,7 +606,7 @@
               "name": "quotedisplaytime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -638,7 +638,7 @@
               "name": "transacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -730,7 +730,7 @@
               "name": "striketime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -752,7 +752,7 @@
               "name": "relsymtransacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,

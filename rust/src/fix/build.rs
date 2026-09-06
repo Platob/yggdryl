@@ -103,6 +103,15 @@ struct Slot {
     occurrences: Vec<Vec<(Field, Scalar)>>,
 }
 
+/// One standard numeric repeating group currently being read.
+struct StandardGroup {
+    key: SmolStr,
+    delimiter: i32,
+    members: Vec<i32>,
+    occurrence: usize,
+    started: bool,
+}
+
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
@@ -158,6 +167,79 @@ impl<'registry> Builder<'registry> {
                 member,
             } => self.push_grouped(group, occurrence, member, located.text, &value_text, value),
         }
+    }
+
+    /// Push already split pairs, assembling standard numeric repeating groups.
+    ///
+    /// A counter opens the List declared by the registry and the item's first
+    /// tag is FIX's occurrence delimiter. Member keys remain their original
+    /// flat wire keys in `entries`; only the typed row becomes nested.
+    pub(super) fn push_pairs<'row, I>(&mut self, pairs: I)
+    where
+        I: IntoIterator<Item = (&'row [u8], &'row [u8])>,
+    {
+        let mut group: Option<StandardGroup> = None;
+        for (key, raw) in pairs {
+            let key_text = String::from_utf8_lossy(key);
+            let key_text = key_text.trim();
+            let value_text = String::from_utf8_lossy(raw);
+            if let (Some(active), Some(tag)) = (group.as_mut(), super::field::parse_tag(key_text)) {
+                let member = active.members.contains(&tag);
+                let starts = tag == active.delimiter;
+                if (!active.started && starts) || (active.started && member) {
+                    if active.started && starts {
+                        active.occurrence += 1;
+                    }
+                    self.push_grouped(
+                        active.key.as_str(),
+                        active.occurrence,
+                        key_text,
+                        key_text,
+                        &value_text,
+                        raw,
+                    );
+                    active.started = true;
+                    continue;
+                }
+                group = None;
+            } else if group.is_some() {
+                group = None;
+            }
+
+            let opening = self.standard_group(key_text, &value_text);
+            self.push(key, raw);
+            if opening.is_some() {
+                group = opening;
+            }
+        }
+    }
+
+    /// A counter and its registry-declared flat member layout.
+    fn standard_group(&self, key: &str, count: &str) -> Option<StandardGroup> {
+        if count.trim().parse::<usize>().ok()? == 0 {
+            return None;
+        }
+        let field = match super::field::parse_tag(key) {
+            Some(tag) => self.registry.get_nested_field(tag),
+            None => self.registry.get_nested_field(key),
+        }?;
+        let DataType::List(item) = field.dtype() else {
+            return None;
+        };
+        let members: Vec<i32> = item
+            .dtype()
+            .as_fields()?
+            .iter()
+            .filter_map(|field| field.as_fix().tag().ok().flatten())
+            .collect();
+        let delimiter = *members.first()?;
+        Some(StandardGroup {
+            key: SmolStr::new(key),
+            delimiter,
+            members,
+            occurrence: 0,
+            started: false,
+        })
     }
 
     /// The registry field one key names, and the tag it carries.
@@ -269,7 +351,10 @@ impl<'registry> Builder<'registry> {
             None => self.registry.get_nested_field(key),
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
-        Some((self.project(field), tag))
+        // The field's lineage describes the scalar counter, not the nested
+        // row representation. Its List shape is the registry's layout and
+        // must survive every historical source version.
+        Some((field.clone(), tag))
     }
 
     /// One occurrence of a repeated flat field, placed by index.
@@ -300,10 +385,13 @@ impl<'registry> Builder<'registry> {
         let value = self.typed(&member_field, raw, text);
         self.record(key, text, member_tag);
 
-        let counter = self
-            .registry
-            .get_nested_field(group)
-            .or_else(|| self.registry.get_field_by_name(group, Some(&self.branch)));
+        let counter = match super::field::parse_tag(group) {
+            Some(tag) => self.registry.get_nested_field(tag),
+            None => self
+                .registry
+                .get_nested_field(group)
+                .or_else(|| self.registry.get_field_by_name(group, Some(&self.branch))),
+        };
         let (group_field, group_tag) = match counter {
             Some(known) => {
                 let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
@@ -484,26 +572,54 @@ impl Slot {
 /// separators a general parser would recognize: `20260821-10:30:00.123456`,
 /// `20260821`, `10:30:00.000000`. These are facts about FIX rather than about
 /// the datatype, so they are read here and the generic value contract learns
-/// none of them.
-fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
+/// none of them. A microsecond timestamp target truncates longer fractions
+/// rather than rounding into another instant; finer custom targets retain
+/// their declared precision.
+pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
     match dtype {
         DataType::Boolean => match text.as_bytes() {
             [b'Y' | b'y'] => Some(Scalar::from(true)),
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime64 { .. } => {
+        DataType::DateTime64 { unit, .. } => {
             let (day, time) = text.split_once('-')?;
+            let mut time = time.to_owned();
+            if *unit == crate::TimeUnit::Microsecond {
+                if let Some(point) = time.find('.') {
+                    let start = point + 1;
+                    let digits = time.as_bytes()[start..]
+                        .iter()
+                        .take_while(|byte| byte.is_ascii_digit())
+                        .count();
+                    if digits > 6 {
+                        time.replace_range(start + 6..start + digits, "");
+                    }
+                }
+            }
+            let zoned = time.ends_with(['Z', 'z'])
+                || time
+                    .len()
+                    .checked_sub(6)
+                    .is_some_and(|start| matches!(time.as_bytes()[start], b'+' | b'-'))
+                || time
+                    .len()
+                    .checked_sub(3)
+                    .is_some_and(|start| matches!(time.as_bytes()[start], b'+' | b'-'));
+            let zone = if zoned { "" } else { "Z" };
             let rendered = format_smolstr!(
-                "{}-{}-{}T{time}Z",
+                "{}-{}-{}T{time}{zone}",
                 &day.get(..4)?,
                 &day.get(4..6)?,
                 &day.get(6..8)?
             );
             Some(Scalar::from(rendered.as_str()))
         }
-        DataType::Date32 | DataType::Date64 if text.len() == 8 => {
-            let rendered = format_smolstr!("{}-{}-{}", &text[..4], &text[4..6], &text[6..8]);
+        DataType::Date32 | DataType::Date64
+            if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            let rendered =
+                format_smolstr!("{}-{}-{}", text.get(..4)?, text.get(4..6)?, text.get(6..8)?);
             Some(Scalar::from(rendered.as_str()))
         }
         _ => None,

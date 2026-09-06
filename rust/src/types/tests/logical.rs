@@ -35,14 +35,14 @@ fn registered() -> Vec<(&'static str, DataType)> {
         (
             "utctimestamp",
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
             },
         ),
         (
             "tztimestamp",
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
             },
         ),
@@ -95,7 +95,7 @@ fn a_name_folds_case_separators_and_surrounding_space() {
         assert_eq!(
             DataType::from_logical_name(spelling).unwrap(),
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC
             },
             "{spelling}"

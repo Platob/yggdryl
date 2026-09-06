@@ -217,8 +217,6 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             "symbolticker",
             "timestamp",
             "unixpartition",
-            "parentclordid",
-            "parentorderid",
         ],
     );
 

@@ -6,7 +6,10 @@
 use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Version};
+use yggdryl::{
+    DataType, Field, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, TimeUnit, Timezone,
+    Version,
+};
 
 fn seed() -> FixRegistry {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -145,6 +148,39 @@ fn a_repeating_group_is_a_list_of_one_item_struct_keyed_by_its_counter() {
     // it: one tag, one definition.
     assert_eq!(parties.as_fix().tag().unwrap(), Some(453));
     assert!(!members.contains(&"nopartyids"), "{members:?}");
+}
+
+#[test]
+fn every_generated_timestamp_is_utc_microseconds_including_nested_members() {
+    fn inspect(field: &Field, depth: usize, timestamps: &mut usize, nested: &mut usize) {
+        if let DataType::DateTime64 { unit, timezone } = field.dtype() {
+            assert_eq!(*unit, TimeUnit::Microsecond, "{}", field.name());
+            assert_eq!(*timezone, Timezone::UTC, "{}", field.name());
+            *timestamps += 1;
+            if depth > 0 {
+                *nested += 1;
+            }
+        }
+        if let Some(fields) = field.dtype().as_fields() {
+            for child in fields {
+                inspect(child, depth + 1, timestamps, nested);
+            }
+        } else if let DataType::List(item) = field.dtype() {
+            inspect(item, depth + 1, timestamps, nested);
+        }
+    }
+
+    let registry = seed();
+    let mut timestamps = 0;
+    let mut nested = 0;
+    for field in registry.iter() {
+        inspect(field, 0, &mut timestamps, &mut nested);
+    }
+    assert!(
+        timestamps > 50,
+        "{timestamps} timestamp definitions inspected"
+    );
+    assert!(nested > 0, "the registry must cover nested timestamps");
 }
 
 #[test]

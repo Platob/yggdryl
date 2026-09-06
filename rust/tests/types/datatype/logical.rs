@@ -28,7 +28,7 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
             ("qty", &ArrowDataType::Float64),
             (
                 "at",
-                &ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
+                &ArrowDataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
             ),
             ("day", &ArrowDataType::Date32),
             ("seq", &ArrowDataType::Int64),
@@ -41,7 +41,7 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
     assert_eq!(
         row.dtype().get_field_by_path("at").map(Field::dtype),
         Some(&DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
+            unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC
         })
     );
@@ -61,7 +61,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     // the registration earns its keep: the name typed the column, and the
     // column typed the string.
     let message = r#"{"ccy":"USD","venue":"XCME","px":"101.25","qty":"7",
-        "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04","seq":9}"#;
+        "at":"2026-09-04T10:00:00.000001Z","day":"2026-09-04","seq":9}"#;
     let value = yggdryl::text::json::from_utf8_with_field(message, &row).unwrap();
     let columns = value.as_sequence().expect("a canonical row");
 
@@ -76,10 +76,11 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     assert_eq!(columns[3], Scalar::from(7.0_f64));
     assert_eq!(columns[6], Scalar::from(9_i64));
 
-    // The instant reads at nanoseconds, so the fraction survives.
+    // The instant reads at microseconds, so Iceberg v2 can store it without a
+    // compatibility cast and the declared fraction survives.
     let at = columns[4].as_temporal().expect("a temporal reading");
-    assert_eq!(at.count(), 1_788_516_000_000_000_001);
-    assert_eq!(at.unit(), TimeUnit::Nanosecond);
+    assert_eq!(at.count(), 1_788_516_000_000_001);
+    assert_eq!(at.unit(), TimeUnit::Microsecond);
     let day = columns[5].as_temporal().expect("a temporal reading");
     assert_eq!(day.count(), 20_700);
 

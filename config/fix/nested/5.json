@@ -334,7 +334,7 @@
               "name": "origordmodtime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -726,7 +726,7 @@
               "name": "sidetimeinforce",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -1935,7 +1935,7 @@
               "name": "transacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -2013,7 +2013,7 @@
               "name": "lastupdatetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -2025,7 +2025,7 @@
               "name": "transacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,

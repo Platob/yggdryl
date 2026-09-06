@@ -533,7 +533,7 @@
     "name": "tradsesstarttime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -548,7 +548,7 @@
     "name": "tradsesopentime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -563,7 +563,7 @@
     "name": "tradsespreclosetime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -578,7 +578,7 @@
     "name": "tradsesclosetime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -593,7 +593,7 @@
     "name": "tradsesendtime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -881,7 +881,7 @@
     "name": "quotesetvaliduntiltime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,

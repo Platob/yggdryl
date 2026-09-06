@@ -273,17 +273,17 @@ impl FixReader {
             version,
             pairs.len(),
         );
-        for (key, value) in pairs {
-            // A stated absence produces no field and no entry: the key is read
-            // as never having been sent. Filtering happens before typing, so
-            // nothing tries to read `<null>` as a price and file the failure.
-            if self.is_absent(value) {
-                continue;
-            }
-            builder.push(key, value);
-        }
+        // A stated absence produces no field and no entry: the key is read as
+        // never having been sent. Filtering happens before typing, so nothing
+        // tries to read `<null>` as a price and file the failure.
+        builder.push_pairs(
+            pairs
+                .iter()
+                .copied()
+                .filter(|(_, value)| !self.is_absent(value)),
+        );
         let (field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
-        FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)
+        FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries, version)
     }
 
     /// The dialect a row is written in, when the caller pinned none.
@@ -339,7 +339,7 @@ impl FixReader {
 }
 
 /// `ApplVerID`'s numeric and symbolic spellings.
-fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
+pub(super) fn appl_ver_id(value: &str, registry: &FixRegistry) -> Option<Version> {
     let spelling = match value {
         "0" | "FIX27" => "2.7",
         "1" | "FIX30" => "3.0",
@@ -437,13 +437,29 @@ fn members(value: &[u8]) -> Vec<(&[u8], &[u8])> {
         .collect()
 }
 
-/// One occurrence's value split on the bridge's member separator.
+/// One occurrence's value split on either bridge member separator.
+///
+/// Native ULLINK rows use EOT then ETX; text exports also carry the members
+/// separated by FIX's SOH. A capture may contain both forms, so the next of
+/// either delimiter wins instead of guessing from the first occurrence.
 fn split_members(value: &[u8]) -> Vec<&[u8]> {
     let mut parts = Vec::new();
     let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&value[start..], MEMBER_SEPARATOR) {
+    loop {
+        let bridge = memchr::memmem::find(&value[start..], MEMBER_SEPARATOR)
+            .map(|at| (at, MEMBER_SEPARATOR.len()));
+        let soh = memchr::memchr(0x01, &value[start..]).map(|at| (at, 1));
+        let next = match (bridge, soh) {
+            (Some(bridge), Some(soh)) => Some(if bridge.0 <= soh.0 { bridge } else { soh }),
+            (Some(bridge), None) => Some(bridge),
+            (None, Some(soh)) => Some(soh),
+            (None, None) => None,
+        };
+        let Some((at, width)) = next else {
+            break;
+        };
         parts.push(&value[start..start + at]);
-        start += at + MEMBER_SEPARATOR.len();
+        start += at + width;
     }
     parts.push(&value[start..]);
     parts

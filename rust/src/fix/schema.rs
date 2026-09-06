@@ -316,8 +316,11 @@ impl super::FixMsg {
         let tags = projection.tags();
         let carried = projection.value_columns();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(tags.len());
-        for tag in tags.iter().take(carried) {
-            values.push(self.column_value(*tag));
+        for (at, tag) in tags.iter().take(carried).enumerate() {
+            let value = projection
+                .column(at)
+                .map_or(crate::Scalar::Null, |field| self.column_value(*tag, field));
+            values.push(value);
         }
         let (known, unknown) = self.divided();
         values.push(known);
@@ -337,19 +340,26 @@ impl super::FixMsg {
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
-    fn column_value(&self, tag: i32) -> crate::Scalar {
+    fn column_value(&self, tag: i32, target: &Field) -> crate::Scalar {
+        if let Some(index) = self.index_of_tag(tag) {
+            let source = self.as_field().fields().get(index);
+            let value = self.as_value().get(index);
+            if let (Some(source), Some(value)) = (source, value) {
+                return aligned_value(source, value, target);
+            }
+        }
         if let Some(held) = self.get_by_tag(tag) {
-            return held.clone();
+            return target.scalar(held.clone()).unwrap_or(crate::Scalar::Null);
         }
         if let Some(facet) = DERIVED_FACETS
             .iter()
             .find_map(|(held, facet)| (*held == tag).then_some(*facet))
         {
             if let Some(held) = self.lifted(facet) {
-                return held.clone();
+                return target.scalar(held.clone()).unwrap_or(crate::Scalar::Null);
             }
         }
-        match tag {
+        let derived = match tag {
             super::MSGHASH_TAG => crate::Scalar::from(self.digest().to_be_bytes().to_vec()),
             super::VERSION_TAG => self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
@@ -358,7 +368,8 @@ impl super::FixMsg {
             super::TIMESTAMP_TAG => self.market_timestamp(),
             super::UNIXPARTITION_TAG => self.unix_partition(super::DEFAULT_PARTITION_SECONDS),
             _ => crate::Scalar::Null,
-        }
+        };
+        target.scalar(derived).unwrap_or(crate::Scalar::Null)
     }
 
     /// Whether this message's dictionary has a field at one tag.
@@ -426,7 +437,21 @@ const TICKER_SOURCES: [i32; 2] = [55, 48];
 /// time is not orderable at all, so this falls rather than refuses - and
 /// which one answered stays visible, because the columns they came from are
 /// in the row beside it.
-const CLOCK_SOURCES: [i32; 4] = [60, 769, 52, 122];
+const CLOCK_SOURCES: [ClockSource; 4] = [
+    ClockSource::Flat(60),
+    ClockSource::Group {
+        group: 768,
+        member: 769,
+    },
+    ClockSource::Flat(52),
+    ClockSource::Flat(122),
+];
+
+/// One place a market clock can live in a resolved message.
+enum ClockSource {
+    Flat(i32),
+    Group { group: i32, member: i32 },
+}
 
 impl super::FixMsg {
     /// One instrument symbol that is the same across venues.
@@ -442,11 +467,10 @@ impl super::FixMsg {
     /// Derived on every call and stored nowhere, like every other lift.
     #[must_use]
     pub fn symbol_ticker(&self) -> crate::Scalar {
-        let Some((tag, held)) = TICKER_SOURCES
-            .iter()
-            .find_map(|tag| Some((*tag, self.get_by_tag(*tag)?)))
-            .filter(|(_, held)| !held.is_null())
-        else {
+        let Some((tag, held)) = TICKER_SOURCES.iter().find_map(|tag| {
+            let held = self.get_by_tag(*tag)?;
+            (!held.is_null()).then_some((*tag, held))
+        }) else {
             return crate::Scalar::Null;
         };
         let Some(base) = held.as_str() else {
@@ -479,20 +503,52 @@ impl super::FixMsg {
     /// clock that ran several times still ran first once.
     #[must_use]
     pub fn market_timestamp(&self) -> crate::Scalar {
-        for tag in CLOCK_SOURCES {
-            let Some(held) = self.get_by_tag(tag) else {
+        for source in CLOCK_SOURCES {
+            let timestamp = match source {
+                ClockSource::Flat(tag) => self
+                    .get_by_tag(tag)
+                    .map_or(crate::Scalar::Null, first_timestamp),
+                ClockSource::Group { group, member } => self.group_timestamp(group, member),
+            };
+            if !timestamp.is_null() {
+                return timestamp;
+            }
+        }
+        crate::Scalar::Null
+    }
+
+    /// The first valid timestamp member of one repeating group.
+    fn group_timestamp(&self, group: i32, member: i32) -> crate::Scalar {
+        let Some(at) = self.index_of_tag(group) else {
+            return crate::Scalar::Null;
+        };
+        let Some(field) = self.as_field().fields().get(at) else {
+            return crate::Scalar::Null;
+        };
+        let DataType::List(item) = field.dtype() else {
+            return crate::Scalar::Null;
+        };
+        let Some(member_at) = item.dtype().as_fields().and_then(|fields| {
+            fields
+                .iter()
+                .position(|field| field.as_fix().tag().ok().flatten() == Some(member))
+        }) else {
+            return crate::Scalar::Null;
+        };
+        let Some(occurrences) = self.as_value().get(at).and_then(crate::Scalar::as_sequence) else {
+            return crate::Scalar::Null;
+        };
+        for occurrence in occurrences {
+            let Some(value) = occurrence
+                .as_sequence()
+                .and_then(|values| values.get(member_at))
+            else {
                 continue;
             };
-            if held.is_null() {
-                continue;
+            let timestamp = first_timestamp(value);
+            if !timestamp.is_null() {
+                return timestamp;
             }
-            if let Some(occurrences) = held.as_sequence() {
-                if let Some(first) = occurrences.iter().find(|held| !held.is_null()) {
-                    return first.clone();
-                }
-                continue;
-            }
-            return held.clone();
         }
         crate::Scalar::Null
     }
@@ -507,14 +563,160 @@ impl super::FixMsg {
             return crate::Scalar::Null;
         }
         let held = self.market_timestamp();
-        // Read as whole seconds through the crate's own restatement, which
-        // answers only where the conversion is exact - so a partition is
-        // never a rounded guess at where a row belongs.
-        let Some(epoch) = held.temporal_count_at(crate::TimeUnit::Second) else {
+        let Some((count, unit, _)) = held.as_datetime64() else {
             return crate::Scalar::Null;
         };
+        // A partition contains the whole fractional instant. Floor at the
+        // source unit before flooring to the requested interval, including
+        // before the epoch; exact temporal restatement would reject every
+        // ordinary FIX timestamp with a fraction.
+        let scale = match unit {
+            crate::TimeUnit::Second => 1,
+            crate::TimeUnit::Millisecond => 1_000,
+            crate::TimeUnit::Microsecond => 1_000_000,
+            crate::TimeUnit::Nanosecond => 1_000_000_000,
+            _ => return crate::Scalar::Null,
+        };
+        let epoch = count.div_euclid(scale);
         crate::Scalar::from(epoch.div_euclid(seconds) * seconds)
     }
+}
+
+/// One message value under the fixed column that will materialize it.
+///
+/// Repeating-group messages carry only the members that arrived, while the
+/// fixed batch schema carries the dictionary's complete item. Aligning by FIX
+/// identity fills the absent members with null instead of shifting a short
+/// occurrence into the wrong columns. Any value that still cannot satisfy the
+/// target becomes null, keeping row content from failing the capture stream.
+fn aligned_value(source: &Field, value: &crate::Scalar, target: &Field) -> crate::Scalar {
+    if value.is_null() {
+        return crate::Scalar::Null;
+    }
+    let candidate = match (source.dtype(), target.dtype()) {
+        (DataType::List(source_item), DataType::List(target_item)) => {
+            let Some(values) = value.as_sequence() else {
+                return crate::Scalar::Null;
+            };
+            crate::Scalar::from_sequence(
+                values
+                    .iter()
+                    .map(|held| aligned_value(source_item, held, target_item))
+                    .collect::<Vec<_>>(),
+            )
+        }
+        (DataType::Struct(source_fields), DataType::Struct(target_fields)) => {
+            let Some(values) = value.as_sequence() else {
+                return crate::Scalar::Null;
+            };
+            crate::Scalar::from_sequence(
+                target_fields
+                    .iter()
+                    .map(|target_field| {
+                        source_fields
+                            .iter()
+                            .position(|source_field| same_fix_field(source_field, target_field))
+                            .and_then(|at| {
+                                Some(aligned_value(
+                                    source_fields.get(at)?,
+                                    values.get(at)?,
+                                    target_field,
+                                ))
+                            })
+                            .unwrap_or(crate::Scalar::Null)
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+        _ => value.clone(),
+    };
+    conformed_value(candidate, target)
+}
+
+/// One candidate coerced through both the generic and FIX text contracts.
+fn conformed_value(value: crate::Scalar, target: &Field) -> crate::Scalar {
+    if let Ok(value) = target.scalar(value.clone()) {
+        return value;
+    }
+    let Some(text) = value.as_str() else {
+        return crate::Scalar::Null;
+    };
+    let Some(candidate) = super::build::wire_spelling(target.dtype(), text) else {
+        return crate::Scalar::Null;
+    };
+    crate::text::prepare_text(candidate, target)
+        .and_then(|value| target.scalar(value))
+        .unwrap_or(crate::Scalar::Null)
+}
+
+/// Whether two nested fields name the same FIX value.
+fn same_fix_field(left: &Field, right: &Field) -> bool {
+    match (
+        left.as_fix().id().ok().flatten(),
+        right.as_fix().id().ok().flatten(),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => crate::types::folds_equal(left.name(), right.name()),
+    }
+}
+
+/// Restate one candidate as the crate's canonical UTC capture timestamp.
+fn canonical_timestamp(value: &crate::Scalar) -> crate::Scalar {
+    let Some(field) = super::fix_crate_fields().ok().and_then(|fields| {
+        fields
+            .iter()
+            .find(|field| field.as_fix().tag().ok().flatten() == Some(super::TIMESTAMP_TAG))
+    }) else {
+        return crate::Scalar::Null;
+    };
+    if let Ok(timestamp) = field.scalar(value.clone()) {
+        return timestamp;
+    }
+    // FIX permits nine fractional digits even though the canonical capture
+    // clock is microseconds. A custom dictionary can therefore materialize a
+    // nanosecond source exactly; derive the canonical clock by dropping only
+    // its sub-microsecond remainder. `div_euclid` matches truncating the
+    // printed fraction for instants before the epoch too.
+    if let Some((count, crate::TimeUnit::Nanosecond, _)) = value.as_datetime64() {
+        if let DataType::DateTime64 {
+            unit: crate::TimeUnit::Microsecond,
+            timezone,
+        } = field.dtype()
+        {
+            return crate::Scalar::datetime64(
+                count.div_euclid(1_000),
+                crate::TimeUnit::Microsecond,
+                *timezone,
+            )
+            .unwrap_or(crate::Scalar::Null);
+        }
+    }
+    let Some(text) = value.as_str() else {
+        return crate::Scalar::Null;
+    };
+    let Some(candidate) = super::build::wire_spelling(field.dtype(), text) else {
+        return crate::Scalar::Null;
+    };
+    crate::text::prepare_text(candidate, field)
+        .and_then(|prepared| field.scalar(prepared))
+        .unwrap_or(crate::Scalar::Null)
+}
+
+/// The first valid clock in either a scalar value or repeated occurrences.
+fn first_timestamp(value: &crate::Scalar) -> crate::Scalar {
+    if value.is_null() {
+        return crate::Scalar::Null;
+    }
+    if let Some(occurrences) = value.as_sequence() {
+        for occurrence in occurrences {
+            let timestamp = canonical_timestamp(occurrence);
+            if !timestamp.is_null() {
+                return timestamp;
+            }
+        }
+        return crate::Scalar::Null;
+    }
+    canonical_timestamp(value)
 }
 
 impl FixProjection {

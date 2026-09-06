@@ -54,7 +54,7 @@
               "name": "alloctrdregtimestamp",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -128,7 +128,7 @@
               "name": "algosystemmodulelastupdatetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -182,7 +182,7 @@
               "name": "testscenariostarttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -194,7 +194,7 @@
               "name": "testscenarioendtime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -226,7 +226,7 @@
               "name": "mdorigintime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -290,7 +290,7 @@
               "name": "teststepstarttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -322,7 +322,7 @@
               "name": "teststependtime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -448,7 +448,7 @@
               "name": "testsystemmodulelastupdatetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,

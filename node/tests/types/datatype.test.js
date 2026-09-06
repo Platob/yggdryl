@@ -130,7 +130,7 @@ test('ASCII is one variable form and one fixed width', () => {
   const names = DataType.logicalNames()
   assert.equal(names.price.toString(), 'float64')
   assert.ok(DataType.from('Price').equals(names.price))
-  assert.equal(DataType.fromLogicalName('UTC_Timestamp').toString(), 'datetime64(ns,"UTC")')
+  assert.equal(DataType.fromLogicalName('UTC_Timestamp').toString(), 'datetime64(us,"UTC")')
   // The base-type spellings the Arrow/SQL grammar owns keep their meaning.
   assert.equal(DataType.from('int').id, 'int32')
   assert.equal(DataType.from('float').id, 'float32')

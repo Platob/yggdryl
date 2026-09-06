@@ -12,9 +12,9 @@
 | Root metadata | the FIX/options root metadata; a source root's record-class metadata cannot describe the enlarged row |
 | Collisions | a source name matching a native FIX name case-insensitively is refused from the schemas before the source is pulled |
 | Row parameters | `fixbranch`, `beginstring`, `targetversion`, `sep`, and `direction`; each source column remains in the result |
+| Timestamp precision | FIX `UTCTimestamp` and `TZTimestamp` fields, including the derived capture timestamp, are `timestamp[us, UTC]` and enter Iceberg v2 without a compatibility cast |
 | Provenance | `branch` is an ordinary source column; only `fixbranch` selects a per-row dialect |
 | Bounds | `batch_row_size`, `batch_byte_size`, and `max_row_size` shape the output without collecting the stream |
 | Bad frame | still one output row, with the FIX projection empty; only `dedup` deliberately changes row correspondence |
 
 Python exposes the same reader over the Arrow C stream as [`yggdryl.fix.parse_arrow_reader`](../extensions/python.md#fix-registry-at-the-boundary). It accepts an explicit registry or uses the process default.
-

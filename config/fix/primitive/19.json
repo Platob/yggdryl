@@ -153,7 +153,7 @@
     "name": "responsetime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -167,7 +167,7 @@
     "name": "quotedisplaytime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -966,7 +966,7 @@
     "name": "underlyingeventtime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,

@@ -80,6 +80,12 @@ use crate::{DataType, Error, Field, Result, Scalar, Version};
 #[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
+    /// The source version the reader resolved before projecting fields.
+    ///
+    /// `FIXT.1.1` delegates this to `ApplVerID(1128)`, and a caller may pin it
+    /// when a venue mislabels the header, so it cannot always be reconstructed
+    /// from the built row.
+    resolved_version: Option<Version>,
     /// What arrived, beside what it was interpreted as.
     ///
     /// Not the row restated: the row is the interpretation and this is the
@@ -152,6 +158,7 @@ impl FixMsg {
         let value = field.canonicalize_value(value)?;
         Ok(Self {
             registry,
+            resolved_version: None,
             entries: Vec::new(),
             branch,
             tags: tag_positions(&field),
@@ -170,9 +177,11 @@ impl FixMsg {
         field: Field,
         value: Scalar,
         entries: Vec<FixEntry>,
+        resolved_version: Option<Version>,
     ) -> Result<Self> {
         let mut built = Self::with_registry(registry, field, value)?;
         built.entries = entries;
+        built.resolved_version = resolved_version;
         Ok(built)
     }
 
@@ -242,6 +251,14 @@ impl FixMsg {
     /// what a message says about itself, so a converted one cannot lie.
     #[must_use]
     pub fn version(&self) -> Option<Version> {
+        if let Some(version) = self.resolved_version {
+            return Some(version);
+        }
+        if let Some(appl) = self.get_by_tag(1128).and_then(Scalar::as_str) {
+            if let Some(version) = super::reader::appl_ver_id(appl, &self.registry) {
+                return Some(version);
+            }
+        }
         let begin = self.get_by_tag(8).and_then(Scalar::as_str)?;
         begin
             .strip_prefix("FIX.")

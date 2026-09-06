@@ -514,7 +514,7 @@
     "name": "origtime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -608,7 +608,7 @@
     "name": "sendingtime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -717,7 +717,7 @@
     "name": "transacttime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,
@@ -746,7 +746,7 @@
     "name": "validuntiltime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,

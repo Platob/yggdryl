@@ -51,8 +51,8 @@
 //! | `PriceOffset` | float | `float64` | as above, signed |
 //! | `Percentage` | float | `float64` | `0.0525` is 5.25% |
 //! | `Amt` | float | `float64` | one width, so the family is arithmetic |
-//! | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
-//! | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
+//! | `UTCTimestamp` | String | `datetime64(us,"UTC")` | the instant, at the canonical batch precision |
+//! | `TZTimestamp` | String | `datetime64(us,"UTC")` | the offset resolves into the instant |
 //! | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 //! | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 //! | `UTCDateOnly` | String | `date32` | a calendar day |
@@ -84,7 +84,7 @@
 //!
 //! `TZTimestamp` keeps the instant and drops the local offset, because an
 //! Arrow column carries one zone for every row. Read it under
-//! `datetime64(ns,"<zone>")` when the local reading is the value.
+//! `datetime64(us,"<zone>")` when the local reading is the value.
 
 use smol_str::format_smolstr;
 
@@ -160,14 +160,14 @@ impl DataType {
         (
             "utctimestamp",
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
             },
         ),
         (
             "tztimestamp",
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
             },
         ),
@@ -211,7 +211,7 @@ impl DataType {
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
     ///     Some(DataType::DateTime64 {
-    ///         unit: TimeUnit::Nanosecond,
+    ///         unit: TimeUnit::Microsecond,
     ///         timezone: Timezone::UTC,
     ///     })
     /// );

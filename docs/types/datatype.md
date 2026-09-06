@@ -84,7 +84,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
-        Some(DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC })
+        Some(DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC })
     );
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
@@ -113,7 +113,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     # The same lookup backs the grammar, so a FIX declaration types a row.
     row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
     assert row["venue"].dtype == DataType("mic")
-    assert row["at"].dtype == DataType('datetime64(ns,"UTC")')
+    assert row["at"].dtype == DataType('datetime64(us,"UTC")')
 
     # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     assert DataType("utc_date_only") == DataType("date32")
@@ -142,7 +142,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     // The same lookup backs the grammar, so a FIX declaration types a row.
     const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
     assert.equal(row.getField('venue').dtype.id, 'mic')
-    assert.equal(row.getField('at').dtype.toString(), 'datetime64(ns,"UTC")')
+    assert.equal(row.getField('at').dtype.toString(), 'datetime64(us,"UTC")')
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     assert.equal(DataType.from('utc_date_only').id, 'date32')
@@ -182,8 +182,8 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `PriceOffset` | float | `float64` | as above, signed |
 | `Percentage` | float | `float64` | `0.0525` is 5.25% |
 | `Amt` | float | `float64` | one width, so the family is arithmetic |
-| `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
-| `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
+| `UTCTimestamp` | String | `datetime64(us,"UTC")` | the instant, at the canonical batch precision |
+| `TZTimestamp` | String | `datetime64(us,"UTC")` | the offset resolves into the instant |
 | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 | `UTCDateOnly`, `utcdate` | String | `date32` | a calendar day |
@@ -615,7 +615,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
 - `DataType.fromArrow({})` -> `own textual representation` error, never `[object Object]`.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
-- `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
+- `TZTimestamp` -> the instant, offset dropped; read under `datetime64(us,"<zone>")` for the local value.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - `DataType::from_arrow(currency.into_arrow())` -> `ascii(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.

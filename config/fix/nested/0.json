@@ -396,7 +396,7 @@
               "name": "transacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -588,7 +588,7 @@
               "name": "effectivetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -610,7 +610,7 @@
               "name": "expiretime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -1022,7 +1022,7 @@
               "name": "relatedordertime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,

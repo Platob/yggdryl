@@ -49,12 +49,6 @@ pub const TIMESTAMP_TAG: i32 = 30004;
 /// The tag carrying the partition that timestamp falls in.
 pub const UNIXPARTITION_TAG: i32 = 30005;
 
-/// The tag carrying the client order identifier this one descends from.
-pub const PARENTCLORDID_TAG: i32 = 30006;
-
-/// The tag carrying the venue order identifier this one descends from.
-pub const PARENTORDERID_TAG: i32 = 30007;
-
 /// FIX's own tag for which way a message moved.
 ///
 /// Published, not invented: the specification has spelled this `MsgDirection`
@@ -110,7 +104,7 @@ fn build() -> Result<Vec<Field>> {
             "timestamp",
             TIMESTAMP_TAG,
             DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
+                unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
             },
         )?,
@@ -118,14 +112,6 @@ fn build() -> Result<Vec<Field>> {
         // epoch. An integer rather than a rendered date: a partition value is
         // compared and ranged over, and a string would sort lexically.
         crated("unixpartition", UNIXPARTITION_TAG, DataType::Int64)?,
-        // Where an order came from. FIX threads a replace chain through
-        // `OrigClOrdID(41)`, which says what this message *replaces* - not
-        // what it descends from. A slice of a parent order, or a leg of a
-        // basket, has a parent that no standard tag names, and a desk that
-        // cannot roll its children up to it cannot answer for the order it
-        // actually took.
-        crated("parentclordid", PARENTCLORDID_TAG, DataType::Utf8)?,
-        crated("parentorderid", PARENTORDERID_TAG, DataType::Utf8)?,
     ])
 }
 

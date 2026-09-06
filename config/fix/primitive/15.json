@@ -57,7 +57,7 @@
     "name": "relsymtransacttime",
     "dtype": {
       "type": "datetime64",
-      "unit": "nanosecond",
+      "unit": "microsecond",
       "timezone": "UTC"
     },
     "nullable": true,

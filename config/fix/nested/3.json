@@ -42,7 +42,7 @@
               "name": "contratradetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -290,7 +290,7 @@
               "name": "tradsesstarttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -302,7 +302,7 @@
               "name": "tradsesopentime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -314,7 +314,7 @@
               "name": "tradsespreclosetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -326,7 +326,7 @@
               "name": "tradsesclosetime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -338,7 +338,7 @@
               "name": "tradsesendtime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,
@@ -360,7 +360,7 @@
               "name": "transacttime",
               "dtype": {
                 "type": "datetime64",
-                "unit": "nanosecond",
+                "unit": "microsecond",
                 "timezone": "UTC"
               },
               "nullable": true,

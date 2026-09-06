@@ -3,10 +3,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arrow_array::{Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::local::Folder;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, write_fix};
+use yggdryl::{
+    DataType, FixBatchReader, FixMsg, FixOptions, FixRegistry, Scalar, TimeUnit, Timezone,
+    write_fix,
+};
 
 fn registry() -> Arc<FixRegistry> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -141,6 +144,284 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let entries = column(&batch, "entries");
     assert!(entries.is_valid(0));
     assert_eq!(entries.len(), 1);
+}
+
+#[test]
+fn a_text_clock_is_derived_as_utc_microseconds_or_null() {
+    let mut sending_time = DataType::Utf8.nullable_field("sendingtime");
+    sending_time.as_fix_mut().set_tag(52).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([sending_time]).unwrap());
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [
+            Ok(b"52=20260814-00:05:01.148123456|".to_vec()),
+            Ok(b"52=20260814-00:05:01.148123|".to_vec()),
+            Ok(b"52=19691231-23:59:59.999999|".to_vec()),
+            Ok(b"52=not-a-clock|".to_vec()),
+        ],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let schema = reader.schema();
+    assert_eq!(
+        schema.field_with_name("30004").unwrap().data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
+    );
+
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let timestamp = column(&batch, "30004")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+        .expect("a microsecond timestamp array");
+    assert_eq!(
+        timestamp.value(0),
+        timestamp.value(1),
+        "sub-us digits truncate"
+    );
+    assert_eq!(timestamp.value(0).rem_euclid(1_000_000), 148_123);
+    assert!(
+        timestamp.is_null(3),
+        "an invalid row clock is not a stream error"
+    );
+    let partition = column(&batch, "30005")
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .expect("an epoch-second partition array");
+    assert_eq!(
+        partition.value(0),
+        timestamp.value(0).div_euclid(3_600_000_000) * 3_600
+    );
+    assert_eq!(partition.value(2), -3_600, "pre-epoch instants floor");
+    assert!(partition.is_null(3));
+}
+
+#[test]
+fn a_custom_nanosecond_clock_retains_source_precision() {
+    let mut sending_time = DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    }
+    .nullable_field("sendingtime");
+    sending_time.as_fix_mut().set_tag(52).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([sending_time]).unwrap());
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [Ok(b"52=20260814-00:05:01.148123456|".to_vec())],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+
+    let source = column(&batch, "52")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampNanosecondArray>()
+        .expect("the dictionary's nanosecond source");
+    assert_eq!(source.value(0).rem_euclid(1_000_000_000), 148_123_456);
+    let derived = column(&batch, "30004")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+        .expect("the canonical microsecond clock");
+    assert_eq!(derived.value(0).rem_euclid(1_000_000), 148_123);
+}
+
+#[test]
+fn a_tz_timestamp_preserves_its_offset_and_truncates_to_microseconds() {
+    let mut tz_timestamp = DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: Timezone::UTC,
+    }
+    .nullable_field("tztimestamp");
+    tz_timestamp.as_fix_mut().set_tag(52).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([tz_timestamp]).unwrap());
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [
+            Ok(b"52=20260814-00:05:01.148123456+02:00|".to_vec()),
+            Ok(b"52=20260813-22:05:01.148123Z|".to_vec()),
+            Ok(b"52=20260814-00:05:01.148123456+02|".to_vec()),
+        ],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let timestamp = column(&batch, "52")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+        .expect("the TZTimestamp column");
+    assert_eq!(
+        timestamp.value(0),
+        timestamp.value(1),
+        "the explicit offset resolves into the same UTC instant"
+    );
+    assert_eq!(
+        timestamp.value(0),
+        timestamp.value(2),
+        "an hour-only offset"
+    );
+    assert_eq!(timestamp.value(0).rem_euclid(1_000_000), 148_123);
+}
+
+#[test]
+fn a_historical_text_clock_conforms_to_the_fixed_timestamp_column() {
+    let registry = registry();
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [Ok(
+            b"8=FIX.4.1|52=20260814-00:05:01.148123456|35=D|10=0|".to_vec()
+        )],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let source = column(&batch, "52")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+        .expect("the fixed timestamp column");
+    assert!(source.is_valid(0));
+    assert_eq!(source.value(0).rem_euclid(1_000_000), 148_123);
+}
+
+#[test]
+fn a_multibyte_malformed_date_is_null_without_losing_its_row() {
+    let registry = registry();
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [Ok("75=123é567|".as_bytes().to_vec())],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    assert_eq!(batch.num_rows(), 1);
+    assert!(column(&batch, "75").is_null(0));
+    assert!(column(&batch, "entries").is_valid(0));
+}
+
+#[test]
+fn a_fixt_row_carries_its_resolved_application_version() {
+    let registry = registry();
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [Ok(b"8=FIXT.1.1|1128=6|35=D|11=ORDER-1|10=0|".to_vec())],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let version = column(&batch, "30002")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("the derived version column");
+    assert_eq!(version.value(0), "4.4");
+}
+
+#[test]
+fn inferred_directions_use_fix_codes_in_the_fixed_column() {
+    let registry = registry();
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [
+            Ok(b"sending >> 8=FIX.4.4|35=D|10=0|".to_vec()),
+            Ok(b"receiving >> 8=FIX.4.4|35=D|10=0|".to_vec()),
+        ],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let direction = column(&batch, "385")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("the FIX MsgDirection column");
+    assert_eq!(direction.value(0), "S");
+    assert_eq!(direction.value(1), "R");
+}
+
+#[test]
+fn a_bridge_group_is_aligned_to_the_complete_fixed_item() {
+    let registry = registry();
+    let body = "toBridge #ISINCODE=XX0000084733|#CFICODE=FXXXSX|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\u{1}PARTYIDSOURCE=D\u{1}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=XPAR\u{1}PARTYIDSOURCE=G\u{1}PARTYROLE=17|#TRANSACTTIME=20260814-00:05:01.148|#UNKNOWNVENUEFIELD=Z9";
+    let reader =
+        FixBatchReader::from_rows(registry, [Ok(body.as_bytes().to_vec())], FixOptions::new())
+            .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let group_at = batch.schema().index_of("453").unwrap();
+    let rows = yggdryl::arrow::batch_to_value(&batch).unwrap();
+    let group = rows
+        .get(0)
+        .and_then(|row| row.get(group_at))
+        .and_then(Scalar::as_sequence)
+        .expect("the party group");
+    assert_eq!(group.len(), 2);
+    let first = group[0].as_sequence().expect("the first complete item");
+    let second = group[1].as_sequence().expect("the second complete item");
+    assert_eq!(first.len(), 4, "the fixed registry item has four fields");
+    assert_eq!(second.len(), 4);
+    assert_eq!(first[0].as_str(), Some("BUYSIDE"));
+    assert_eq!(second[0].as_str(), Some("XPAR"));
+    assert!(
+        first[3].is_null(),
+        "the absent qualifier is filled with null"
+    );
+    assert!(second[3].is_null());
+}
+
+#[test]
+fn a_standard_numeric_party_group_is_assembled_from_its_layout() {
+    let registry = registry();
+    let body = b"8=FIX.4.4|35=D|453=2|448=BUYSIDE|447=D|452=1|448=XPAR|447=G|452=17|10=0|";
+    let reader =
+        FixBatchReader::from_rows(registry, [Ok(body.to_vec())], FixOptions::new()).unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let group_at = batch.schema().index_of("453").unwrap();
+    let rows = yggdryl::arrow::batch_to_value(&batch).unwrap();
+    let group = rows[0][group_at].as_sequence().expect("the party group");
+    assert_eq!(group.len(), 2);
+    let first = group[0].as_sequence().expect("the first party");
+    let second = group[1].as_sequence().expect("the second party");
+    assert_eq!(first[0].as_str(), Some("BUYSIDE"));
+    assert_eq!(second[0].as_str(), Some("XPAR"));
+    assert_eq!(first.len(), 4);
+    assert_eq!(second.len(), 4);
+}
+
+#[test]
+fn a_regulatory_group_timestamp_drives_the_capture_clock() {
+    let registry = registry();
+    let body = "MSGTYPE=8|#NOTRDREGTIMESTAMPS=1|#NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20240102-10:15:30.148123456\u{1}TRDREGTIMESTAMPTYPE=1";
+    let reader =
+        FixBatchReader::from_rows(registry, [Ok(body.as_bytes().to_vec())], FixOptions::new())
+            .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let timestamp = column(&batch, "30004")
+        .as_any()
+        .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+        .expect("the regulatory capture clock");
+    assert!(timestamp.is_valid(0));
+    assert_eq!(timestamp.value(0).rem_euclid(1_000_000), 148_123);
+    let partition = column(&batch, "30005")
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .expect("the regulatory clock partition");
+    assert!(partition.is_valid(0));
+}
+
+#[test]
+fn a_null_symbol_falls_through_to_the_stated_security_id() {
+    let mut symbol = DataType::Int32.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    let mut security_id = DataType::Utf8.nullable_field("securityid");
+    security_id.as_fix_mut().set_tag(48).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([symbol, security_id]).unwrap());
+    let reader = FixBatchReader::from_rows(
+        registry,
+        [Ok(b"55=not-an-int|48=XX0000084733|".to_vec())],
+        FixOptions::new(),
+    )
+    .unwrap();
+    let batch = reader.into_iter().next().unwrap().unwrap();
+    let ticker = column(&batch, "30003")
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("the normalized ticker");
+    assert_eq!(ticker.value(0), "XX0000084733");
 }
 
 #[test]

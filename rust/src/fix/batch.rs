@@ -429,7 +429,21 @@ fn row_of(
         if let Some(values) = row.as_sequence() {
             let mut held = values.to_vec();
             if let Some(slot) = held.get_mut(at) {
-                *slot = direction.map_or(Scalar::Null, Scalar::from);
+                *slot = direction.map_or(Scalar::Null, |direction| {
+                    let Some(field) = projection.column(at) else {
+                        return Scalar::Null;
+                    };
+                    let name = match direction {
+                        MsgDirection::SENT => "Send",
+                        MsgDirection::RECV => "Receive",
+                        _ => return Scalar::Null,
+                    };
+                    field
+                        .as_fix()
+                        .code_value(name)
+                        .and_then(|code| field.scalar(code).ok())
+                        .unwrap_or(Scalar::Null)
+                });
             }
             row = Scalar::from_sequence(held);
         }
