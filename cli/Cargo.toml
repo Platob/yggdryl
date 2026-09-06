@@ -1,0 +1,32 @@
+# The FIX dictionary tool: everything a desk does to a registry, from a shell.
+#
+# Its own member rather than a binary inside the core, so a library consumer
+# carries none of what a terminal needs - argument parsing, raw mode, colour -
+# and the core's dependency set stays exactly what a schema needs.
+[package]
+name = "yggdryl-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Manage a yggdryl FIX dictionary from a terminal."
+
+[[bin]]
+name = "ygg"
+path = "src/main.rs"
+
+[dependencies]
+# Default features: a tool that reads a dictionary wants the same core a
+# consumer has, and building it cut down leaves half the core unused.
+yggdryl = { path = "../rust" }
+# Argument parsing with derived help, so every command documents itself and
+# `--help` is generated from the same declaration the parser uses.
+clap = { version = "4.5", features = ["derive", "wrap_help"] }
+# One crate for everything a terminal needs: colour, cursor, raw mode and key
+# events. The interactive shell and the animation are written here on top of
+# it rather than pulling a line editor and a spinner crate for each.
+crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
+
+[lints]
+workspace = true
