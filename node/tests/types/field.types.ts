@@ -138,7 +138,6 @@ iceberg.clear()
 const digestFieldLen: number = field.digestFieldLen
 const digestFields: Field[] = field.digestFields()
 const digestFieldNames: string[] = field.digestFieldNames()
-const hasDigestComponents: boolean = field.hasDigestComponents
 const onlyDigestFields: Field = field.onlyDigestFields()
 
 const partitionRoot: Field = Field.from(

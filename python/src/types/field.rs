@@ -11,12 +11,14 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
+use yggdryl::expression::Function as CoreFunction;
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scheme as CoreScheme};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
 use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
@@ -522,6 +524,72 @@ impl PyField {
             .cast_arrow_array_bits(arrow_array_from_pyarrow(value)?)
             .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &array, Some(&self.inner))
+    }
+
+    /// Applies this schema's metadata-declared columns to one `RecordBatch`.
+    ///
+    /// `cast` reconciles the batch to this root first, `partition` computes
+    /// every column a `partition:transform` over `partition:sources`
+    /// declares, and `digest` fills every holder last, over the rows as they
+    /// finally stand. Each protocol walks the declared Structs beneath this
+    /// root and leaves a column holding anything but its canonical default
+    /// alone, so applying twice writes nothing the first pass already did.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        self.inner
+            .apply_arrow_batch(&batch, digest, partition, cast)
+            .map_err(value_error)?
+            .to_pyarrow(py)
+    }
+
+    /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
+    ///
+    /// The declarations name every column they add, so the applied shape is a
+    /// property of two schemas: nothing is decoded, and a declaration that
+    /// cannot be satisfied fails here rather than on the first batch.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    fn apply_arrow_schema<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
+        self.inner
+            .apply_arrow_schema(schema, digest, partition, cast)
+            .map_err(value_error)?
+            .to_pyarrow(py)
+    }
+
+    /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
+    ///
+    /// The applied schema is derived once, so the returned reader answers it
+    /// before the first batch is pulled and can be handed straight to a write.
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    fn apply_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let reader = batch_reader_from_arrow_reader(value)?;
+        let applied = self
+            .inner
+            .apply_arrow_reader(reader, digest, partition, cast)
+            .map_err(value_error)?;
+        batch_reader_to_pyarrow(py, applied)
     }
 
     /// Reconciles one `PyArrow` `RecordBatch` to this exact Struct Field.
@@ -1522,7 +1590,7 @@ impl PyField {
         PyProtocolField::new(slf, CoreScheme::PANDAS)
     }
 
-    /// Returns the effective row-digest components in declaration order.
+    /// Returns the children a row digest reads by default, in declaration order.
     #[getter]
     fn digest_fields(&self) -> Vec<Self> {
         self.inner
@@ -1532,7 +1600,7 @@ impl PyField {
             .collect()
     }
 
-    /// Returns the names of the effective row-digest components.
+    /// Returns the names of the children a row digest reads by default.
     #[getter]
     fn digest_field_names(&self) -> Vec<&str> {
         self.inner.digest_field_names().collect()
@@ -1544,13 +1612,7 @@ impl PyField {
         self.inner.digest_field_len()
     }
 
-    /// Returns whether any child explicitly declares the digest-component role.
-    #[getter]
-    fn has_digest_components(&self) -> bool {
-        self.inner.has_digest_components()
-    }
-
-    /// Returns this struct root holding only its effective digest components.
+    /// Returns this struct root holding only the children a digest reads.
     fn only_digest_fields(&self) -> PyResult<Self> {
         self.inner
             .only_digest_fields()
@@ -2028,6 +2090,20 @@ impl PyProtocolField {
             self.scheme.as_str()
         )))
     }
+
+    /// Refuse a typed partition property on a view of another protocol.
+    ///
+    /// [`Self::require_fix`] carries the rule; this is the same one for the
+    /// view `field.partition` returns.
+    fn require_partition(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a partition property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
 }
 
 #[pymethods]
@@ -2328,6 +2404,99 @@ impl PyProtocolField {
             .as_fix_mut()
             .set_description(text)
             .map_err(value_error)
+    }
+
+    /// The field paths this partition column derives its value from.
+    ///
+    /// Dotted paths, the way `Field.get_field` spells a nested one, in the one
+    /// shape every `sources` property has. One path is every transform the
+    /// core evaluates today; a longer list is stored and refused when the
+    /// column is applied.
+    #[getter]
+    fn sources(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
+        self.require_partition("sources")?;
+        let field = self.borrow_field(py)?;
+        field.inner.as_partition().sources().map_err(value_error)
+    }
+
+    #[setter]
+    fn set_sources(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_partition("sources")?;
+        let mut paths = Vec::new();
+        for path in value.try_iter()? {
+            paths.push(path?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_partition_mut()
+            .set_sources(paths)
+            .map_err(value_error)
+    }
+
+    /// How this partition column derives its value, on the `partition` view.
+    ///
+    /// The vocabulary is the [expression](../expression/grammar.md) grammar's
+    /// own function set, and it crosses as its canonical name: a dialect alias
+    /// resolves on the way in, so `dayofmonth` reads back as `day`. An absent
+    /// transform is the identity - the source value unchanged.
+    #[getter]
+    fn transform(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_partition("transform")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_partition()
+            .transform()
+            .map_err(value_error)?
+            .map(|transform| transform.as_str().to_owned()))
+    }
+
+    #[setter]
+    fn set_transform(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_partition("transform")?;
+        let name = value.extract::<String>()?;
+        let transform = CoreFunction::from_name(&name).ok_or_else(|| {
+            PyValueError::new_err(format!(
+                "expected one of {}, got {name:?}",
+                CoreFunction::vocabulary()
+            ))
+        })?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        field
+            .inner
+            .as_partition_mut()
+            .set_transform(transform)
+            .map_err(value_error)
+    }
+
+    /// Apply this protocol's declarations to one `pyarrow.RecordBatch`.
+    ///
+    /// The view is taken on the Struct root, and every declared Struct beneath
+    /// it is walked. `field.partition` computes each column its `transform`
+    /// and `source` declare; `field.digest` fills each holder. Both leave a
+    /// column holding anything but its canonical default alone, so applying
+    /// twice writes nothing the first pass already did.
+    ///
+    /// Every other protocol's view raises `TypeError` naming its own scheme.
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        batch: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let field = self.borrow_field(py)?;
+        let applied = if self.scheme == CoreScheme::PARTITION {
+            field.inner.as_partition().apply_arrow_batch(&batch)
+        } else if self.scheme == CoreScheme::DIGEST {
+            field.inner.as_digest().apply_arrow_batch(&batch)
+        } else {
+            return Err(PyTypeError::new_err(format!(
+                "apply_arrow_batch is a partition or digest operation, and this is a {} view",
+                self.scheme.as_str()
+            )));
+        };
+        applied.map_err(value_error)?.to_pyarrow(py)
     }
 
     /// Merges another protocol view's properties into this one, in place.

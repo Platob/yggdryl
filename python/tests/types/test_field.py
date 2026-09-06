@@ -510,6 +510,185 @@ def test_protocol_view_named_accessors_cover_every_well_known_protocol() -> None
         field.protocol("1invalid")
 
 
+def _derived_root() -> Field:
+    year = Field("year", "int32", nullable=True)
+    year.partition.sources = ["event"]
+    year.partition.transform = "year"
+    return Field(
+        "row",
+        DataType.from_fields([Field("event", "date32", nullable=False), year]),
+        nullable=False,
+    )
+
+
+def test_partition_view_stores_a_transform_in_its_canonical_spelling() -> None:
+    year = Field("year", "int32", nullable=True)
+    year.partition.sources = ["event"]
+    year.partition.transform = "dayofmonth"
+
+    # The dialect alias resolves on the way in, so one name is stored.
+    assert year.partition.transform == "day"
+    assert year.metadata["partition:transform"] == "day"
+    assert year.partition.sources == ["event"]
+    assert year.metadata["partition:sources"] == '["event"]'
+
+    with pytest.raises(ValueError):
+        # A function of two arguments is not a transform of one column.
+        year.partition.transform = "truncate"
+    with pytest.raises(ValueError):
+        year.partition.transform = "epoch"
+    with pytest.raises(ValueError):
+        year.partition.sources = [""]
+    # A refused write leaves the field unchanged.
+    assert year.partition.transform == "day"
+    assert year.partition.sources == ["event"]
+
+
+def test_partition_vocabulary_is_refused_on_another_protocols_view() -> None:
+    field = Field("year", "int32", nullable=True)
+
+    for view in (field.http, field.iceberg):
+        with pytest.raises(TypeError):
+            view.transform
+        with pytest.raises(TypeError):
+            view.sources
+        with pytest.raises(TypeError):
+            view.apply_arrow_batch(pa.record_batch({"event": pa.array([1])}))
+    # `apply_arrow_batch` is the one verb both declaring protocols answer, so
+    # the digest view takes it while the partition vocabulary stays refused.
+    with pytest.raises(TypeError):
+        field.digest.transform
+    root = Field("row", DataType.from_fields([field]), nullable=False)
+    assert root.digest.apply_arrow_batch(
+        pa.record_batch({"year": pa.array([1], pa.int32())})
+    ).column_names == ["year"]
+
+
+def _applied_root() -> Field:
+    year = Field("year", "int32", nullable=True)
+    year.partition.sources = ["event"]
+    year.partition.transform = "year"
+    row_digest = Field("row_digest", "uint64", nullable=True)
+    row_digest.digest["role"] = "holder"
+    return Field(
+        "row",
+        DataType.from_fields(
+            [Field("event", "date32", nullable=False), year, row_digest]
+        ),
+        nullable=False,
+    )
+
+
+def test_field_apply_arrow_batch_runs_every_protocol_in_order() -> None:
+    root = _applied_root()
+    batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
+
+    applied = root.apply_arrow_batch(batch)
+
+    assert applied.column_names == ["event", "year", "row_digest"]
+    assert applied.column("year").to_pylist() == [2024]
+    # The digest ran last, over the rows the partition step had completed.
+    assert applied.column("row_digest").null_count == 0
+    # Every column now holds a written value, so a second pass writes nothing.
+    assert root.apply_arrow_batch(applied).equals(applied)
+
+
+def test_field_apply_arrow_batch_runs_only_what_it_is_asked_for() -> None:
+    root = _applied_root()
+    batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
+
+    cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
+    assert cast_only.column("year").to_pylist() == [None]
+    assert cast_only.column("row_digest").null_count == 1
+
+    partitioned = root.apply_arrow_batch(batch, digest=False)
+    assert partitioned.column("year").to_pylist() == [2024]
+    assert partitioned.column("row_digest").null_count == 1
+
+
+def test_partition_apply_arrow_batch_computes_a_declared_column() -> None:
+    root = _derived_root()
+    batch = pa.record_batch({"event": pa.array([19_723, 20_089], pa.date32())})
+
+    filled = root.partition.apply_arrow_batch(batch)
+
+    assert filled.num_columns == 2
+    assert filled.column("year").to_pylist() == [2024, 2025]
+    # The declaration travels with the filled column.
+    assert filled.schema.field(1).metadata[b"partition:sources"] == b'["event"]'
+
+
+def test_partition_apply_arrow_batch_leaves_a_stored_column_alone() -> None:
+    root = _derived_root()
+    batch = pa.record_batch(
+        {
+            "event": pa.array([19_723], pa.date32()),
+            "year": pa.array([1999], pa.int32()),
+        }
+    )
+
+    filled = root.partition.apply_arrow_batch(batch)
+
+    # The stored value wins, so a mismatch stays visible.
+    assert filled.column("year").to_pylist() == [1999]
+
+
+def test_partition_apply_arrow_batch_fills_a_null_placeholder_column() -> None:
+    root = _derived_root()
+    placeholder = root.cast_arrow_batch(
+        pa.record_batch({"event": pa.array([19_723], pa.date32())})
+    )
+    assert placeholder.column("year").to_pylist() == [None]
+
+    filled = root.partition.apply_arrow_batch(placeholder)
+
+    assert filled.column("year").to_pylist() == [2024]
+
+
+def test_partition_apply_arrow_batch_names_a_source_column_it_cannot_read() -> None:
+    root = _derived_root()
+
+    with pytest.raises(ValueError, match="event"):
+        root.partition.apply_arrow_batch(
+            pa.record_batch({"price": pa.array([10], pa.int64())})
+        )
+
+
+def test_field_apply_arrow_schema_answers_the_shape_without_reading_a_row() -> None:
+    root = _applied_root()
+    stored = pa.schema([pa.field("event", pa.date32(), nullable=False)])
+
+    applied = root.apply_arrow_schema(stored)
+
+    assert applied.names == ["event", "year", "row_digest"]
+    batch = pa.record_batch({"event": pa.array([19_723], pa.date32())}, schema=stored)
+    assert root.apply_arrow_batch(batch).schema == applied
+
+    with pytest.raises(ValueError, match="event"):
+        root.apply_arrow_schema(
+            pa.schema([pa.field("price", pa.int64(), nullable=False)]),
+            digest=False,
+            cast=False,
+        )
+
+
+def test_field_apply_arrow_reader_reports_its_schema_before_the_first_batch() -> None:
+    root = _applied_root()
+    stored = pa.schema([pa.field("event", pa.date32(), nullable=False)])
+    batch = pa.record_batch({"event": pa.array([19_723], pa.date32())}, schema=stored)
+
+    applied = root.apply_arrow_reader(
+        pa.RecordBatchReader.from_batches(stored, [batch, batch])
+    )
+
+    # Read before pulling anything.
+    assert applied.schema.names == ["event", "year", "row_digest"]
+    table = applied.read_all()
+    assert table.num_rows == 2
+    assert table.column("year").to_pylist() == [2024, 2024]
+    assert table.column("row_digest").null_count == 0
+
+
 def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:
     field = Field(
         "payload",
@@ -572,18 +751,20 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
     holder.digest["role"] = "holder"
 
     before = dict(holder.digest)
-    with pytest.raises(ValueError, match="holder or component"):
+    with pytest.raises(ValueError, match="holder"):
         holder.digest.update({"note": "output", "role": "invalid"})
     assert dict(holder.digest) == before
-    with pytest.raises(ValueError, match="holder or component"):
+    with pytest.raises(ValueError, match="holder"):
         Field("bad", "uint64", metadata={"digest:role": "invalid"})
+    # `holder` is the only role: a digest never marks the fields it reads.
+    with pytest.raises(ValueError, match="holder"):
+        Field("bad", "uint64", metadata={"digest:role": "component"})
 
     default = Field(
         "row",
         DataType.from_fields([symbol, price, holder]),
         nullable=False,
     )
-    assert not default.has_digest_components
     assert default.digest_field_names == ["symbol", "price"]
     assert default.digest_field_len == 2
     assert [child.name for child in default.digest_fields] == ["symbol", "price"]
@@ -592,18 +773,26 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
         "price",
     ]
 
+    # A holder names what it reads; the fields it reads stay unmarked, so the
+    # default selection is still every child but the holder.
     venue = Field("venue", "utf8", nullable=False)
-    venue.digest["role"] = "component"
+    narrowed = Field("row_digest", "uint64", nullable=False)
+    narrowed.digest["role"] = "holder"
+    narrowed.digest["sources"] = '["venue"]'
     explicit = Field(
         "row",
-        DataType.from_fields([symbol, venue, price, holder]),
+        DataType.from_fields([symbol, venue, price, narrowed]),
         nullable=False,
     )
-    assert explicit.has_digest_components
-    assert explicit.digest_field_names == ["venue"]
-    assert explicit.digest_field_len == 1
-    assert [child.name for child in explicit.digest_fields] == ["venue"]
-    assert [child.name for child in explicit.only_digest_fields().dtype] == ["venue"]
+    assert dict(venue.digest) == {}
+    assert explicit.digest_field_names == ["symbol", "venue", "price"]
+    assert explicit.digest_field_len == 3
+    with pytest.raises(ValueError, match="digest:sources"):
+        Field(
+            "bad",
+            "uint64",
+            metadata={"digest:role": "holder", "digest:sources": '["*","venue"]'},
+        )
 
     holders_only = Field(
         "row", DataType.from_fields([holder]), nullable=False
@@ -614,7 +803,6 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
     assert symbol.digest_fields == []
     assert symbol.digest_field_names == []
     assert symbol.digest_field_len == 0
-    assert not symbol.has_digest_components
     with pytest.raises(ValueError, match="struct root"):
         symbol.only_digest_fields()
 

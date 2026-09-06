@@ -246,17 +246,18 @@ from yggdryl import Field
 field = Field("price", "int64", nullable=False)
 field.iceberg["doc"] = "closing price"
 field.postgres.update({"type": "numeric"})
-field.digest["role"] = "component"
+field.digest["role"] = "holder"
 field.identity.update({"role": "primary", "nulls": "distinct"})
-field.partition.update({"transform": "bucket[16]", "order": "0"})
+field.partition.transform = "year"
+field.partition.sources = ["event"]
 
 assert field.iceberg["doc"] == "closing price"
 assert dict(field.postgres.items()) == {"type": "numeric"}
 assert len(field.iceberg) == 1
 assert "doc" not in field.postgres
-assert field.digest["role"] == "component"
+assert field.digest["role"] == "holder"
 assert field.identity["role"] == "primary"
-assert field.partition["transform"] == "bucket[16]"
+assert field.partition.transform == "year"
 
 # The bare name is all the view needs; the full key is what the field stores.
 assert field.iceberg.key("doc") == "iceberg:doc"
@@ -267,7 +268,33 @@ del field.iceberg["doc"]
 assert not field.iceberg
 ```
 
-Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity` and `partition`, and `field.protocol(name)` takes one known only at runtime. `identity` and `partition` hold arbitrary inert strings, while `digest["role"]` accepts only `"holder"` or `"component"`.
+Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity` and `partition`, and `field.protocol(name)` takes one known only at runtime. `identity` holds arbitrary inert strings, while `digest["role"]` accepts only `"holder"`.
+
+`partition` is the one view with a typed vocabulary of its own: `sources` names the field paths a column derives from and `transform` names the [expression](../expression/grammar.md) function that produces it, both answered only by `field.partition`. `apply_arrow_batch` is answered by `field.partition` and `field.digest` alike - it is the one verb both declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
+
+```python
+import pyarrow as pa
+
+from yggdryl import DataType, Field
+
+year = Field("year", "int32", nullable=True)
+year.partition.sources = ["event"]
+year.partition.transform = "dayofmonth"
+
+# A dialect alias resolves on the way in, so one canonical name is stored.
+assert year.partition.transform == "day"
+
+root = Field(
+    "row",
+    DataType.from_fields([Field("event", "date32", nullable=False), year]),
+    nullable=False,
+)
+batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
+
+assert root.partition.apply_arrow_batch(batch).column("year").to_pylist() == [1]
+# Cast, then partition, then digest, each separately switchable.
+assert root.apply_arrow_batch(batch, digest=False).column("year").to_pylist() == [1]
+```
 
 A schema also names the columns a path spells out, which a partitioned write and an Iceberg spec both read.
 
@@ -290,9 +317,11 @@ assert len(schema.without_partition_fields().dtype) == 1
 
 ### Row digests
 
-A Struct field's direct children define a row digest. Explicit `component` roles select the exact set; otherwise every child except a `holder` contributes, in declaration order.
+A Struct field's direct children define a row digest: every child except a `holder`, in declaration order. A holder narrows that on itself with `digest:sources`, so the fields it reads stay unmarked.
 
 ```python
+import pyarrow as pa
+
 from yggdryl import DataType, Field
 
 identifier = Field("id", "int64", nullable=False)
@@ -304,15 +333,18 @@ fallback = Field(
     "row", DataType.from_fields([identifier, price, holder]), nullable=False
 )
 assert fallback.digest_field_names == ["id", "price"]
-assert not fallback.has_digest_components
+assert fallback.digest_field_len == 2
+assert len(fallback.only_digest_fields().dtype) == 2
 
-identifier.digest["role"] = "component"
-explicit = Field(
-    "row", DataType.from_fields([identifier, price, holder]), nullable=False
+# A holder narrows its own input; the fields it reads stay unmarked.
+holder.digest["sources"] = '["id"]'
+assert dict(identifier.digest) == {}
+assert holder.digest["sources"] == '["id"]'
+
+batch = pa.record_batch(
+    {"id": pa.array([1], pa.int64()), "price": pa.array([2], pa.int64())}
 )
-assert explicit.digest_field_names == ["id"]
-assert explicit.digest_field_len == 1
-assert len(explicit.only_digest_fields().dtype) == 1
+assert fallback.apply_arrow_batch(batch).column("row_digest").null_count == 0
 ```
 
 Digest holders accept `int32`/`uint32` for XXH32 and `int64`/`uint64` for the 64-bit algorithms. `field.cast_arrow_array_bits(...)` performs the same reversible bit-preserving cast outside holder filling.
@@ -937,7 +969,7 @@ assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_has
 
 A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window ([xxHash](../xxhash/index.md)).
 
-Each resumable state also exposes `fill_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
+Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
 
 ## FIX registry at the boundary
 
@@ -1044,7 +1076,11 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `stable_hash()` -> never locks a mutable wrapper, and a copy or an unpickle arrives unlocked.
 - metadata views -> unhashable, but compare by their current content like ordinary mapping views.
 - Iceberg views -> keep snapshot v1 `manifests`, v3 key and lineage fields, manifest encryption metadata, and every data-file count, bound, split, encryption, delete, and row-lineage field.
-- Rust's per-protocol view types (`HttpField`, `IcebergField`, `DigestField`, `IdentityField`, `PartitionField`, and sixteen others) -> no Python counterpart yet.
+- Rust's per-protocol view types (`HttpField`, `IcebergField`, `DigestField`, `IdentityField`, and sixteen others) -> no Python counterpart yet; the `partition:` vocabulary is the exception.
+- `sources` or `transform` on another protocol's view -> `TypeError` naming that view's scheme; `apply_arrow_batch` is answered by `partition` and `digest` and refuses every other.
+- `field.apply_arrow_batch` -> `cast`, then `partition`, then `digest`, all three on by default.
+- a `partition` transform of two arguments, `truncate` among them -> `ValueError`, and the field is left unchanged.
+- a derived column the batch already carries with values -> left alone; one absent or all-null is filled.
 - `field.https` -> absent, because HTTPS shares the canonical `http:` namespace.
 - `field.iceberg` in Rust -> `as_iceberg()` / `as_iceberg_mut()`; `arrow` is `as_arrow_properties` and `field_properties` is `as_field_properties`.
 - `field.content_type` -> `as_http().content_type()` in Rust, where the `http:` headers live.
@@ -1074,7 +1110,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `compress_into` / `decompress_into` on a handle presenting a decoded view -> refused, because a coded handle already codes what passes through it; address the stored bytes with `Path`, `File`, `FsPath`, or `FsFile`, or use `copy_into`.
 - `open()` -> caches metadata for the composition already in place; it promotes nothing under the class.
 - a handle `buffered`, `into_text`, `into_coded`, or `into_handle` already spent -> `ValueError`, because the wrapper it answered owns the value now.
-- `fill_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
+- `apply_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
 - a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
 - an absent registry folder -> loads empty and creates nothing; a retired `records/` folder -> `ValueError`.

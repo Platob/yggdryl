@@ -434,7 +434,7 @@ declare module './index' {
 
   interface Xxh32 {
     /** Fill default XXH32 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -443,7 +443,7 @@ declare module './index' {
 
   interface Xxh64 {
     /** Fill default XXH64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -452,7 +452,7 @@ declare module './index' {
 
   interface Xxh3 {
     /** Fill default XXH3-64 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,
@@ -461,7 +461,7 @@ declare module './index' {
 
   interface Xxh128 {
     /** Fill default XXH3-128 holder cells in one Arrow batch under `root`. */
-    fillArrowBatch(
+    applyArrowBatch(
       root: FieldLike,
       batch: ArrowRecordBatch,
       force?: boolean,

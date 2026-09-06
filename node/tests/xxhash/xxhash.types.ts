@@ -74,12 +74,12 @@ void state3_64.algorithm
 
 declare const root: Field
 declare const batch: ArrowRecordBatch
-const filled: ArrowRecordBatch = state3_64.fillArrowBatch(root, batch)
-const forced: ArrowRecordBatch = state3_64.fillArrowBatch(root, batch, true)
+const filled: ArrowRecordBatch = state3_64.applyArrowBatch(root, batch)
+const forced: ArrowRecordBatch = state3_64.applyArrowBatch(root, batch, true)
 void filled
 void forced
 // @ts-expect-error force is boolean
-state3_64.fillArrowBatch(root, batch, 'yes')
+state3_64.applyArrowBatch(root, batch, 'yes')
 
 // The classes are also reachable through the namespace.
 void new xxhash.Xxh3()

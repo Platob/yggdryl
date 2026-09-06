@@ -202,7 +202,7 @@ test('streaming states fill default digest holders without changing themselves',
     const before = state.asDigest().toString()
     const holder = new Field('row_digest', dtype, false, {
       'digest:role': 'holder',
-      'digest:paths': '[ "symbol" ]',
+      'digest:sources': '[ "symbol" ]',
     })
     const root = new Field(
       'row',
@@ -210,7 +210,7 @@ test('streaming states fill default digest holders without changing themselves',
       false,
     )
 
-    const filled = state.fillArrowBatch(root, source)
+    const filled = state.applyArrowBatch(root, source)
     assert.ok(arrow.isArrowRecordBatch(filled), algorithm)
     assert.deepEqual(filled.schema.fields.map((field) => field.name), [
       'symbol',
@@ -229,7 +229,7 @@ test('streaming states fill default digest holders without changing themselves',
     }
     assert.equal(state.asDigest().toString(), before, algorithm)
 
-    const again = state.fillArrowBatch(root, filled)
+    const again = state.applyArrowBatch(root, filled)
     assert.deepEqual(
       Buffer.from(arrow.tableToIPC(new arrow.Table(filled), 'stream')),
       Buffer.from(arrow.tableToIPC(new arrow.Table(again), 'stream')),
@@ -237,9 +237,9 @@ test('streaming states fill default digest holders without changing themselves',
     )
   }
 
-  assert.equal('_fillArrowBatchIpcNative' in xxhash.Xxh3.prototype, false)
+  assert.equal('_applyArrowBatchIpcNative' in xxhash.Xxh3.prototype, false)
   assert.throws(
-    () => new xxhash.Xxh3().fillArrowBatch('row: struct<digest uint64> not null', new arrow.Table([source])),
+    () => new xxhash.Xxh3().applyArrowBatch('row: struct<digest uint64> not null', new arrow.Table([source])),
     /Arrow RecordBatch/,
   )
 })
@@ -255,13 +255,13 @@ test('batch filling preserves populated holders and resolves holder algorithms',
     row_digest: arrow.vectorFromArray([0n, 123n], new arrow.Uint64()),
   }).batches[0]
 
-  const filled = new xxhash.Xxh3().fillArrowBatch(root, source)
+  const filled = new xxhash.Xxh3().applyArrowBatch(root, source)
   assert.equal(
     filled.getChild('row_digest').get(0),
     Scalar.fromJs(['AAPL']).digest().value(),
   )
   assert.equal(filled.getChild('row_digest').get(1), 123n)
-  const forced = new xxhash.Xxh3().fillArrowBatch(root, source, true)
+  const forced = new xxhash.Xxh3().applyArrowBatch(root, source, true)
   assert.equal(
     forced.getChild('row_digest').get(1),
     Scalar.fromJs(['MSFT']).digest().value(),
@@ -269,7 +269,7 @@ test('batch filling preserves populated holders and resolves holder algorithms',
 
   // The receiver is preferred when its width fits. Otherwise the holder type
   // selects the best default algorithm, here XXH3-64 rather than XXH32.
-  const auto = new xxhash.Xxh32().fillArrowBatch(root, source, true)
+  const auto = new xxhash.Xxh32().applyArrowBatch(root, source, true)
   assert.equal(
     auto.getChild('row_digest').get(1),
     Scalar.fromJs(['MSFT']).digest('xxh3-64').value(),
@@ -285,11 +285,11 @@ test('batch filling preserves populated holders and resolves holder algorithms',
     false,
   )
   assert.throws(
-    () => new xxhash.Xxh3().fillArrowBatch(mismatched, source, true),
+    () => new xxhash.Xxh3().applyArrowBatch(mismatched, source, true),
     /row_digest.*uint32|uint32.*row_digest/i,
   )
   assert.throws(
-    () => new xxhash.Xxh3().fillArrowBatch(root, source, 'yes'),
+    () => new xxhash.Xxh3().applyArrowBatch(root, source, 'yes'),
     /force must be a boolean/,
   )
 })
@@ -311,7 +311,7 @@ test('signed holders retain the complete digest bits', () => {
     symbol: arrow.vectorFromArray(['AAPL', '8'], new arrow.Utf8()),
   }).batches[0]
 
-  const filled = new xxhash.Xxh3().fillArrowBatch(root, source)
+  const filled = new xxhash.Xxh3().applyArrowBatch(root, source)
   const expected32 = ['AAPL', '8'].map((value) => Number(BigInt.asIntN(
     32,
     BigInt(Scalar.fromJs([value]).digest('xxh32').value()),
@@ -335,9 +335,9 @@ test('signed holders retain the complete digest bits', () => {
     symbol: arrow.vectorFromArray(['AAPL', '8'], new arrow.Utf8()),
     signed64: arrow.vectorFromArray([0n, -1n], new arrow.Int64()),
   }).batches[0]
-  const conditional = new xxhash.Xxh3().fillArrowBatch(conditionalRoot, populated)
+  const conditional = new xxhash.Xxh3().applyArrowBatch(conditionalRoot, populated)
   assert.deepEqual([...conditional.getChild('signed64')], [expected64[0], -1n])
-  const forced = new xxhash.Xxh3().fillArrowBatch(conditionalRoot, populated, true)
+  const forced = new xxhash.Xxh3().applyArrowBatch(conditionalRoot, populated, true)
   assert.deepEqual([...forced.getChild('signed64')], expected64)
 })
 

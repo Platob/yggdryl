@@ -102,7 +102,7 @@ function main() {
   )
   const holder = new Field('row_digest', 'uint64', false, {
     'digest:role': 'holder',
-    'digest:paths': '["symbol"]',
+    'digest:sources': '["symbol"]',
   })
   const root = new Field(
     'row',
@@ -123,7 +123,7 @@ function main() {
   }).batches[0]
   const signedHolder = new Field('row_digest', 'int64', false, {
     'digest:role': 'holder',
-    'digest:paths': '["symbol"]',
+    'digest:sources': '["symbol"]',
   })
   const signedRoot = new Field(
     'row',
@@ -131,20 +131,20 @@ function main() {
     false,
   )
   const state = new xxhash.Xxh3(7n)
-  measureRows('fillArrowBatch (missing holder)', BATCH_ROWS, 100, () => {
-    state.fillArrowBatch(root, missing)
+  measureRows('applyArrowBatch (missing holder)', BATCH_ROWS, 100, () => {
+    state.applyArrowBatch(root, missing)
   })
-  measureRows('fillArrowBatch (missing signed holder)', BATCH_ROWS, 100, () => {
-    state.fillArrowBatch(signedRoot, missing)
+  measureRows('applyArrowBatch (missing signed holder)', BATCH_ROWS, 100, () => {
+    state.applyArrowBatch(signedRoot, missing)
   })
-  measureRows('fillArrowBatch (default holders)', BATCH_ROWS, 100, () => {
-    state.fillArrowBatch(root, defaults)
+  measureRows('applyArrowBatch (default holders)', BATCH_ROWS, 100, () => {
+    state.applyArrowBatch(root, defaults)
   })
-  measureRows('fillArrowBatch (preserve populated)', BATCH_ROWS, 100, () => {
-    state.fillArrowBatch(root, populated)
+  measureRows('applyArrowBatch (preserve populated)', BATCH_ROWS, 100, () => {
+    state.applyArrowBatch(root, populated)
   })
-  measureRows('fillArrowBatch (force populated)', BATCH_ROWS, 100, () => {
-    state.fillArrowBatch(root, populated, true)
+  measureRows('applyArrowBatch (force populated)', BATCH_ROWS, 100, () => {
+    state.applyArrowBatch(root, populated, true)
   })
 }
 

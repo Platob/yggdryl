@@ -196,7 +196,23 @@ cast_dtype_batch: pa.RecordBatch = DataType.from_fields(
 cast_field_batch: pa.RecordBatch = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 ).cast_arrow_batch(source_batch)
-filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().fill_arrow_batch(
+applied_root = Field(
+    "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
+)
+applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
+    source_batch, digest=True, partition=True, cast=True
+)
+applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
+applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
+    pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
+)
+applied_partition_batch: pa.RecordBatch = applied_root.partition.apply_arrow_batch(
+    source_batch
+)
+applied_digest_batch: pa.RecordBatch = applied_root.digest.apply_arrow_batch(source_batch)
+partition_sources: list[str] | None = applied_root.partition.sources
+partition_transform: str | None = applied_root.partition.transform
+filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     Field(
         "rows",
         DataType.from_fields([Field("value", "int64")]),
@@ -505,7 +521,6 @@ digest_root: Field = Field(
 digest_children: list[Field] = digest_root.digest_fields
 digest_names: list[str] = digest_root.digest_field_names
 digest_count: int = digest_root.digest_field_len
-digest_explicit: bool = digest_root.has_digest_components
 digest_only: Field = digest_root.only_digest_fields()
 
 partitioned: Field = Field(

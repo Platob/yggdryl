@@ -1,11 +1,199 @@
 //! Metadata key canonicalization and typed value validation.
 
+use std::collections::HashSet;
+
+use crate::Scalar;
+use crate::expression::Function;
 use crate::xxhash::{
-    DIGEST_ALGORITHM_KEY, DIGEST_PATHS_KEY, DIGEST_ROLE_COMPONENT, DIGEST_ROLE_HOLDER,
-    DIGEST_ROLE_KEY, canonicalize_digest_algorithm, canonicalize_digest_paths,
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    canonicalize_digest_algorithm,
 };
 
 use super::*;
+
+/// The shape every `sources` property has, whatever namespace declares it.
+pub(crate) const SOURCE_LIST_SHAPE: &str = "a JSON array of unique non-empty field path strings";
+
+/// The one source spelling that names every field rather than one path.
+pub(crate) const ALL_SOURCES: &str = "*";
+
+/// Return whether a source list is the select-everything spelling.
+pub(crate) fn is_all_sources(sources: &[String]) -> bool {
+    sources.len() == 1 && sources[0] == ALL_SOURCES
+}
+
+/// Parse the ordered field paths one `sources` property names.
+///
+/// One shape serves every namespace that names its inputs, so a `digest:` and
+/// a `partition:` list are read, written and refused identically. `["*"]` is
+/// the whole selection rather than a path, so it is the one entry that may not
+/// travel beside another: a list naming both everything and one column states
+/// no order for the rest.
+///
+/// # Errors
+///
+/// Returns an error naming `key` when the text is not that array.
+pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
+    let document = crate::text::json::from_utf8(value).map_err(|error| {
+        invalid_source_list(
+            key,
+            format_smolstr!(
+                "expected {SOURCE_LIST_SHAPE}, got invalid JSON: {}",
+                crate::text::elide_display(&error)
+            ),
+        )
+    })?;
+    let Some(values) = document.as_sequence() else {
+        return Err(invalid_source_list(
+            key,
+            crate::text::expected_got(
+                SOURCE_LIST_SHAPE,
+                format_args!("{:?}", crate::text::elide_to(value, 256)),
+            ),
+        ));
+    };
+    let mut sources = Vec::with_capacity(values.len());
+    let mut seen = HashSet::with_capacity(values.len());
+    for (index, value) in values.iter().enumerate() {
+        let Some(path) = value.as_str() else {
+            let actual = crate::text::json::into_utf8(value)
+                .unwrap_or_else(|_| "<unencodable JSON value>".to_owned());
+            return Err(invalid_source_list(
+                key,
+                format_smolstr!(
+                    "expected a field path string at index {index}, got {:?}",
+                    crate::text::elide_to(&actual, 256)
+                ),
+            ));
+        };
+        if path.is_empty() {
+            return Err(invalid_source_list(
+                key,
+                format_smolstr!("expected a non-empty field path string at index {index}"),
+            ));
+        }
+        if !seen.insert(path) {
+            return Err(invalid_source_list(
+                key,
+                format_smolstr!("expected each field path once, got {path:?} twice"),
+            ));
+        }
+        sources.push(path.to_owned());
+    }
+    reject_mixed_all(key, &sources)?;
+    Ok(sources)
+}
+
+/// Render ordered sources through the canonical compact JSON codec.
+///
+/// # Errors
+///
+/// [`parse_source_list`] carries the rule.
+pub(crate) fn render_source_list<I, P>(key: &str, sources: I) -> Result<String>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<str>,
+{
+    let sources: Vec<String> = sources
+        .into_iter()
+        .map(|path| path.as_ref().to_owned())
+        .collect();
+    let mut seen = HashSet::with_capacity(sources.len());
+    for (index, path) in sources.iter().enumerate() {
+        if path.is_empty() {
+            return Err(invalid_source_list(
+                key,
+                format_smolstr!("expected a non-empty field path string at index {index}"),
+            ));
+        }
+        if !seen.insert(path.as_str()) {
+            return Err(invalid_source_list(
+                key,
+                format_smolstr!("expected each field path once, got {path:?} twice"),
+            ));
+        }
+    }
+    reject_mixed_all(key, &sources)?;
+    let document = Scalar::from_sequence(sources.into_iter().map(Scalar::from));
+    crate::text::json::into_utf8(&document).map_err(|error| {
+        invalid_source_list(
+            key,
+            format_smolstr!(
+                "could not encode canonical field paths: {}",
+                crate::text::elide_display(&error)
+            ),
+        )
+    })
+}
+
+/// Restate externally supplied source JSON in its one stored spelling.
+///
+/// # Errors
+///
+/// [`parse_source_list`] carries the rule.
+pub(crate) fn canonicalize_source_list(key: &str, value: &str) -> Result<String> {
+    render_source_list(key, parse_source_list(key, value)?)
+}
+
+/// Refuse the select-everything spelling beside a named path.
+fn reject_mixed_all(key: &str, sources: &[String]) -> Result<()> {
+    if sources.len() > 1 && sources.iter().any(|source| source == ALL_SOURCES) {
+        return Err(invalid_source_list(
+            key,
+            format_smolstr!(
+                "expected {ALL_SOURCES:?} alone, got it beside {} named path(s)",
+                sources.len() - 1
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn invalid_source_list(key: &str, reason: SmolStr) -> Error {
+    Error::InvalidMetadataValue {
+        key: SmolStr::new(key),
+        reason,
+    }
+}
+
+/// Resolve the one-argument transform a stored `partition:transform` names.
+///
+/// The vocabulary is the expression grammar's own [`Function`] set, so a
+/// derived partition column and a predicate over the same value share one
+/// implementation. Only a function of a single argument is a transform of one
+/// column; the parameterized ones are not one yet.
+///
+/// # Errors
+///
+/// Returns an error naming `key` when the text is no such function.
+pub(crate) fn parse_partition_transform(key: &str, value: &str) -> Result<Function> {
+    let function = Function::from_name(value).ok_or_else(|| Error::InvalidMetadataValue {
+        key: SmolStr::new(key),
+        reason: crate::text::expected_got(
+            format_args!("one of {}", Function::vocabulary()),
+            format_args!("{:?}", crate::text::elide_to(value, 64)),
+        ),
+    })?;
+    let (least, most) = function.arity();
+    if least > 1 || most < 1 {
+        return Err(Error::InvalidMetadataValue {
+            key: SmolStr::new(key),
+            reason: format_smolstr!(
+                "expected a transform of one argument, got {value} taking {least} to {most}"
+            ),
+        });
+    }
+    Ok(function)
+}
+
+/// Restate an externally supplied transform in its one canonical spelling.
+///
+/// # Errors
+///
+/// [`parse_partition_transform`] carries the rule.
+pub(crate) fn canonicalize_partition_transform(key: &str, value: &str) -> Result<String> {
+    Ok(parse_partition_transform(key, value)?.as_str().to_owned())
+}
 
 /// Return the full `scheme:name` key one property is stored under.
 pub(crate) fn property_key(scheme: &Scheme, name: &str) -> String {
@@ -58,13 +246,17 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         }
         LOCATION_KEY => Url::from_str(&value)?.to_string(),
         DIGEST_ALGORITHM_KEY => canonicalize_digest_algorithm(&value)?,
-        DIGEST_PATHS_KEY => canonicalize_digest_paths(&value)?,
+        DIGEST_SOURCES_KEY => canonicalize_source_list(DIGEST_SOURCES_KEY, &value)?,
+        PARTITION_SOURCES_KEY => canonicalize_source_list(PARTITION_SOURCES_KEY, &value)?,
+        PARTITION_TRANSFORM_KEY => {
+            canonicalize_partition_transform(PARTITION_TRANSFORM_KEY, &value)?
+        }
         DIGEST_ROLE_KEY => {
-            if !matches!(value.as_str(), DIGEST_ROLE_HOLDER | DIGEST_ROLE_COMPONENT) {
+            if value.as_str() != DIGEST_ROLE_HOLDER {
                 return Err(Error::InvalidMetadataValue {
                     key: SmolStr::new_static(DIGEST_ROLE_KEY),
                     reason: crate::text::expected_got(
-                        "holder or component",
+                        DIGEST_ROLE_HOLDER,
                         format_args!("{value:?}"),
                     ),
                 });
