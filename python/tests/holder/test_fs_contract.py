@@ -41,6 +41,7 @@ def test_injected_path_is_opaque_and_retains_all_bound_facts() -> None:
     [
         ("s3://bucket/key", "bucket/key"),
         ("s3a://bucket/key", "bucket/key"),
+        ("s3n://bucket/key", "bucket/key"),
         ("s3://key:secret@bucket/key", "bucket/key"),
         ("s3://key:secret@minio:9000/bucket/key", "bucket/key"),
         (

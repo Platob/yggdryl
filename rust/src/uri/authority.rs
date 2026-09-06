@@ -282,7 +282,7 @@ impl<'de> Deserialize<'de> for Authority {
 
 impl Uri {
     pub(super) fn s3_location(&self) -> Option<S3Location<'_>> {
-        if !matches!(self.scheme.as_str(), "s3" | "s3a" | "s3n") {
+        if !self.scheme.is_s3() {
             return None;
         }
 

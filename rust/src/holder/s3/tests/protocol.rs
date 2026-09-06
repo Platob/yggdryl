@@ -462,6 +462,64 @@ fn a_location_naming_no_bucket_is_refused_before_anything_is_built() {
 }
 
 #[test]
+fn every_s3_url_spelling_reaches_the_same_object() {
+    // `s3`, `s3a`, and `s3n` name one protocol - the Hadoop spellings differ
+    // only in the connector that once read them - so all three have to reach
+    // this backend and address the same key, not just parse.
+    let store = store();
+    for scheme in ["s3", "s3a", "s3n"] {
+        let url = format!("{scheme}://{BUCKET}/lake/{scheme}.bin");
+        let mut handle =
+            crate::holder::s3::file_with(&url, options(&store)).expect("an object handle");
+        handle.write_all_bytes(b"AAPL").expect("a write");
+
+        assert_eq!(handle.bucket(), BUCKET);
+        assert_eq!(handle.key(), format!("lake/{scheme}.bin"));
+        // The spelling the caller used is the one the handle reports back, so
+        // a location survives a round trip through a listing or a log.
+        assert_eq!(handle.url().to_string(), url);
+        assert_eq!(
+            store.get(BUCKET, &format!("lake/{scheme}.bin")),
+            Some(b"AAPL".to_vec())
+        );
+
+        // A prefix and a location resolve over the same store just as well.
+        let prefix = format!("{scheme}://{BUCKET}/lake/");
+        let listed = crate::holder::s3::folder_with(&prefix, options(&store))
+            .expect("a prefix handle")
+            .ls(false, false)
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.url().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        assert!(listed.contains(&url), "{listed:?}");
+        assert_eq!(
+            crate::holder::s3::located_with(&url, options(&store))
+                .expect("a location")
+                .kind(),
+            IOKind::File
+        );
+    }
+
+    // A refusal names the location the handle reports, spelling included, so
+    // an error text is something a caller can paste back as a location.
+    store.require_access_key(Some("SOMEONEELSE"));
+    for scheme in ["s3", "s3a", "s3n"] {
+        let url = format!("{scheme}://{BUCKET}/lake/{scheme}.bin");
+        let refused = crate::holder::s3::file_with(&url, options(&store))
+            .expect("an object handle")
+            .read_all_bytes()
+            .expect_err("a refusal");
+        match &refused {
+            Error::Remote { path, status, .. } => {
+                assert_eq!(*status, 403);
+                assert_eq!(path.as_str(), url);
+            }
+            other => panic!("expected a remote refusal, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn options_clamp_what_s3_will_not_accept_rather_than_refusing_it() {
     let bounded = S3Options::default()
         .with_part_size(1)

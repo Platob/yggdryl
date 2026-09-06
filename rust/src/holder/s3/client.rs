@@ -296,6 +296,10 @@ impl Answer {
 pub(super) struct Client {
     agent: ureq::Agent,
     endpoint: Endpoint,
+    /// The spelling the caller's location used - `s3`, `s3a`, or `s3n` - so a
+    /// refusal names the location the handle reports rather than a canonical
+    /// one the caller never wrote.
+    scheme: crate::Scheme,
     /// The signing region, which a redirect can correct once.
     region: RwLock<String>,
     credentials: CredentialCache,
@@ -360,6 +364,7 @@ impl Client {
         Ok(Self {
             agent: Self::agent(&options),
             endpoint,
+            scheme: url.scheme().clone(),
             region: RwLock::new(region),
             credentials: CredentialCache::new(credentials),
             signer: Mutex::new(None),
@@ -873,10 +878,11 @@ impl Client {
 
     /// The canonical location a request addresses, for its error.
     fn location(&self, request: &Request<'_>) -> String {
+        let scheme = self.scheme.as_str();
         if request.key.is_empty() {
-            format!("s3://{}/", request.bucket)
+            format!("{scheme}://{}/", request.bucket)
         } else {
-            format!("s3://{}/{}", request.bucket, request.key)
+            format!("{scheme}://{}/{}", request.bucket, request.key)
         }
     }
 

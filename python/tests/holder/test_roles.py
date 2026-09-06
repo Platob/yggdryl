@@ -354,6 +354,36 @@ class TestTheS3Roles:
         partitioned = IOBase("s3://trades/lake/year=2026/part.parquet")
         assert partitioned.partitions == (("year", "2026"),)
 
+    def test_the_ordinary_constructor_answers_the_s3_role_it_reached(self) -> None:
+        # A name that declares no record encoding answers the role doing the
+        # work, exactly as a local location does - `type(handle)` is how a
+        # caller reads which implementation it got.
+        located = IOBase("s3://trades/lake/part.bin")
+        assert isinstance(located, S3Path)
+
+        # What a handle derives stays on the store rather than dropping to the
+        # base class on the way out.
+        assert isinstance(located.parent, S3Folder)
+        assert isinstance(IOBase("s3://trades/lake/").joinpath("part.bin"), S3Path)
+
+    @pytest.mark.parametrize("scheme", ["s3", "s3a", "s3n"])
+    def test_every_s3_spelling_selects_this_backend(self, scheme: str) -> None:
+        # `s3`, `s3a`, and `s3n` name one protocol - the Hadoop spellings
+        # differ only in the connector that once read them - so all three
+        # reach the same handles, through the roles and the generic
+        # constructor alike. Nothing here contacts a store.
+        assert isinstance(IOBase(f"{scheme}://trades/lake/part.bin"), S3Path)
+        assert isinstance(S3File(f"{scheme}://trades/lake/part.bin"), S3File)
+        assert isinstance(S3Folder(f"{scheme}://trades/lake/"), S3Folder)
+
+        # The spelling the caller wrote is what the handle reports back, so a
+        # location survives the round trip through a child or a parent.
+        handle = IOBase(f"{scheme}://trades/lake/part.bin")
+        assert handle.url is not None
+        assert handle.url.scheme == scheme
+        assert handle.url.bucket == "trades"
+        assert str(handle.parent.url) == f"{scheme}://trades/lake"
+
     def test_a_location_naming_no_bucket_is_refused(self) -> None:
         with pytest.raises(ValueError, match="naming a bucket"):
             S3File("file:///tmp/part.parquet")

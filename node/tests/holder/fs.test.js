@@ -418,6 +418,7 @@ test('S3 URI forms resolve before Arrow JS reports its missing backend', () => {
   for (const uri of [
     's3://bucket/v=a%2Fb',
     's3a://bucket/key',
+    's3n://bucket/key',
     's3://key:secret@bucket/key',
     's3://key:secret@minio:9000/bucket/key',
     's3://bucket/key?endpoint_override=minio%3A9000&scheme=http&region=eu-west-1',
