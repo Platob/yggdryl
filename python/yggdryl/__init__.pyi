@@ -1,4 +1,6 @@
 from ._native import (
+    DEFAULT_FETCH_BYTE_SIZE as DEFAULT_FETCH_BYTE_SIZE,
+    DEFAULT_STREAM_BATCH_SIZE as DEFAULT_STREAM_BATCH_SIZE,
     IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
     __version__ as __version__,
     combined as combined,

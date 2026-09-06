@@ -20,6 +20,7 @@ DATA_TYPE_KINDS: tuple[str, ...]
 TIME_UNITS: tuple[str, ...]
 UNION_MODES: tuple[str, ...]
 IO_MODES: tuple[str, ...]
+IO_WRITE_MODES: tuple[str, ...]
 CODECS: tuple[str, ...]
 DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
@@ -51,4 +52,5 @@ __all__ = [
     "TIME_UNITS",
     "UNION_MODES",
     "IO_MODES",
+    "IO_WRITE_MODES",
 ]

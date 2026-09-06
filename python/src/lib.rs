@@ -266,6 +266,10 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
     listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
+    listing.set_item(
+        "io_write_modes",
+        IOMode::WRITE.map(IOMode::as_str).to_vec(),
+    )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
     listing.set_item(
         "digest_algorithms",
@@ -319,6 +323,16 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add(
         "IPC_DICTIONARY_IDS_KEY",
         yggdryl::arrow::IPC_DICTIONARY_IDS_KEY,
+    )?;
+    // The two byte-stream sizes every streamed read is shaped by: what one
+    // chunk hands out, and what one transport fetch asks the store for.
+    module.add(
+        "DEFAULT_STREAM_BATCH_SIZE",
+        yggdryl::DEFAULT_STREAM_BATCH_SIZE,
+    )?;
+    module.add(
+        "DEFAULT_FETCH_BYTE_SIZE",
+        yggdryl::DEFAULT_FETCH_BYTE_SIZE,
     )?;
     Ok(())
 }

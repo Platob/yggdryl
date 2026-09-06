@@ -1,7 +1,13 @@
 """Allocation-conscious types, storage, media, and protocols."""
 
 from . import coding, enums, expression, fix, holder, media, text, types, uri, xxhash
-from ._native import IPC_DICTIONARY_IDS_KEY, __version__, combined
+from ._native import (
+    DEFAULT_FETCH_BYTE_SIZE,
+    DEFAULT_STREAM_BATCH_SIZE,
+    IPC_DICTIONARY_IDS_KEY,
+    __version__,
+    combined,
+)
 from .expression import Bound, BoundStatement, Expression, Statement
 from .holder import IOBase, IOCursor
 from .media import MediaType, MimeType, RecordOptions, TextOptions
@@ -42,6 +48,8 @@ __all__ = [
     "Urn",
     "__version__",
     "coding",
+    "DEFAULT_FETCH_BYTE_SIZE",
+    "DEFAULT_STREAM_BATCH_SIZE",
     "IPC_DICTIONARY_IDS_KEY",
     "combined",
     "enums",

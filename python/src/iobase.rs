@@ -730,19 +730,30 @@ impl PyIOBase {
     }
 
     /// Describe an in-memory resource holding `data`.
+    ///
+    /// `capacity` reserves the allocation up front, so a caller who knows the
+    /// final length pays for one allocation rather than a run of growths. It
+    /// changes what the buffer can hold without changing what it holds.
     #[classmethod]
-    #[pyo3(signature = (data = None))]
+    #[pyo3(signature = (data = None, *, capacity = None))]
     fn from_bytes(
         _cls: &Bound<'_, PyType>,
         py: Python<'_>,
         data: Option<Vec<u8>>,
+        capacity: Option<usize>,
     ) -> PyResult<Py<PyAny>> {
-        describe(
-            py,
-            Holder::Buffer(yggdryl::holder::Buffer::from_bytes(
-                data.unwrap_or_default(),
-            )),
-        )
+        let buffer = match (data, capacity) {
+            (None, Some(capacity)) => yggdryl::holder::Buffer::with_capacity(capacity),
+            (data, Some(capacity)) => {
+                let mut buffer = yggdryl::holder::Buffer::with_capacity(capacity);
+                buffer
+                    .write_all_bytes(&data.unwrap_or_default())
+                    .map_err(crate::holder::fs::storage_error)?;
+                buffer
+            }
+            (data, None) => yggdryl::holder::Buffer::from_bytes(data.unwrap_or_default()),
+        };
+        describe(py, Holder::Buffer(buffer))
     }
 
     /// The location this handle addresses.
@@ -1714,6 +1725,55 @@ impl PyIOBase {
             .map_err(crate::holder::fs::storage_error)
     }
 
+    /// Read exactly `length` bytes from `offset`, or refuse naming the shortfall.
+    ///
+    /// `read_range_bytes` answers what exists; this is the form that treats a
+    /// short resource as an error, which is what a fixed-width header or a
+    /// footer of known length wants.
+    fn pread_exact<'py>(
+        &self,
+        py: Python<'py>,
+        offset: u64,
+        length: usize,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let mut buffer = vec![0_u8; length];
+        self.inner()?
+            .pread_exact(offset, &mut buffer)
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(PyBytes::new(py, &buffer))
+    }
+
+    /// Write every byte at `offset`, or refuse naming the shortfall.
+    ///
+    /// `pwrite` answers how many bytes landed; this loops until they all do,
+    /// which is what a caller placing a whole record at a known offset means.
+    fn pwrite_all(&mut self, offset: u64, data: &[u8]) -> PyResult<()> {
+        self.inner_mut()?
+            .pwrite_all(offset, data)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// The allocation behind this resource, never less than `size`.
+    ///
+    /// A memory-mapped local file grows its mapping geometrically, so its
+    /// capacity outruns the size a flush publishes; an in-memory buffer
+    /// answers what it has room for before it grows again.
+    #[getter]
+    fn capacity(&self) -> PyResult<u64> {
+        Ok(self.inner()?.capacity())
+    }
+
+    /// Grow the allocation so at least `capacity` bytes fit without a growth.
+    ///
+    /// Reserving never shrinks and never changes `size`, so it is what a
+    /// caller with a known final length asks before writing. Like every other
+    /// write it creates the resource if naming it did not.
+    fn reserve(&mut self, capacity: u64) -> PyResult<()> {
+        self.inner_mut()?
+            .reserve(capacity)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
     /// Flush anything buffered, as `IOBase.flush`.
     fn flush(&mut self) -> PyResult<()> {
         self.inner_mut()?
@@ -1811,6 +1871,19 @@ impl PyIOBase {
         // The codec is parsed before the value is taken, so a rejected
         // argument never leaves this handle spent.
         describe(py, self.take()?.into_coded_with(codec, level))
+    }
+
+    /// Retain the record encoding this resource turns out to hold.
+    ///
+    /// `into_text` and `into_coded` name what the wrapper is; this asks the
+    /// resource. An unresolved location is asked of the store, so a name that
+    /// says nothing still answers the encoding its bytes are in - and a
+    /// resource that is not a record encoding answers itself.
+    ///
+    /// The handle is spent, the way every other wrapper conversion spends it.
+    #[allow(clippy::wrong_self_convention)] // A pyclass method cannot consume its receiver.
+    fn into_media(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        describe(py, self.take()?.into_media())
     }
 
     /// Materialize the resource and cache what repeated calls would re-derive.
@@ -2990,6 +3063,16 @@ impl PyIOCursor {
     // Position and the addressed resource both change over time.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
+
+    /// The resource this cursor rides.
+    ///
+    /// The cursor owns only its position, so this is the way back to every
+    /// question the whole resource answers - its media type, its listing, its
+    /// records - without leaving the position behind.
+    #[getter]
+    fn handle(&self, py: Python<'_>) -> Py<PyIOBase> {
+        self.handle.clone_ref(py)
+    }
 
     /// The current position, in bytes from the start.
     fn tell(&self) -> PyResult<u64> {
