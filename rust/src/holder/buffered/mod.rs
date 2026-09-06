@@ -512,6 +512,16 @@ impl<H: IOBase> IOBase for Buffered<H> {
         self.read_at(offset, buffer, Instant::now())
     }
 
+    /// Read the whole value, sized from what the cache already knows.
+    ///
+    /// The inherited default asks [`IOBase::size`] and then reads, and this
+    /// wrapper forwards that question to the handle underneath - so a whole
+    /// read cost a metadata round trip on top of the one the read itself was
+    /// about to establish.
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.read_range_bytes(0, usize::MAX)
+    }
+
     /// The same, into a buffer this sizes from what the cache already knows.
     ///
     /// The inherited default clamps against [`IOBase::size`], which this
@@ -542,9 +552,12 @@ impl<H: IOBase> IOBase for Buffered<H> {
         // The guard is taken from the field rather than through `self`, so the
         // one lock this operation needs is held across the write itself.
         let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
-        let previous = match table.known_size() {
-            Some(size) => size,
-            None => self.handle.size(),
+        // A length is worth asking for only when there is something to patch.
+        // A page is never inserted before the size is learned, so a table that
+        // does not know one holds nothing, and the probe would be a round trip
+        // spent to record a fact the next read establishes anyway.
+        let Some(previous) = table.known_size() else {
+            return self.handle.pwrite(offset, bytes);
         };
         let written = self.handle.pwrite(offset, bytes)?;
         let landed = &bytes[..written.min(bytes.len())];
@@ -560,10 +573,10 @@ impl<H: IOBase> IOBase for Buffered<H> {
     /// Resize the inner value and drop every page at or past the new size.
     fn truncate(&mut self, size: u64) -> Result<()> {
         let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
-        let previous = match table.known_size() {
-            Some(known) => known,
-            None => self.handle.size(),
-        };
+        // A truncation states the new size, so the only thing a length would
+        // decide is which pages to drop - and a table that does not know one
+        // holds none to drop.
+        let previous = table.known_size().unwrap_or(size);
         self.handle.truncate(size)?;
         table.retain_below(previous.min(size), &self.options);
         table.set_size(size);

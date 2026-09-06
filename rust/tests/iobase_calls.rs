@@ -507,3 +507,31 @@ fn a_read_crossing_pages_is_one_fetch_not_one_per_page() {
         assert_eq!(cached.read_all_bytes().expect("a read").len(), 4096);
     });
 }
+
+#[test]
+fn a_write_to_a_cold_cache_does_not_ask_for_a_length_first() {
+    use yggdryl::holder::buffered::BufferedOptions;
+
+    let inner = source(&[], "file:///lake/fresh.bin");
+    let calls = Arc::clone(inner.calls());
+    let mut cached = inner.buffered(BufferedOptions::default().with_page_size(512));
+
+    // Nothing is cached, so no page needs patching and no length decides
+    // anything: the write is the one call it looks like.
+    costs(
+        "the first write to a fresh handle",
+        &calls,
+        "pwrite=1",
+        || {
+            assert_eq!(cached.pwrite(0, b"one").expect("a write"), 3);
+        },
+    );
+    // Once a read has taught the cache a length, a write patches what it
+    // holds - still without asking, because the size follows from the write.
+    assert_eq!(cached.read_all_bytes().expect("a read"), b"one");
+    calls.reset();
+    costs("a write against a warm cache", &calls, "pwrite=1", || {
+        assert_eq!(cached.pwrite(3, b"two").expect("a write"), 3);
+    });
+    assert_eq!(cached.read_all_bytes().expect("a read"), b"onetwo");
+}
