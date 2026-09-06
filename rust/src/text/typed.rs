@@ -20,7 +20,12 @@ pub(crate) fn with_field(value: Scalar, field: &Field) -> Result<Scalar> {
         .ok_or_else(|| invalid(field, "canonical row is empty"))
 }
 
-fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
+/// Interpret one natural text value under one field, without validating it.
+///
+/// [`with_field`] is this plus the row canonicalization and validation every
+/// document parse runs. A caller that already owns a field and only needs the
+/// coercion - a protocol whose values are all text - takes this instead.
+pub(crate) fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
     if value.is_null() {
         return Ok(value);
     }

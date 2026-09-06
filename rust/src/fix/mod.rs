@@ -149,13 +149,16 @@ use smol_str::{SmolStr, SmolStrBuilder, format_smolstr};
 
 use crate::{Error, Result, Version};
 
+mod build;
 mod codes;
 mod constants;
 mod document;
+mod entry;
 mod field;
 mod global;
 mod lineage;
 mod msg;
+mod reader;
 mod registry;
 mod store;
 #[cfg(test)]
@@ -164,9 +167,11 @@ mod tests;
 pub use codes::{FixCode, FixCodes, FixEnumValue};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use document::Words;
+pub use entry::FixEntry;
 pub use field::FixAliases;
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
+pub use reader::{DEFAULT_NULL_VALUES, FixReader};
 pub use registry::{FixFieldIter, FixRegistry};
 
 /// The absent branch occupies four zero bytes in every standard identifier.

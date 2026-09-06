@@ -77,15 +77,31 @@ type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
 type BranchTable = HashMap<u32, FixBranch, BuildHasherDefault<Mix>>;
 
 /// Fold a name directly into a seeded streaming state.
+///
+/// The crate's one fold: ASCII case folded, and `_`, `-` and space dropped.
+/// A renderer emitting `msg_type`, `msg-type` or `Msg Type` therefore finds
+/// the field `MsgType` names, which is what makes storing the folded name
+/// cost no caller the spelling it was written with. No two FIX fields differ
+/// only by a separator or by case, which is what lets the fold in at all.
+///
+/// It folds into the hash state in stack-sized chunks, so no length of name
+/// allocates.
 fn name_digest(branch: &FixBranch, name: &str, domain: u64) -> u64 {
     let mut state = Xxh64::with_seed(domain ^ u64::from(branch.digest()));
     let mut folded = [0_u8; 64];
-    for bytes in name.as_bytes().chunks(folded.len()) {
-        for (target, source) in folded.iter_mut().zip(bytes) {
-            *target = source.to_ascii_lowercase();
+    let mut held = 0;
+    for byte in name.as_bytes() {
+        if matches!(byte, b'_' | b'-' | b' ') {
+            continue;
         }
-        state.write(&folded[..bytes.len()]);
+        folded[held] = byte.to_ascii_lowercase();
+        held += 1;
+        if held == folded.len() {
+            state.write(&folded);
+            held = 0;
+        }
     }
+    state.write(&folded[..held]);
     state.finish()
 }
 
@@ -281,6 +297,44 @@ impl FixRegistry {
     /// Returns whether a generic key reaches a field.
     pub fn contains<'key>(&self, key: impl Into<FixKey<'key>>) -> bool {
         self.get_field(key).is_some()
+    }
+
+    /// Returns the field a key reaches, when that field holds one scalar.
+    ///
+    /// A transcriber resolving a wire tag wants a value, not a subtree, and
+    /// this is what says so: the same tiers, filtered to the half a scalar
+    /// can be in. A counter tag reaches its group through
+    /// [`Self::get_nested_field`] instead, so neither half can answer for the
+    /// other and [`Self::get_field`] answers exactly what it always did.
+    pub fn get_primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key).filter(|field| !is_nested(field))
+    }
+
+    /// Returns the scalar field a key reaches, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence [`Self::field`] raises when no field reaches the
+    /// key, and when the one that does carries a subtree.
+    pub fn primitive_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_primitive_field(key).ok_or_else(|| absent(key))
+    }
+
+    /// Returns the field a key reaches, when that field carries a subtree.
+    pub fn get_nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Field> {
+        self.get_field(key).filter(|field| is_nested(field))
+    }
+
+    /// Returns the nested field a key reaches, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence [`Self::field`] raises when no field reaches the
+    /// key, and when the one that does holds a single scalar.
+    pub fn nested_field<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Field> {
+        let key = key.into();
+        self.get_nested_field(key).ok_or_else(|| absent(key))
     }
 
     /// Returns the field a key reaches, filtered to one FIX version.

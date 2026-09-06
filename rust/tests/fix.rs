@@ -8,6 +8,8 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/reader.rs"]
+mod reader;
 #[path = "fix/store.rs"]
 mod store;
 

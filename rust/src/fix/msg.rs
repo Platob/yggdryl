@@ -4,8 +4,11 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use smol_str::SmolStr;
+
+use super::entry::FixEntry;
 use super::{FixBranch, FixId, FixKey, FixRegistry};
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 /// A FIX message value, resolved against one registry.
 ///
@@ -76,6 +79,14 @@ use crate::{DataType, Error, Field, Result, Scalar};
 #[derive(Clone)]
 pub struct FixMsg {
     registry: Arc<FixRegistry>,
+    /// What arrived, beside what it was interpreted as.
+    ///
+    /// Not the row restated: the row is the interpretation and this is the
+    /// wire record. Neither derives from the other, which is what makes
+    /// lossless re-emission possible at all. Empty for a message built from a
+    /// schema and a value, in which case the emit falls back to the row and
+    /// says so.
+    entries: Vec<FixEntry>,
     /// The root field's branch, enriched from the linked registry when that
     /// dictionary declares a version or session defaults. Resolving it once
     /// keeps every message lookup allocation-free.
@@ -115,10 +126,88 @@ impl FixMsg {
         let value = field.canonicalize_value(value)?;
         Ok(Self {
             registry,
+            entries: Vec::new(),
             branch,
             field,
             value,
         })
+    }
+
+    /// Builds a message a reader already resolved, entries and all.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal [`Self::with_registry`] raises.
+    pub(super) fn from_parts(
+        registry: Arc<FixRegistry>,
+        field: Field,
+        value: Scalar,
+        entries: Vec<FixEntry>,
+    ) -> Result<Self> {
+        let mut built = Self::with_registry(registry, field, value)?;
+        built.entries = entries;
+        Ok(built)
+    }
+
+    /// Returns what arrived, in arrival order, untranslated.
+    #[must_use]
+    pub fn entries(&self) -> &[FixEntry] {
+        &self.entries
+    }
+
+    /// Re-emits this message on the wire, separated by `separator`.
+    ///
+    /// The bytes come from the entries rather than from the row, because the
+    /// row is a lossy interpretation by construction: a translated `4` cannot
+    /// say whether the wire carried `4` or its symbolic spelling. A message
+    /// built from a schema and a value carries no entries and emits nothing.
+    #[must_use]
+    pub fn into_bytes(&self, separator: u8) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for entry in &self.entries {
+            bytes.extend_from_slice(entry.key().as_bytes());
+            bytes.push(b'=');
+            bytes.extend_from_slice(entry.value().as_bytes());
+            bytes.push(separator);
+        }
+        bytes
+    }
+
+    /// The same, as text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when a value is not printable, which
+    /// is why the byte emit exists: a message carrying a `data` field cannot
+    /// round-trip through text.
+    pub fn into_text(&self, separator: char) -> Result<String> {
+        let mut text = String::new();
+        for entry in &self.entries {
+            if entry.value().chars().any(char::is_control) {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new(entry.key()),
+                    reason: "expected a printable value, got a control byte".into(),
+                });
+            }
+            text.push_str(entry.key());
+            text.push('=');
+            text.push_str(entry.value());
+            text.push(separator);
+        }
+        Ok(text)
+    }
+
+    /// The version this message is expressed in, read back from the fields
+    /// that declare it.
+    ///
+    /// Derived rather than stored: `BeginString(8)` and `ApplVerID(1128)` are
+    /// what a message says about itself, so a converted one cannot lie.
+    #[must_use]
+    pub fn version(&self) -> Option<Version> {
+        let begin = self.get_by_tag(8).and_then(Scalar::as_str)?;
+        begin
+            .strip_prefix("FIX.")
+            .and_then(|rest| rest.parse().ok())
     }
 
     /// Returns the registry this message resolves against.
@@ -170,6 +259,14 @@ impl FixMsg {
     /// answers is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
+        // The message's own children answer first, by the tag they carry.
+        // A row read at one version spells its fields as that version did -
+        // tag 32 is `lastshares` in 4.2 and `lastqty` in a newest one - so
+        // resolving through the dictionary's current name would miss exactly
+        // the messages a version filter exists for.
+        if let Some(index) = self.index_of_tag(tag) {
+            return self.value.get(index);
+        }
         let index = match self.known_by_tag(tag) {
             Some(known) => self.field.index_of(known.name()),
             None => {
@@ -179,6 +276,15 @@ impl FixMsg {
             }
         }?;
         self.value.get(index)
+    }
+
+    /// The root child carrying one tag, by that child's own declaration.
+    fn index_of_tag(&self, tag: i32) -> Option<usize> {
+        self.field
+            .dtype()
+            .as_fields()?
+            .iter()
+            .position(|child| child.as_fix().tag().ok().flatten() == Some(tag))
     }
 
     /// Returns the value of the root child a tag names, raising absence.

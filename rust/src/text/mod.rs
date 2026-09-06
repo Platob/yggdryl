@@ -16,6 +16,7 @@ pub(crate) mod position;
 mod structured;
 pub mod toml;
 pub(crate) mod typed;
+pub(crate) use typed::prepare as prepare_text;
 pub(crate) mod wire;
 pub mod yaml;
 
