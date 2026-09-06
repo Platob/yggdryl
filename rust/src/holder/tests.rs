@@ -51,8 +51,15 @@ fn a_record_encoding_alone_composes_only_the_media() {
     let (handle, _) = named("rows.arrows", Vec::new());
     assert!(matches!(handle.into_declared_media(), Holder::Media(_)));
 
+    // A name composes to the implementation this build carries. Parquet is an
+    // opt-in feature, so without it `rows.parquet` names a record encoding
+    // nothing here can read and the handle is left as the bytes it is.
     let (handle, _) = named("rows.parquet", Vec::new());
-    assert!(matches!(handle.into_declared_media(), Holder::Media(_)));
+    let handle = handle.into_declared_media();
+    #[cfg(feature = "parquet")]
+    assert!(matches!(handle, Holder::Media(_)), "{handle:?}");
+    #[cfg(not(feature = "parquet"))]
+    assert!(matches!(handle, Holder::Buffer(_)), "{handle:?}");
 
     let (handle, _) = named("rows.txt", PLAIN.to_vec());
     assert!(matches!(handle.into_declared_media(), Holder::Text(_)));
