@@ -702,6 +702,8 @@ pub enum RecordOptions {
     Avro(crate::media::avro::AvroOptions),
     /// Plain-text row options.
     Text(Box<crate::media::text::TextOptions>),
+    /// XML document row options.
+    Xml(Box<crate::media::xml::XmlOptions>),
 }
 
 impl RecordOptions {
@@ -714,6 +716,7 @@ impl RecordOptions {
             Self::Parquet(options) => crate::stable_hash_of(&("parquet", options)),
             Self::Avro(options) => crate::stable_hash_of(&("avro", options)),
             Self::Text(options) => crate::stable_hash_of(&("text", options)),
+            Self::Xml(options) => crate::stable_hash_of(&("xml", options)),
         }
     }
 
@@ -725,7 +728,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Avro(_) | Self::Xml(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected text options to set {setting}, got {media_type} options"
@@ -745,7 +748,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -766,7 +769,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected Avro options to set {setting}, got {media_type} options"
@@ -786,7 +789,7 @@ impl RecordOptions {
     pub fn avro_block_codec(&self) -> Option<&str> {
         match self {
             Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -817,7 +820,7 @@ impl RecordOptions {
     pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
         match self {
             Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -855,7 +858,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected Parquet options to set {setting}, got {media_type} options"
@@ -869,7 +872,7 @@ impl RecordOptions {
     pub fn parquet_compression_name(&self) -> Option<String> {
         match self {
             Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
@@ -889,7 +892,7 @@ impl RecordOptions {
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
         match self {
             Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
@@ -910,7 +913,7 @@ impl RecordOptions {
     pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
         match self {
             Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
@@ -1040,13 +1043,18 @@ impl RecordOptions {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(Box::default()));
         }
+        // An XML document reads as the rows its document element holds, so a
+        // `.xml` answers the record surface with no configuration either.
+        if base == &MimeType::XML {
+            return Ok(Self::Xml(Box::default()));
+        }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: crate::text::expected_got(
                 if cfg!(feature = "parquet") {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xml)"
                 } else {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain; the `parquet` feature is not enabled)"
+                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xml; the `parquet` feature is not enabled)"
                 },
                 base,
             ),
@@ -1061,6 +1069,7 @@ impl RecordOptions {
             Self::Parquet(_) => MimeType::PARQUET,
             Self::Avro(_) => MimeType::AVRO,
             Self::Text(_) => MimeType::PLAIN_TEXT,
+            Self::Xml(_) => MimeType::XML,
         }
     }
 }

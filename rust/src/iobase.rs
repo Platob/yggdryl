@@ -1287,6 +1287,29 @@ pub trait IOBase: Send + IOMedia {
         crate::media::text::Text::new(self).with_options(options)
     }
 
+    /// Consume this handle into XML record media.
+    ///
+    /// The wrapper is lazy and adds the positional surface an XML document has
+    /// no header for: a row index, a read of one row, and a write of one row.
+    /// Its retained [`XmlOptions`](crate::media::xml::XmlOptions) become the
+    /// defaults for the ordinary [`IOMedia`] record methods.
+    #[cfg(feature = "arrow")]
+    fn into_xml(self) -> crate::media::xml::Xml<Self>
+    where
+        Self: Sized,
+    {
+        crate::media::xml::Xml::new(self)
+    }
+
+    /// Consume this handle into XML record media with explicit options.
+    #[cfg(feature = "arrow")]
+    fn into_xml_with(self, options: crate::media::xml::XmlOptions) -> crate::media::xml::Xml<Self>
+    where
+        Self: Sized,
+    {
+        crate::media::xml::Xml::new(self).with_options(options)
+    }
+
     /// Borrow a streaming writer positioned at `offset`.
     fn writer_at(&mut self, offset: u64) -> Writer<'_>
     where

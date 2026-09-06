@@ -1,7 +1,7 @@
 //! One value naming every structured text format.
 
 use crate::IOBase;
-use crate::text::{Format, Json, Jsonl, Limits, TextCodec, Toml, Yaml};
+use crate::text::{Format, Json, Jsonl, Limits, TextCodec, Toml, Xml, Yaml};
 use crate::{MediaType, MimeType, Result, Url};
 
 /// A structured text format chosen at runtime.
@@ -36,11 +36,19 @@ pub enum Structured {
     Toml,
     /// One or more YAML documents.
     Yaml,
+    /// One XML document.
+    Xml,
 }
 
 impl Structured {
     /// Every format in canonical order.
-    pub const ALL: [Self; 4] = [Self::Json, Self::Jsonl, Self::Toml, Self::Yaml];
+    pub const ALL: [Self; 5] = [
+        Self::Json,
+        Self::Jsonl,
+        Self::Toml,
+        Self::Yaml,
+        Self::Xml,
+    ];
 
     /// Name the format a [`Format`] value describes.
     pub const fn from_format(format: Format) -> Self {
@@ -49,6 +57,7 @@ impl Structured {
             Format::JsonLines => Self::Jsonl,
             Format::Toml => Self::Toml,
             Format::Yaml => Self::Yaml,
+            Format::Xml => Self::Xml,
         }
     }
 
@@ -96,6 +105,7 @@ impl TextCodec for Structured {
             Self::Jsonl => Format::JsonLines,
             Self::Toml => Format::Toml,
             Self::Yaml => Format::Yaml,
+            Self::Xml => Format::Xml,
         }
     }
 
@@ -137,6 +147,12 @@ impl From<Toml> for Structured {
 impl From<Yaml> for Structured {
     fn from(_: Yaml) -> Self {
         Self::Yaml
+    }
+}
+
+impl From<Xml> for Structured {
+    fn from(_: Xml) -> Self {
+        Self::Xml
     }
 }
 

@@ -69,6 +69,10 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("events.log")).unwrap(),
         Media::Text(_)
     ));
+    assert!(matches!(
+        Media::open(handle("trades.xml")).unwrap(),
+        Media::Xml(_)
+    ));
 }
 
 #[test]
@@ -90,6 +94,12 @@ fn each_explicit_variant_owns_options_over_an_unnamed_buffer() {
         RecordOptions::Text(_)
     ));
 
+    let xml = Media::xml(Holder::buffer(Buffer::new())).with_field(schema());
+    assert!(matches!(
+        xml.record_options().unwrap(),
+        RecordOptions::Xml(_)
+    ));
+
     #[cfg(feature = "parquet")]
     {
         let parquet = Media::parquet(Holder::buffer(Buffer::new())).with_field(schema());
@@ -108,7 +118,7 @@ fn an_unimplemented_encoding_is_named_rather_than_guessed() {
 
 #[test]
 fn every_variant_round_trips_batches_through_the_same_calls() {
-    let mut names = vec!["trades.arrows", "trades.arrows.gz"];
+    let mut names = vec!["trades.arrows", "trades.arrows.gz", "trades.xml", "trades.xml.gz"];
     if cfg!(feature = "parquet") {
         names.push("trades.parquet");
     }
@@ -136,7 +146,7 @@ fn every_variant_round_trips_batches_through_the_same_calls() {
 
 #[test]
 fn generic_media_preserves_commit_cadence_through_variant_redirection() {
-    let mut names = vec!["committed.arrows", "committed.avro"];
+    let mut names = vec!["committed.arrows", "committed.avro", "committed.xml"];
     if cfg!(feature = "parquet") {
         names.push("committed.parquet");
     }
@@ -149,6 +159,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
+            Media::Xml(xml) => xml.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();

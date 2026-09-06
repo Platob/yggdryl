@@ -953,6 +953,7 @@ pub(crate) fn leaf_reader(
         }
         RecordOptions::Avro(avro) => crate::media::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::media::text::arrow::read_arrow_reader(handle, text)?,
+        RecordOptions::Xml(xml) => crate::media::xml::read_batch_reader(handle, declared, xml)?,
     };
     match declared {
         Some(field) => Ok(crate::arrow::cast_reader(
@@ -976,6 +977,7 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Parquet(parquet) => crate::media::parquet::row_size(handle, parquet),
         RecordOptions::Avro(avro) => crate::media::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::media::text::arrow::row_size(handle, text),
+        RecordOptions::Xml(xml) => crate::media::xml::row_size(handle, xml),
     }
 }
 
@@ -1000,6 +1002,7 @@ pub(crate) fn leaf_field(
         RecordOptions::Parquet(parquet) => Ok(crate::media::parquet::read_field(handle, parquet)?),
         RecordOptions::Avro(avro) => Ok(crate::media::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
+        RecordOptions::Xml(xml) => crate::media::xml::read_field(handle, xml),
     }
 }
 
@@ -1025,6 +1028,9 @@ pub(crate) fn leaf_writer(
         }
         RecordOptions::Text(text) => {
             crate::media::text::arrow::write_arrow_reader(handle, batches, text)?;
+        }
+        RecordOptions::Xml(xml) => {
+            crate::media::xml::overwrite_arrow_reader(handle, batches, xml)?;
         }
     }
     Ok(())
@@ -1117,6 +1123,11 @@ fn append_leaf(
     // with no reason to re-parse what is already there.
     if let RecordOptions::Text(text) = options {
         return crate::media::text::arrow::append_arrow_reader(handle, incoming, text);
+    }
+    // An XML document appends natively too: the rows go before the document
+    // element's end tag, which is the only stored byte the write rewrites.
+    if let RecordOptions::Xml(xml) = options {
+        return crate::media::xml::append_arrow_reader(handle, incoming, xml);
     }
     let target = target_field(handle, &incoming, options)?;
     append_leaf_onto(handle, incoming, options, &target)

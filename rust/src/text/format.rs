@@ -19,11 +19,19 @@ pub enum Format {
     Yaml,
     /// One TOML document.
     Toml,
+    /// One XML document.
+    Xml,
 }
 
 impl Format {
     /// Every format in canonical order.
-    pub const ALL: [Self; 4] = [Self::Json, Self::JsonLines, Self::Yaml, Self::Toml];
+    pub const ALL: [Self; 5] = [
+        Self::Json,
+        Self::JsonLines,
+        Self::Yaml,
+        Self::Toml,
+        Self::Xml,
+    ];
 
     /// Parse a format name or conventional extension.
     #[allow(clippy::should_implement_trait)]
@@ -58,6 +66,7 @@ impl Format {
             Self::JsonLines => "json_lines",
             Self::Yaml => "yaml",
             Self::Toml => "toml",
+            Self::Xml => "xml",
         }
     }
 
@@ -68,6 +77,7 @@ impl Format {
             Self::JsonLines => "jsonl",
             Self::Yaml => "yaml",
             Self::Toml => "toml",
+            Self::Xml => "xml",
         }
     }
 
@@ -104,6 +114,7 @@ impl Format {
             Self::JsonLines => MimeType::JSON_LINES,
             Self::Yaml => MimeType::YAML,
             Self::Toml => MimeType::TOML,
+            Self::Xml => MimeType::XML,
         }
     }
 }
@@ -122,7 +133,7 @@ impl FromStr for Format {
             .ok_or_else(|| Error::Codec {
                 format: "format",
                 position: 0,
-                reason: "expected json, jsonl/ndjson, yaml/yml, or toml".into(),
+                reason: "expected json, jsonl/ndjson, yaml/yml, toml, or xml".into(),
             })
     }
 }

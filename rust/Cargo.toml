@@ -58,6 +58,14 @@ regex-automata = "0.4"
 regex-syntax = "0.8"
 serde = { version = "1.0", features = ["derive", "rc"] }
 saphyr-parser = "=0.0.11"
+# The XML 1.0 protocol itself: a pull tokenizer with the element, attribute,
+# CDATA and reference events the codec maps, and the exact byte positions its
+# errors report. Its types never appear in a public signature, a doc example,
+# an error, or a binding. `memchr` is its only dependency and the text row
+# scanner already compiles it, so the format costs one crate. Pinned at the
+# last release whose own MSRV is at or below this crate's, because the codec
+# is unconditional and so is compiled by the MSRV check.
+quick-xml = { version = "=0.41.0", default-features = false }
 parquet = { version = "59.2.0", default-features = false, features = [
     "arrow",
     "base64",

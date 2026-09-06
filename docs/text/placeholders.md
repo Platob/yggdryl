@@ -11,7 +11,7 @@ Jinja-style `{{ }}` substitution in string values of a parsed YAML or TOML docum
 | `{{ NAME }}` | resolve `NAME`; absence is an error |
 | `{{ NAME \| default(LITERAL) }}` | use a JSON-scalar fallback |
 | `{{{{` | emit a literal `{{` |
-| Formats | [YAML](yaml.md), [TOML](toml.md); [JSON](json.md) refuses |
+| Formats | [YAML](yaml.md), [TOML](toml.md), [XML](xml.md); [JSON](json.md) refuses |
 | Default | off; needs a mapping or the environment switch |
 | Precedence | mapping over process environment |
 | Environment | read only when `environment=True` |

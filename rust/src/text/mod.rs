@@ -17,11 +17,12 @@ mod structured;
 pub mod toml;
 pub(crate) mod typed;
 pub(crate) mod wire;
+pub mod xml;
 pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
 pub use crate::types::{Children, Scalar, TypedScalar};
-pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Yaml};
+pub use codec::{Json, Jsonl, Limited, TextCodec, Toml, Xml, Yaml};
 pub(crate) use display::ERROR_TEXT_LIMIT;
 pub(crate) use display::{
     elide_display, elide_to, expected_got, stable_hash_display, stable_hash_of,
@@ -83,7 +84,7 @@ fn filled(value: Scalar, input: &[u8], format: Format, loading: &Loading) -> Res
             return Err(Error::InvalidRecord {
                 path: "$.placeholders".into(),
                 reason: expected_got(
-                    "a format with placeholder support (yaml, toml)",
+                    "a format with placeholder support (yaml, toml, xml)",
                     format.as_str(),
                 ),
             });
@@ -116,6 +117,7 @@ pub fn from_utf8_with_limits(input: &str, format: Format, limits: Limits) -> Res
         }
         Format::Yaml => yaml::from_utf8_with_limits(input, limits),
         Format::Toml => toml::from_utf8_with_limits(input, limits),
+        Format::Xml => xml::from_utf8_with_limits(input, limits),
     }
 }
 
@@ -154,6 +156,7 @@ pub fn from_bytes_with_limits(input: &[u8], format: Format, limits: Limits) -> R
         }
         Format::Yaml => yaml::from_bytes_with_limits(input, limits),
         Format::Toml => toml::from_bytes_with_limits(input, limits),
+        Format::Xml => xml::from_bytes_with_limits(input, limits),
     }
 }
 
@@ -196,6 +199,7 @@ pub fn from_reader_with_limits<R: Read>(
         }
         Format::Yaml => yaml::from_reader_with_limits(reader, limits),
         Format::Toml => toml::from_reader_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_with_limits(reader, limits),
     }
 }
 
@@ -246,6 +250,7 @@ pub fn from_bytes_all_with_limits(
         Format::JsonLines => json::from_lines_bytes_with_limits(input, limits),
         Format::Yaml => yaml::from_bytes_all_with_limits(input, limits),
         Format::Toml => toml::from_bytes_all_with_limits(input, limits),
+        Format::Xml => xml::from_bytes_all_with_limits(input, limits),
     }
 }
 
@@ -284,6 +289,7 @@ pub fn from_utf8_all_with_limits(
         Format::JsonLines => json::from_lines_utf8_with_limits(input, limits),
         Format::Yaml => yaml::from_utf8_all_with_limits(input, limits),
         Format::Toml => toml::from_utf8_all_with_limits(input, limits),
+        Format::Xml => xml::from_utf8_all_with_limits(input, limits),
     }
 }
 
@@ -318,6 +324,7 @@ pub fn from_reader_all_with_limits<R: Read>(
         Format::JsonLines => json::from_lines_reader_with_limits(reader, limits),
         Format::Yaml => yaml::from_reader_all_with_limits(reader, limits),
         Format::Toml => toml::from_reader_all_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_all_with_limits(reader, limits),
     }
 }
 
@@ -356,6 +363,7 @@ pub fn from_reader_iter_with_limits<'a, R: Read + 'a>(
         Format::JsonLines => json::from_lines_reader_iter_with_limits(reader, limits),
         Format::Yaml => yaml::from_reader_iter_with_limits(reader, limits),
         Format::Toml => toml::from_reader_iter_with_limits(reader, limits),
+        Format::Xml => xml::from_reader_iter_with_limits(reader, limits),
     }
 }
 
@@ -399,6 +407,7 @@ pub fn into_bytes_with_formatting(
         },
         Format::Yaml => yaml::into_bytes_with_formatting(value, formatting),
         Format::Toml => toml::into_bytes_with_formatting(value, formatting),
+        Format::Xml => xml::into_bytes_with_formatting(value, formatting),
     }
 }
 
@@ -423,6 +432,7 @@ pub fn into_utf8_with_formatting(
         },
         Format::Yaml => yaml::into_utf8_with_formatting(value, formatting),
         Format::Toml => toml::into_utf8_with_formatting(value, formatting),
+        Format::Xml => xml::into_utf8_with_formatting(value, formatting),
     }
 }
 
@@ -452,6 +462,7 @@ pub fn into_writer_with_formatting<W: Write>(
         },
         Format::Yaml => yaml::into_writer_with_formatting(value, writer, formatting),
         Format::Toml => toml::into_writer_with_formatting(value, writer, formatting),
+        Format::Xml => xml::into_writer_with_formatting(value, writer, formatting),
     }
 }
 
@@ -519,10 +530,11 @@ where
         }
         Format::Yaml => yaml::into_writer_all_with_formatting(values, writer, formatting),
         Format::Toml => toml::into_writer_all_with_formatting(values, writer, formatting),
+        Format::Xml => xml::into_writer_all_with_formatting(values, writer, formatting),
     }
 }
 
-/// Infer JSON, TOML, or YAML from document content.
+/// Infer XML, JSON, TOML, or YAML from document content.
 pub fn infer_format(input: &[u8]) -> Result<Format> {
     let limits = Limits::default();
     check_input_size(input, limits, "format")?;
@@ -591,6 +603,14 @@ enum Inferred {
 }
 
 fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
+    // Markup answers first because it answers cheaply and unambiguously: only
+    // XML begins with a tag, so a document that does is never offered to the
+    // parsers that would have to fail on it first.
+    if starts_markup(input) {
+        if let Ok(value) = xml::from_utf8_with_limits(input, limits) {
+            return Inferred::Decoded(Format::Xml, value);
+        }
+    }
     if let Ok(value) = json::from_utf8_with_limits(input, limits) {
         return Inferred::Decoded(Format::Json, value);
     }
@@ -601,6 +621,14 @@ fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
         return Inferred::Decoded(Format::Toml, value);
     }
     Inferred::Yaml
+}
+
+/// Return whether the first content byte opens a tag.
+fn starts_markup(input: &str) -> bool {
+    input
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .starts_with('<')
 }
 
 fn is_empty_or_comment_only(input: &[u8]) -> bool {
