@@ -529,7 +529,15 @@ impl Client {
         // The signer is asked for last so its own headers cannot be shadowed.
         match self.signer(now) {
             Ok(Some(signer)) => {
-                let payload = sign::sha256_hex(request.body);
+                // Hashing a large body costs more than the rest of the request
+                // put together, so it is only done where it buys something.
+                let payload = if request.body.is_empty() {
+                    sign::EMPTY_PAYLOAD_SHA256.to_owned()
+                } else if self.options.signs_payload(&self.endpoint.scheme) {
+                    sign::sha256_hex(request.body)
+                } else {
+                    sign::UNSIGNED_PAYLOAD.to_owned()
+                };
                 headers.extend(signer.sign(
                     request.method,
                     &host,
@@ -853,6 +861,7 @@ impl Client {
             }
             filled += read;
         }
+        drain(&mut reader);
         Ok((filled, total))
     }
 
@@ -1233,6 +1242,29 @@ impl Client {
     }
 }
 
+/// Read a response body to its end so its connection can be pooled.
+///
+/// A client that stops at the byte count it wanted leaves the stream mid-body,
+/// and the connection cannot be reused - which on a real store is a fresh TCP
+/// and TLS handshake for every ranged read, the exact cost this backend is
+/// built to avoid. A ranged answer is already the size that was asked for, so
+/// this normally reads the one zero that says so; a store that answered with
+/// more than was asked for is abandoned instead of drained, because reading
+/// past what a caller wanted is the larger waste.
+fn drain(reader: &mut (impl Read + ?Sized)) {
+    let mut sink = [0_u8; 4096];
+    let mut discarded = 0_usize;
+    while discarded < DRAIN_LIMIT {
+        match reader.read(&mut sink) {
+            Ok(0) | Err(_) => return,
+            Ok(read) => discarded += read,
+        }
+    }
+}
+
+/// How much of an over-long body is drained before the connection is dropped.
+const DRAIN_LIMIT: usize = 64 * 1024;
+
 /// The largest document read into memory from a non-object answer.
 ///
 /// A listing page of a thousand keys is tens of kilobytes; this bound exists so
@@ -1246,14 +1278,22 @@ fn shared_agent() -> &'static ureq::Agent {
 }
 
 /// Build an agent for `options`.
+///
+/// The request budget is applied per phase rather than as one global deadline.
+/// Both bound the same hazard - a store that accepts a connection and then
+/// stops answering - but a global deadline is re-checked around every read and
+/// write, which costs more per request than the whole of signing one. Per
+/// phase, the bound is free.
 fn build_agent(options: &S3Options) -> ureq::Agent {
     ureq::Agent::new_with_config(
         ureq::Agent::config_builder()
             // Statuses are read, never raised: S3 says what it means in the
             // status and an XML body, and this client maps both itself.
             .http_status_as_error(false)
-            .timeout_global(Some(options.timeout()))
             .timeout_connect(Some(options.connect_timeout()))
+            .timeout_send_request(Some(options.timeout()))
+            .timeout_recv_response(Some(options.timeout()))
+            .timeout_recv_body(Some(options.timeout()))
             .user_agent(concat!("yggdryl/", env!("CARGO_PKG_VERSION")))
             .build(),
     )

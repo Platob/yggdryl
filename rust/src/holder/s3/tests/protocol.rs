@@ -503,3 +503,75 @@ fn a_path_that_shares_a_textual_prefix_is_not_mistaken_for_a_container() {
     store.put(BUCKET, "lake/part/under.parquet", b"PAR1");
     assert_eq!(path(&store, "lake/part").kind(), IOKind::File);
 }
+
+#[test]
+fn many_reads_share_one_connection_rather_than_reconnecting() {
+    let store = store();
+    store.put(BUCKET, "lake/part.bin", &payload(4096));
+    let handle = file(&store, "lake/part.bin");
+
+    // Ranged reads, whole reads, and streams in turn: every one of them has
+    // to leave its connection reusable.
+    for _ in 0..10 {
+        assert_eq!(handle.read_range_bytes(0, 64).expect("a range").len(), 64);
+        assert_eq!(handle.read_all_bytes().expect("the object").len(), 4096);
+        assert_eq!(handle.pstream_bytes(0, 1024).expect("a stream").count(), 4);
+    }
+
+    assert_eq!(store.request_count(), 30);
+    // The number that matters: on a real store each extra connection is a TCP
+    // and TLS handshake, which would dwarf the transfer a footer read makes.
+    assert_eq!(
+        store.connection_count(),
+        1,
+        "thirty requests went down one connection"
+    );
+}
+
+#[test]
+fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
+    let store = store();
+    // The fixture endpoint is plain HTTP, where nothing but the hash would
+    // establish that the body arrived as it was sent.
+    let mut handle = file(&store, "lake/part.bin");
+    handle.write_all_bytes(b"AAPL,187.23").expect("a write");
+    let recorded = store.requests();
+    let put = recorded.last().expect("the write");
+    assert_eq!(
+        put.headers
+            .iter()
+            .find(|(name, _)| name == "x-amz-content-sha256")
+            .map(|(_, value)| value.as_str()),
+        Some(crate::holder::s3::sign::sha256_hex(b"AAPL,187.23").as_str()),
+    );
+
+    // Asking for the other policy sends the literal S3 accepts instead, which
+    // is what an HTTPS endpoint selects on its own: hashing a large value
+    // costs more than the rest of the request, and TLS already covers it.
+    store.clear_requests();
+    let mut unsigned = super::file_with(
+        "lake/unsigned.bin",
+        options(&store).with_payload_signing(false),
+    );
+    unsigned.write_all_bytes(b"AAPL,187.23").expect("a write");
+    let recorded = store.requests();
+    let put = recorded.last().expect("the write");
+    assert_eq!(
+        put.headers
+            .iter()
+            .find(|(name, _)| name == "x-amz-content-sha256")
+            .map(|(_, value)| value.as_str()),
+        Some("UNSIGNED-PAYLOAD"),
+    );
+    // Either way the store received the bytes it was sent.
+    assert_eq!(
+        store.get(BUCKET, "lake/unsigned.bin").expect("the object"),
+        b"AAPL,187.23"
+    );
+
+    // The policy an unset value picks follows the endpoint's scheme.
+    let over_tls = S3Options::default().with_endpoint("https://s3.example.io");
+    assert!(!over_tls.signs_payload("https"));
+    assert!(S3Options::default().signs_payload("http"));
+    assert!(over_tls.with_payload_signing(true).signs_payload("https"));
+}

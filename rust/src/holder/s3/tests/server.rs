@@ -91,6 +91,7 @@ impl FakeS3 {
                 }
                 if let Ok(stream) = connection {
                     let inner = Arc::clone(&shared);
+                    inner.connections.fetch_add(1, Ordering::Relaxed);
                     std::thread::spawn(move || serve(&inner, stream));
                 }
             }
@@ -204,6 +205,15 @@ impl FakeS3 {
 
     /// Requests handled since the last [`clear_requests`](Self::clear_requests),
     /// recording or not.
+    /// Connections accepted since the server started.
+    ///
+    /// A client that pools keeps this far below [`Self::request_count`]; one
+    /// that reconnects per request drives the two together, which on a real
+    /// store is a TLS handshake each time.
+    pub fn connection_count(&self) -> usize {
+        self.inner.connections.load(Ordering::Relaxed)
+    }
+
     pub fn request_count(&self) -> usize {
         self.inner.count.load(Ordering::SeqCst)
     }
@@ -243,6 +253,8 @@ struct Inner {
     recording: AtomicBool,
     /// Requests handled, recording or not.
     count: AtomicUsize,
+    /// Connections accepted, so a test can see whether a client pools them.
+    connections: AtomicUsize,
     /// Source of `x-amz-request-id` values.
     request_ids: AtomicUsize,
     /// Buckets, uploads, regions, and the knobs that shape answers.
@@ -258,6 +270,7 @@ impl Inner {
             stopping: AtomicBool::new(false),
             anonymous: AtomicBool::new(false),
             recording: AtomicBool::new(true),
+            connections: AtomicUsize::new(0),
             count: AtomicUsize::new(0),
             request_ids: AtomicUsize::new(0),
             store: Mutex::new(Store::default()),
@@ -1659,7 +1672,6 @@ fn non_empty(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
 
     /// One parsed answer.
     struct Reply {
@@ -2495,6 +2507,8 @@ mod tests {
 
     #[test]
     fn dropping_the_server_returns_promptly_and_closes_the_port() {
+        use std::time::{Duration, Instant};
+
         let server = anonymous();
         let port = server.port();
         let _idle = connect(&server);

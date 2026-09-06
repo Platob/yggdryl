@@ -79,6 +79,7 @@ pub struct S3Options {
     timeout: Duration,
     connect_timeout: Duration,
     read_environment: bool,
+    payload_signing: Option<bool>,
 }
 
 impl Default for S3Options {
@@ -97,6 +98,7 @@ impl Default for S3Options {
             timeout: DEFAULT_TIMEOUT,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             read_environment: true,
+            payload_signing: None,
         }
     }
 }
@@ -202,6 +204,20 @@ impl S3Options {
         self
     }
 
+    /// Sign the body of every write, or send it as `UNSIGNED-PAYLOAD`.
+    ///
+    /// Signing hashes the whole value with SHA-256 so the store can verify
+    /// what it received. That is worth paying for over a plain-HTTP endpoint,
+    /// where nothing else protects the body, and it is what an unset value
+    /// selects there. Over HTTPS the transport already guarantees integrity,
+    /// so an unset value skips the hash - which on a large upload is the
+    /// difference between hashing the value and not.
+    #[must_use]
+    pub const fn with_payload_signing(mut self, signing: bool) -> Self {
+        self.payload_signing = Some(signing);
+        self
+    }
+
     /// Consult, or ignore, the process environment and the shared AWS files.
     ///
     /// Off, only explicit values and the URL decide, which is what a test
@@ -277,6 +293,20 @@ impl S3Options {
         self.read_environment
     }
 
+    /// The explicit payload-signing choice.
+    pub const fn payload_signing(&self) -> Option<bool> {
+        self.payload_signing
+    }
+
+    /// Whether a write to an endpoint of `scheme` signs its body.
+    ///
+    /// Explicit wins; otherwise TLS decides, because TLS is what the hash
+    /// would otherwise be duplicating.
+    pub(super) fn signs_payload(&self, scheme: &str) -> bool {
+        self.payload_signing
+            .unwrap_or(!scheme.eq_ignore_ascii_case("https"))
+    }
+
     /// Whether the transport differs from the process-wide default, in which
     /// case the client needs a connection pool of its own.
     pub(super) fn has_custom_transport(&self) -> bool {
@@ -302,6 +332,7 @@ impl std::fmt::Debug for S3Options {
             .field("timeout", &self.timeout)
             .field("connect_timeout", &self.connect_timeout)
             .field("read_environment", &self.read_environment)
+            .field("payload_signing", &self.payload_signing)
             .finish()
     }
 }

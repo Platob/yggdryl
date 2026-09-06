@@ -13,6 +13,12 @@ use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
 /// The `x-amz-content-sha256` value that skips payload hashing (HTTPS only).
+/// What `x-amz-content-sha256` carries when the body is not hashed.
+///
+/// S3 accepts it in place of a real digest; the transport is then what
+/// guarantees the body arrived intact.
+pub(crate) const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
+
 /// SHA-256 of the empty payload, lowercase hex.
 pub(crate) const EMPTY_PAYLOAD_SHA256: &str =
     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";

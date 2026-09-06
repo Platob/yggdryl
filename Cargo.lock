@@ -3971,6 +3971,7 @@ dependencies = [
  "bytes",
  "criterion",
  "flate2",
+ "futures",
  "half",
  "hmac",
  "iceberg",
