@@ -18,12 +18,12 @@ use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
 use crate::fix::{FixTag, branch_from_py, id_parts_from_py};
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::types::datatype::{
     PyAsciiEnum, PyDataType, PyDataTypeIterator, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
     default_arrow_scalar_to_pyarrow,
 };
-use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
 use crate::uri::{PyUrl, core_url_from_value};
 use crate::{PyDifferenceIterator, compare, value_error};
 
