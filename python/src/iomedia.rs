@@ -1673,7 +1673,6 @@ impl PyRecordOptions {
             .map_err(value_error)
     }
 
-
     /// Cast one `PyArrow` `RecordBatch` through these options.
     ///
     /// The three layers run in order: the declared field says what the rows
@@ -2188,7 +2187,6 @@ impl PyTextOptions {
             .set_timezone(value.map(core_timezone_from_value).transpose()?);
         Ok(())
     }
-
 
     /// Cast one `PyArrow` `RecordBatch` through these options.
     ///

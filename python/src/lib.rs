@@ -266,10 +266,7 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         UnionMode::ALL.map(UnionMode::as_str).to_vec(),
     )?;
     listing.set_item("io_modes", IOMode::ALL.map(IOMode::as_str).to_vec())?;
-    listing.set_item(
-        "io_write_modes",
-        IOMode::WRITE.map(IOMode::as_str).to_vec(),
-    )?;
+    listing.set_item("io_write_modes", IOMode::WRITE.map(IOMode::as_str).to_vec())?;
     listing.set_item(
         "leading_fragments",
         yggdryl::media::text::LeadingFragment::ALL
@@ -282,6 +279,18 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         DigestAlgorithm::ALL.map(DigestAlgorithm::as_str).to_vec(),
     )?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
+    listing.set_item(
+        "edge_algorithms",
+        yggdryl::EdgeAlgorithm::ALL
+            .map(yggdryl::EdgeAlgorithm::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "formats",
+        yggdryl::text::Format::ALL
+            .map(yggdryl::text::Format::as_str)
+            .to_vec(),
+    )?;
     listing.set_item(
         "nullabilities",
         yggdryl::Nullability::ALL
@@ -336,10 +345,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
         "DEFAULT_STREAM_BATCH_SIZE",
         yggdryl::DEFAULT_STREAM_BATCH_SIZE,
     )?;
-    module.add(
-        "DEFAULT_FETCH_BYTE_SIZE",
-        yggdryl::DEFAULT_FETCH_BYTE_SIZE,
-    )?;
+    module.add("DEFAULT_FETCH_BYTE_SIZE", yggdryl::DEFAULT_FETCH_BYTE_SIZE)?;
     Ok(())
 }
 
@@ -365,6 +371,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
     module.add_class::<types::cast::PyArrowCastPlan>()?;
+    module.add_class::<fix::PyFixBranch>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;

@@ -981,11 +981,7 @@ impl PyDataType {
     fn into_arrow_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         crate::types::field::core_schema_to_pyarrow(
             py,
-            &yggdryl::Field::new(
-                yggdryl::media::DEFAULT_ROOT_NAME,
-                self.inner.clone(),
-                false,
-            ),
+            &yggdryl::Field::new(yggdryl::media::DEFAULT_ROOT_NAME, self.inner.clone(), false),
         )
     }
 
@@ -1327,7 +1323,9 @@ impl PyDataType {
     #[getter]
     fn dictionary_key(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => Some(Self::from_inner(dictionary.key().clone())),
+            CoreDataType::Dictionary(dictionary) => {
+                Some(Self::from_inner(dictionary.key().clone()))
+            }
             _ => None,
         }
     }

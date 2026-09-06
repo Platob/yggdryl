@@ -9,7 +9,7 @@ import zoneinfo
 
 import pytest
 
-from yggdryl import Timezone
+from yggdryl import DataType, Timezone
 
 
 def utc(year: int, month: int, day: int, hour: int = 0) -> int:
@@ -161,3 +161,15 @@ class TestProtocols:
     def test_it_prints_its_canonical_name(self) -> None:
         assert str(Timezone("US/Pacific")) == "America/Los_Angeles"
         assert repr(Timezone("UTC")) == 'Timezone("UTC")'
+
+
+def test_the_zone_free_marker_is_a_zone_a_datatype_can_carry() -> None:
+    # A `datetime64` always carries a zone, so this is what it carries when
+    # there is none to carry - never a null.
+    assert Timezone.NAIVE.is_naive()
+    assert not Timezone.UTC.is_naive()
+    assert str(Timezone.NAIVE) == "NAIVE"
+    assert Timezone.NAIVE == Timezone("NAIVE")
+
+    assert DataType("timestamp(us)").timezone == Timezone.NAIVE
+    assert DataType("timestamp(us, 'UTC')").timezone == Timezone.UTC

@@ -22,6 +22,8 @@ UNION_MODES: tuple[str, ...]
 IO_MODES: tuple[str, ...]
 IO_WRITE_MODES: tuple[str, ...]
 LEADING_FRAGMENTS: tuple[str, ...]
+EDGE_ALGORITHMS: tuple[str, ...]
+FORMATS: tuple[str, ...]
 CODECS: tuple[str, ...]
 DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
@@ -54,5 +56,7 @@ __all__ = [
     "UNION_MODES",
     "IO_MODES",
     "IO_WRITE_MODES",
+    "EDGE_ALGORITHMS",
+    "FORMATS",
     "LEADING_FRAGMENTS",
 ]

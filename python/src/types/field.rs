@@ -2754,7 +2754,11 @@ impl PyProtocolField {
     fn set_holder(&self, py: Python<'_>) -> PyResult<()> {
         self.require_digest("set_holder")?;
         let mut field = self.borrow_field_mut(py)?;
-        field.inner.as_digest_mut().set_holder().map_err(value_error)
+        field
+            .inner
+            .as_digest_mut()
+            .set_holder()
+            .map_err(value_error)
     }
 
     /// Remove the role, refusing while holder-only settings are still stored.

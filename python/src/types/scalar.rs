@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
-use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{
     PyArithmeticError, PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError,
@@ -19,6 +18,7 @@ use pyo3::types::{
     PyAny, PyBool, PyByteArray, PyBytes, PyComplex, PyDict, PyFloat, PyFrozenSet, PyInt, PyList,
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
+use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
@@ -1357,9 +1357,7 @@ impl PyScalar {
     /// a configuration document means by a default.
     fn get_or(&self, key: &str, default: &Bound<'_, PyAny>) -> PyResult<Self> {
         let default = from_py(default)?;
-        Ok(Self::from_inner(
-            self.inner.get_or(key, &default).clone(),
-        ))
+        Ok(Self::from_inner(self.inner.get_or(key, &default).clone()))
     }
 
     /// Walk a dotted mapping/record/sequence path.

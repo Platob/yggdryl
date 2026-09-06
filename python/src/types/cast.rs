@@ -24,7 +24,11 @@ use crate::{cast_options, value_error};
 /// Compiling is the schema-dependent half of a cast, so a reader that yields
 /// a thousand batches of one schema pays for it once. The plan is immutable
 /// and carries no batch, so the same one answers every batch of that schema.
-#[pyclass(name = "ArrowCastPlan", module = "yggdryl._native", skip_from_py_object)]
+#[pyclass(
+    name = "ArrowCastPlan",
+    module = "yggdryl._native",
+    skip_from_py_object
+)]
 pub(crate) struct PyArrowCastPlan {
     inner: Arc<ArrowCastPlan>,
 }

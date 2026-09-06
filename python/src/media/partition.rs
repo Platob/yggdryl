@@ -61,8 +61,8 @@ pub(crate) fn with_partitions<'py>(
         return widened.into_pyarrow(py);
     }
     let reader = batch_reader_from_arrow_reader(rows)?;
-    let widened = yggdryl::media::partition::partitioned_reader(reader, pairs, field)
-        .map_err(value_error)?;
+    let widened =
+        yggdryl::media::partition::partitioned_reader(reader, pairs, field).map_err(value_error)?;
     batch_reader_to_pyarrow(py, widened)
 }
 
@@ -80,8 +80,8 @@ pub(crate) fn without_partitions<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let pairs = pairs_from_value(partitions)?;
     if let Ok(batch) = RecordBatch::from_pyarrow_bound(rows) {
-        let narrowed = yggdryl::media::partition::without_partitions(&batch, &pairs)
-            .map_err(value_error)?;
+        let narrowed =
+            yggdryl::media::partition::without_partitions(&batch, &pairs).map_err(value_error)?;
         return narrowed.into_pyarrow(py);
     }
     let reader = batch_reader_from_arrow_reader(rows)?;

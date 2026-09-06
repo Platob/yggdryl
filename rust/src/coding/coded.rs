@@ -75,6 +75,20 @@ impl Coded {
         }
     }
 
+    /// Return the compression level writes through this coding use.
+    ///
+    /// A pass-through coding compresses nothing, so it answers
+    /// [`Level::NONE`] rather than the level a caller asked for and it
+    /// ignored.
+    pub const fn level(&self) -> Level {
+        match self {
+            Self::Identity(_) => Level::NONE,
+            Self::Gzip(handle) => handle.level(),
+            Self::Zlib(handle) => handle.level(),
+            Self::Zstd(handle) => handle.level(),
+        }
+    }
+
     /// Return this handle with a different compression level.
     #[must_use]
     pub fn with_level(self, level: Level) -> Self {

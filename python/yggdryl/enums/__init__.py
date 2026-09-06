@@ -54,6 +54,12 @@ IO_WRITE_MODES: tuple[str, ...] = tuple(_LISTING["io_write_modes"])
 #: What a text read does with a first line that is only part of a record.
 LEADING_FRAGMENTS: tuple[str, ...] = tuple(_LISTING["leading_fragments"])
 
+#: Every geography edge-interpolation algorithm.
+EDGE_ALGORITHMS: tuple[str, ...] = tuple(_LISTING["edge_algorithms"])
+
+#: Every structured text format, e.g. ``"json"``, ``"yaml"``.
+FORMATS: tuple[str, ...] = tuple(_LISTING["formats"])
+
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
@@ -99,5 +105,7 @@ __all__ = [
     "UNION_MODES",
     "IO_MODES",
     "IO_WRITE_MODES",
+    "EDGE_ALGORITHMS",
+    "FORMATS",
     "LEADING_FRAGMENTS",
 ]
