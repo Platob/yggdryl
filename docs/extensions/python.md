@@ -9,6 +9,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `DataType` | [DataType](../types/datatype.md) |
 | `Field`, `field`, `scalar`, `fields` | [Field](../types/field.md) and this page |
 | `Scalar` | this page and [Scalar](../types/scalar.md) |
+| `ArrowValue`, `arrow.SHAPES` | this page and [Values](../arrow/values.md) |
 | `Expression`, `Bound`, `Statement`, `BoundStatement` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
 | `IOBase`, and the role classes in `yggdryl.holder`, `yggdryl.coding`, `yggdryl.media` | this page and [Holder](../holder/index.md) |
@@ -128,6 +129,105 @@ assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 | dataclass, named tuple, attribute object | `Record` | sorted string names; no second schema model |
 
 Pass a `Field` when strings or numbers need an exact decimal, binary, or temporal reading. [`yggdryl.text.codec`](../text/index.md) adds `from_io` / `from_stream` and `into_io` / `into_stream` for a dynamic format.
+
+## Arrow values
+
+`ArrowValue` is the Arrow-shaped sibling of `Scalar`: one value across the four shapes Arrow spells a payload in, paired with the exact `Field` that types it. The contract is [Values](../arrow/values.md), and `yggdryl.arrow.SHAPES` names the shapes in widening order. JavaScript is not bound.
+
+`from_py(value, field=None, *, safe=True, nullability="default", representation="value")` is the one entry point, and the value's own type decides the shape. `field` is the declared shape: given one, the core's single recursive cast applies it, one compiled plan for a stream and one batch at a time, under the [cast policy](../types/cast.md) those three keywords carry.
+
+| Value handed to `from_py` | Shape |
+| --- | --- |
+| `pyarrow.Scalar`, and any other value a `Scalar` can hold | `scalar` |
+| `pyarrow.Array`; `pyarrow.ChunkedArray`, whose chunks are combined; a pandas or polars `Series`; a one-dimensional `numpy.ndarray`; an `__arrow_c_array__` exporter | `array` |
+| `pyarrow.RecordBatch`; a `numpy` record array, one column per member | `batch` |
+| `pyarrow.Table`, which may hold many chunks; `pyarrow.RecordBatchReader`; a `Dataset` or `Scanner`; a pandas `DataFrame`; a polars `DataFrame` or `LazyFrame`; an `__arrow_c_stream__` exporter | `stream` |
+| another `ArrowValue` | its own shape, taken rather than copied |
+
+```python
+import numpy as np
+import pyarrow as pa
+
+from yggdryl import ArrowValue
+from yggdryl.arrow import SHAPES
+
+assert SHAPES == ("scalar", "array", "batch", "stream")
+
+table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+
+# A held batch knows its length; a table crosses over the C stream, and a
+# stream states its schema before its first batch and nothing else.
+held = ArrowValue.from_py(table.to_batches()[0])
+assert (held.shape, held.row_size, held.column_size) == ("batch", 2, 2)
+streamed = ArrowValue.from_py(table)
+assert (streamed.shape, streamed.row_size, streamed.is_streamed) == ("stream", None, True)
+
+assert ArrowValue.from_py(pa.scalar(7, pa.int64())).into_arrow_scalar().as_py() == 7
+assert ArrowValue.from_py(np.array([1.5, 2.5])).shape == "array"
+assert ArrowValue.from_py(pa.chunked_array([[1, 2], [3]])).into_numpy().tolist() == [1, 2, 3]
+
+# A record dtype names its members, so it is rows.
+records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
+assert ArrowValue.from_py(records).column_size == 2
+
+# The declared field is applied by the core's cast, and the shape survives it.
+prices = ArrowValue.from_py(pa.array([1, 2, 3]), "price: float64 not null")
+assert prices.shape == "array"
+assert prices.into_arrow_array().type == pa.float64()
+```
+
+| Property | Answers |
+| --- | --- |
+| `shape` | one of `SHAPES` |
+| `field` | the exact `Field`: one element for a scalar or a column, the non-null Struct root for a table or a stream |
+| `row_size` | the rows, or `None` for a stream that has not been drained |
+| `column_size` | the columns one row carries |
+| `is_streamed` | whether reading this value consumes it |
+| `is_consumed` | whether its stream has already been read |
+
+| Call | Answers |
+| --- | --- |
+| `cast(field, *, safe, nullability, representation)` | another `ArrowValue` of the same shape, under the same policy `from_py` takes |
+| `into_arrow_scalar()` | `pyarrow.Scalar`; anything but one row is a `ValueError` |
+| `into_arrow_array()` | `pyarrow.Array` |
+| `into_arrow_batch()` | `pyarrow.RecordBatch` |
+| `into_arrow_table()` | `pyarrow.Table`, read from this value's own stream |
+| `into_arrow_reader()` | `pyarrow.RecordBatchReader`, the cheapest crossing: nothing is collected |
+| `into_pandas()` / `into_polars()` | one frame |
+| `into_numpy()` | one `numpy.ndarray`; NumPy has no null mask and no nested layout, so this crossing copies |
+| `into_scalar()` | the native `Scalar`: one value for a scalar, a sequence for every other shape |
+| `as_py()` | Python's own types, named by the `Field`, so a row is a `dict` |
+
+Only a stream is one-shot. A scalar, a column, and a table share their Arrow buffers back and stay readable; a stream has nothing to share until it is drained, so reading a consumed one is a `ValueError`.
+
+```python
+import pyarrow as pa
+import pytest
+
+from yggdryl import ArrowValue
+
+table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+root = "row: struct<symbol: utf8 not null, size: int64 not null> not null"
+
+# The Field is what puts the names back on a canonical positional row.
+held = ArrowValue.from_py(table.to_batches()[0], root)
+assert held.as_py() == [
+    {"symbol": "AAPL", "size": 100},
+    {"symbol": "MSFT", "size": 250},
+]
+assert held.into_pandas().shape == (2, 2)
+assert held.into_arrow_batch().num_rows == 2
+assert not held.is_consumed
+
+# A canonical row is positional, which is what the native model speaks.
+assert held.cast(root).into_scalar().as_py() == [["AAPL", 100], ["MSFT", 250]]
+
+streamed = ArrowValue.from_py(table)
+assert streamed.into_arrow_table().num_rows == 2
+assert streamed.is_consumed
+with pytest.raises(ValueError, match="crosses once"):
+    streamed.into_arrow_reader()
+```
 
 ## Python value protocols
 
@@ -846,6 +946,39 @@ handle.overwrite_records([], options=empty)
 
 `read_records()` lowers only the current Arrow batch: no class yields plain mappings, a dataclass type builds one instance per row.
 
+### Rows whatever the handle holds
+
+`read_arrow_value(field=None)` and `write_arrow_value(value, mode="overwrite", field=None)` are the Arrow-shaped siblings of `read_scalar` and `write_scalar`, and the one pair that needs no prior knowledge of what a handle holds: a record encoding answers its batch stream, and a JSON, JSON Lines, YAML, or TOML document the batch its rows parse into. The written value crosses through [`ArrowValue`](#arrow-values), so every source `from_py` accepts reaches the same publication path.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+import pytest
+
+from yggdryl import IOBase
+
+root = pathlib.Path(tempfile.mkdtemp())
+quotes = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+
+# A record encoding takes every mode and answers rows as they arrive.
+stream = IOBase(root / "quotes.arrows")
+stream.write_arrow_value(quotes.to_pandas())
+stream.write_arrow_value(quotes, "append")
+assert stream.read_arrow_value().shape == "stream"
+assert stream.read_arrow_value().into_arrow_table().num_rows == 4
+
+# A text document is one frame around its rows: written whole, read as one
+# batch, and refused any other mode.
+document = IOBase(root / "quotes.jsonl")
+document.write_arrow_value(quotes)
+assert b'"symbol":"AAPL"' in document.read_bytes()
+assert document.read_arrow_value().row_size == 2
+with pytest.raises(ValueError, match="overwrite"):
+    document.write_arrow_value(quotes, "append")
+```
+
 ### Record options
 
 Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record decoded-byte retention, and row numbering of [plain-text records](../media/text.md).
@@ -1094,6 +1227,10 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `relative_to` outside the root -> `ValueError`; `touch` on a directory -> `IsADirectoryError`.
 - `read_range(cls=...)` outside `bytes`, `str`, and `None` -> `TypeError`, the way `read_scalar(cls=...)` refuses one.
 - a `pyarrow.Table` handed to `overwrite_arrow_reader` -> refused; a scanner participates as `scanner.to_reader()`.
+- an `ArrowValue` of shape `stream` -> one-shot; every other shape shares its Arrow buffers back and stays readable, and reading a consumed stream is a `ValueError`.
+- `ArrowValue.from_py` of a `numpy` array of more than one dimension -> `TypeError`, because Arrow has no column of that shape.
+- `write_arrow_value` on a JSON, JSON Lines, YAML, or TOML handle -> `"overwrite"` only; append and merge go through the record adapters.
+- `ArrowValue` in JavaScript -> not bound, because a stream has no honest copied-IPC representation.
 - empty records -> require `options.field`, and invalid intent is rejected before the input is iterated.
 - a commit cadence falling inside a batch grouping -> conversion ends the current batch at the exact cadence boundary.
 - `commit_row_size = 0` -> rejected before any Python input is inspected.
@@ -1155,6 +1292,7 @@ else:
     python/.venv/bin/python -m pytest python/tests/uri
     python/.venv/bin/python -m pytest python/tests/expression
     python/.venv/bin/python -m pytest python/tests/xxhash
+    python/.venv/bin/python -m pytest python/tests/arrow
     python/.venv/bin/python -m pytest python/tests/fix
     python scripts/check_docs_examples.py --lang python
     ```
@@ -1163,6 +1301,7 @@ else:
     python/.venv/bin/python python/benchmarks/types.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5

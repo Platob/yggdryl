@@ -141,6 +141,14 @@ mod structured_text {
         ArrowShape, Field, IOBase, IOMedia, IOMode, Scalar, handle, quotes, shaped_values,
     };
 
+    /// The number of values one of `rows`' rows carries.
+    fn rows_width(rows: &Scalar) -> usize {
+        rows.as_sequence()
+            .and_then(<[Scalar]>::first)
+            .and_then(Scalar::as_sequence)
+            .map_or(0, <[Scalar]>::len)
+    }
+
     #[test]
     fn every_shape_lands_as_the_same_rows_in_every_structured_format() {
         for format in ["json", "jsonl", "yaml", "toml"] {
@@ -169,14 +177,6 @@ mod structured_text {
                 );
             }
         }
-    }
-
-    /// The number of values one of `rows`' rows carries.
-    fn rows_width(rows: &Scalar) -> usize {
-        rows.as_sequence()
-            .and_then(<[Scalar]>::first)
-            .and_then(Scalar::as_sequence)
-            .map_or(0, <[Scalar]>::len)
     }
 
     #[test]
