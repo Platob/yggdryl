@@ -26,6 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::types::MsgType;
 use yggdryl::{
     DataType, Field, FixBranch, FixEnumValue, FixId, FixLineageEntry, FixMsg, FixPedigree,
     FixRegistry, MediaType, MimeType, Scalar, Timezone, Version,
@@ -345,16 +346,16 @@ fn a_fix_registry_lookup_allocates_nothing() {
         let _ = black_box(registry.contains("Symbol"));
     });
     free("infer_bytes_protocol FIXML", || {
-        let _ = black_box(registry.infer_bytes_protocol(black_box(b"35=D|Symbol=AAPL|")));
+        let _ = black_box(MimeType::infer_bytes(black_box(b"35=D|Symbol=AAPL|")));
     });
     free("infer_text_protocol UL", || {
-        let _ = black_box(registry.infer_text_protocol(black_box("MsgType=D Symbol=AAPL")));
+        let _ = black_box(MimeType::infer_text(black_box("MsgType=D Symbol=AAPL")));
     });
     free("infer_bytes_msgtype FIX", || {
-        let _ = black_box(registry.infer_bytes_msgtype(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
+        let _ = black_box(MsgType::infer_bytes(black_box(b"8=FIX.4.4|35=D|55=AAPL|")));
     });
     free("infer_text_msgtype UL", || {
-        let _ = black_box(registry.infer_text_msgtype(black_box("MsgType=D Symbol=AAPL")));
+        let _ = black_box(MsgType::infer_text(black_box("MsgType=D Symbol=AAPL")));
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());

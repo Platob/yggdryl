@@ -5,9 +5,7 @@
 //! green build proves nothing; these are the invariants a wildcard cannot
 //! satisfy by accident.
 
-use yggdryl::{
-    AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar, types::AsciiFamily,
-};
+use yggdryl::{AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar, types::AsciiFamily};
 
 /// The three, with the width each fixes and the vocabulary it publishes.
 const CODED: [(&str, DataType, i32); 3] = [
@@ -123,7 +121,14 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
 fn a_msgtype_is_case_sensitive_and_the_crate_fold_never_touches_a_wire_value() {
     // Six pairs the specification distinguishes only by case. A single stray
     // fold turns a quote into a cross.
-    let pairs = [("A", "a"), ("Q", "q"), ("S", "s"), ("B", "b"), ("C", "c"), ("D", "d")];
+    let pairs = [
+        ("A", "a"),
+        ("Q", "q"),
+        ("S", "s"),
+        ("B", "b"),
+        ("C", "c"),
+        ("D", "d"),
+    ];
     let mut packed = Vec::new();
     for (upper, lower) in pairs {
         let up = DataType::MsgType.ascii_packed(upper.as_bytes()).unwrap();
@@ -225,12 +230,73 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
     ] {
         let stored = dtype.scalar(Scalar::from(value)).unwrap();
         // To text, which is what the value already is.
-        let text = DataType::Utf8.scalar(Scalar::from(stored.as_str().unwrap())).unwrap();
+        let text = DataType::Utf8
+            .scalar(Scalar::from(stored.as_str().unwrap()))
+            .unwrap();
         assert_eq!(text.as_str(), Some(value));
         // And back, through the same contract.
         assert_eq!(dtype.scalar(text.clone()).unwrap(), stored);
         // A number is not one of these, and the refusal names the type.
         let refused = dtype.scalar(Scalar::from(7_i64)).unwrap_err();
-        assert!(refused.to_string().contains(&dtype.to_string()), "{refused}");
+        assert!(
+            refused.to_string().contains(&dtype.to_string()),
+            "{refused}"
+        );
+    }
+}
+
+#[test]
+fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
+    use yggdryl::types::Direction;
+
+    // Read, with the marker taken off the body.
+    for (line, direction, body) in [
+        (
+            "sending >> 8=FIX.4.2|9=176|35=D|10=203|",
+            Some(Direction::SENT),
+            ">> 8=FIX.4.2|9=176|35=D|10=203|",
+        ),
+        (
+            "recv 8=FIX.4.4|35=0|10=017|",
+            Some(Direction::RECV),
+            "8=FIX.4.4|35=0|10=017|",
+        ),
+        (
+            "Receiving XmlApi: <Execution ExecID='E1'/>",
+            Some(Direction::RECV),
+            "XmlApi: <Execution ExecID='E1'/>",
+        ),
+        (
+            "[OUT] 8=FIX.4.4|35=D|",
+            Some(Direction::SENT),
+            "8=FIX.4.4|35=D|",
+        ),
+        ("(in) ACCOUNT=A1", Some(Direction::RECV), "ACCOUNT=A1"),
+    ] {
+        assert_eq!(Direction::infer_text(line), direction, "{line}");
+        assert_eq!(Direction::split_text(line).1, body, "{line}");
+    }
+
+    // Nothing read is nothing removed, and these are the shapes that must
+    // read nothing.
+    for line in [
+        // English that merely contains the letters.
+        "sending in session 3",
+        "received out of order",
+        // A route endpoint and a session name, where a word boundary alone
+        // would have been enough to get it wrong.
+        "direct:out 8=FIX.4.4|35=D|",
+        "MCFID-IN-XPAR 8=FIX.4.4|35=D|",
+        // Both verbs in one prefix: none a reading can prefer.
+        "sending and receiving 8=FIX.4.4|35=D|",
+        // A verb only inside the payload is the payload's word.
+        "8=FIX.4.4|35=8|58=sent earlier|10=1|",
+        "ACCOUNT=A1|TEXT=received late|",
+        // No verb at all.
+        "8=FIX.4.4|35=D|",
+        "no level printed by this plugin",
+    ] {
+        assert_eq!(Direction::infer_text(line), None, "{line}");
+        assert_eq!(Direction::split_text(line).1, line, "{line}");
     }
 }

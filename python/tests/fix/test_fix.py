@@ -294,21 +294,21 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
         (b"level=INFO message=random", MimeType.OCTET_STREAM, None),
     )
     for line, protocol, msgtype in cases:
-        assert seed.infer_bytes_protocol(line) == protocol
-        assert seed.infer_bytes_protocol(bytearray(line)) == protocol
-        assert seed.infer_bytes_protocol(memoryview(line)) == protocol
-        assert seed.infer_bytes_msgtype(line) == msgtype
-        assert seed.infer_bytes_msgtype(bytearray(line)) == msgtype
-        assert seed.infer_bytes_msgtype(memoryview(line)) == msgtype
+        assert MimeType.infer_bytes(line) == protocol
+        assert MimeType.infer_bytes(bytearray(line)) == protocol
+        assert MimeType.infer_bytes(memoryview(line)) == protocol
+        assert MimeType.infer_bytes_msgtype(line) == msgtype
+        assert MimeType.infer_bytes_msgtype(bytearray(line)) == msgtype
+        assert MimeType.infer_bytes_msgtype(memoryview(line)) == msgtype
         text = line.decode()
-        assert seed.infer_text_protocol(text) == protocol
-        assert seed.infer_text_msgtype(text) == (
+        assert MimeType.infer_text(text) == protocol
+        assert MimeType.infer_text_msgtype(text) == (
             msgtype.decode() if msgtype is not None else None
         )
 
     empty = FixRegistry()
-    assert empty.infer_bytes_msgtype(b"35=AE|") == b"AE"
-    assert empty.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+    assert MimeType.infer_bytes_msgtype(b"35=AE|") == b"AE"
+    assert MimeType.infer_text_msgtype("MSGTYPE=AE|") == "AE"
 
 
 def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:

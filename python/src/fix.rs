@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyInt};
+use pyo3::types::{PyBool, PyInt};
 
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
@@ -25,9 +25,7 @@ use yggdryl::{
     from_json_scalar_with_field, into_json_scalar,
 };
 
-use crate::enums::PyMimeType;
 use crate::media::iceberg::folder_holder_from_value;
-use crate::text::codec::with_python_bytes;
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::value_error;
@@ -297,43 +295,6 @@ impl PyFixRegistry {
             .field_by_path(path, branch.as_ref())
             .map(|field| PyField::from_inner(field.clone()))
             .map_err(|error| absent(&error))
-    }
-
-    /// Infer the native MIME classifier for a byte log line.
-    fn infer_bytes_protocol(&self, line: &Bound<'_, PyAny>) -> PyResult<PyMimeType> {
-        with_python_bytes(
-            line,
-            "a FIX line must be bytes, bytearray, or memoryview",
-            |line| Ok(PyMimeType::from_core(self.inner.infer_bytes_protocol(line))),
-        )
-    }
-
-    /// Infer the native MIME classifier for a text log line.
-    fn infer_text_protocol(&self, line: &str) -> PyMimeType {
-        PyMimeType::from_core(self.inner.infer_text_protocol(line))
-    }
-
-    /// Infer `MsgType` from a byte log line without parsing its FIX frame.
-    fn infer_bytes_msgtype<'py>(
-        &self,
-        py: Python<'py>,
-        line: &Bound<'_, PyAny>,
-    ) -> PyResult<Option<Bound<'py, PyBytes>>> {
-        with_python_bytes(
-            line,
-            "a FIX line must be bytes, bytearray, or memoryview",
-            |line| {
-                Ok(self
-                    .inner
-                    .infer_bytes_msgtype(line)
-                    .map(|value| PyBytes::new(py, value)))
-            },
-        )
-    }
-
-    /// Infer `MsgType` from a text log line without parsing its FIX frame.
-    fn infer_text_msgtype(&self, line: &str) -> Option<String> {
-        self.inner.infer_text_msgtype(line).map(str::to_owned)
     }
 
     /// The field a tag or name reaches by deterministic best match, or `None`.

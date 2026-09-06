@@ -1078,10 +1078,10 @@ fix_by_path: Field = fix_registry_from_fields.field_by_path("OrderQty", "")
 fix_maybe_by_path: Field | None = fix_registry_from_fields.get_field_by_path(
     "OrderQty", ""
 )
-fix_bytes_protocol: MimeType = fix_registry_from_fields.infer_bytes_protocol(b"35=D|")
-fix_text_protocol: MimeType = fix_registry_from_fields.infer_text_protocol("35=D|")
-fix_bytes_msgtype: bytes | None = fix_registry_from_fields.infer_bytes_msgtype(b"35=D|")
-fix_text_msgtype: str | None = fix_registry_from_fields.infer_text_msgtype("35=D|")
+fix_bytes_protocol: MimeType = MimeType.infer_bytes(b"35=D|")
+fix_text_protocol: MimeType = MimeType.infer_text("35=D|")
+fix_bytes_msgtype: bytes | None = MimeType.infer_bytes_msgtype(b"35=D|")
+fix_text_msgtype: str | None = MimeType.infer_text_msgtype("35=D|")
 fix_generic: Field = fix_registry_from_fields.field(38)
 fix_maybe_generic: Field | None = fix_registry_from_fields.get_field("OrderQty")
 fix_item: Field = fix_registry_from_fields[38]

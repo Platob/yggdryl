@@ -98,7 +98,6 @@ impl AsciiEnum {
         "XZCE",
     ];
 
-
     /// FIX's `SideCodeSet`, the union across every version, sorted.
     ///
     /// A datatype is parameter-free and a listing is a constant, so every

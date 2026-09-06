@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{Field, FixBranch, FixId, FixKey, FixRegistry};
+use yggdryl::types::MsgType;
+use yggdryl::{Field, FixBranch, FixId, FixKey, FixRegistry, MimeType};
 
 use super::{BRANCH_FIELDS, LARGE_FIELDS, generated, mixed_nestedness, seed, two_branches, venue};
 
@@ -46,10 +47,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let fixml = b"8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|";
     group.bench_function("infer_fixml_protocol", |bencher| {
-        bencher.iter(|| black_box(&registry).infer_bytes_protocol(black_box(fixml)));
+        bencher.iter(|| MimeType::infer_bytes(black_box(fixml)));
     });
     group.bench_function("infer_fixml_msgtype", |bencher| {
-        bencher.iter(|| black_box(&registry).infer_bytes_msgtype(black_box(fixml)));
+        bencher.iter(|| MsgType::infer_bytes(black_box(fixml)));
     });
 
     // The identifier's own render and parse, which is what a config file or a

@@ -137,8 +137,8 @@ try {
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('NoPartyIDs.0.PartyID'))
   benchmark('fix/message_branch', () => message.branch)
-  benchmark('fix/infer_fixml_protocol', () => registry.inferBytesProtocol(FIXML_LINE))
-  benchmark('fix/infer_ullink_msgtype', () => registry.inferTextMsgtype(ULLINK_LINE))
+  benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
+  benchmark('fix/infer_ullink_msgtype', () => MimeType.inferTextMsgtype(ULLINK_LINE))
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>
     fix.FixRegistry.fromHandle(generated),

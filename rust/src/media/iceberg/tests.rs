@@ -5641,7 +5641,7 @@ mod line_projection {
         let mut options: RecordOptions = TextOptions::new()
             .try_with_rowheader(HEADER)
             .unwrap()
-            .try_with_rstrip(r"\s+$")
+            .try_with_rstrip([r"\s+$"])
             .unwrap()
             .into();
         options.set_batch_row_size(Some(2));

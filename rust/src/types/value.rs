@@ -613,45 +613,47 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             None => canonicalization_failure(dtype),
         },
         // A code canonicalizes the same way, at the width its own type fixes.
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => match ascii_bytes(value) {
-            Some(bytes) => {
-                let text = code_cell_text(dtype, bytes)?;
-                let canonical = match dtype {
-                    D::Country => {
-                        Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(text)?))
-                    }
-                    D::Currency => {
-                        Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(text)?))
-                    }
-                    D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
-                    D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
-                    D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
-                    D::MsgType => {
-                        Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(text)?))
-                    }
-                    D::Direction => {
-                        Scalar::Ascii(AsciiFamily::Direction(crate::types::Direction::new(text)?))
-                    }
-                    _ => unreachable!("registered ASCII datatype matched above"),
-                };
-                let unchanged = matches!(
-                    (dtype, value),
-                    (D::Country, Scalar::Ascii(AsciiFamily::Country(_)))
-                        | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
-                        | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
-                        | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
-                        | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
-                        | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
-                        | (D::Direction, Scalar::Ascii(AsciiFamily::Direction(_)))
-                );
-                Ok(if unchanged {
-                    (value.clone(), false)
-                } else {
-                    (canonical, true)
-                })
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => {
+            match ascii_bytes(value) {
+                Some(bytes) => {
+                    let text = code_cell_text(dtype, bytes)?;
+                    let canonical = match dtype {
+                        D::Country => {
+                            Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(text)?))
+                        }
+                        D::Currency => {
+                            Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(text)?))
+                        }
+                        D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
+                        D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
+                        D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
+                        D::MsgType => {
+                            Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(text)?))
+                        }
+                        D::Direction => Scalar::Ascii(AsciiFamily::Direction(
+                            crate::types::Direction::new(text)?,
+                        )),
+                        _ => unreachable!("registered ASCII datatype matched above"),
+                    };
+                    let unchanged = matches!(
+                        (dtype, value),
+                        (D::Country, Scalar::Ascii(AsciiFamily::Country(_)))
+                            | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
+                            | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
+                            | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
+                            | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
+                            | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
+                            | (D::Direction, Scalar::Ascii(AsciiFamily::Direction(_)))
+                    );
+                    Ok(if unchanged {
+                        (value.clone(), false)
+                    } else {
+                        (canonical, true)
+                    })
+                }
+                None => canonicalization_failure(dtype),
             }
-            None => canonicalization_failure(dtype),
-        },
+        }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
         D::Uuid => {
@@ -1237,12 +1239,14 @@ fn validate_dtype_value(
             },
             None => Err(expected(dtype.name(), value)),
         },
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => match ascii_bytes(value) {
-            Some(bytes) => code_cell_text(dtype, bytes)
-                .map(|_| ())
-                .map_err(ascii_failure),
-            None => Err(expected(dtype.name(), value)),
-        },
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => {
+            match ascii_bytes(value) {
+                Some(bytes) => code_cell_text(dtype, bytes)
+                    .map(|_| ())
+                    .map_err(ascii_failure),
+                None => Err(expected(dtype.name(), value)),
+            }
+        }
         D::Uuid => match value {
             Scalar::Uuid(_) => Ok(()),
             _ => match uuid_bytes(value).map(uuid_parse) {

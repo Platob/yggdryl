@@ -299,16 +299,16 @@ test('protocol and MsgType inference stays native and shallow', () => {
     ['level=INFO message=random', MimeType.OCTET_STREAM, null],
   ]
   for (const [line, protocol, msgtype] of cases) {
-    assert.ok(registry.inferBytesProtocol(Buffer.from(line)).equals(protocol))
-    assert.ok(registry.inferTextProtocol(line).equals(protocol))
-    const bytes = registry.inferBytesMsgtype(Buffer.from(line))
+    assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
+    assert.ok(MimeType.inferText(line).equals(protocol))
+    const bytes = MimeType.inferBytesMsgtype(Buffer.from(line))
     assert.equal(bytes?.toString() ?? null, msgtype)
-    assert.equal(registry.inferTextMsgtype(line), msgtype)
+    assert.equal(MimeType.inferTextMsgtype(line), msgtype)
   }
 
   const empty = new fix.FixRegistry()
-  assert.equal(empty.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
-  assert.equal(empty.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+  assert.equal(MimeType.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
+  assert.equal(MimeType.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
 })
 
 test('an explicit branch pins lookup and omission infers the best match', () => {

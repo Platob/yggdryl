@@ -9,9 +9,8 @@ use crate::types::budget::{
 };
 use crate::types::{
     AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, Decimal,
-    MIC_WIDTH, MSGTYPE_WIDTH, SIDE_WIDTH, Temporal,
-    Text, ascii_bytes, ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes,
-    uuid_parse,
+    MIC_WIDTH, MSGTYPE_WIDTH, SIDE_WIDTH, Temporal, Text, ascii_bytes, ascii_free_text,
+    ascii_padded, ascii_text, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::types::{

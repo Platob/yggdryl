@@ -19,7 +19,7 @@
 | Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
 | Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
-| Inference | `infer_bytes_protocol` / `infer_text_protocol` and `infer_bytes_msgtype` / `infer_text_msgtype` classify one line without parsing a message |
+| Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
 | Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
 
@@ -639,63 +639,99 @@ A malformed shard or a scheme without a backend is an error from `global()`, nev
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
     ```
 
-## Protocol and MsgType inference
+## Classifying a captured line
 
-`infer_bytes_protocol` and `infer_text_protocol` classify one arbitrary log line without parsing a message. `infer_bytes_msgtype` and `infer_text_msgtype` borrow the value of numeric tag 35 or symbolic `MSGTYPE`.
+Deciding what one captured line is, what message type it declares and which way it moved is **transport rather than FIX** — every captured line has a shape whatever protocol it carried — so it needs no dictionary and lives with the types that name each answer.
+
+| call | answers |
+| --- | --- |
+| `MimeType::infer_bytes` / `infer_text` | what the line is |
+| `MsgType::infer_bytes` / `infer_text` | the message type it declares, borrowed |
+| `Direction::infer_bytes` / `infer_text` | which way it moved |
+| `Direction::split_bytes` / `split_text` | the same, with the marker taken off the line |
+
+One shallow scan answers all three. It reads no message and allocates nothing, and every answer is a slice of the caller's bytes.
 
 | line | answer |
 | --- | --- |
-| numeric pairs | `text/fix` |
-| known symbolic pairs | `text/ullink` |
-| a numeric frame also carrying key/value names | `text/fixul` |
+| numeric pairs in a frame | `text/fix` |
+| `#`-marked keys, or a `MSGTYPE=` key | `text/ullink` |
+| a numeric frame also carrying symbolic keys | `text/fixul` |
 | official `XmlData(213)` whose payload begins with XML | `text/fixml` |
-| unrelated text | `application/octet-stream` |
+| no frame, but `key=value` throughout | `text/key-value` |
+| a document opening `<` or `{`/`[` | `application/xml`, `application/json` |
+| anything else | `application/octet-stream` |
 
-The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field.
+The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field. A frame beats a document, because an `XmlData` payload is part of a frame; a document beats the bare pair rules, because an attribute inside a tag is not a field.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{FixRegistry, MimeType};
+    use yggdryl::types::{Direction, MsgType};
+    use yggdryl::MimeType;
 
-    let registry = FixRegistry::new();
-    let line = b"sending 8=FIX.4.4|35=D|55=AAPL|10=001| queued seq=7";
-    assert_eq!(registry.infer_bytes_protocol(line), MimeType::FIX);
-    assert_eq!(registry.infer_bytes_msgtype(line), Some(&b"D"[..]));
+    let line = b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=001|";
+    assert_eq!(MimeType::infer_bytes(line), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(line), Some(&b"D"[..]));
+    assert_eq!(Direction::infer_bytes(line), Some(Direction::SENT));
+
+    // No frame, but pairs throughout.
+    assert_eq!(
+        MimeType::infer_bytes(b"level=INFO worker=3 took=12ms"),
+        MimeType::KEYVALUE
+    );
+    // A document is what it opens as.
+    assert_eq!(MimeType::infer_bytes(b"<Order id='1'/>"), MimeType::XML);
+
+    // Reading the verb takes it off the line, and takes nothing else.
+    let (direction, body) = Direction::split_bytes(line);
+    assert_eq!(direction, Some(Direction::SENT));
+    assert_eq!(body, b">> 8=FIX.4.4|35=D|55=AAPL|10=001|");
     ```
 
 === "Python"
 
     ```python
     from yggdryl import MimeType
-    from yggdryl.fix import FixRegistry
 
-    registry = FixRegistry()
     line = "ACCOUNT=A1|MSGTYPE=D|SYMBOL=AAPL"
-    assert registry.infer_text_protocol(line) == MimeType.ULLINK
-    assert registry.infer_text_msgtype(line) == "D"
+    assert MimeType.infer_text(line) == MimeType.ULLINK
+    assert MimeType.infer_text_msgtype(line) == "D"
+    assert MimeType.infer_text_direction("recv " + line) == "RECV"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { MimeType, fix } = require('yggdryl')
+    const { MimeType } = require('yggdryl')
 
-    const registry = new fix.FixRegistry()
     const line = '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|'
-    assert.ok(registry.inferTextProtocol(line).equals(MimeType.FIXUL))
-    assert.equal(registry.inferTextMsgtype(line), 'D')
+    assert.ok(MimeType.inferText(line).equals(MimeType.FIXUL))
+    assert.equal(MimeType.inferTextMsgtype(line), 'D')
     ```
 
-A raw `MSGTYPE=` anywhere in the line wins over tag 35, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root. Canonical spellings work in an empty registry, and loaded aliases and alternate tags extend the same lookup.
+A raw `MSGTYPE=` anywhere in the line wins over tag 35, because a bridge writes its own type in front of a frame it relays, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root.
+
+### A direction is the verb in front of the payload
+
+The verb counts only where it stands before the message starts, so a `sent` inside a FIX `Text(58)`, a bridge value spelled `OUT=1`, or an XML payload's own wording never becomes a direction.
+
+| direction | opens with |
+| --- | --- |
+| `SENT` | `send`, `sending`, `sent`; and `out`, `outbound`, `outgoing` |
+| `RECV` | `receive`, `receiving`, `received`, `recv`; and `in`, `inbound`, `incoming` |
+
+The bare `in` and `out` forms are **chosen** only where a bracket opens them and a delimiter closes them, because that is the one shape a marker has and none of the shapes the same letters have otherwise: `direct:out` is a route endpoint and `MCFID-IN-XPAR` is a session name. They still count against an opposite verb, which is what makes `sending in session 3` and `received out of order` answer nothing rather than a wrong answer.
+
+A prefix carrying both verbs, and one carrying neither, both answer nothing.
 
 ## Edges
 
 - `registry.get_field("5055:cme")` -> `None`; a string key is a name, and only `FixId::from_str` parses an identifier.
 - `registry.get_field_by_tag(5055)` with no branch -> the deterministic best match, so a named branch's own tag resolves; an explicit branch never crosses.
 - Two names whose seeded XXH64 digests collide -> a read rechecks the field behind the digest and misses; a mutation refuses loudly.
-- `infer_bytes_msgtype` / `infer_text_msgtype` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
+- `MsgType::infer_bytes` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
 - A line the scan cannot place -> `application/octet-stream`; a checksum tag 10 stops the scan.
 - `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.

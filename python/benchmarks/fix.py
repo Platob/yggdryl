@@ -182,11 +182,11 @@ def _message_branch() -> object:
 
 
 def _infer_fixml_protocol() -> object:
-    return SEED_REGISTRY.infer_bytes_protocol(FIXML_LINE)
+    return MimeType.infer_bytes(FIXML_LINE)
 
 
 def _infer_ullink_msgtype() -> object:
-    return SEED_REGISTRY.infer_text_msgtype(ULLINK_LINE)
+    return MimeType.infer_text_msgtype(ULLINK_LINE)
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:

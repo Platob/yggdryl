@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use napi::JsValue as _;
-use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unknown, ValueType};
+use napi::bindgen_prelude::{ClassInstance, Env, Generator, Result, Unknown, ValueType};
 use napi_derive::napi;
 use yggdryl::{
     Field as CoreField, FixBranch as CoreFixBranch, FixId as CoreFixId, FixKey,
@@ -27,7 +27,7 @@ use yggdryl::{
 use crate::iobase::{LocationInput, folder_from_input};
 use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
-use crate::{JsMimeType, exact_i32, napi_error, napi_type_error};
+use crate::{exact_i32, napi_error, napi_type_error};
 
 /// What a mutation says when something else still holds the dictionary.
 const SHARED: &str =
@@ -294,32 +294,6 @@ impl JsFixRegistry {
             .field_by_path(&path, branch.as_ref())
             .map(|field| JsField::from_core(field.clone()))
             .map_err(napi_error)
-    }
-
-    /// Infer the native MIME classifier for a byte log line.
-    #[napi]
-    pub fn infer_bytes_protocol(&self, line: Buffer) -> JsMimeType {
-        JsMimeType::from_core(self.inner.infer_bytes_protocol(line.as_ref()))
-    }
-
-    /// Infer the native MIME classifier for a text log line.
-    #[napi]
-    pub fn infer_text_protocol(&self, line: String) -> JsMimeType {
-        JsMimeType::from_core(self.inner.infer_text_protocol(&line))
-    }
-
-    /// Infer `MsgType` from a byte log line without parsing its FIX frame.
-    #[napi]
-    pub fn infer_bytes_msgtype(&self, line: Buffer) -> Option<Buffer> {
-        self.inner
-            .infer_bytes_msgtype(line.as_ref())
-            .map(|value| Buffer::from(value.to_vec()))
-    }
-
-    /// Infer `MsgType` from a text log line without parsing its FIX frame.
-    #[napi]
-    pub fn infer_text_msgtype(&self, line: String) -> Option<String> {
-        self.inner.infer_text_msgtype(&line).map(str::to_owned)
     }
 
     /// The field a tag or name reaches by deterministic best match, or `null`.

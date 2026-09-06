@@ -260,9 +260,7 @@ impl Serialize for Scalar {
                 AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
                 AsciiFamily::Side(value) => tagged(serializer, "side", &value.as_str()),
                 AsciiFamily::MsgType(value) => tagged(serializer, "msgtype", &value.as_str()),
-                AsciiFamily::Direction(value) => {
-                    tagged(serializer, "direction", &value.as_str())
-                }
+                AsciiFamily::Direction(value) => tagged(serializer, "direction", &value.as_str()),
             },
             Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
             Self::Version(value) => tagged(serializer, "version", value),

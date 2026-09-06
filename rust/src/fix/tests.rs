@@ -10,6 +10,7 @@ use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
 use crate::holder::local::Folder;
+use crate::types::MsgType;
 use crate::{
     DataType, Error, Field, FixBranch, FixEnumValue, FixId, FixKey, FixLineageEntry, FixMsg,
     FixPedigree, FixRegistry, MimeType, Scalar, Version,
@@ -123,13 +124,6 @@ fn name_indexes_fold_ascii_without_crossing_branches() {
 fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
     type Case = (&'static [u8], MimeType, Option<&'static [u8]>);
 
-    let registry = FixRegistry::from_fields([
-        tagged("Account", 1),
-        tagged("BeginString", 8),
-        tagged("MsgType", 35),
-        tagged("Symbol", 55),
-    ])
-    .unwrap();
     let cases: &[Case] = &[
         (
             b"2025-01-01 INFO 8=FIX.4.4|35=D|55=AAPL|",
@@ -198,7 +192,9 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         ),
         (
             b"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR",
-            MimeType::ULLINK,
+            // No marker and no `MSGTYPE=`: with no dictionary to resolve
+            // these names against, an attribute run is what it looks like.
+            MimeType::KEYVALUE,
             None,
         ),
         (
@@ -208,24 +204,26 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         ),
         (
             b"<Order ClOrdID='XML-1'>body</Order>",
-            MimeType::OCTET_STREAM,
+            // A document is what it opens as, before any pair rule runs: an
+            // attribute inside a tag is not a field.
+            MimeType::XML,
             None,
         ),
         (
             b"level=INFO timestamp=2025-01-01 message=random",
-            MimeType::OCTET_STREAM,
+            MimeType::KEYVALUE,
             None,
         ),
         (b"35=", MimeType::OCTET_STREAM, None),
         (b"not a protocol line", MimeType::OCTET_STREAM, None),
     ];
     for (line, protocol, msgtype) in cases {
-        assert_eq!(&registry.infer_bytes_protocol(line), protocol, "{line:?}");
-        assert_eq!(registry.infer_bytes_msgtype(line), *msgtype, "{line:?}");
+        assert_eq!(&MimeType::infer_bytes(line), protocol, "{line:?}");
+        assert_eq!(MsgType::infer_bytes(line), *msgtype, "{line:?}");
         let text = std::str::from_utf8(line).unwrap();
-        assert_eq!(&registry.infer_text_protocol(text), protocol, "{text}");
+        assert_eq!(&MimeType::infer_text(text), protocol, "{text}");
         assert_eq!(
-            registry.infer_text_msgtype(text),
+            MsgType::infer_text(text),
             msgtype.and_then(|value| std::str::from_utf8(value).ok()),
             "{text}"
         );
@@ -234,22 +232,18 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
     // An overflowing numeric key is one bad candidate, not a reason to stop
     // before a later valid frame in the same log line.
     let overflow = b"999999999999999999999=x 8=FIX.4.4|35=D|";
-    assert_eq!(registry.infer_bytes_protocol(overflow), MimeType::FIX);
-    assert_eq!(
-        registry.infer_bytes_msgtype(overflow),
-        Some(b"D".as_slice())
-    );
+    assert_eq!(MimeType::infer_bytes(overflow), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(overflow), Some(b"D".as_slice()));
 
-    // The protocol constants are enough for MsgType inference; a dictionary
-    // enriches aliases but is not required to find canonical wire spellings.
-    let empty = FixRegistry::new();
-    assert_eq!(empty.infer_bytes_protocol(b"35=D|55=AAPL|"), MimeType::FIX);
-    assert_eq!(empty.infer_bytes_msgtype(b"35=D|55=AAPL|"), Some(&b"D"[..]));
+    // Classification needs no dictionary at all: it is transport, and every
+    // captured line has a shape whatever protocol it carried.
+    assert_eq!(MimeType::infer_bytes(b"35=D|55=AAPL|"), MimeType::FIX);
+    assert_eq!(MsgType::infer_bytes(b"35=D|55=AAPL|"), Some(&b"D"[..]));
     assert_eq!(
-        empty.infer_text_protocol("ACCOUNT=A1|MSGTYPE=8|"),
+        MimeType::infer_text("ACCOUNT=A1|MSGTYPE=8|"),
         MimeType::ULLINK
     );
-    assert_eq!(empty.infer_text_msgtype("ACCOUNT=A1|MSGTYPE=8|"), Some("8"));
+    assert_eq!(MsgType::infer_text("ACCOUNT=A1|MSGTYPE=8|"), Some("8"));
 
     assert_eq!(MimeType::ULLINK.as_str(), "text/ullink");
     assert_eq!(MimeType::FIX.as_str(), "text/fix");
@@ -258,9 +252,9 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
 
     for value in ["U1", "UABC", "UL"] {
         let line = format!("8=FIX.4.4|35={value}|10=000|");
-        assert_eq!(registry.infer_text_msgtype(&line), Some("UDF"));
+        assert_eq!(MsgType::infer_text(&line), Some("UDF"));
     }
-    assert_eq!(registry.infer_text_msgtype("35=U|"), Some("U"));
+    assert_eq!(MsgType::infer_text("35=U|"), Some("U"));
 }
 
 #[test]

@@ -98,8 +98,8 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     options.require_framing_rowheader()?;
     let mut counting = options.clone();
     counting.with_rownum = None;
-    counting.set_lstrip(None)?;
-    counting.set_rstrip(None)?;
+    counting.set_lstrip::<[&str; 0], &str>([])?;
+    counting.set_rstrip::<[&str; 0], &str>([])?;
     counting.set_max_record_byte_size(Some(0));
     let codings = handle.media_type().encodings().to_vec();
     let raw: Box<dyn Read + '_> =
@@ -352,6 +352,7 @@ struct RawRow {
     body: Arc<[u8]>,
     dropped_byte_size: Option<u64>,
     captures: Vec<Option<Vec<u8>>>,
+    direction: Option<&'static str>,
 }
 
 /// Physical lines or framed records parsed against one precomputed schema.
@@ -365,6 +366,13 @@ struct RawRows<R> {
     index: u64,
     active: Option<RawRecord>,
     done: bool,
+    /// The digest of the body the previous row carried, when deduplicating.
+    ///
+    /// One `u128`, whatever the stream's length: adjacent deduplication is
+    /// the whole rule, so nothing else has to be remembered. 128 bits because
+    /// a day of capture is comfortably a billion rows and a 64-bit key would
+    /// silently drop a real one about once per large capture.
+    previous: Option<u128>,
 }
 
 /// One physical line after header removal and edge stripping.
@@ -373,6 +381,7 @@ struct ParsedLine {
     body: Body,
     captures: Vec<Option<Vec<u8>>>,
     matched: bool,
+    direction: Option<&'static str>,
 }
 
 /// One physical line, possibly reduced after its header DFA proves no match.
@@ -413,6 +422,11 @@ struct RawRecord {
     body: Vec<u8>,
     decoded_size: u64,
     captures: Vec<Option<Vec<u8>>>,
+    /// The direction the first physical line of this record carried.
+    ///
+    /// A framed record spans several lines and the marker sits in front of
+    /// the first, which is the one the transport wrote it on.
+    direction: Option<&'static str>,
 }
 
 fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
@@ -481,6 +495,7 @@ impl<R: Read> RawRows<R> {
             index: 0,
             active: None,
             done: false,
+            previous: None,
         }
     }
 
@@ -556,7 +571,10 @@ impl<R: Read> RawRows<R> {
 
         let mut start = 0;
         let mut end = body.len();
-        if let Some(lstrip) = options.lstrip_regex() {
+        // Each pattern strips from the edge the one before it left, so a
+        // layered prefix comes off a layer at a time rather than through one
+        // expression nobody can read.
+        for lstrip in options.lstrip_regexes() {
             if let Some(found) = lstrip
                 .find(&body[start..end])
                 .filter(|found| found.start() == 0)
@@ -564,7 +582,7 @@ impl<R: Read> RawRows<R> {
                 start += found.end();
             }
         }
-        if let Some(rstrip) = options.rstrip_regex() {
+        for rstrip in options.rstrip_regexes() {
             if let Some(found) = rstrip
                 .find_iter(&body[start..end])
                 .filter(|found| found.end() == end - start)
@@ -573,8 +591,18 @@ impl<R: Read> RawRows<R> {
                 end = start + found.start();
             }
         }
+        // The direction marker is transport prose in front of the payload, so
+        // reading it takes it off the body: a body that kept it would carry a
+        // word no protocol sent.
+        let direction = if options.with_direction {
+            let (direction, kept) = crate::types::Direction::split_bytes(&body[start..end]);
+            start = end - kept.len();
+            direction
+        } else {
+            None
+        };
 
-        let decoded_size = if options.lstrip_regex().is_some() || options.rstrip_regex().is_some() {
+        let decoded_size = if options.rewrites_body() {
             u64::try_from(end - start).map_err(|_| Error::InvalidRecord {
                 path: format_smolstr!("$[{index}].body"),
                 reason: SmolStr::new_static("decoded text record exceeds u64::MAX bytes"),
@@ -595,15 +623,14 @@ impl<R: Read> RawRows<R> {
             },
             captures,
             matched,
+            direction,
         })
     }
 
     fn next_line(&mut self) -> Option<Result<ParsedLine>> {
         let options = Arc::clone(&self.options);
         let index = self.index;
-        let can_drain = options.max_record_byte_size().is_some()
-            && options.lstrip_regex().is_none()
-            && options.rstrip_regex().is_none();
+        let can_drain = options.max_record_byte_size().is_some() && !options.rewrites_body();
         let mut header = if can_drain && options.rowheader_regex().is_none() {
             ScannedHeader::Nonmatching
         } else {
@@ -771,6 +798,7 @@ impl RawRecord {
             index,
             body,
             captures,
+            direction,
             ..
         } = line;
         let retained = retained_size(limit, 0, body.bytes.len());
@@ -779,6 +807,7 @@ impl RawRecord {
             body: body.bytes[..retained].to_vec(),
             decoded_size: body.decoded_size,
             captures,
+            direction,
         }
     }
 
@@ -811,6 +840,7 @@ impl RawRecord {
             body: Arc::from(self.body),
             dropped_byte_size,
             captures: self.captures,
+            direction: self.direction,
         }
     }
 }
@@ -830,12 +860,30 @@ impl<R: Read> Iterator for RawRows<R> {
         if self.done {
             return None;
         }
-        if self.options.framing() {
-            return self.next_framed();
+        loop {
+            let row = if self.options.framing() {
+                self.next_framed()
+            } else {
+                self.next_line().map(|line| {
+                    line.map(|line| {
+                        RawRecord::new(line, self.options.max_record_byte_size()).finish()
+                    })
+                })
+            };
+            let row = row?;
+            if !self.options.dedup_adjacent {
+                return Some(row);
+            }
+            let Ok(row) = row else {
+                return Some(row);
+            };
+            let digest = crate::xxhash::xxh128(&row.body);
+            if self.previous == Some(digest) {
+                continue;
+            }
+            self.previous = Some(digest);
+            return Some(Ok(row));
         }
-        self.next_line().map(|line| {
-            line.map(|line| RawRecord::new(line, self.options.max_record_byte_size()).finish())
-        })
     }
 }
 
@@ -862,6 +910,34 @@ impl<R: Read> Records<R> {
         let rownum = physical_rownum(self.raw.options.with_rownum, row.index)?;
         if let Some(rownum) = rownum {
             entries.push((SmolStr::new_static("rownum"), Scalar::from(rownum)));
+        }
+        // Classification is one shallow scan over bytes the reader already
+        // holds, and every column it fills is a fact about the line rather
+        // than about the protocol inside it.
+        if self.raw.options.with_direction {
+            entries.push((
+                SmolStr::new_static("direction"),
+                row.direction.map_or(Scalar::Null, |direction| {
+                    DataType::Direction
+                        .scalar(Scalar::from(direction))
+                        .unwrap_or(Scalar::Null)
+                }),
+            ));
+        }
+        if self.raw.options.with_mimetype {
+            entries.push((
+                SmolStr::new_static("mimetype"),
+                Scalar::from(crate::MimeType::infer_bytes(&row.body).as_str()),
+            ));
+        }
+        if self.raw.options.with_msgtype {
+            entries.push((
+                SmolStr::new_static("msgtype"),
+                crate::types::MsgType::infer_bytes(&row.body)
+                    .and_then(|value| std::str::from_utf8(value).ok())
+                    .and_then(|value| DataType::MsgType.scalar(Scalar::from(value)).ok())
+                    .unwrap_or(Scalar::Null),
+            ));
         }
         entries.push((SmolStr::new_static("body"), Scalar::from(row.body)));
         if self.raw.options.max_record_byte_size().is_some() {

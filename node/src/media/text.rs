@@ -342,20 +342,20 @@ impl JsTextOptions {
 
     /// Return the left-edge stripping regex.
     #[napi(getter)]
-    pub fn lstrip(&self) -> Option<String> {
-        self.inner.lstrip().map(ToOwned::to_owned)
+    pub fn lstrip(&self) -> Vec<String> {
+        self.inner.lstrip().map(ToOwned::to_owned).collect()
     }
 
     /// Compile or clear the left-edge stripping regex.
     #[napi(setter)]
-    pub fn set_lstrip(&mut self, lstrip: Option<String>) -> Result<()> {
-        self.inner.set_lstrip(lstrip.as_deref()).map_err(napi_error)
+    pub fn set_lstrip(&mut self, lstrip: Vec<String>) -> Result<()> {
+        self.inner.set_lstrip(lstrip).map_err(napi_error)
     }
 
     /// Return the right-edge stripping regex.
     #[napi(getter)]
-    pub fn rstrip(&self) -> Option<String> {
-        self.inner.rstrip().map(ToOwned::to_owned)
+    pub fn rstrip(&self) -> Vec<String> {
+        self.inner.rstrip().map(ToOwned::to_owned).collect()
     }
 
     /// Compile or clear the right-edge stripping regex.
