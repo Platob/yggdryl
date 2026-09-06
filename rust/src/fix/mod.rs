@@ -152,6 +152,7 @@ use crate::{Error, Result, Version};
 mod anomaly;
 mod batch;
 mod build;
+mod cfb;
 mod codes;
 mod constants;
 mod crated;

@@ -124,7 +124,15 @@ The bindings expose the same lazy iterator with a 65,536-byte default batch.
     assert.equal(cursor.tell(), 3)
     ```
 
-`ByteStream` implements `std::io::Read`; it never opens a coded handle, decoding straight from the encoded source and retaining no decoded pages.
+`ByteStream` implements `std::io::Read`; it never opens a coded handle, decoding straight from the encoded source and retaining no decoded pages. A `Read` call is capped at the stream's `batch_size`, so that argument is what a record read asks the store for.
+
+### Fetch window
+
+`DEFAULT_STREAM_BATCH_SIZE` (64 KiB) shapes what a reader hands *out*; `DEFAULT_FETCH_BYTE_SIZE` (1 MiB) shapes what it asks *for*. The two differ because a decoder pulls in its own small increments - a gzip stream reads 32 KiB at a time - and against an object store every pull is a round trip. Compressed record reads buffer the transport at the fetch window, so a scan costs requests proportional to the object, not to the decoder's appetite: one open, one ask per window, and the emptiness test rides the first window instead of a one-byte request.
+
+Measured over a filesystem that records what each read asks it for, a 490 KB gzip log went from 16 asks - fifteen of 32 KiB, after a one-byte probe - to one ask of a whole window; a 9.98 MB object costs one open and ten window-sized asks. A 1 GiB object therefore divides into roughly a thousand asks where the decoder's own appetite would have made about thirty-two thousand.
+
+A positional read is the other half of the rule: `pread` and `read_range_bytes` on a coded handle fetch what they need - between one stream batch and one window - rather than a whole window for a few bytes.
 
 ## Built from what you already hold
 
@@ -628,6 +636,39 @@ Both calls move every byte into another handle and add or remove a coding, recor
 | `level` | the shared 0-9 scale |
 
 Readers already decode through a name's codings; see [gzip](../../coding/gzip.md), [zlib](../../coding/zlib.md), and [zstd](../../coding/zstd.md).
+
+## Reading a coding in place
+
+`into_coded` retains the [coding](../../coding/index.md) the name declares and presents the decoded value, so no second handle is needed to read a compressed file as what it holds. It reads nothing until a read asks for bytes, and every read streams in bounded windows.
+
+| Call | Presents |
+| --- | --- |
+| `IOBase(path)` | the stored bytes; `codec` is the coding on them |
+| `into_coded()` | the decoded value, with that coding removed from `media_type` |
+| `into_coded(codec, level)` | the same, for bytes whose name does not admit what they are |
+
+=== "Python"
+
+    ```python
+    import gzip
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = root / "app.log.gz"
+    path.write_bytes(gzip.compress(b"symbol,price\n"))
+
+    assert IOBase(path).read_bytes()[:2] == b"\x1f\x8b"
+    assert IOBase(path).into_coded().read_text() == "symbol,price\n"
+
+    # A name declaring no coding passes its bytes through, so this is safe to
+    # call on any leaf; a repeat never decodes twice.
+    plain = IOBase(root / "plain.csv")
+    plain.write_text("symbol,price\n")
+    assert plain.into_coded().into_coded().read_text() == "symbol,price\n"
+    ```
 
 ## Open and close
 

@@ -1011,3 +1011,268 @@ fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
     options.dedup_adjacent = true;
     assert_eq!(bodies(&collect(&prefixed, options)).len(), 1);
 }
+
+/// What one text read costs the store underneath it.
+///
+/// A record read decodes through one sequential open, so the question a remote
+/// store cares about is how many times that open is asked for bytes. The
+/// decoder pulls in its own small increments - gzip reads 32 KiB at a time -
+/// so without a fetch window between them a gigabyte-scale object would cost
+/// tens of thousands of round trips for bytes it is going to read in order
+/// anyway.
+mod fetching {
+    use std::any::Any;
+    use std::sync::{Arc, Mutex};
+
+    use crate::holder::fs::{
+        BoundLocation, ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem,
+        MemoryFileSystem, OutputMetadata, RandomAccessReader,
+    };
+    use crate::media::text::{Text, TextOptions};
+    use crate::{Codec, DEFAULT_FETCH_BYTE_SIZE, IOBase as _, IOMedia as _, Url};
+
+    const ROWHEADER: &str = r"^\[(?<level>[A-Z]+)\] ";
+
+    /// One filesystem that records the size of every read its streams serve.
+    struct Counting {
+        inner: MemoryFileSystem,
+        reads: Arc<Mutex<Vec<usize>>>,
+        opens: Arc<Mutex<usize>>,
+    }
+
+    struct CountingReader {
+        inner: Box<dyn ByteReader>,
+        reads: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl ByteReader for CountingReader {
+        fn read(&mut self, buffer: &mut [u8]) -> crate::Result<usize> {
+            self.reads.lock().unwrap().push(buffer.len());
+            self.inner.read(buffer)
+        }
+
+        fn tell(&self) -> u64 {
+            self.inner.tell()
+        }
+
+        fn close(&mut self) -> crate::Result<()> {
+            self.inner.close()
+        }
+
+        fn closed(&self) -> bool {
+            self.inner.closed()
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn into_any(self: Box<Self>) -> Box<dyn Any> {
+            self
+        }
+    }
+
+    impl FileSystem for Counting {
+        fn type_name(&self) -> &str {
+            "counting"
+        }
+
+        fn equals(&self, other: &dyn FileSystem) -> bool {
+            other.as_any().downcast_ref::<Self>().is_some()
+        }
+
+        fn normalize_path(&self, path: &str) -> crate::Result<String> {
+            self.inner.normalize_path(path)
+        }
+
+        fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+            self.inner.file_info(path)
+        }
+
+        fn list(&self, selector: &FileSelector) -> FileInfos {
+            self.inner.list(selector)
+        }
+
+        fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+            self.inner.create_dir(path, recursive)
+        }
+
+        fn delete_dir(&self, path: &str) -> crate::Result<()> {
+            self.inner.delete_dir(path)
+        }
+
+        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+            self.inner.delete_dir_contents(path, missing_dir_ok)
+        }
+
+        fn delete_root_dir_contents(&self) -> crate::Result<()> {
+            self.inner.delete_root_dir_contents()
+        }
+
+        fn delete_file(&self, path: &str) -> crate::Result<()> {
+            self.inner.delete_file(path)
+        }
+
+        fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+            self.inner.copy_file(source, target)
+        }
+
+        fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+            self.inner.move_file(source, target)
+        }
+
+        fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+            self.inner.open_input_file(path)
+        }
+
+        fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+            *self.opens.lock().unwrap() += 1;
+            Ok(Box::new(CountingReader {
+                inner: self.inner.open_input_stream(path)?,
+                reads: Arc::clone(&self.reads),
+            }))
+        }
+
+        fn open_output_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> crate::Result<Box<dyn ByteWriter>> {
+            self.inner.open_output_stream(path, metadata)
+        }
+
+        fn open_append_stream(
+            &self,
+            path: &str,
+            metadata: Option<&OutputMetadata>,
+        ) -> crate::Result<Box<dyn ByteWriter>> {
+            self.inner.open_append_stream(path, metadata)
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+    }
+
+    /// Text that gzip cannot shrink away, so the encoded object spans several
+    /// fetch windows and records straddle every boundary between them.
+    fn payload(lines: usize) -> (Vec<u8>, Vec<Vec<u8>>) {
+        const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let mut state = 0x2545_F491_u32;
+        let mut plain = Vec::new();
+        let mut bodies = Vec::new();
+        for index in 0..lines {
+            let mut body = format!("id={index} ").into_bytes();
+            for _ in 0..1_024 {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                body.push(ALPHABET[state as usize % ALPHABET.len()]);
+            }
+            plain.extend_from_slice(b"[INFO] ");
+            plain.extend_from_slice(&body);
+            plain.push(b'\n');
+            bodies.push(body);
+        }
+        (plain, bodies)
+    }
+
+    fn framed() -> TextOptions {
+        TextOptions::new()
+            .try_with_rowheader(ROWHEADER)
+            .unwrap()
+            .with_framing(true)
+    }
+
+    fn located(name: &str, bytes: &[u8]) -> (crate::holder::fs::File, Arc<Counting>) {
+        let filesystem = Arc::new(Counting {
+            inner: MemoryFileSystem::new(),
+            reads: Arc::new(Mutex::new(Vec::new())),
+            opens: Arc::new(Mutex::new(0)),
+        });
+        filesystem
+            .inner
+            .open_output_stream(name, None)
+            .unwrap()
+            .write(bytes)
+            .unwrap();
+        let bound =
+            BoundLocation::new(Arc::clone(&filesystem) as Arc<dyn FileSystem>, name, None).unwrap();
+        let mut handle = crate::holder::fs::File::new(bound);
+        handle.set_media_type(
+            Url::from_str(&format!("file:///{name}"))
+                .unwrap()
+                .media_type(),
+        );
+        (handle, filesystem)
+    }
+
+    #[test]
+    fn a_compressed_leaf_streams_one_open_in_whole_fetch_windows() {
+        let (plain, expected) = payload(3_000);
+        let encoded = Codec::Gzip.dump(&plain).unwrap();
+        assert!(
+            encoded.len() > 2 * DEFAULT_FETCH_BYTE_SIZE,
+            "the object must span several windows, got {} bytes",
+            encoded.len()
+        );
+        let (handle, filesystem) = located("app.log.gz", &encoded);
+
+        let read = super::collect(&handle, framed());
+        assert_eq!(super::bodies(&read), expected);
+
+        // One open, and every ask but the last is a whole window: the decoder's
+        // own 32 KiB appetite never reaches the store.
+        assert_eq!(*filesystem.opens.lock().unwrap(), 1);
+        let reads = filesystem.reads.lock().unwrap().clone();
+        assert!(
+            reads.iter().all(|size| *size == DEFAULT_FETCH_BYTE_SIZE),
+            "every fetch asks for a whole window, got {reads:?}"
+        );
+        let windows = encoded.len().div_ceil(DEFAULT_FETCH_BYTE_SIZE);
+        assert!(
+            (windows..=windows + 1).contains(&reads.len()),
+            "one fetch per window of {} encoded bytes, at most one more to see              the end, got {} fetches",
+            encoded.len(),
+            reads.len()
+        );
+
+        // Counting the rows, rather than materializing them, reads the same
+        // way: one open, whole windows.
+        filesystem.reads.lock().unwrap().clear();
+        *filesystem.opens.lock().unwrap() = 0;
+        assert_eq!(
+            Text::new(handle).with_options(framed()).row_size().unwrap(),
+            3_000
+        );
+        assert_eq!(*filesystem.opens.lock().unwrap(), 1);
+        // Counting asks for a window at a time as well; the shorter final ask
+        // is the tail of the last window, not a small request of its own.
+        let counted = filesystem.reads.lock().unwrap().clone();
+        assert_eq!(counted.first(), Some(&DEFAULT_FETCH_BYTE_SIZE));
+        assert!(
+            counted.iter().all(|size| *size <= DEFAULT_FETCH_BYTE_SIZE),
+            "counting rows never asks beyond one window, got {counted:?}"
+        );
+        assert!(
+            counted.len() <= windows + 1,
+            "counting rows fetches one window at a time, got {counted:?}"
+        );
+    }
+
+    #[test]
+    fn an_empty_compressed_leaf_is_not_probed_a_byte_at_a_time() {
+        let (handle, filesystem) = located("empty.log.gz", &[]);
+
+        assert_eq!(
+            handle.read_arrow_reader(&framed().into()).unwrap().count(),
+            0
+        );
+        assert_eq!(*filesystem.opens.lock().unwrap(), 1);
+        assert_eq!(
+            filesystem.reads.lock().unwrap().as_slice(),
+            [DEFAULT_FETCH_BYTE_SIZE],
+            "emptiness is answered by the first window, not by a one-byte read"
+        );
+    }
+}

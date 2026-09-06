@@ -36,7 +36,7 @@ impl Urn {
                 "URN namespace-specific string must not be empty",
             ));
         }
-        validate_urn_query(value.query(), 5 + value.path().as_str().len())?;
+        validate_urn_query(value.query.as_deref(), 5 + value.path().as_str().len())?;
         if namespace.bytes().any(|byte| byte.is_ascii_uppercase()) {
             let mut path = SmolStrBuilder::new();
             path.push_str(&namespace.to_ascii_lowercase());
@@ -77,14 +77,34 @@ impl Urn {
         self.0.path()
     }
 
-    /// Return optional URN query text without `?`.
-    pub fn query(&self) -> Option<&str> {
-        self.0.query()
+    /// Return the URN path as text, decoding its escapes when asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::path_text`].
+    pub fn path_text(&self, decode: bool) -> Result<Cow<'_, str>> {
+        self.0.path_text(decode)
     }
 
-    /// Return optional URN fragment text without `#`.
-    pub fn fragment(&self) -> Option<&str> {
-        self.0.fragment()
+    /// Return optional URN query text without `?`, decoded when asked.
+    ///
+    /// A URN query holds its `?+` resolution and `?=` query components, so
+    /// this is the text after the first `?`, not a set of pairs.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::query`].
+    pub fn query(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.0.query(decode)
+    }
+
+    /// Return optional URN fragment text without `#`, decoded when asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::fragment`].
+    pub fn fragment(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.0.fragment(decode)
     }
 
     /// Return the canonical lowercase URN namespace identifier.

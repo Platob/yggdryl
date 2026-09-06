@@ -54,6 +54,20 @@ impl UriPath {
         self.0.as_str()
     }
 
+    /// Return the path as text, decoding its escapes when asked.
+    ///
+    /// A decoded path is text, not structure: `%2F` becomes a literal `/`
+    /// inside the segment that carried it, which is why
+    /// [`segments`](Self::segments) reads the stored form instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when `decode` is set and an escape does not stand
+    /// for UTF-8.
+    pub fn text(&self, decode: bool) -> Result<Cow<'_, str>> {
+        decoded_component(self.as_str(), decode, "uri path")
+    }
+
     /// Return whether the concrete path is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()

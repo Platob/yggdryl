@@ -197,7 +197,7 @@ column and appending the terminator.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - `body` holding the terminator -> write refused.
 - keyed merge -> unsupported; overwrite and append only.
-- `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page.
+- `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page. The transport is read one [fetch window](../holder/iobase/bytes.md#fetch-window) at a time, whatever the decoder pulls.
 - `Text` handle -> options only, no line iterator or schema builder.
 
 ## Commands

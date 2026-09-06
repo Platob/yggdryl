@@ -1492,6 +1492,43 @@ impl PyIOBase {
         slf
     }
 
+    /// Retain this handle behind the content coding its name declares.
+    ///
+    /// The handle then presents *decoded* bytes:
+    /// `IOBase("app.log.gz").into_coded()` reads as the log it holds, reports
+    /// `text/plain`, and reads its records without anything naming gzip. The
+    /// conversion is lazy and every read streams in bounded windows, so a
+    /// multi-gigabyte archive costs one window rather than its decoded size.
+    ///
+    /// `codec` overrides what the name declares - `"gzip"`, `"zlib"`,
+    /// `"deflate"`, `"zstd"`, `"identity"` - and `level` is the shared 0-9
+    /// scale writes encode at. A name declaring no coding passes its bytes
+    /// through unchanged.
+    ///
+    /// The handle is updated in place and returned for chaining. A handle
+    /// already presenting decoded bytes is left as it is, so repeating the
+    /// call never decodes twice.
+    #[pyo3(signature = (codec = None, level = None))]
+    fn into_coded<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        codec: Option<&str>,
+        level: Option<u8>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let codec = match codec {
+            Some(name) => name.parse::<Codec>().map_err(value_error)?,
+            None => slf.inner.codec(),
+        };
+        let level = level.map_or(Level::DEFAULT, Level::new);
+        // The codec is parsed before the temporary empty holder is installed,
+        // so no Python exception can leave the object detached from its value.
+        let held = std::mem::replace(
+            &mut slf.inner,
+            Holder::Buffer(yggdryl::holder::Buffer::new()),
+        );
+        slf.inner = held.into_coded_with(codec, level);
+        Ok(slf)
+    }
+
     /// Materialize the resource and cache what repeated calls would re-derive.
     ///
     /// A handle works without this - every operation materializes what it needs

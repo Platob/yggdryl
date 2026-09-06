@@ -673,7 +673,7 @@ impl<R: Read + Send + 'static> EmptySafeDecoder<R> {
         Self {
             codec,
             source: Some(BufReader::with_capacity(
-                crate::DEFAULT_STREAM_BATCH_SIZE,
+                crate::DEFAULT_FETCH_BYTE_SIZE,
                 source,
             )),
             decoder: None,

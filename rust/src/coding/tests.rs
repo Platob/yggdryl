@@ -570,3 +570,215 @@ mod dispatched {
         assert!(handle.read_all_bytes().unwrap().is_empty());
     }
 }
+
+mod held {
+    use crate::holder::buffered::BufferedOptions;
+    use crate::holder::{Buffer, Holder};
+    use crate::{Codec, IOBase, Level, MimeType, Url};
+
+    const PLAIN: &[u8] = b"[INFO] alpha\n[WARN] beta\n";
+
+    fn named(name: &str, bytes: Vec<u8>) -> Holder {
+        Holder::buffer(
+            Buffer::from_bytes(bytes).with_media_type(
+                Url::from_str(&format!("file:///{name}"))
+                    .unwrap()
+                    .media_type(),
+            ),
+        )
+    }
+
+    fn compressed(name: &str, codec: Codec) -> Holder {
+        named(name, codec.dump(PLAIN).unwrap())
+    }
+
+    #[test]
+    fn a_held_coding_comes_from_the_name_and_presents_decoded_bytes() {
+        for (name, codec) in [("app.log.gz", Codec::Gzip), ("app.log.zst", Codec::Zstd)] {
+            let source = compressed(name, codec);
+            assert_eq!(source.read_all_bytes().unwrap(), codec.dump(PLAIN).unwrap());
+
+            let decoded = source.into_coded();
+            assert!(matches!(decoded, Holder::Coded(_)), "{name}");
+            assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN, "{name}");
+            assert_eq!(decoded.size(), PLAIN.len() as u64, "{name}");
+            assert_eq!(decoded.media_type().base(), &MimeType::PLAIN_TEXT, "{name}");
+            assert!(decoded.media_type().encodings().is_empty(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_name_declaring_no_coding_passes_its_bytes_through() {
+        let decoded = named("app.log", PLAIN.to_vec()).into_coded();
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+        assert_eq!(decoded.media_type().base(), &MimeType::PLAIN_TEXT);
+    }
+
+    #[test]
+    fn repeating_the_conversion_never_decodes_twice() {
+        let decoded = compressed("app.log.gz", Codec::Gzip)
+            .into_coded()
+            .into_coded()
+            .into_coded_with(Codec::Zstd, Level::BEST);
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+    }
+
+    #[test]
+    fn a_page_cache_stays_outside_the_coding() {
+        let decoded = compressed("app.log.gz", Codec::Gzip)
+            .buffered(BufferedOptions::default())
+            .into_coded();
+        match &decoded {
+            Holder::Buffered(buffered) => {
+                assert!(matches!(buffered.handle(), Holder::Coded(_)));
+            }
+            other => panic!("expected a cache outside the coding, got {other:?}"),
+        }
+        assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
+    }
+
+    #[cfg(feature = "arrow")]
+    #[test]
+    fn a_coded_holder_reads_its_text_records_through_the_decoded_view() {
+        use crate::IOMedia as _;
+
+        let decoded = compressed("app.log.gz", Codec::Gzip).into_coded();
+        let options = decoded.record_options().unwrap();
+        assert!(matches!(options, crate::media::RecordOptions::Text(_)));
+
+        let bodies = decoded
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| {
+                let batch = batch.unwrap();
+                let index = batch.schema().index_of("body").unwrap();
+                arrow_array::cast::as_generic_binary_array::<i32>(batch.column(index))
+                    .iter()
+                    .map(|value| value.unwrap().to_vec())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+            .concat();
+        assert_eq!(bodies, [b"[INFO] alpha".to_vec(), b"[WARN] beta".to_vec()]);
+        assert_eq!(decoded.row_size().unwrap(), 2);
+    }
+}
+
+/// What a read costs the store underneath a coded handle.
+///
+/// The decoded side and the transport side are separate budgets: a stream is
+/// read to its end and fetches whole windows, while a positional read wants
+/// its own few bytes and must not pull a window to answer them.
+mod transport {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::super::Coding;
+    use crate::holder::Buffer;
+    use crate::{Codec, DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, IOMedia, Url};
+
+    /// A handle that records how many bytes each read asks it for.
+    #[derive(Debug)]
+    struct Asked {
+        handle: Buffer,
+        requests: Arc<AtomicUsize>,
+        bytes: Arc<AtomicUsize>,
+    }
+
+    impl IOMedia for Asked {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Asked {
+        crate::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
+            media_type, set_media_type, flush, parent, child_by_path, ls, kind, clear, remove,
+            is_atomic, is_tabular, is_io);
+
+        fn pread(&self, offset: u64, target: &mut [u8]) -> crate::Result<usize> {
+            self.requests.fetch_add(1, Ordering::Relaxed);
+            self.bytes.fetch_add(target.len(), Ordering::Relaxed);
+            self.handle.pread(offset, target)
+        }
+    }
+
+    /// A payload gzip cannot shrink away, larger than one fetch window.
+    fn coded() -> (Coding<Asked>, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+        const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let mut state = 0x1357_9BDF_u32;
+        let plain: Vec<u8> = (0..2 * DEFAULT_FETCH_BYTE_SIZE)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                ALPHABET[state as usize % ALPHABET.len()]
+            })
+            .collect();
+        let encoded = Codec::Gzip.dump(&plain).unwrap();
+        assert!(encoded.len() > DEFAULT_FETCH_BYTE_SIZE);
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let bytes = Arc::new(AtomicUsize::new(0));
+        let handle = Asked {
+            handle: Buffer::from_bytes(encoded).with_media_type(
+                Url::from_str("file:///payload.bin.gz")
+                    .unwrap()
+                    .media_type(),
+            ),
+            requests: Arc::clone(&requests),
+            bytes: Arc::clone(&bytes),
+        };
+        (Coding::new(handle, Codec::Gzip), requests, bytes)
+    }
+
+    #[test]
+    fn a_positional_read_fetches_what_it_needs_rather_than_a_whole_window() {
+        let (coded, requests, bytes) = coded();
+
+        let mut target = [0_u8; 8];
+        assert_eq!(coded.pread(0, &mut target).unwrap(), 8);
+        assert!(
+            bytes.load(Ordering::Relaxed) <= DEFAULT_STREAM_BATCH_SIZE,
+            "eight decoded bytes asked the store for {} encoded bytes",
+            bytes.load(Ordering::Relaxed)
+        );
+
+        // A short range is the same shape, and neither read is free of the
+        // decode that has to reach the offset first.
+        requests.store(0, Ordering::Relaxed);
+        bytes.store(0, Ordering::Relaxed);
+        assert_eq!(coded.read_range_bytes(4, 12).unwrap().len(), 12);
+        assert!(
+            bytes.load(Ordering::Relaxed) <= DEFAULT_STREAM_BATCH_SIZE,
+            "a twelve-byte range asked the store for {} encoded bytes",
+            bytes.load(Ordering::Relaxed)
+        );
+    }
+
+    #[test]
+    fn a_stream_fetches_whole_windows() {
+        let (coded, requests, bytes) = coded();
+
+        let read = coded.read_all_bytes().unwrap();
+        assert_eq!(read.len(), 2 * DEFAULT_FETCH_BYTE_SIZE);
+        // The whole encoded object is read, and asking for it a window at a
+        // time is what keeps the request count proportional to its size.
+        assert!(
+            requests.load(Ordering::Relaxed)
+                <= 2 * bytes.load(Ordering::Relaxed) / DEFAULT_FETCH_BYTE_SIZE + 2,
+            "{} requests for {} bytes",
+            requests.load(Ordering::Relaxed),
+            bytes.load(Ordering::Relaxed)
+        );
+    }
+
+    #[test]
+    fn a_stream_nobody_reads_touches_nothing() {
+        let (coded, requests, bytes) = coded();
+
+        let stream = coded.pstream_bytes(0, DEFAULT_STREAM_BATCH_SIZE).unwrap();
+        assert_eq!(requests.load(Ordering::Relaxed), 0);
+        assert_eq!(bytes.load(Ordering::Relaxed), 0);
+        drop(stream);
+        assert_eq!(requests.load(Ordering::Relaxed), 0);
+    }
+}

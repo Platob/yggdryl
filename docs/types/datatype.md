@@ -186,7 +186,7 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
-| `UTCDateOnly` | String | `date32` | a calendar day |
+| `UTCDateOnly`, `utcdate` | String | `date32` | a calendar day |
 | `LocalMktDate` | String | `date32` | a calendar day |
 | `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
 | `MultipleCharValue` | char | `utf8` | space-delimited members |

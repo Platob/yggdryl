@@ -9,18 +9,21 @@
 | [URI](index.md) | This page: canonical `Uri`, parsing, hash locking, credentials, S3 |
 | [Path](path.md) | Segments, compound filenames, media type, `std::path` bridge, navigation |
 | [URL and URN](url-urn.md) | The narrowed `Url` and `Urn` forms; what the scheme decides |
+| [Query parameters](parameters.md) | The query read and written as its `key=value` pairs |
 | [Patterns](patterns.md) | Globs, `.gitignore` matching, Hive partitions |
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), `UriPath`, path [patterns](patterns.md) |
+| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
 | Components | Scheme, authority, path: concrete, empty when absent; query, fragment: optional |
 | Validates | [`Scheme`](../types/index.md) and `UriPath` validate on construction |
 | Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`; re-parses to the same value |
 | `file:` fallback | Only with no scheme token at all |
 | Errors | Bad scheme token, percent escape, space, or bracket: parse error with the failing byte offset |
+| Escapes | Stored as written; `path_text`, `query`, and `fragment` take `decode` to answer with the text they stand for. Rust and Python; JavaScript reads the stored form only |
+| Decoded text | Text, never structure: `%2F` decodes inside its segment, `%26` inside its pair |
 | Hash lock | Python: the first `hash(...)` freezes that wrapper; a later setter raises `TypeError` |
 | Stable hash | `stable_hash()` / `stableHash()` compute only; never lock |
 | Credentials | Userinfo splits at its first colon; later colons stay in the password |
@@ -39,8 +42,8 @@
     assert_eq!(uri.scheme().as_str(), "https");
     assert_eq!(uri.authority().as_str(), "example.test");
     assert_eq!(uri.path().as_str(), "/archive/report.tar.gz");
-    assert_eq!(uri.query(), Some("q=1"));
-    assert_eq!(uri.fragment(), Some("summary"));
+    assert_eq!(uri.query(false)?.as_deref(), Some("q=1"));
+    assert_eq!(uri.fragment(false)?.as_deref(), Some("summary"));
     assert_eq!(uri.file_name(), Some("report.tar.gz"));
     ```
 
@@ -55,8 +58,8 @@
     assert uri.scheme == "https"
     assert uri.authority == "example.test"
     assert uri.path == "/archive/report.tar.gz"
-    assert uri.query == "q=1"
-    assert uri.fragment == "summary"
+    assert uri.query() == "q=1"
+    assert uri.fragment() == "summary"
     assert uri.file_name == "report.tar.gz"
     ```
 

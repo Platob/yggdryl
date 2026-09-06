@@ -53,6 +53,11 @@ memmap2 = "0.9"
 # projection outrun CPython's C `re` loop on the same corpus. `memchr` rides
 # in regex's own tree, so naming it for the line scan costs no extra crate.
 memchr = "2.7"
+# A streaming pull parser, because a CBlock is megabytes of XML of which
+# two of fourteen top-level children are read: skipping by depth without
+# materializing a tree is the whole requirement, and a DOM crate cannot.
+# No `encoding` feature - a CBlock is ASCII, which quick-xml reads as UTF-8.
+quick-xml = { version = "=0.41.0", default-features = false }
 regex = "1.11"
 regex-automata = "0.4"
 regex-syntax = "0.8"

@@ -2,6 +2,8 @@
 
 #[path = "fix/batch.rs"]
 mod batch;
+#[path = "fix/cfb.rs"]
+mod cfb;
 #[path = "fix/dictionary.rs"]
 mod dictionary;
 #[path = "fix/digest.rs"]

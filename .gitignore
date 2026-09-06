@@ -8,6 +8,7 @@
 *.so
 *.dylib
 *.dll
+.venv
 .venv/
 rust/.pyhint-venv/
 python/dist/

@@ -171,6 +171,7 @@ impl DataType {
         ),
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
         ("localmkttime", DataType::Time32(TimeUnit::Second)),
+        ("utcdate", DataType::Date32),
         ("utcdateonly", DataType::Date32),
         ("localmktdate", DataType::Date32),
         ("tztimeonly", DataType::FixedAscii(16)),

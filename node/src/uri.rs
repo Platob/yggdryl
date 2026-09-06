@@ -206,13 +206,19 @@ impl JsUri {
     /// Query text without the leading question mark.
     #[napi(getter)]
     pub fn query(&self) -> Option<String> {
-        self.inner.query().map(ToOwned::to_owned)
+        self.inner
+            .query(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// Fragment text without the leading hash mark.
     #[napi(getter)]
     pub fn fragment(&self) -> Option<String> {
-        self.inner.fragment().map(ToOwned::to_owned)
+        self.inner
+            .fragment(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// Last non-empty path segment.
@@ -537,13 +543,19 @@ impl JsUrl {
     /// Query text without the leading question mark.
     #[napi(getter)]
     pub fn query(&self) -> Option<String> {
-        self.inner.query().map(ToOwned::to_owned)
+        self.inner
+            .query(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// Fragment text without the leading hash mark.
     #[napi(getter)]
     pub fn fragment(&self) -> Option<String> {
-        self.inner.fragment().map(ToOwned::to_owned)
+        self.inner
+            .fragment(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// Last non-empty path segment.
@@ -1019,13 +1031,19 @@ impl JsUrn {
     /// URN query text without the leading question mark.
     #[napi(getter)]
     pub fn query(&self) -> Option<String> {
-        self.inner.query().map(ToOwned::to_owned)
+        self.inner
+            .query(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// URN fragment text without the leading hash mark.
     #[napi(getter)]
     pub fn fragment(&self) -> Option<String> {
-        self.inner.fragment().map(ToOwned::to_owned)
+        self.inner
+            .fragment(false)
+            .unwrap_or_default()
+            .map(std::borrow::Cow::into_owned)
     }
 
     /// Last non-empty path segment.

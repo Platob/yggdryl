@@ -183,14 +183,58 @@ impl Url {
         self.0.path()
     }
 
-    /// Return URL query text without `?`.
-    pub fn query(&self) -> Option<&str> {
-        self.0.query()
+    /// Return the URL path as text, decoding its escapes when asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::path_text`].
+    pub fn path_text(&self, decode: bool) -> Result<Cow<'_, str>> {
+        self.0.path_text(decode)
     }
 
-    /// Return URL fragment text without `#`.
-    pub fn fragment(&self) -> Option<&str> {
-        self.0.fragment()
+    /// Return URL query text without `?`, decoding its escapes when asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::query`].
+    pub fn query(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.0.query(decode)
+    }
+
+    /// Address the URL query as the `key=value` pairs it spells.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::parameters`].
+    pub fn parameters(&self, decode: bool) -> Result<Parameters<'_>> {
+        self.0.parameters(decode)
+    }
+
+    /// Replace the URL query with the pairs `parameters` holds.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::set_parameters`].
+    pub fn set_parameters(&mut self, parameters: &Parameters<'_>) -> Result<()> {
+        self.0.set_parameters(parameters)
+    }
+
+    /// Replace the URL query text, or clear it with `None`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::set_query`].
+    pub fn set_query(&mut self, query: Option<&str>) -> Result<()> {
+        self.0.set_query(query)
+    }
+
+    /// Return URL fragment text without `#`, decoding its escapes when asked.
+    ///
+    /// # Errors
+    ///
+    /// As [`Uri::fragment`].
+    pub fn fragment(&self, decode: bool) -> Result<Option<Cow<'_, str>>> {
+        self.0.fragment(decode)
     }
 
     /// Iterate over non-empty URL path segments without allocating.
