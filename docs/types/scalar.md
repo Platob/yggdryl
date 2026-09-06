@@ -14,7 +14,7 @@
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
 | Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal`; total equality, ordering, hash |
-| Bindings | `yggdryl.enums`, `enums`; `TypedScalar` Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `TypedScalar` and the `wkb` reader Rust only |
 
 ## Use
 
@@ -178,7 +178,7 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
 - Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial.md).
 - [ASCII](ascii.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md): six widths, four registered codes, building the shared `AsciiEnum`.
-- Field inference -> Rust only; no binding reimplements it.
+- Field inference -> `into_field` in Python; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
 - Default `arrow` feature -> `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
 
