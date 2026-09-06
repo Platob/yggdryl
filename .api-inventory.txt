@@ -1761,6 +1761,33 @@ pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataTy
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn is_code(&self) -> bool
 
+### yggdryl::types::ascii  [rust\src\types\ascii\scalars.rs]
+pub trait AsciiValue: ScalarValue
+  const WIDTH: Option<i32>;
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+  pub const fn width(&self) -> i32  // FixedAscii only
+  pub enum AsciiFamily
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+
+### yggdryl::types::bytes  [rust\src\types\bytes\scalars.rs]
+pub trait BytesValue: ScalarValue
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
+  pub struct Binary  // and FixedSizeBinary, LargeBinary, BinaryView
+  pub fn new(value: impl Into<Arc<[u8]>>) -> Self
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
+  pub fn into_inner(self) -> Arc<[u8]>
+  pub enum Bytes
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
+
 ### yggdryl::types::vocabulary  [rust\src\types\ascii\vocabulary.rs]
 pub const CURRENCIES: &'static [&'static str]
   pub const COUNTRIES: &'static [&'static str]
@@ -2060,6 +2087,19 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn stable_layout_hash(&self) -> u64
   pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
   pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
+
+### yggdryl::types::geospatial  [rust\src\types\geospatial\scalars.rs]
+pub trait GeospatialValue: ScalarValue
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
+  pub struct Geometry  // and Geography
+  pub fn new(value: impl Into<Arc<[u8]>>) -> Result<Self>
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
+  pub fn into_inner(self) -> Arc<[u8]>
+  pub enum Geospatial
+  pub fn as_bytes(&self) -> &[u8]
+  pub fn storage(&self) -> &Arc<[u8]>
 
 ### yggdryl::types::floating  [rust\src\types\floating\dtypes.rs]
 pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
@@ -2457,6 +2497,19 @@ pub enum TemporalFamily
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
+
+### yggdryl::types::text  [rust\src\types\text\scalars.rs]
+pub trait TextValue: ScalarValue
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+  pub struct Utf8  // and LargeUtf8, Utf8View
+  pub fn new(value: impl Into<SmolStr>) -> Self
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
+  pub fn into_inner(self) -> SmolStr
+  pub enum Text
+  pub fn as_str(&self) -> &str
+  pub fn storage(&self) -> &SmolStr
 
 ### yggdryl::types::typed  [rust\src\types\typed.rs]
 pub struct TypedScalar<K: FieldType = AnyType>
