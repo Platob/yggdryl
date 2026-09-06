@@ -186,7 +186,7 @@ pub enum DigestAlgorithm
   pub fn write_reader(&mut self, source: &mut impl Read) -> Result<u64>
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
-  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
+  pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::root::edge_algorithm  [rust\src\edge_algorithm.rs]
 pub enum EdgeAlgorithm
@@ -1151,6 +1151,14 @@ pub const NULL_PARTITION: &str = "null";
   pub fn without_partitions( batch: &RecordBatch, partitions: &[(String, String)], ) -> Result<RecordBatch>
   pub fn partitioned_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, field: Option<Field>, ) -> Result<crate::arrow::BatchReader>
   pub fn narrowed_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, schema: Arc<Schema>, ) -> crate::arrow::BatchReader
+  impl PartitionField<'field>
+  pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn transform(&self) -> Result<Option<Function>>
+  pub fn expression(&self) -> Result<Option<Expression>>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
+  impl PartitionFieldMut<'_>
+  pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
+  pub fn set_transform(&mut self, transform: Function) -> Result<()>
 
 ### yggdryl::media::text::handle  [rust\src\media\text\handle.rs]
 pub struct Text<H: IOBase>
@@ -1719,6 +1727,9 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowField>
   pub fn into_arrow_ref(self) -> Result<FieldRef>
+  pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, ) -> Result<arrow_array::RecordBatch>
+  pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, ) -> Result<arrow_schema::SchemaRef>
+  pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, ) -> Result<crate::arrow::BatchReader>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::types::ascii  [rust\src\types\ascii\dtypes.rs]
@@ -1909,7 +1920,6 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn digest_fields(&self) -> DigestFields<'_>
   pub fn digest_field_names(&self) -> DigestFieldNames<'_>
   pub fn digest_field_len(&self) -> usize
-  pub fn has_digest_components(&self) -> bool
   pub fn only_digest_fields(&self) -> Result<Self>
   pub fn is_partition(&self) -> bool
   pub fn partition_fields(&self) -> PartitionFields<'_>
@@ -2659,21 +2669,19 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
 ### yggdryl::xxhash::field  [rust\src\xxhash\field.rs]
 impl DigestField<'_>
   pub fn is_holder(&self) -> bool
-  pub fn is_component(&self) -> bool
   pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
-  pub fn paths(&self) -> Result<Option<Vec<String>>>
+  pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn apply_arrow_batch(&self, batch: &arrow_array::RecordBatch) -> Result<arrow_array::RecordBatch>
   impl DigestFieldMut<'_>
   pub fn set_holder(&mut self) -> Result<()>
-  pub fn set_component(&mut self) -> Result<()>
   pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()>
   pub fn remove_algorithm(&mut self) -> Option<String>
-  pub fn set_paths<I, P>(&mut self, paths: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
-  pub fn remove_paths(&mut self) -> Option<String>
+  pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
+  pub fn remove_sources(&mut self) -> Option<String>
   pub fn remove_role(&mut self) -> Result<Option<String>>
   pub fn digest_fields(&self) -> DigestFields<'_>
   pub fn digest_field_names(&self) -> DigestFieldNames<'_>
   pub fn digest_field_len(&self) -> usize
-  pub fn has_digest_components(&self) -> bool
   pub fn only_digest_fields(&self) -> Result<Self>
   pub struct DigestFields<'field>
   pub struct DigestFieldNames<'field>(DigestFields<'field>);
@@ -2730,7 +2738,7 @@ pub struct Xxh32
   pub fn as_u128(&self) -> u128
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
-  pub fn fill_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
+  pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
 
 ### yggdryl::xxhash::stream  [rust\src\xxhash\stream.rs]
 pub struct DigestReader<R: Read>

@@ -344,7 +344,7 @@ macro_rules! state {
             /// non-default holders are retained, and this running state is not
             /// consumed or reset.
             #[pyo3(signature = (root, batch, *, force=false))]
-            fn fill_arrow_batch<'py>(
+            fn apply_arrow_batch<'py>(
                 &self,
                 py: Python<'py>,
                 root: &Bound<'py, PyAny>,
@@ -354,7 +354,7 @@ macro_rules! state {
                 let root = core_field_from_value(root)?;
                 let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
                 self.inner
-                    .fill_arrow_batch(&root, batch, force)
+                    .apply_arrow_batch(&root, batch, force)
                     .map_err(value_error)?
                     .to_pyarrow(py)
             }

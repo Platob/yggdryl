@@ -103,6 +103,186 @@ impl Field {
         crate::arrow::arrow_schema_from_field(&self)
     }
 
+    /// Apply this schema's metadata-declared columns to one Arrow batch.
+    ///
+    /// A [`Field`] states more about a batch than its shape: a
+    /// [`partition:`](crate::PartitionField::apply_arrow_batch) declaration
+    /// says a column is *derived* from another, and a
+    /// [`digest:`](crate::DigestField::apply_arrow_batch) role says a column
+    /// *holds* the row's hash. Each protocol owns how it answers, including
+    /// how far down it walks, and this is the one entry point that asks them
+    /// all in the order their answers depend on.
+    ///
+    /// That order is the argument order reversed, because a later step reads
+    /// what an earlier one wrote:
+    ///
+    /// - `cast` reconciles the batch to this root first - the columns it
+    ///   declares, in its order and its types, missing ones materialized as
+    ///   their canonical defaults.
+    /// - `partition` fills the derived columns, so a value computed from
+    ///   another column exists before anything hashes it.
+    /// - `digest` fills the holders last, over the rows as they finally stand.
+    ///
+    /// Each protocol leaves a column holding anything but its canonical
+    /// [default](Self::default_value) alone, so applying twice changes nothing
+    /// the first pass already wrote. A digest fill reconciles to this root for
+    /// itself whatever `cast` says, because a holder is addressed by position.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Function;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let mut stored = DataType::UInt64.nullable_field("row_digest");
+    /// stored.as_digest_mut().set_holder()?;
+    /// let root = DataType::from_fields([
+    ///     DataType::Date32.required_field("event"),
+    ///     year,
+    ///     stored,
+    /// ])?
+    /// .required_field("row");
+    ///
+    /// let batch = RecordBatch::try_from_iter([(
+    ///     "event",
+    ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
+    /// )])?;
+    ///
+    /// let applied = root.apply_arrow_batch(&batch, true, true, true)?;
+    ///
+    /// assert_eq!(applied.num_columns(), 3);
+    /// // The digest saw the derived column, because the partition step ran first.
+    /// assert_eq!(applied.column(2).null_count(), 0);
+    ///
+    /// // Applying again changes nothing: every column now holds a written value.
+    /// assert_eq!(root.apply_arrow_batch(&applied, true, true, true)?, applied);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this is not a Struct root, when the batch cannot
+    /// be cast to it, or when either protocol refuses a declaration it carries.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> Result<arrow_array::RecordBatch> {
+        use crate::types::cast::ArrowCast as _;
+
+        let mut applied = if cast {
+            self.cast_arrow_batch(batch.clone(), true)?
+        } else {
+            batch.clone()
+        };
+        if partition {
+            applied = self.as_partition().apply_arrow_batch(&applied)?;
+        }
+        if digest {
+            applied = self.as_digest().apply_arrow_batch(&applied)?;
+        }
+        Ok(applied)
+    }
+
+    /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
+    ///
+    /// A reader has to report its schema before it yields anything, and a
+    /// caller planning a write needs the same answer. Both get it here: the
+    /// declarations name every column they add, so the applied shape is a
+    /// property of two schemas and never of the data. The batch is the empty
+    /// one, so nothing is decoded and no column is materialized beyond its
+    /// zero-length arrays - and a declaration that cannot be satisfied, a
+    /// source column the reader does not carry above all, fails here rather
+    /// than on the first batch.
+    ///
+    /// ```
+    /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Function;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut year = DataType::Int32.nullable_field("year");
+    /// year.as_partition_mut().set_sources(["event"])?;
+    /// year.as_partition_mut().set_transform(Function::Year)?;
+    /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+    ///     .required_field("row");
+    ///
+    /// let stored = Schema::new(vec![ArrowField::new(
+    ///     "event",
+    ///     ArrowDataType::Date32,
+    ///     false,
+    /// )]);
+    ///
+    /// let applied = root.apply_arrow_schema(stored.into(), true, true, true)?;
+    ///
+    /// assert_eq!(applied.fields().len(), 2);
+    /// assert_eq!(applied.field(1).name(), "year");
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Self::apply_arrow_batch`] carries the rule.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_schema(
+        &self,
+        schema: arrow_schema::SchemaRef,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> Result<arrow_schema::SchemaRef> {
+        let empty = arrow_array::RecordBatch::new_empty(schema);
+        Ok(self
+            .apply_arrow_batch(&empty, digest, partition, cast)?
+            .schema())
+    }
+
+    /// Wrap a reader so every batch it yields has this schema applied.
+    ///
+    /// The stream form of [`Self::apply_arrow_batch`], and a reader for the
+    /// reason every streaming shape in this crate is one: a lake being read
+    /// into a lake being written should not have to be held in memory to gain
+    /// its derived columns. The applied schema is computed once through
+    /// [`Self::apply_arrow_schema`], so the returned reader answers it before
+    /// the first batch is pulled and a caller can hand it straight to a write.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the applied schema cannot be derived. A failure
+    /// on one batch surfaces as that batch's `Err`, and the reader is not
+    /// fused after it: it yields whatever the inner reader yields next.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_reader(
+        &self,
+        inner: crate::arrow::BatchReader,
+        digest: bool,
+        partition: bool,
+        cast: bool,
+    ) -> Result<crate::arrow::BatchReader> {
+        if !digest && !partition && !cast {
+            return Ok(inner);
+        }
+        let schema = self.apply_arrow_schema(inner.schema(), digest, partition, cast)?;
+        Ok(Box::new(AppliedReader {
+            inner,
+            root: self.clone(),
+            schema,
+            digest,
+            partition,
+            cast,
+        }))
+    }
+
     /// Materializes [`Field::default_value`] as an exact one-row array.
     ///
     /// The bounded core default planner selects the value under this Field's
@@ -496,6 +676,48 @@ impl TryFrom<ArrowField> for Field {
 
     fn try_from(value: ArrowField) -> Result<Self> {
         Self::from_arrow_owned_at_depth(value, 0)
+    }
+}
+
+/// A reader applying one root's declarations to every batch it yields.
+///
+/// The schema is the applied one from the start, so a consumer reads the shape
+/// it will get rather than the shape the inner reader stores.
+#[cfg(feature = "arrow")]
+struct AppliedReader {
+    inner: crate::arrow::BatchReader,
+    root: Field,
+    schema: arrow_schema::SchemaRef,
+    digest: bool,
+    partition: bool,
+    cast: bool,
+}
+
+#[cfg(feature = "arrow")]
+impl Iterator for AppliedReader {
+    type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(
+            self.root
+                .apply_arrow_batch(&batch, self.digest, self.partition, self.cast)
+                .map_err(|error| {
+                    arrow_schema::ArrowError::ComputeError(format!(
+                        "the declared columns could not be applied: {error}"
+                    ))
+                }),
+        )
+    }
+}
+
+#[cfg(feature = "arrow")]
+impl arrow_array::RecordBatchReader for AppliedReader {
+    fn schema(&self) -> arrow_schema::SchemaRef {
+        Arc::clone(&self.schema)
     }
 }
 

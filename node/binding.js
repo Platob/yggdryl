@@ -3460,29 +3460,29 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     binding.Xxh3,
     binding.Xxh128,
   ]) {
-    const fillArrowBatchNative = State.prototype._fillArrowBatchIpcNative
-    if (typeof fillArrowBatchNative !== 'function') {
+    const applyArrowBatchNative = State.prototype._applyArrowBatchIpcNative
+    if (typeof applyArrowBatchNative !== 'function') {
       throw new TypeError(
-        `native binding is missing ${State.name}._fillArrowBatchIpcNative`,
+        `native binding is missing ${State.name}._applyArrowBatchIpcNative`,
       )
     }
-    delete State.prototype._fillArrowBatchIpcNative
-    Object.defineProperty(State.prototype, 'fillArrowBatch', {
+    delete State.prototype._applyArrowBatchIpcNative
+    Object.defineProperty(State.prototype, 'applyArrowBatch', {
       configurable: true,
       value(root, batch, force = false) {
         if (typeof force !== 'boolean') {
           throw new TypeError(
-            `${State.name}.fillArrowBatch force must be a boolean`,
+            `${State.name}.applyArrowBatch force must be a boolean`,
           )
         }
         return arrowBatchFromIPC(
-          fillArrowBatchNative.call(
+          applyArrowBatchNative.call(
             this,
             intoField(root),
-            arrowBatchIntoIPC(batch, `${State.name}.fillArrowBatch input`),
+            arrowBatchIntoIPC(batch, `${State.name}.applyArrowBatch input`),
             force,
           ),
-          `${State.name}.fillArrowBatch output`,
+          `${State.name}.applyArrowBatch output`,
         )
       },
     })

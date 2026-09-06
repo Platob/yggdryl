@@ -356,3 +356,258 @@ fn arrow_exchange_projection_refuses_caller_owned_sidecar_metadata() {
         error => panic!("expected a typed dictionary-sidecar error, got {error}"),
     }
 }
+
+/// A root whose `year` derives from `event` and whose `row_digest` holds the
+/// row hash, with a nested Struct declaring one of each of its own.
+fn applied_root() -> Field {
+    let mut inner_year = DataType::Int32.nullable_field("year");
+    inner_year
+        .as_partition_mut()
+        .set_sources(["event"])
+        .unwrap();
+    inner_year
+        .as_partition_mut()
+        .set_transform(yggdryl::expression::Function::Year)
+        .unwrap();
+    let mut inner_digest = DataType::UInt64.nullable_field("trade_digest");
+    inner_digest.as_digest_mut().set_holder().unwrap();
+    let trade = DataType::from_fields([
+        DataType::Date32.required_field("event"),
+        inner_year,
+        inner_digest,
+    ])
+    .unwrap()
+    .required_field("trade");
+
+    let mut top_year = DataType::Int32.nullable_field("top_year");
+    top_year
+        .as_partition_mut()
+        .set_sources(["trade.year"])
+        .unwrap();
+    let mut row_digest = DataType::UInt64.nullable_field("row_digest");
+    row_digest.as_digest_mut().set_holder().unwrap();
+    DataType::from_fields([trade, top_year, row_digest])
+        .unwrap()
+        .required_field("row")
+}
+
+fn events() -> arrow_array::RecordBatch {
+    arrow_array::RecordBatch::try_from_iter([(
+        "trade",
+        Arc::new(arrow_array::StructArray::from(vec![(
+            Arc::new(ArrowField::new("event", ArrowDataType::Date32, false)),
+            Arc::new(arrow_array::Date32Array::from(vec![19_723, 20_089])) as arrow_array::ArrayRef,
+        )])) as arrow_array::ArrayRef,
+    )])
+    .unwrap()
+}
+
+#[test]
+fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
+    let root = applied_root();
+
+    let applied = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+
+    assert_eq!(applied.num_columns(), 3);
+    let trade = applied
+        .column_by_name("trade")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<arrow_array::StructArray>()
+        .expect("the nested struct both protocols widened");
+    assert_eq!(trade.num_columns(), 3);
+    assert_eq!(
+        trade
+            .column_by_name("year")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::Int32Array>()
+            .unwrap()
+            .values(),
+        &[2024, 2025]
+    );
+    // Every holder was filled, nested one included.
+    assert_eq!(
+        trade.column_by_name("trade_digest").unwrap().null_count(),
+        0
+    );
+    assert_eq!(
+        applied.column_by_name("row_digest").unwrap().null_count(),
+        0
+    );
+    // The level above read what the nested partition declaration wrote.
+    assert_eq!(
+        applied
+            .column_by_name("top_year")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::Int32Array>()
+            .unwrap()
+            .values(),
+        &[2024, 2025]
+    );
+}
+
+#[test]
+fn apply_arrow_batch_answers_the_same_batch_the_second_time() {
+    let root = applied_root();
+    let once = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+
+    assert_eq!(
+        root.apply_arrow_batch(&once, true, true, true).unwrap(),
+        once
+    );
+}
+
+#[test]
+fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
+    let root = applied_root();
+
+    // Cast alone materializes every declared column and writes none of them.
+    let cast_only = root
+        .apply_arrow_batch(&events(), false, false, true)
+        .unwrap();
+    assert_eq!(cast_only.num_columns(), 3);
+    assert_eq!(
+        cast_only.column_by_name("top_year").unwrap().null_count(),
+        2
+    );
+    assert_eq!(
+        cast_only.column_by_name("row_digest").unwrap().null_count(),
+        2
+    );
+
+    // Partition alone leaves the holders untouched.
+    let partitioned = root
+        .apply_arrow_batch(&events(), false, true, true)
+        .unwrap();
+    assert_eq!(
+        partitioned
+            .column_by_name("top_year")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow_array::Int32Array>()
+            .unwrap()
+            .values(),
+        &[2024, 2025]
+    );
+    assert_eq!(
+        partitioned
+            .column_by_name("row_digest")
+            .unwrap()
+            .null_count(),
+        2
+    );
+
+    // A digest over the uncast batch still reconciles for itself, because a
+    // holder is addressed by position.
+    let digested = root
+        .apply_arrow_batch(&events(), true, false, false)
+        .unwrap();
+    assert_eq!(
+        digested.column_by_name("row_digest").unwrap().null_count(),
+        0
+    );
+    assert_eq!(digested.column_by_name("top_year").unwrap().null_count(), 2);
+}
+
+#[test]
+fn apply_arrow_batch_refuses_a_root_that_is_not_a_struct() {
+    let root = DataType::Int64.required_field("id");
+
+    assert!(
+        root.apply_arrow_batch(&events(), false, true, false)
+            .is_err()
+    );
+}
+
+#[test]
+fn apply_arrow_schema_answers_the_shape_without_reading_a_row() {
+    let root = applied_root();
+    let stored = events().schema();
+
+    let applied = root
+        .apply_arrow_schema(Arc::clone(&stored), true, true, true)
+        .unwrap();
+
+    assert_eq!(
+        applied
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect::<Vec<_>>(),
+        ["trade", "top_year", "row_digest"]
+    );
+    // The nested Struct is widened in the reported schema too.
+    let ArrowDataType::Struct(children) = applied.field(0).data_type() else {
+        panic!("the nested declaration stays a Struct");
+    };
+    assert_eq!(children.len(), 3);
+    // It is exactly the schema a batch comes back with.
+    assert_eq!(
+        applied,
+        root.apply_arrow_batch(&events(), true, true, true)
+            .unwrap()
+            .schema()
+    );
+}
+
+#[test]
+fn apply_arrow_schema_refuses_a_declaration_the_reader_cannot_satisfy() {
+    let root = applied_root();
+    let unrelated = Arc::new(Schema::new(vec![ArrowField::new(
+        "price",
+        ArrowDataType::Int64,
+        false,
+    )]));
+
+    // Nothing is decoded, and the missing source is named before any row is.
+    let error = root
+        .apply_arrow_schema(unrelated, false, true, false)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("trade"), "{error}");
+}
+
+#[test]
+fn apply_arrow_reader_reports_the_applied_schema_before_the_first_batch() {
+    let root = applied_root();
+    let stored = events().schema();
+    let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events(), events()]);
+
+    let mut applied = root.apply_arrow_reader(reader, true, true, true).unwrap();
+
+    // Read before pulling: the shape is a property of the two schemas.
+    let reported = arrow_array::RecordBatchReader::schema(&applied);
+    assert_eq!(reported.fields().len(), 3);
+
+    let first = applied.next().expect("one batch").unwrap();
+    assert_eq!(first.schema(), reported);
+    assert_eq!(first.column_by_name("row_digest").unwrap().null_count(), 0);
+    assert_eq!(
+        applied
+            .next()
+            .expect("a second batch")
+            .unwrap()
+            .num_columns(),
+        3
+    );
+    assert!(applied.next().is_none());
+}
+
+#[test]
+fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
+    let root = applied_root();
+    let stored = events().schema();
+    let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events()]);
+
+    let mut untouched = root
+        .apply_arrow_reader(reader, false, false, false)
+        .unwrap();
+
+    assert_eq!(arrow_array::RecordBatchReader::schema(&untouched), stored);
+    assert_eq!(
+        untouched.next().expect("one batch").unwrap().num_columns(),
+        1
+    );
+}

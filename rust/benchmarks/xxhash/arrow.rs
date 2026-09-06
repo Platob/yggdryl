@@ -116,7 +116,7 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
         .expect("a valid holder role");
     digest
         .as_digest_mut()
-        .set_paths(["symbol"])
+        .set_sources(["symbol"])
         .expect("a valid holder path");
     let root = DataType::from_fields([symbol.clone(), digest.clone()])
         .expect("a valid Struct")
@@ -219,19 +219,19 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     let (root, missing, defaults, populated) = holder_fixtures(false);
     let (signed_root, signed_missing, _, _) = holder_fixtures(true);
     let state = Xxh3::with_seed(7);
-    let mut group = criterion.benchmark_group("xxhash_fill_arrow_batch");
+    let mut group = criterion.benchmark_group("xxhash_apply_arrow_batch");
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("missing_holder", |bencher| {
         bencher.iter(|| {
             state
-                .fill_arrow_batch(black_box(&root), black_box(missing.clone()), false)
+                .apply_arrow_batch(black_box(&root), black_box(missing.clone()), false)
                 .expect("the holder fills")
         });
     });
     group.bench_function("missing_signed_holder", |bencher| {
         bencher.iter(|| {
             state
-                .fill_arrow_batch(
+                .apply_arrow_batch(
                     black_box(&signed_root),
                     black_box(signed_missing.clone()),
                     false,
@@ -242,21 +242,21 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     group.bench_function("default_holders", |bencher| {
         bencher.iter(|| {
             state
-                .fill_arrow_batch(black_box(&root), black_box(defaults.clone()), false)
+                .apply_arrow_batch(black_box(&root), black_box(defaults.clone()), false)
                 .expect("the default holders fill")
         });
     });
     group.bench_function("populated_holders", |bencher| {
         bencher.iter(|| {
             state
-                .fill_arrow_batch(black_box(&root), black_box(populated.clone()), false)
+                .apply_arrow_batch(black_box(&root), black_box(populated.clone()), false)
                 .expect("the populated holders are preserved")
         });
     });
     group.bench_function("forced_holders", |bencher| {
         bencher.iter(|| {
             state
-                .fill_arrow_batch(black_box(&root), black_box(populated.clone()), true)
+                .apply_arrow_batch(black_box(&root), black_box(populated.clone()), true)
                 .expect("the populated holders are recomputed")
         });
     });

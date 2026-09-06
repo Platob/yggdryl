@@ -1,25 +1,22 @@
 //! Digest roles and effective component selection on fields.
 
-use std::collections::HashSet;
 use std::slice;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::metadata::{parse_source_list, render_source_list};
 use crate::types::protocol::{DigestField, DigestFieldMut};
-use crate::{DataType, DigestAlgorithm, Error, Field, Result, Scalar};
+use crate::{DataType, DigestAlgorithm, Error, Field, Result};
 
 const ALGORITHM: &str = "algorithm";
-const PATHS: &str = "paths";
 const ROLE: &str = "role";
-const DIGEST_PATHS_SHAPE: &str = "a JSON array of unique non-empty field path strings";
-
+const SOURCES: &str = "sources";
 pub(crate) const DIGEST_ALGORITHM_KEY: &str = "digest:algorithm";
-pub(crate) const DIGEST_PATHS_KEY: &str = "digest:paths";
 pub(crate) const DIGEST_ROLE_KEY: &str = "digest:role";
-pub(crate) const DIGEST_ROLE_COMPONENT: &str = "component";
 pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
+pub(crate) const DIGEST_SOURCES_KEY: &str = "digest:sources";
 
-/// Return whether a holder's physical datatype carries this algorithm exactly.
+/// Return whether a holder's storage carries this algorithm's exact width.
 pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool {
     match algorithm {
         DigestAlgorithm::Xxh32 => {
@@ -53,99 +50,10 @@ fn parse_digest_algorithm(value: &str) -> Result<DigestAlgorithm> {
     })
 }
 
-/// Parse the ordered field paths one digest holder selects.
-fn parse_digest_paths(value: &str) -> Result<Vec<String>> {
-    let document = crate::text::json::from_utf8(value).map_err(|error| {
-        invalid_digest_paths(format_smolstr!(
-            "expected {DIGEST_PATHS_SHAPE}, got invalid JSON: {}",
-            crate::text::elide_display(&error)
-        ))
-    })?;
-    let Some(values) = document.as_sequence() else {
-        return Err(invalid_digest_paths(crate::text::expected_got(
-            DIGEST_PATHS_SHAPE,
-            format_args!("{:?}", crate::text::elide_to(value, 256)),
-        )));
-    };
-    let mut paths = Vec::with_capacity(values.len());
-    let mut seen = HashSet::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
-        let Some(path) = value.as_str() else {
-            let actual = crate::text::json::into_utf8(value)
-                .unwrap_or_else(|_| "<unencodable JSON value>".to_owned());
-            return Err(invalid_digest_paths(format_smolstr!(
-                "expected a field path string at index {index}, got {:?}",
-                crate::text::elide_to(&actual, 256)
-            )));
-        };
-        if path.is_empty() {
-            return Err(invalid_digest_paths(format_smolstr!(
-                "expected a non-empty field path string at index {index}"
-            )));
-        }
-        if !seen.insert(path) {
-            return Err(invalid_digest_paths(format_smolstr!(
-                "expected each field path once, got {path:?} twice"
-            )));
-        }
-        paths.push(path.to_owned());
-    }
-    Ok(paths)
-}
-
-/// Render ordered digest paths through the canonical compact JSON codec.
-fn render_digest_paths<I, P>(paths: I) -> Result<String>
-where
-    I: IntoIterator<Item = P>,
-    P: AsRef<str>,
-{
-    let paths: Vec<String> = paths
-        .into_iter()
-        .map(|path| path.as_ref().to_owned())
-        .collect();
-    let mut seen = HashSet::with_capacity(paths.len());
-    for (index, path) in paths.iter().enumerate() {
-        if path.is_empty() {
-            return Err(invalid_digest_paths(format_smolstr!(
-                "expected a non-empty field path string at index {index}"
-            )));
-        }
-        if !seen.insert(path.as_str()) {
-            return Err(invalid_digest_paths(format_smolstr!(
-                "expected each field path once, got {path:?} twice"
-            )));
-        }
-    }
-    let document = Scalar::from_sequence(paths.into_iter().map(Scalar::from));
-    crate::text::json::into_utf8(&document).map_err(|error| {
-        invalid_digest_paths(format_smolstr!(
-            "could not encode canonical field paths: {}",
-            crate::text::elide_display(&error)
-        ))
-    })
-}
-
-/// Restate externally supplied path JSON in its one stored spelling.
-pub(crate) fn canonicalize_digest_paths(value: &str) -> Result<String> {
-    render_digest_paths(parse_digest_paths(value)?)
-}
-
-fn invalid_digest_paths(reason: SmolStr) -> Error {
-    Error::InvalidMetadataValue {
-        key: SmolStr::new_static(DIGEST_PATHS_KEY),
-        reason,
-    }
-}
-
 impl DigestField<'_> {
     /// Returns whether this field holds a digest rather than contributing to it.
     pub fn is_holder(&self) -> bool {
         self.get(ROLE) == Some(DIGEST_ROLE_HOLDER)
-    }
-
-    /// Returns whether this field is an explicitly selected digest component.
-    pub fn is_component(&self) -> bool {
-        self.get(ROLE) == Some(DIGEST_ROLE_COMPONENT)
     }
 
     /// Parses the algorithm this holder declares.
@@ -158,18 +66,93 @@ impl DigestField<'_> {
         self.get(ALGORITHM).map(parse_digest_algorithm).transpose()
     }
 
-    /// Parses the ordered paths this holder selects relative to its Struct.
+    /// Parses the ordered sources this holder selects relative to its Struct.
     ///
-    /// `None` retains component-role fallback selection. `Some([])` is an
-    /// explicit empty selection, so absence and an empty JSON array remain
-    /// distinct.
+    /// The list is answered as it is stored, `"*"` included: that spelling is
+    /// the whole selection - every field of the Struct the holder does not
+    /// hold, in declaration order - and it is what an absent property means
+    /// too. `Some([])` is an explicit empty selection, so absence and an empty
+    /// JSON array remain distinct.
+    ///
+    /// A source states no metadata on the field it names. That is the whole
+    /// point of naming it here: a schema declares one holder and the fields it
+    /// reads stay ordinary columns.
     ///
     /// # Errors
     ///
-    /// Returns an error naming `digest:paths` when stored metadata is not a
-    /// JSON array of unique non-empty strings.
-    pub fn paths(&self) -> Result<Option<Vec<String>>> {
-        self.get(PATHS).map(parse_digest_paths).transpose()
+    /// Returns an error naming `digest:sources` when stored metadata is not a
+    /// JSON array of unique non-empty strings, or names `"*"` beside a path.
+    pub fn sources(&self) -> Result<Option<Vec<String>>> {
+        self.get(SOURCES)
+            .map(|stored| parse_source_list(DIGEST_SOURCES_KEY, stored))
+            .transpose()
+    }
+
+    /// Fill the digest holders this schema declares in one Arrow batch.
+    ///
+    /// The view is taken on the Struct root, and every declared Struct beneath
+    /// it is walked: nested holders are final before a containing one reads
+    /// them, so a row digest can hold a nested row digest. The source is first
+    /// cast to that root, which is what materializes a holder column the rows
+    /// do not carry at all.
+    ///
+    /// A holder holding anything but its canonical
+    /// [default](crate::Field::default_value) is left alone - the rule
+    /// [`PartitionField::apply_arrow_batch`](crate::PartitionField::apply_arrow_batch)
+    /// follows for the same reason: recomputing a written value would hide a
+    /// mismatch. A holder that is absent, or present holding nothing but that
+    /// default, was never written and is filled.
+    ///
+    /// The algorithm is the one each holder resolves for itself: its own
+    /// `digest:algorithm`, else the one its width implies. This entry point
+    /// carries no seed or secret, which is what makes its answer the same
+    /// [`Scalar::stable_hash`](crate::Scalar::stable_hash) every other reader computes; a
+    /// seeded state or a forced recomputation is
+    /// [`Digester::apply_arrow_batch`](crate::Digester::apply_arrow_batch).
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    ///
+    /// use arrow_array::{ArrayRef, Int64Array, RecordBatch};
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut stored = DataType::UInt64.nullable_field("row_digest");
+    /// stored.as_digest_mut().set_holder()?;
+    /// let root = DataType::from_fields([DataType::Int64.required_field("id"), stored])?
+    ///     .required_field("row");
+    ///
+    /// let batch = RecordBatch::try_from_iter([(
+    ///     "id",
+    ///     Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+    /// )])?;
+    ///
+    /// let filled = root.as_digest().apply_arrow_batch(&batch)?;
+    ///
+    /// assert_eq!(filled.num_columns(), 2);
+    /// assert_eq!(filled.column(1).null_count(), 0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this view is not on a usable Struct root, a
+    /// holder has the wrong width, a digest path cannot be resolved, or the
+    /// batch cannot be cast to that root.
+    #[cfg(feature = "arrow")]
+    pub fn apply_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+    ) -> Result<arrow_array::RecordBatch> {
+        Ok(crate::xxhash::arrow::apply_arrow_batch_with(
+            // Seedless, so the holders answer the canonical digest; a holder
+            // whose width the default does not fit resolves its own.
+            &DigestAlgorithm::Xxh3.digester(),
+            self.as_field(),
+            batch.clone(),
+            false,
+        )?)
     }
 }
 
@@ -177,23 +160,6 @@ impl DigestFieldMut<'_> {
     /// Marks this field as holding a digest rather than contributing to it.
     pub fn set_holder(&mut self) -> Result<()> {
         self.insert(ROLE, DIGEST_ROLE_HOLDER).map(|_| ())
-    }
-
-    /// Marks this field as an explicitly selected digest component.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when holder-owned algorithm or paths metadata is
-    /// present, leaving the field unchanged. Remove both before changing the
-    /// role.
-    pub fn set_component(&mut self) -> Result<()> {
-        if self.has_holder_properties() {
-            return Err(self.rejected(
-                ROLE,
-                "cannot set component while digest:algorithm or digest:paths is present".into(),
-            ));
-        }
-        self.insert(ROLE, DIGEST_ROLE_COMPONENT).map(|_| ())
     }
 
     /// Records the algorithm this holder carries in canonical spelling.
@@ -224,43 +190,46 @@ impl DigestFieldMut<'_> {
         self.remove(ALGORITHM)
     }
 
-    /// Records the ordered paths this holder selects relative to its Struct.
+    /// Records the ordered sources this holder selects relative to its Struct.
     ///
-    /// Order is hash-significant. Empty input stores `[]`, which explicitly
-    /// selects the empty sequence; [`Self::remove_paths`] restores fallback
-    /// selection instead.
+    /// Order is hash-significant. `["*"]` selects every field of the Struct
+    /// this holder does not hold, which is also what storing nothing means.
+    /// Empty input stores `[]`, the explicit empty sequence, so it is not the
+    /// same as [`Self::remove_sources`].
     ///
     /// # Errors
     ///
-    /// Returns an error when this field is not a holder, or when a path is
-    /// empty or repeated, leaving the field unchanged.
-    pub fn set_paths<I, P>(&mut self, paths: I) -> Result<()>
+    /// Returns an error when this field is not a holder, when a source is
+    /// empty or repeated, or when `"*"` travels beside a named path, leaving
+    /// the field unchanged.
+    pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<str>,
     {
         if !self.as_protocol().is_holder() {
-            return Err(self.rejected(PATHS, "requires digest:role=holder".into()));
+            return Err(self.rejected(SOURCES, "requires digest:role=holder".into()));
         }
-        self.insert(PATHS, render_digest_paths(paths)?).map(|_| ())
+        self.insert(SOURCES, render_source_list(DIGEST_SOURCES_KEY, sources)?)
+            .map(|_| ())
     }
 
-    /// Removes the explicit holder path selection and restores fallback.
-    pub fn remove_paths(&mut self) -> Option<String> {
-        self.remove(PATHS)
+    /// Removes the explicit source selection, which selects every field again.
+    pub fn remove_sources(&mut self) -> Option<String> {
+        self.remove(SOURCES)
     }
 
     /// Removes this field's explicit digest role.
     ///
     /// # Errors
     ///
-    /// Returns an error when holder-owned algorithm or paths metadata is
+    /// Returns an error when holder-owned algorithm or source metadata is
     /// present, leaving the field unchanged. Remove both first.
     pub fn remove_role(&mut self) -> Result<Option<String>> {
         if self.has_holder_properties() {
             return Err(self.rejected(
                 ROLE,
-                "cannot remove holder role while digest:algorithm or digest:paths is present"
+                "cannot remove holder role while digest:algorithm or digest:sources is present"
                     .into(),
             ));
         }
@@ -268,7 +237,7 @@ impl DigestFieldMut<'_> {
     }
 
     fn has_holder_properties(&self) -> bool {
-        self.contains_key(ALGORITHM) || self.contains_key(PATHS)
+        self.contains_key(ALGORITHM) || self.contains_key(SOURCES)
     }
 
     /// Name the full digest key a typed mutation was refused under.
@@ -281,31 +250,27 @@ impl DigestFieldMut<'_> {
 }
 
 impl Field {
-    /// Returns the struct children that contribute to a row digest.
+    /// Returns the struct children a row digest reads by default.
     ///
-    /// One or more children marked as digest components form the exact input
-    /// set. With no explicit component, every child except a digest holder is
-    /// selected. Declaration order is retained in both cases.
+    /// That is every child except a digest holder, in declaration order, which
+    /// is exactly what a holder's `digest:sources` of `["*"]` names and what
+    /// storing no sources at all means. A holder naming its own sources
+    /// selects from these same children; nothing marks them.
     pub fn digest_fields(&self) -> DigestFields<'_> {
         DigestFields::new(self.fields())
     }
 
-    /// Returns the names of the effective row-digest components.
+    /// Returns the names of the children a row digest reads by default.
     pub fn digest_field_names(&self) -> DigestFieldNames<'_> {
         DigestFieldNames(self.digest_fields())
     }
 
-    /// Returns the number of effective row-digest components.
+    /// Returns the number of children a row digest reads by default.
     pub fn digest_field_len(&self) -> usize {
         self.digest_fields().count()
     }
 
-    /// Returns whether any child explicitly declares the digest-component role.
-    pub fn has_digest_components(&self) -> bool {
-        has_explicit_components(self.fields())
-    }
-
-    /// Returns this struct root holding only its effective digest components.
+    /// Returns this struct root holding only the children a digest reads.
     ///
     /// # Errors
     ///
@@ -323,27 +288,21 @@ impl Field {
     }
 }
 
-pub(crate) fn has_explicit_components(fields: &[Field]) -> bool {
-    fields.iter().any(|field| field.as_digest().is_component())
+/// Return whether a field is one a row digest reads rather than holds.
+pub(crate) fn is_digest_source(field: &Field) -> bool {
+    !field.as_digest().is_holder()
 }
 
-pub(crate) fn is_effective_component(field: &Field, explicit: bool) -> bool {
-    let digest = field.as_digest();
-    !digest.is_holder() && (!explicit || digest.is_component())
-}
-
-/// A borrowed iterator over the effective row-digest components.
+/// A borrowed iterator over the children a row digest reads by default.
 #[derive(Clone)]
 pub struct DigestFields<'field> {
     fields: slice::Iter<'field, Field>,
-    explicit: bool,
 }
 
 impl<'field> DigestFields<'field> {
     pub(crate) fn new(fields: &'field [Field]) -> Self {
         Self {
             fields: fields.iter(),
-            explicit: has_explicit_components(fields),
         }
     }
 }
@@ -352,8 +311,7 @@ impl<'field> Iterator for DigestFields<'field> {
     type Item = &'field Field;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.fields
-            .find(|field| is_effective_component(field, self.explicit))
+        self.fields.find(|field| is_digest_source(field))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -363,8 +321,7 @@ impl<'field> Iterator for DigestFields<'field> {
 
 impl DoubleEndedIterator for DigestFields<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.fields
-            .rfind(|field| is_effective_component(field, self.explicit))
+        self.fields.rfind(|field| is_digest_source(field))
     }
 }
 

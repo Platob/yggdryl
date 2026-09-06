@@ -1365,12 +1365,6 @@ impl JsField {
         u32::try_from(self.inner.digest_field_len()).unwrap_or(u32::MAX)
     }
 
-    /// Whether any child explicitly declares the digest-component role.
-    #[napi(getter)]
-    pub fn has_digest_components(&self) -> bool {
-        self.inner.has_digest_components()
-    }
-
     /// Return this struct root holding only its effective digest components.
     #[napi]
     pub fn only_digest_fields(&self) -> Result<Self> {
