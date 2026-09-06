@@ -1,6 +1,9 @@
 use std::hint::black_box;
+use std::sync::Arc;
 
+use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
+use yggdryl::expression::Function;
 use yggdryl::{DataType, Field, MediaType, Metadata, MimeType, Scheme, Url};
 
 use super::nested_field;
@@ -130,6 +133,46 @@ pub fn benchmarks(criterion: &mut Criterion) {
             black_box(&partitioned)
                 .without_partition_fields()
                 .expect("the generated root subtracts its marked columns")
+        });
+    });
+    // What a derived partition column costs: reading its declaration, and
+    // computing the whole column from the one it names.
+    let mut derived = DataType::Int32.nullable_field("year");
+    derived
+        .as_partition_mut()
+        .set_sources(["event"])
+        .expect("a non-empty source path");
+    derived
+        .as_partition_mut()
+        .set_transform(Function::Year)
+        .expect("a transform of one argument");
+    let declaring = Field::new(
+        "row",
+        DataType::from_fields([DataType::Date32.required_field("event"), derived])
+            .expect("the two columns are unique"),
+        false,
+    );
+    let events = RecordBatch::try_from_iter([(
+        "event",
+        Arc::new(Date32Array::from((0..1_024).collect::<Vec<i32>>())) as ArrayRef,
+    )])
+    .expect("one column of one length");
+    group.bench_function("partition_transform_typed", |bencher| {
+        bencher.iter(|| {
+            black_box(&declaring)
+                .field_at(1)
+                .expect("the declared partition column")
+                .as_partition()
+                .transform()
+                .expect("a canonical transform round trips")
+        });
+    });
+    group.bench_function("partition_apply_arrow_batch_1024", |bencher| {
+        bencher.iter(|| {
+            black_box(&declaring)
+                .as_partition()
+                .apply_arrow_batch(black_box(&events))
+                .expect("the declared source column is in the batch")
         });
     });
     group.bench_function("typed_location", |bencher| {

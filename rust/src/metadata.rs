@@ -47,6 +47,8 @@ pub(crate) const FIELD_ENUM_KEY: &str = "field:enum";
 pub(crate) const FIELD_INIT_KEY: &str = "field:init";
 pub(crate) const FIELD_PARTITION_KEY: &str = "field:partition";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
+pub(crate) const PARTITION_SOURCES_KEY: &str = "partition:sources";
+pub(crate) const PARTITION_TRANSFORM_KEY: &str = "partition:transform";
 
 type MetadataMap = BTreeMap<String, String>;
 
@@ -873,8 +875,9 @@ mod validation;
 pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
-    parse_ascii_enum, parse_content_length, parse_field_id, parse_reserved_bool, property_key,
-    property_name, protocol_metadata_prefix, write_json_string,
+    is_all_sources, parse_ascii_enum, parse_content_length, parse_field_id,
+    parse_partition_transform, parse_reserved_bool, parse_source_list, property_key, property_name,
+    protocol_metadata_prefix, render_source_list, write_json_string,
 };
 
 #[cfg(test)]

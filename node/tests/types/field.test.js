@@ -596,7 +596,7 @@ test('every well-known protocol has its own live field accessor', () => {
   )
 })
 
-test('digest roles select effective components and validate atomically', () => {
+test('a digest holder names its own sources and validates atomically', () => {
   const symbol = new Field('symbol', 'utf8', false)
   const price = new Field('price', 'float64', false)
   const holder = new Field('row_digest', 'uint64', false)
@@ -605,12 +605,12 @@ test('digest roles select effective components and validate atomically', () => {
   const before = holder.digest.entries()
   assert.throws(
     () => holder.digest.update({ note: 'output', role: 'invalid' }),
-    /holder or component/,
+    /holder/,
   )
   assert.deepEqual(holder.digest.entries(), before)
   assert.throws(
     () => new Field('bad', 'uint64', true, { 'digest:role': 'invalid' }),
-    /holder or component/,
+    /holder/,
   )
 
   const defaults = new Field(
@@ -618,7 +618,6 @@ test('digest roles select effective components and validate atomically', () => {
     DataType.fromFields([symbol, price, holder]),
     false,
   )
-  assert.equal(defaults.hasDigestComponents, false)
   assert.deepEqual(defaults.digestFieldNames(), ['symbol', 'price'])
   assert.equal(defaults.digestFieldLen, 2)
   assert.deepEqual(
@@ -630,23 +629,29 @@ test('digest roles select effective components and validate atomically', () => {
     ['symbol', 'price'],
   )
 
+  // A holder names what it reads; the fields it reads carry no metadata, so
+  // the default selection is still every child but the holder.
   const venue = new Field('venue', 'utf8', false)
-  venue.digest.set('role', 'component')
+  const narrowed = new Field('row_digest', 'uint64', true, {
+    'digest:role': 'holder',
+    'digest:sources': '["venue"]',
+  })
   const explicit = new Field(
     'row',
-    DataType.fromFields([symbol, venue, price, holder]),
+    DataType.fromFields([symbol, venue, price, narrowed]),
     false,
   )
-  assert.equal(explicit.hasDigestComponents, true)
-  assert.deepEqual(explicit.digestFieldNames(), ['venue'])
-  assert.equal(explicit.digestFieldLen, 1)
-  assert.deepEqual(
-    explicit.digestFields().map((child) => child.name),
-    ['venue'],
-  )
-  assert.deepEqual(
-    [...explicit.onlyDigestFields().dtype].map((child) => child.name),
-    ['venue'],
+  assert.deepEqual(venue.digest.entries(), [])
+  assert.equal(narrowed.digest.get('sources'), '["venue"]')
+  assert.deepEqual(explicit.digestFieldNames(), ['symbol', 'venue', 'price'])
+  assert.equal(explicit.digestFieldLen, 3)
+  assert.throws(
+    () =>
+      new Field('bad', 'uint64', true, {
+        'digest:role': 'holder',
+        'digest:sources': '["*","venue"]',
+      }),
+    /digest:sources/,
   )
 
   const holdersOnly = new Field(
@@ -660,7 +665,6 @@ test('digest roles select effective components and validate atomically', () => {
   assert.deepEqual(symbol.digestFields(), [])
   assert.deepEqual(symbol.digestFieldNames(), [])
   assert.equal(symbol.digestFieldLen, 0)
-  assert.equal(symbol.hasDigestComponents, false)
   assert.throws(() => symbol.onlyDigestFields(), /expected a struct root/)
 })
 
