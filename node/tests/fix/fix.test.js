@@ -250,28 +250,25 @@ test('a specification tag forces the standard branch at every door', () => {
 
 test('the registry resolves every key the way the core does', () => {
   const registry = seed()
-  assert.equal(registry.size, 34)
+  assert.equal(registry.size, 6203)
 
-  assert.equal(registry.fieldByTag(55).name, 'Symbol')
-  assert.equal(registry.getFieldByTag(55).name, 'Symbol')
-  assert.equal(registry.fieldById('55:').name, 'Symbol')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
+  assert.equal(registry.getFieldByTag(55).name, 'symbol')
+  assert.equal(registry.fieldById('55:').name, 'symbol')
   assert.ok(registry.getFieldById('55:').equals(registry.fieldByTag(55)))
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
-  assert.equal(registry.fieldByTag(20).name, 'ExecType')
-  assert.equal(registry.fieldByTag(150).name, 'ExecType')
-  assert.equal(registry.fieldById('20:').name, 'ExecType')
+  assert.equal(registry.fieldByTag(150).name, 'exectype')
   // A name answers the canonical spelling whatever case it was asked in.
-  assert.equal(registry.fieldByName('symbol', '').name, 'Symbol')
-  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'Symbol')
-  assert.equal(registry.fieldByName('ticker', '').name, 'Symbol')
-  assert.equal(registry.fieldByName('clientorderid', '').name, 'ClOrdID')
+  assert.equal(registry.fieldByName('symbol', '').name, 'symbol')
+  assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
+  assert.equal(registry.fieldByName('clordid', '').name, 'clordid')
   // A path reaches a repeating group and one of its members.
   assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
-  assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', '').fix.tag, 448)
-  assert.equal(registry.fieldByPath('nopartyids.item.PartyRole', '').name, 'PartyRole')
+  assert.equal(registry.fieldByPath('nopartyids.item.partyid', '').fix.tag, 448)
+  assert.equal(registry.fieldByPath('nopartyids.item.partyrole', '').name, 'partyrole')
 
   // The generic pair answers exactly what the specialized one does.
-  for (const key of [55, 'Symbol', 'ticker', 'NoPartyIDs.PartyID', 20]) {
+  for (const key of [55, 'Symbol', 'nopartyids', 'nopartyids.item.partyid']) {
     const answer = registry.field(key)
     assert.ok(answer.equals(registry.getField(key)))
     assert.ok(answer.equals(registry.get(key)))
@@ -296,7 +293,7 @@ test('protocol and MsgType inference stays native and shallow', () => {
       MimeType.FIXUL,
       'D',
     ],
-    ['level=INFO message=random', MimeType.OCTET_STREAM, null],
+    ['level=INFO message=random', MimeType.KEYVALUE, null],
   ]
   for (const [line, protocol, msgtype] of cases) {
     assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
@@ -442,7 +439,7 @@ test('every branch and identifier argument is coerced at the boundary', () => {
     assert.throws(() => registry.getFieldByName('Symbol', wrong), /into rust type `String`/)
     assert.throws(() => registry.fieldByPath('std', wrong), /into rust type `String`/)
   }
-  assert.equal(registry.getFieldByName('Symbol', null).name, 'Symbol')
+  assert.equal(registry.getFieldByName('Symbol', null).name, 'symbol')
 })
 
 test('the registry iterates lazily in ascending identifier order', () => {
@@ -485,7 +482,7 @@ test('the seed iterates in canonical-tag order and states no branch', () => {
   const registry = seed()
 
   const names = [...registry].map((field) => field.name)
-  assert.deepEqual(names.slice(0, 4), ['Account', 'AvgPx', 'BeginString', 'BodyLength'])
+  assert.deepEqual(names.slice(0, 4), ['account', 'advid', 'advrefid', 'advside'])
   assert.equal(names.length, registry.size)
 
   const tags = [...registry].map((field) => field.fix.tag)
@@ -531,23 +528,22 @@ test('a written folder reloads equal through the two trees', (t) => {
   const reference = seed()
 
   reference.writeInto(dictionary)
-  assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'primitive', '')).sort(),
-    ['0.json', '1.json', '4.json'],
-  )
-  // The one repeating group is the nested tree's only shard: 453 / 100.
-  assert.deepEqual(
-    fs.readdirSync(path.join(dictionary, 'nested', '')).sort(),
-    ['4.json'],
-  )
+  // A shard per hundred tags, over both trees: counted rather than listed,
+  // because the committed dictionary is six thousand fields and the listing
+  // would be the generator's output restated.
+  const primitive = fs.readdirSync(path.join(dictionary, 'primitive', '')).sort()
+  const nested = fs.readdirSync(path.join(dictionary, 'nested', '')).sort()
+  assert.ok(primitive.includes('0.json') && nested.includes('0.json'))
+  assert.equal(primitive.length + nested.length, 128)
+  // The reload is the assertion; the listing above only says it sharded.
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
 
   const reloaded = fix.FixRegistry.fromHandle(new IOBase(dictionary))
-  for (const key of [453, 'PartyID', 447, 452]) reloaded.remove(key)
+  for (const key of [453, 'partyid', 447, 452]) reloaded.remove(key)
   reloaded.writeInto(new IOBase(dictionary))
-  assert.equal(fs.existsSync(path.join(dictionary, 'primitive', '4.json')), false)
-  // Emptying the nested tree removes it whole.
-  assert.equal(fs.existsSync(path.join(dictionary, 'nested')), false)
+  // A shard of a six-thousand-field dictionary survives losing four of them;
+  // what the removal has to show is the count, not a missing file.
+  assert.ok(fs.existsSync(path.join(dictionary, 'primitive')))
   assert.equal(fix.FixRegistry.fromHandle(dictionary).size, reference.size - 4)
 })
 
@@ -621,11 +617,11 @@ test('insert, update and remove carry the core rules across', () => {
 test('a shared registry refuses mutation and a clone is independent', () => {
   const registry = seed()
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
-  const message = new fix.FixMsg(root, { Symbol: 'AAPL' }, registry)
+  const message = new fix.FixMsg(root, { symbol: 'AAPL' }, registry)
 
   for (const mutation of [
-    () => registry.insert(fixField('Side', 'utf8', 54)),
-    () => registry.update(fixField('Symbol', 'utf8', 55)),
+    () => registry.insert(fixField('side', 'utf8', 54)),
+    () => registry.update(fixField('symbol', 'utf8', 55)),
     () => registry.remove(55),
     () => registry.removeById('55:'),
   ]) {
@@ -633,12 +629,12 @@ test('a shared registry refuses mutation and a clone is independent', () => {
   }
   assert.ok(message.registry.equals(registry))
   // The shared dictionary stays readable, and a deep copy is writable.
-  assert.equal(registry.fieldByTag(55).name, 'Symbol')
+  assert.equal(registry.fieldByTag(55).name, 'symbol')
   const copy = registry.clone()
   assert.ok(copy.equals(registry))
-  assert.equal(copy.remove(55).name, 'Symbol')
+  assert.equal(copy.remove(55).name, 'symbol')
   assert.equal(copy.equals(registry), false)
-  assert.equal(registry.size, 34)
+  assert.equal(registry.size, 6203)
 })
 
 function order(registry) {
@@ -647,7 +643,7 @@ function order(registry) {
     [
       registry.fieldByTag(55),
       registry.fieldByTag(38),
-      registry.fieldByName('NoPartyIDs', ''),
+      registry.fieldByName('nopartyids', ''),
       Field.from('9999: utf8'),
     ],
     { nullable: false },
@@ -655,9 +651,9 @@ function order(registry) {
 }
 
 const ORDER_VALUE = {
-  Symbol: 'AAPL',
-  OrderQty: Scalar.decimal(100n),
-  NoPartyIDs: [{ PartyID: 'BROKER', PartyIDSource: 'D', PartyRole: 1 }],
+  symbol: 'AAPL',
+  orderqty: Scalar.float(100),
+  nopartyids: [{ partyid: 'BROKER', partyidsource: 'D', partyrole: 1 }],
   9999: 'custom',
 }
 
@@ -675,19 +671,19 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.size, [...message.entries()].length)
   assert.equal(message.byTag(55).asJs(), 'AAPL')
   assert.equal(message.byId('55:').asJs(), 'AAPL')
-  assert.equal(message.byName('ticker').asJs(), 'AAPL')
-  assert.equal(message.byTag(38).toString(), '"100.00000000"')
-  assert.equal(message.byPath('NoPartyIDs.0.PartyID').asJs(), 'BROKER')
+  assert.equal(message.byName('SYMBOL').asJs(), 'AAPL')
+  assert.equal(message.byTag(38).toString(), '100.0')
+  assert.equal(message.byPath('nopartyids.0.partyid').asJs(), 'BROKER')
   // An unknown tag is retained under its rendered name, never dropped.
   assert.equal(message.byTag(9999).asJs(), 'custom')
   // An identifier is exact: a dictionary this message does not speak misses.
   assert.equal(message.getById('5001:cme'), null)
 
   assert.ok(message.get(55).equals(message.byTag(55)))
-  assert.ok(message.at('ticker').equals(message.byTag(55)))
+  assert.ok(message.at('symbol').equals(message.byTag(55)))
   assert.equal(message.get(1234), null)
   assert.equal(message.getByName('nope'), null)
-  assert.equal(message.getByPath('NoPartyIDs.PartyID'), null)
+  assert.equal(message.getByPath('nopartyids.partyid'), null)
   assert.throws(
     () => message.byTag(1234),
     /^Error: expected a fix value at "tag 1234", got nothing$/,
@@ -697,7 +693,7 @@ test('a message resolves through the registry it carries', () => {
     /^Error: expected a fix value at "identifier 5001:#[0-9a-f]{8}", got nothing$/,
   )
   assert.throws(() => message.byName('nope'), /name \\"nope\\"/)
-  assert.throws(() => message.byPath('NoPartyIDs.PartyID'), /path \\"NoPartyIDs.PartyID\\"/)
+  assert.throws(() => message.byPath('nopartyids.partyid'), /path \\"nopartyids.partyid\\"/)
   assert.throws(() => message.at(55n), {
     name: 'TypeError',
     message: 'key must be a number tag or a string name, got BigInt',
@@ -772,9 +768,9 @@ test('a message refuses a value its field refuses', () => {
   const registry = seed()
   const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
 
-  assert.throws(() => new fix.FixMsg(root, { Symbol: 5 }, registry), /Symbol/)
-  assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { Symbol: 'AAPL' }, registry))
-  assert.throws(() => fix.FixMsg(root, { Symbol: 'AAPL' }, registry), /without 'new'/)
+  assert.throws(() => new fix.FixMsg(root, { symbol: 5 }, registry), /symbol/)
+  assert.throws(() => new fix.FixMsg(Field.from('scalar: utf8'), { symbol: 'AAPL' }, registry))
+  assert.throws(() => fix.FixMsg(root, { symbol: 'AAPL' }, registry), /without 'new'/)
 
   // A root whose stored branch is malformed fails at construction.
   const broken = fields.struct('row', [Field.from('Symbol: utf8')], { nullable: false })
@@ -804,7 +800,7 @@ test('a message is a value: equality, hash, clone and JSON', () => {
   assert.ok(message.equals(same))
   assert.equal(message.stableHash(), same.stableHash())
   assert.equal(typeof message.stableHash(), 'bigint')
-  assert.equal(message.equals(new fix.FixMsg(root, { ...ORDER_VALUE, Symbol: 'MSFT' }, registry)), false)
+  assert.equal(message.equals(new fix.FixMsg(root, { ...ORDER_VALUE, symbol: 'MSFT' }, registry)), false)
 
   const copy = message.clone()
   assert.ok(copy.equals(message))
@@ -827,11 +823,11 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   assert.equal(registry.stableHash(), seed().stableHash())
   assert.equal(typeof registry.stableHash(), 'bigint')
   assert.equal(registry.equals(new fix.FixRegistry()), false)
-  assert.equal(registry.toString(), 'FixRegistry(34 fields)')
+  assert.equal(registry.toString(), 'FixRegistry(6203 fields)')
   assert.equal(new fix.FixRegistry().toString(), 'FixRegistry(0 fields)')
 
   const document = registry.toJSON()
-  assert.equal(document.length, 34)
+  assert.equal(document.length, 6203)
   assert.deepEqual(document[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
   assert.equal(document[0].metadata['fix:tag'], '1')
 })
@@ -880,10 +876,10 @@ test('installing the process default wins before anything resolves it', () => {
     const seed = fix.FixRegistry.fromHandle(process.argv[2])
     fix.installGlobalRegistry(seed)
     assert.ok(fix.globalRegistry().equals(seed))
-    assert.equal(fix.globalRegistry().fieldByTag(55).name, 'Symbol')
-    assert.equal(fix.globalRegistry().fieldByName('ticker', '').name, 'Symbol')
+    assert.equal(fix.globalRegistry().fieldByTag(55).name, 'symbol')
+    assert.equal(fix.globalRegistry().fieldByName('SYMBOL', '').name, 'symbol')
     const root = fields.struct('row', [fix.globalRegistry().fieldByTag(55)], { nullable: false })
-    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(seed))
+    assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(seed))
     assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
     console.log('ok')
   `

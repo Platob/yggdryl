@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{DataType, Field, FixCode, FixEnumValue, Version};
+use yggdryl::{DataType, Field, FixCode, FixCodeValue, Version};
 
 /// A code set of `count` members, each carrying a description tier 3 reads.
 fn vocabulary(count: usize) -> Field {
-    let codes: Vec<FixEnumValue> = (0..count)
+    let codes: Vec<FixCode> = (0..count)
         .map(|index| {
-            FixEnumValue::new(format!("Member{index:04}"), format!("{index:04}"))
+            FixCode::new(format!("Member{index:04}"), format!("{index:04}"))
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();
@@ -53,7 +53,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         // times it wins, which is what the two rows are for - a caller
         // resolving one spelling pays the build, and one resolving a million
         // should build the map itself.
-        let map: HashMap<&str, FixCode<'_>> = view
+        let map: HashMap<&str, FixCodeValue<'_>> = view
             .codes()
             .map(|code| {
                 let code = code.expect("a canonical document");
@@ -65,7 +65,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
         group.bench_function(format!("{label}/baseline_map_build_and_hit"), |bencher| {
             bencher.iter(|| {
-                let built: HashMap<&str, FixCode<'_>> = black_box(&view)
+                let built: HashMap<&str, FixCodeValue<'_>> = black_box(&view)
                     .codes()
                     .filter_map(|code| code.ok().map(|code| (code.value(), code)))
                     .collect();
@@ -81,9 +81,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&view).code_value_at(black_box(Version::MAX), black_box("0150")));
     });
     // Writing renders the whole document once, which is what a generator pays.
-    let codes: Vec<FixEnumValue> = view
+    let codes: Vec<FixCode> = view
         .codes()
-        .map(|code| FixEnumValue::from(code.expect("a canonical document")))
+        .map(|code| FixCode::from(code.expect("a canonical document")))
         .collect();
     group.bench_function("300/set_codes", |bencher| {
         bencher.iter_batched_ref(

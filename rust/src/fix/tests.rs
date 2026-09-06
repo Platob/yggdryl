@@ -12,7 +12,7 @@ use super::store::shard_of;
 use crate::holder::local::Folder;
 use crate::types::MsgType;
 use crate::{
-    DataType, Error, Field, FixBranch, FixEnumValue, FixId, FixKey, FixLineageEntry, FixMsg,
+    DataType, Error, Field, FixBranch, FixCode, FixId, FixKey, FixLineageEntry, FixMsg,
     FixPedigree, FixRegistry, MimeType, Scalar, Version,
 };
 
@@ -2346,11 +2346,11 @@ fn side() -> Field {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("Buy", "1").with_since(version("2.7"), Some(254)),
-            FixEnumValue::new("Sell", "2").with_since(version("2.7"), Some(254)),
-            FixEnumValue::new("Undisclosed", "7").with_since(version("4.1"), None),
-            FixEnumValue::new("CrossShort", "9").with_since(version("4.2"), None),
-            FixEnumValue::new("CrossShortExempt", "A").with_since(version("4.3"), None),
+            FixCode::new("Buy", "1").with_since(version("2.7"), Some(254)),
+            FixCode::new("Sell", "2").with_since(version("2.7"), Some(254)),
+            FixCode::new("Undisclosed", "7").with_since(version("4.1"), None),
+            FixCode::new("CrossShort", "9").with_since(version("4.2"), None),
+            FixCode::new("CrossShortExempt", "A").with_since(version("4.3"), None),
         ])
         .unwrap();
     field
@@ -2363,15 +2363,15 @@ fn comm_type() -> Field {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("PerUnit", "1"),
-            FixEnumValue::new("Percent", "2"),
-            FixEnumValue::new("Absolute", "3"),
-            FixEnumValue::new("PercentageWaivedCashDiscount", "4"),
-            FixEnumValue::new("PercentageWaivedEnhancedUnits", "5"),
-            FixEnumValue::new("PointsPerBondOrContract", "6")
+            FixCode::new("PerUnit", "1"),
+            FixCode::new("Percent", "2"),
+            FixCode::new("Absolute", "3"),
+            FixCode::new("PercentageWaivedCashDiscount", "4"),
+            FixCode::new("PercentageWaivedEnhancedUnits", "5"),
+            FixCode::new("PointsPerBondOrContract", "6")
                 .with_description("Good Till Date (GTD) points per bond"),
-            FixEnumValue::new("BasisPoints", "7").with_since(version("5.0SP2"), Some(208)),
-            FixEnumValue::new("AmountPerContract", "8"),
+            FixCode::new("BasisPoints", "7").with_since(version("5.0SP2"), Some(208)),
+            FixCode::new("AmountPerContract", "8"),
         ])
         .unwrap();
     field
@@ -2411,8 +2411,8 @@ fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("Buy", "1").with_aliases(["Bought", "BUYSIDE"]),
-            FixEnumValue::new("Sell", "2"),
+            FixCode::new("Buy", "1").with_aliases(["Bought", "BUYSIDE"]),
+            FixCode::new("Sell", "2"),
         ])
         .unwrap();
     let view = field.as_fix();
@@ -2436,8 +2436,8 @@ fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("Cross", "8"),
-            FixEnumValue::new("CrossOther", "9").with_aliases(["cross"]),
+            FixCode::new("Cross", "8"),
+            FixCode::new("CrossOther", "9").with_aliases(["cross"]),
         ])
         .unwrap();
     let view = field.as_fix();
@@ -2453,8 +2453,8 @@ fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
     aliased
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("Cross", "8"),
-            FixEnumValue::new("CrossSame", "8").with_aliases(["cross"]),
+            FixCode::new("Cross", "8"),
+            FixCode::new("CrossSame", "8").with_aliases(["cross"]),
         ])
         .unwrap();
     assert_eq!(aliased.as_fix().code_value("cross"), Some("8"));
@@ -2467,10 +2467,10 @@ fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("GoodTillDate", "6").with_description("Good Till Date (GTD)"),
-            FixEnumValue::new("BrokenDate", "7")
+            FixCode::new("GoodTillDate", "6").with_description("Good Till Date (GTD)"),
+            FixCode::new("BrokenDate", "7")
                 .with_description("Broken date; SettlDate (64) is required"),
-            FixEnumValue::new("SwapValueFactor", "8")
+            FixCode::new("SwapValueFactor", "8")
                 .with_description("Swap Value Factor (SVP) through a central counterparty (CCP)"),
         ])
         .unwrap();
@@ -2509,7 +2509,7 @@ fn a_version_hides_a_code_added_later_and_one_deprecated_at_or_before() {
     retired.as_fix_mut().set_tag(9996).unwrap();
     retired
         .as_fix_mut()
-        .set_codes(&[FixEnumValue::new("Retired", "R")
+        .set_codes(&[FixCode::new("Retired", "R")
             .with_since(version("4.0"), None)
             .with_deprecated(version("4.4"))])
         .unwrap();
@@ -2576,24 +2576,21 @@ fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
 
     let error = field
         .as_fix_mut()
-        .set_codes(&[FixEnumValue::new("Buy", "1"), FixEnumValue::new("BUY", "2")])
+        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("BUY", "2")])
         .unwrap_err();
     assert!(error.to_string().contains("BUY"), "{error}");
     assert_eq!(field.as_metadata().get("fix:codes"), None, "atomic");
 
     let error = field
         .as_fix_mut()
-        .set_codes(&[FixEnumValue::new("Buy", "")])
+        .set_codes(&[FixCode::new("Buy", "")])
         .unwrap_err();
     assert!(error.to_string().contains("value"), "{error}");
 
     // Two names on one value is an alias, which is legal.
     field
         .as_fix_mut()
-        .set_codes(&[
-            FixEnumValue::new("Buy", "1"),
-            FixEnumValue::new("Bought", "1"),
-        ])
+        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Bought", "1")])
         .unwrap();
     assert_eq!(field.as_fix().codes().count(), 2);
     assert_eq!(field.as_fix().code_value("Bought"), Some("1"));
@@ -2605,7 +2602,7 @@ fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
-        .set_codes(&[FixEnumValue::new("Buy", "1")
+        .set_codes(&[FixCode::new("Buy", "1")
             .with_description(r#"Buy; the "long" side"#)
             .with_aliases(["Bought"])
             .with_since(version("2.7"), Some(254))
@@ -2656,8 +2653,8 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     stored
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("StoredOnly", "9"),
-            FixEnumValue::new("Shared", "1").with_description("the stored reading"),
+            FixCode::new("StoredOnly", "9"),
+            FixCode::new("Shared", "1").with_description("the stored reading"),
         ])
         .unwrap();
 
@@ -2679,8 +2676,8 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     incoming
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("IncomingOnly", "5"),
-            FixEnumValue::new("Shared", "1").with_description("the incoming reading"),
+            FixCode::new("IncomingOnly", "5"),
+            FixCode::new("Shared", "1").with_description("the incoming reading"),
         ])
         .unwrap();
 
@@ -2779,7 +2776,7 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
         .unwrap();
     field
         .as_fix_mut()
-        .set_codes(&[FixEnumValue::new("Shared", "1")])
+        .set_codes(&[FixCode::new("Shared", "1")])
         .unwrap();
 
     let before = field.clone();

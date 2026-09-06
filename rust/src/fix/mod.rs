@@ -173,7 +173,7 @@ mod tests;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
 pub use batch::{DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, write_fix};
-pub use codes::{FixCode, FixCodes, FixEnumValue};
+pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{CRATE_BRANCH, DIRECTION_TAG, MSGHASH_TAG, fix_crate_fields};
 pub use digest::FixDedup;

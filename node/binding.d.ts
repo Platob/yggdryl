@@ -2093,6 +2093,7 @@ declare module './index' {
     const ULLINK: MimeType
     const FIX: MimeType
     const FIXUL: MimeType
+    const KEYVALUE: MimeType
     const FIXML: MimeType
     const MARKDOWN: MimeType
     const HTML: MimeType

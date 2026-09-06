@@ -80,10 +80,10 @@ const KEYS: [&str; 9] = [
 
 /// One member of a FIX code set, as a caller states it.
 ///
-/// The borrowed [`FixCode`] is what a read answers; this is what a writer
+/// The borrowed [`FixCodeValue`] is what a read answers; this is what a writer
 /// hands [`FixFieldMut::set_codes`](crate::FixFieldMut).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FixEnumValue {
+pub struct FixCode {
     name: SmolStr,
     value: SmolStr,
     description: Option<SmolStr>,
@@ -95,7 +95,7 @@ pub struct FixEnumValue {
     group: Option<SmolStr>,
 }
 
-impl FixEnumValue {
+impl FixCode {
     /// Builds one code from the two facts every member has.
     pub fn new(name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self {
         Self {
@@ -249,7 +249,7 @@ impl FixEnumValue {
 
 /// One member of a field's code set, borrowed from the stored document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FixCode<'field> {
+pub struct FixCodeValue<'field> {
     value: &'field str,
     name: &'field str,
     aliases: &'field str,
@@ -261,7 +261,7 @@ pub struct FixCode<'field> {
     sort: Option<u32>,
 }
 
-impl<'field> FixCode<'field> {
+impl<'field> FixCodeValue<'field> {
     /// Returns the wire value this code stands for.
     #[must_use]
     pub const fn value(self) -> &'field str {
@@ -413,8 +413,8 @@ impl<'field> FixCodes<'field> {
     ///
     /// Returns [`Error::Parse`] when two codes share a name, or when one
     /// states an empty value or an empty name.
-    pub(super) fn render(codes: &[FixEnumValue]) -> Result<String> {
-        let mut ordered: Vec<&FixEnumValue> = codes.iter().collect();
+    pub(super) fn render(codes: &[FixCode]) -> Result<String> {
+        let mut ordered: Vec<&FixCode> = codes.iter().collect();
         ordered.sort_by(|left, right| {
             left.value
                 .cmp(&right.value)
@@ -452,7 +452,7 @@ impl<'field> FixCodes<'field> {
     }
 
     /// Advances one step: the next code, the document's end, or a refusal.
-    fn step(&mut self) -> Scan<Option<FixCode<'field>>> {
+    fn step(&mut self) -> Scan<Option<FixCodeValue<'field>>> {
         if !self.started {
             self.started = true;
             if !self.cursor.open_array(CODES)? {
@@ -470,7 +470,7 @@ impl<'field> FixCodes<'field> {
     }
 
     /// Reads the one code starting at the cursor.
-    fn read_code(&mut self) -> Scan<FixCode<'field>> {
+    fn read_code(&mut self) -> Scan<FixCodeValue<'field>> {
         self.cursor.expect(b'{')?;
         let mut value = None;
         let mut name = None;
@@ -508,7 +508,7 @@ impl<'field> FixCodes<'field> {
                 NAME
             }));
         };
-        Ok(FixCode {
+        Ok(FixCodeValue {
             value,
             name,
             aliases,
@@ -532,7 +532,7 @@ impl<'field> FixCodes<'field> {
     /// A value too long for the stack needle, and a hand-edited document that
     /// does not lead with `value`, both fall back to the ordinary walk, which
     /// answers the same thing more slowly.
-    pub(super) fn seek_value(stored: &'field str, value: &str) -> Option<FixCode<'field>> {
+    pub(super) fn seek_value(stored: &'field str, value: &str) -> Option<FixCodeValue<'field>> {
         let mut needle = [0_u8; NEEDLE_CAPACITY];
         let opening = br#"{"value":""#;
         let length = opening.len() + value.len() + 1;
@@ -560,7 +560,7 @@ impl<'field> FixCodes<'field> {
     }
 
     /// The next code, answering nothing where the document does not parse.
-    pub(super) fn next_ok(&mut self) -> Option<FixCode<'field>> {
+    pub(super) fn next_ok(&mut self) -> Option<FixCodeValue<'field>> {
         if self.done {
             return None;
         }
@@ -575,7 +575,7 @@ impl<'field> FixCodes<'field> {
 }
 
 impl<'field> Iterator for FixCodes<'field> {
-    type Item = Result<FixCode<'field>>;
+    type Item = Result<FixCodeValue<'field>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -610,13 +610,13 @@ impl<'field> Iterator for FixCodes<'field> {
 
 impl FusedIterator for FixCodes<'_> {}
 
-impl From<FixCode<'_>> for FixEnumValue {
+impl From<FixCodeValue<'_>> for FixCode {
     /// Owns what a borrowed code holds, for a caller taking the set away.
     ///
     /// The description is decoded here rather than kept escaped, because an
     /// owned value has no document behind it to decode against later; a body
     /// the codec refuses keeps its escaped text, which is what arrived.
-    fn from(code: FixCode<'_>) -> Self {
+    fn from(code: FixCodeValue<'_>) -> Self {
         let mut owned = Self::new(code.name(), code.value());
         owned.aliases = code.aliases().map(SmolStr::new).collect();
         owned.description = code.doc().map(|doc| {

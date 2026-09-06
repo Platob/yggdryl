@@ -280,7 +280,14 @@ test('malformed recursive datatypes never use a permissive fallback', () => {
 
 test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   const prebuilt = AsciiEnum.prebuilt()
-  assert.deepEqual(Object.keys(prebuilt).sort(), ['country', 'currency', 'exchange', 'mic'])
+  assert.deepEqual(Object.keys(prebuilt).sort(), [
+    'country',
+    'currency',
+    'direction',
+    'exchange',
+    'mic',
+    'side',
+  ])
   // `exchange` is FIX's name for the ISO 10383 code, so it is one list.
   assert.deepEqual(prebuilt.mic, prebuilt.exchange)
 

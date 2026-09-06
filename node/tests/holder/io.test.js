@@ -705,8 +705,8 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
   options.withRownum = 10n
-  options.lstrip = '^\\s+'
-  options.rstrip = '\\s+$'
+  options.lstrip = ['^\\s+']
+  options.rstrip = ['\\s+$']
 
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
@@ -789,16 +789,16 @@ test('text-only settings are flat native TextOptions value state', () => {
   options.leadingFragment = ' DROP '
   options.maxRecordByteSize = 4096
   options.rowheader = '(?<stamp>\\S+)'
-  options.lstrip = '^\\s+'
-  options.rstrip = '\\s+$'
+  options.lstrip = ['^\\s+']
+  options.rstrip = ['\\s+$']
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'
   options.withRownum = -3n
 
   assert.equal(options.rowheader, '(?<stamp>\\S+)')
-  assert.equal(options.lstrip, '^\\s+')
-  assert.equal(options.rstrip, '\\s+$')
+  assert.deepEqual(options.lstrip, ['^\\s+'])
+  assert.deepEqual(options.rstrip, ['\\s+$'])
   assert.deepEqual(options.linesep, Buffer.from('\r\n'))
   assert.equal(options.autotype, false)
   assert.equal(options.timezone.toString(), '+02:00')
@@ -920,7 +920,7 @@ test('text folders decode coded leaves through the same record path', (t) => {
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
   options.withRownum = 1n
-  options.lstrip = '^\\s+'
+  options.lstrip = ['^\\s+']
   const rows = [...new IOBase(root).readRecords(options)]
 
   assert.deepEqual(

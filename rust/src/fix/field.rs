@@ -12,7 +12,7 @@ use std::str::Split;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::codes::{FixCode, FixCodes, FixEnumValue};
+use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::lineage::{FixLineage, FixLineageEntry};
 use super::{FixBranch, FixId};
 use crate::types::folds_equal;
@@ -291,7 +291,7 @@ impl<'field> FixField<'field> {
     ///
     /// The scan stops at the match: `value` leads each record, so this reads
     /// one key per code passed and no more.
-    pub fn code(&self, value: &str) -> Option<FixCode<'field>> {
+    pub fn code(&self, value: &str) -> Option<FixCodeValue<'field>> {
         FixCodes::seek_value(self.get(CODES)?, value)
     }
 
@@ -302,12 +302,12 @@ impl<'field> FixField<'field> {
     /// the whole set runs and exactly one match answers. It is affordable
     /// because [`Self::code`] is the hot path and a spelling lookup comes
     /// from human or JSON input.
-    pub fn code_by_name(&self, name: &str) -> Option<FixCode<'field>> {
+    pub fn code_by_name(&self, name: &str) -> Option<FixCodeValue<'field>> {
         self.one_matching(|code| code.is_spelled(name))
     }
 
     /// Returns the code one wire value stands for at `at`.
-    pub fn code_at(&self, at: Version, value: &str) -> Option<FixCode<'field>> {
+    pub fn code_at(&self, at: Version, value: &str) -> Option<FixCodeValue<'field>> {
         self.code(value).filter(|code| code.defined_at(at))
     }
 
@@ -322,7 +322,7 @@ impl<'field> FixField<'field> {
 
     /// Returns the symbolic name one wire value stands for.
     pub fn code_name(&self, value: &str) -> Option<&'field str> {
-        self.code(value).map(FixCode::name)
+        self.code(value).map(FixCodeValue::name)
     }
 
     /// Resolves any spelling of a code to its wire value, at one version.
@@ -335,7 +335,7 @@ impl<'field> FixField<'field> {
 
     /// Returns the symbolic name one wire value stands for, at one version.
     pub fn code_name_at(&self, at: Version, value: &str) -> Option<&'field str> {
-        self.code_at(at, value).map(FixCode::name)
+        self.code_at(at, value).map(FixCodeValue::name)
     }
 
     /// The three tiers, optionally filtered to one version.
@@ -346,7 +346,7 @@ impl<'field> FixField<'field> {
     /// have no code set at all and used to pay all three to learn it.
     fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
         let stored = self.get(CODES)?;
-        let visible = |code: &FixCode<'field>| at.is_none_or(|at| code.defined_at(at));
+        let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
         // Tier 1: the text as a wire value, exactly. A spelling that is
         // already a legal code is never reinterpreted as somebody's name, and
         // the record a value opens is addressed rather than searched for.
@@ -366,11 +366,14 @@ impl<'field> FixField<'field> {
                     .abbreviation()
                     .is_some_and(|short| folds_equal(short, text))
         })
-        .map(FixCode::value)
+        .map(FixCodeValue::value)
     }
 
     /// The one code a predicate matches, or nothing when several do.
-    fn one_matching(&self, matches: impl Fn(&FixCode<'field>) -> bool) -> Option<FixCode<'field>> {
+    fn one_matching(
+        &self,
+        matches: impl Fn(&FixCodeValue<'field>) -> bool,
+    ) -> Option<FixCodeValue<'field>> {
         one_matching(self.get(CODES)?, matches)
     }
 
@@ -625,7 +628,7 @@ impl FixFieldMut<'_> {
     /// Returns [`Error::Parse`] when two codes share a name or one states an
     /// empty value or name, and the property write's refusal otherwise.
     /// Either leaves the field unchanged.
-    pub fn set_codes(&mut self, codes: &[FixEnumValue]) -> Result<()> {
+    pub fn set_codes(&mut self, codes: &[FixCode]) -> Result<()> {
         if codes.is_empty() {
             self.remove(CODES);
             return Ok(());
@@ -641,12 +644,12 @@ impl FixFieldMut<'_> {
     /// Returns [`Error::Parse`] naming the byte position when the stored
     /// document does not parse, having already removed it: a document a
     /// reader refuses is one a caller asked to take away.
-    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixEnumValue>>> {
+    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixCode>>> {
         let Some(stored) = self.remove(CODES) else {
             return Ok(None);
         };
         FixCodes::over(Some(stored.as_str()))
-            .map(|code| code.map(FixEnumValue::from))
+            .map(|code| code.map(FixCode::from))
             .collect::<Result<Vec<_>>>()
             .map(Some)
     }
@@ -929,14 +932,14 @@ fn merge_lineage(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<S
 
 /// Fold two code sets by wire value, the incoming winning a shared value.
 fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
-    let mut codes: Vec<FixEnumValue> = Vec::new();
+    let mut codes: Vec<FixCode> = Vec::new();
     for code in winner.codes() {
-        codes.push(FixEnumValue::from(code?));
+        codes.push(FixCode::from(code?));
     }
     for code in other.codes() {
         let code = code?;
         if !codes.iter().any(|held| held.value() == code.value()) {
-            codes.push(FixEnumValue::from(code));
+            codes.push(FixCode::from(code));
         }
     }
     if codes.is_empty() {
@@ -975,15 +978,15 @@ fn derived_aliases(canonical: &str, lineage: &str) -> Vec<SmolStr> {
 /// tiers can share one already-read document.
 fn one_matching<'field>(
     stored: &'field str,
-    matches: impl Fn(&FixCode<'field>) -> bool,
-) -> Option<FixCode<'field>> {
+    matches: impl Fn(&FixCodeValue<'field>) -> bool,
+) -> Option<FixCodeValue<'field>> {
     let mut found = None;
     let mut walk = FixCodes::over(Some(stored));
     while let Some(code) = walk.next_ok() {
         if !matches(&code) {
             continue;
         }
-        if found.is_some_and(|held: FixCode<'field>| held.value() != code.value()) {
+        if found.is_some_and(|held: FixCodeValue<'field>| held.value() != code.value()) {
             return None;
         }
         found = Some(code);

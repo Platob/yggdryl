@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use yggdryl::{
-    DataType, Field, FixBranch, FixEnumValue, FixLineageEntry, FixPedigree, FixRegistry, Version,
+    DataType, Field, FixBranch, FixCode, FixLineageEntry, FixPedigree, FixRegistry, Version,
 };
 
 use super::{LARGE_FIELDS, generated, seed, venue};
@@ -192,8 +192,8 @@ fn merge_source(wording: &str, dated: &str, reading: &str) -> Field {
     field
         .as_fix_mut()
         .set_codes(&[
-            FixEnumValue::new("Shared", "1").with_description(reading),
-            FixEnumValue::new("Other", "2"),
+            FixCode::new("Shared", "1").with_description(reading),
+            FixCode::new("Other", "2"),
         ])
         .expect("a valid code set");
     field

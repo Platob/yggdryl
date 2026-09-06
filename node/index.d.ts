@@ -1275,14 +1275,6 @@ export declare class FixRegistry {
   getFieldByPath(path: string, branch?: string | undefined | null): JsField | null
   /** The field a dotted path reaches through a component or a group. */
   fieldByPath(path: string, branch?: string | undefined | null): JsField
-  /** Infer the native MIME classifier for a byte log line. */
-  inferBytesProtocol(line: Buffer): MimeType
-  /** Infer the native MIME classifier for a text log line. */
-  inferTextProtocol(line: string): MimeType
-  /** Infer `MsgType` from a byte log line without parsing its FIX frame. */
-  inferBytesMsgtype(line: Buffer): Buffer | null
-  /** Infer `MsgType` from a text log line without parsing its FIX frame. */
-  inferTextMsgtype(line: string): string | null
   /** The field a tag or name reaches by deterministic best match, or `null`. */
   getField(key: number | string): JsField | null
   /** The field a tag or name reaches by deterministic best match. */
@@ -2092,6 +2084,18 @@ export type JsMediaType = MediaType
 
 /** An immutable canonical MIME `type/subtype` value. */
 export declare class MimeType {
+  /** Classify one captured byte line, without a dictionary. */
+  static inferBytes(line: Buffer): MimeType
+  /** Classify one captured text line, without a dictionary. */
+  static inferText(line: string): MimeType
+  /** Read the message type one captured byte line declares. */
+  static inferBytesMsgtype(line: Buffer): Buffer | null
+  /** Read the message type one captured text line declares. */
+  static inferTextMsgtype(line: string): string | null
+  /** Read which way one captured byte line moved. */
+  static inferBytesDirection(line: Buffer): string | null
+  /** Read which way one captured text line moved. */
+  static inferTextDirection(line: string): string | null
   /** Parse a MIME/extension string or cheaply clone another native value. */
   constructor(value?: MimeTypeInput | undefined | null)
   /** Infer from a native wrapper or MIME/extension string. */
@@ -3391,14 +3395,21 @@ export declare class TextOptions {
   get rowheader(): string | null
   /** Compile or clear the row-header regex. */
   set rowheader(rowheader: string | undefined | null)
-  /** Return the left-edge stripping regex. */
-  get lstrip(): string | null
-  /** Compile or clear the left-edge stripping regex. */
-  set lstrip(lstrip: string | undefined | null)
-  /** Return the right-edge stripping regex. */
-  get rstrip(): string | null
-  /** Compile or clear the right-edge stripping regex. */
-  set rstrip(rstrip: string | undefined | null)
+  /** Return the left-edge stripping patterns, in the order they apply. */
+  get lstrip(): Array<string>
+  /** Compile or clear the left-edge stripping patterns. */
+  set lstrip(lstrip: Array<string>)
+  /** Return the right-edge stripping patterns, in the order they apply. */
+  get rstrip(): Array<string>
+  /**
+   * Compile or clear the right-edge stripping patterns.
+   *
+   * A sequence, exactly as the left edge takes one: a single pattern
+   * compiled through `Option<&str>` still built, because an option is
+   * itself one-or-no items, so the asymmetry was invisible to the compiler
+   * and visible only in the generated types.
+   */
+  set rstrip(rstrip: Array<string>)
   /** Return the pinned physical-line terminator. */
   get linesep(): Buffer | null
   /** Set or clear the physical-line terminator. */

@@ -126,6 +126,7 @@ impl JsMimeType {
             "ULLINK" => CoreMimeType::ULLINK,
             "FIX" => CoreMimeType::FIX,
             "FIXUL" => CoreMimeType::FIXUL,
+            "KEYVALUE" => CoreMimeType::KEYVALUE,
             "FIXML" => CoreMimeType::FIXML,
             "MARKDOWN" => CoreMimeType::MARKDOWN,
             "HTML" => CoreMimeType::HTML,

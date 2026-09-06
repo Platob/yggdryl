@@ -28,8 +28,8 @@ use std::sync::Arc;
 
 use yggdryl::types::MsgType;
 use yggdryl::{
-    DataType, Field, FixBranch, FixEnumValue, FixId, FixLineageEntry, FixMsg, FixPedigree,
-    FixRegistry, MediaType, MimeType, Scalar, Timezone, Version,
+    DataType, Field, FixBranch, FixCode, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
+    MediaType, MimeType, Scalar, Timezone, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -433,9 +433,9 @@ fn a_fix_lineage_read_allocates_nothing() {
 fn a_fix_code_lookup_allocates_nothing() {
     // A 300-code set: a lookup must cost the codes it walks past and no
     // allocation, whichever tier answers it.
-    let codes: Vec<FixEnumValue> = (0..300)
+    let codes: Vec<FixCode> = (0..300)
         .map(|index| {
-            FixEnumValue::new(format!("Member{index:04}"), format!("{index:04}"))
+            FixCode::new(format!("Member{index:04}"), format!("{index:04}"))
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();

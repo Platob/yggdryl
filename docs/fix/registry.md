@@ -388,7 +388,7 @@ It is a second key beside [`AsciiEnum`](../types/ascii.md), not a second copy: t
 | `FixField::code_value(&str)` | any spelling resolved to its wire value, through the three tiers |
 | `FixField::code_name(&str)` | the symbolic name one wire value stands for |
 | `FixField::code_value_at(Version, &str)` / `code_name_at` | the same, filtered to one version |
-| `FixFieldMut::set_codes(&[FixEnumValue])` | writes the set canonically; an empty slice removes it |
+| `FixFieldMut::set_codes(&[FixCode])` | writes the set canonically; an empty slice removes it |
 | `FixFieldMut::remove_codes()` | removes the set and answers what it held |
 
 ### Three tiers, and a fall-through
@@ -404,16 +404,16 @@ It is a second key beside [`AsciiEnum`](../types/ascii.md), not a second copy: t
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixEnumValue, Version};
+    use yggdryl::{DataType, FixCode, Version};
 
     let mut comm_type = DataType::Utf8.nullable_field("CommType");
     comm_type.as_fix_mut().set_tag(13)?;
     comm_type.as_fix_mut().set_codes(&[
-        FixEnumValue::new("PerUnit", "1"),
-        FixEnumValue::new("PercentageWaivedCashDiscount", "4"),
-        FixEnumValue::new("PointsPerBondOrContract", "6")
+        FixCode::new("PerUnit", "1"),
+        FixCode::new("PercentageWaivedCashDiscount", "4"),
+        FixCode::new("PointsPerBondOrContract", "6")
             .with_description("Good Till Date (GTD) points per bond"),
-        FixEnumValue::new("BasisPoints", "7")
+        FixCode::new("BasisPoints", "7")
             .with_since("5.0SP2".parse::<Version>()?, Some(208)),
     ])?;
     let view = comm_type.as_fix();
@@ -500,13 +500,13 @@ The whole merged namespace is written once. `FixRegistry::update` calls it for t
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixEnumValue, FixLineageEntry, FixPedigree, Version};
+    use yggdryl::{DataType, FixCode, FixLineageEntry, FixPedigree, Version};
 
     let mut stored = DataType::Utf8.nullable_field("LastQty");
     stored.as_fix_mut().set_tag(32)?;
     stored.as_fix_mut().set_tags(&[65])?;
     stored.as_fix_mut().set_description("the stored wording")?;
-    stored.as_fix_mut().set_codes(&[FixEnumValue::new("StoredOnly", "9")])?;
+    stored.as_fix_mut().set_codes(&[FixCode::new("StoredOnly", "9")])?;
 
     let mut incoming = DataType::Utf8.nullable_field("LastQty");
     incoming.as_fix_mut().set_tag(32)?;

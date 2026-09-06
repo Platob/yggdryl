@@ -463,6 +463,7 @@ const knownMimeNames = Object.freeze([
   'ULLINK',
   'FIX',
   'FIXUL',
+  'KEYVALUE',
   'FIXML',
   'MARKDOWN',
   'HTML',
