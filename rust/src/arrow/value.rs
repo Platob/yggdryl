@@ -504,6 +504,17 @@ pub(crate) fn value_from_array(
         )?,
         DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
+            // A downcast answers the layout, not the arity, and zipping reads
+            // the shorter of the two - so a declaration naming fewer or more
+            // children than the array stores would answer a value quietly
+            // narrower than the column rather than refuse.
+            if fields.len() != array.num_columns() {
+                return Err(Error::IncompatibleSchema(format!(
+                    "a struct of {} fields does not describe an Arrow struct array of {} columns",
+                    fields.len(),
+                    array.num_columns()
+                )));
+            }
             let values = fields
                 .iter()
                 .zip(array.columns())

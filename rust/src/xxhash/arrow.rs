@@ -654,12 +654,13 @@ fn feed_selected_cell(
     feed_cell(digester, field.dtype(), array, index)
 }
 
-/// Digest every row of a batch, in selected schema order.
+/// Digest every row of a batch, in schema order.
 ///
-/// Explicit `digest:role=component` fields form the input. When none are
-/// explicit, every field except one carrying `digest:role=holder` contributes.
-/// The selected values remain an ordered sequence, which is the canonical row
-/// shape everywhere in this project.
+/// Every field contributes except one carrying `digest:role=holder`, which is
+/// an output rather than an input. `holder` is the only digest role, so a
+/// schema marks the field it fills and leaves the ones that field reads
+/// ordinary columns. The contributing values remain an ordered sequence, which
+/// is the canonical row shape everywhere in this project.
 ///
 /// The result is a `UInt32Array` for XXH32, a `UInt64Array` for the two
 /// 64-bit algorithms, and a `FixedSizeBinary(16)` of canonical big-endian

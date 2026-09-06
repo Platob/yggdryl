@@ -766,6 +766,32 @@ fn a_column_digest_answers_an_error_when_the_field_does_not_describe_the_array()
     // can disagree with itself. Every arm reads its buffer through the same
     // fallible downcast, so the mismatch is the documented error rather than
     // a panic from whichever family the datatype named.
+    // A struct is the case a downcast alone does not answer: the layout matches
+    // and the arity does not, and zipping the declaration against the columns
+    // would digest the shorter of the two rather than refuse.
+    let pair: ArrayRef = Arc::new(StructArray::new(
+        arrow_schema::Fields::from(vec![
+            ArrowField::new("a", ArrowDataType::Int64, false),
+            ArrowField::new("b", ArrowDataType::Int64, false),
+        ]),
+        vec![
+            Arc::new(Int64Array::from(vec![1])) as ArrayRef,
+            Arc::new(Int64Array::from(vec![2])) as ArrayRef,
+        ],
+        None,
+    ));
+    let narrowed = Field::new(
+        "pair",
+        DataType::from_fields([DataType::Int64.required_field("a")]).unwrap(),
+        false,
+    );
+    let error = column_digests(pair.as_ref(), &narrowed, DigestAlgorithm::Xxh3)
+        .expect_err("a one-field struct does not describe a two-column struct array");
+    assert!(
+        matches!(error, crate::arrow::Error::IncompatibleSchema(_)),
+        "{error}"
+    );
+
     let array: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
     for dtype in [
         DataType::Int32,
