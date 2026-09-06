@@ -58,7 +58,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, IOBase, Result, Version};
 
-use super::{FixBranch, FixId, FixRegistry};
+use super::{FixBranch, FixCode, FixId, FixRegistry};
 
 /// How deep a grammar may nest before the parse refuses.
 ///
@@ -164,6 +164,8 @@ impl<'doc> Parse<'doc> {
                         self.read_vocabulary()?;
                     } else if is_named(&element, b"grammar-binding") {
                         self.read_binding(&element)?;
+                    } else if is_named(&element, b"maps") {
+                        self.read_maps()?;
                     } else {
                         // Skipped siblings are routinely deep and text-bearing,
                         // so this counts depth rather than assuming a child set.
@@ -352,6 +354,105 @@ impl<'doc> Parse<'doc> {
         }
         self.positions.insert(tag, self.vocabulary.len());
         self.vocabulary.push((tag, field));
+        Ok(())
+    }
+
+    /// Reads every `map` into the code set of the tag it decodes.
+    ///
+    /// A map is named for the vocabulary tag it decodes - `ADVSIDE` decodes
+    /// `AdvSide` - so the name resolves through the vocabulary this file has
+    /// already read, and a map naming no tag is skipped rather than refused:
+    /// a CBlock maps things that are not fields.
+    fn read_maps(&mut self) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => break,
+                Event::Start(element) if is_named(&element, b"map") => {
+                    let named = self.attribute(&element, "name")?;
+                    let codes = self.read_map_entries()?;
+                    self.attach_codes(named.as_deref(), codes)?;
+                }
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if is_named(&element, b"maps") && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    /// One map's entries, each oriented into a value and a name.
+    fn read_map_entries(&mut self) -> Result<Vec<FixCode>> {
+        let mut codes: Vec<FixCode> = Vec::new();
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => break,
+                Event::Empty(element) if is_named(&element, b"entry") => {
+                    self.push_entry(&element, &mut codes)?;
+                }
+                Event::Start(element) if is_named(&element, b"entry") => {
+                    self.push_entry(&element, &mut codes)?;
+                    depth += 1;
+                }
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if is_named(&element, b"map") && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(codes)
+    }
+
+    /// One `entry` as a code, oriented and deduplicated by its wire value.
+    fn push_entry(&self, element: &BytesStart<'_>, codes: &mut Vec<FixCode>) -> Result<()> {
+        let (Some(key), Some(held)) = (
+            self.attribute(element, "key")?,
+            self.attribute(element, "value")?,
+        ) else {
+            return Ok(());
+        };
+        let (value, name) = oriented(&key, &held);
+        if !codes.iter().any(|code| code.value() == value) {
+            codes.push(FixCode::new(name, value));
+        }
+        Ok(())
+    }
+
+    /// Puts one code set on the vocabulary field its map is named for.
+    fn attach_codes(&mut self, named: Option<&str>, codes: Vec<FixCode>) -> Result<()> {
+        let (Some(named), false) = (named, codes.is_empty()) else {
+            return Ok(());
+        };
+        let Some(at) = self
+            .vocabulary
+            .iter()
+            .position(|(_, field)| crate::types::folds_equal(field.name(), named))
+        else {
+            return Ok(());
+        };
+        self.vocabulary[at].1.as_fix_mut().set_codes(&codes)?;
         Ok(())
     }
 
@@ -669,5 +770,25 @@ impl Named for BytesStart<'_> {
 impl Named for quick_xml::events::BytesEnd<'_> {
     fn local(&self) -> quick_xml::name::LocalName<'_> {
         self.local_name()
+    }
+}
+
+/// One map entry oriented into the wire value and the name for it.
+///
+/// A CBlock writes `key="buy" value="B"`, so the name keys and the value is
+/// the value - which is the order a code set wants. Not every map is written
+/// that way, and one written the other way round would put `B` in a name and
+/// `buy` on the wire.
+///
+/// The side that looks like a wire value decides. A FIX value is short and
+/// has no word shape: `1`, `B`, `99`, `FXSPOT`. A symbolic name is longer and
+/// reads as words. So the shorter side is the value, and where neither is
+/// clearly shorter the declared order stands, because the declared order is
+/// the documented one and a guess is worse than a convention.
+fn oriented<'entry>(key: &'entry str, value: &'entry str) -> (&'entry str, &'entry str) {
+    if value.len() <= key.len() {
+        (value, key)
+    } else {
+        (key, value)
     }
 }

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::types::Direction;
+use yggdryl::types::MsgDirection;
 use yggdryl::{DataType, FixDedup, FixId, FixReader, FixRegistry};
 
 fn reader() -> FixReader {
@@ -156,15 +156,15 @@ fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
     let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
     let at = 11;
     assert_eq!(
-        Direction::at_payload(line, at, Some(Direction::SENT)),
-        Some(Direction::SENT)
+        MsgDirection::at_payload(line, at, Some(MsgDirection::SENT)),
+        Some(MsgDirection::SENT)
     );
 
     // A line the transport marked as arriving answers so, default or not.
     let arriving = b"receiving << 8=FIX.4.2|35=D|10=0|";
     assert_eq!(
-        Direction::at_payload(arriving, 13, Some(Direction::SENT)),
-        Some(Direction::RECV),
+        MsgDirection::at_payload(arriving, 13, Some(MsgDirection::SENT)),
+        Some(MsgDirection::RECV),
         "a read verb always beats the default",
     );
 
@@ -172,18 +172,18 @@ fn a_direction_is_read_in_front_of_the_payload_and_never_inside_it() {
     // falls to the default exactly as silence does.
     let both = b"sending a received copy >> 8=FIX.4.2|35=D|10=0|";
     assert_eq!(
-        Direction::at_payload(both, 26, Some(Direction::SENT)),
-        Some(Direction::SENT)
+        MsgDirection::at_payload(both, 26, Some(MsgDirection::SENT)),
+        Some(MsgDirection::SENT)
     );
-    assert_eq!(Direction::at_payload(both, 26, None), None);
+    assert_eq!(MsgDirection::at_payload(both, 26, None), None);
 
     // Silence takes the default, and no default is no answer.
     let bare = b"8=FIX.4.2|35=D|10=0|";
     assert_eq!(
-        Direction::at_payload(bare, 0, Some(Direction::RECV)),
-        Some(Direction::RECV)
+        MsgDirection::at_payload(bare, 0, Some(MsgDirection::RECV)),
+        Some(MsgDirection::RECV)
     );
-    assert_eq!(Direction::at_payload(bare, 0, None), None);
+    assert_eq!(MsgDirection::at_payload(bare, 0, None), None);
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn the_crate_carries_two_fields_of_its_own_on_a_branch_of_its_own() {
         held[0].dtype(),
         &DataType::fixed_size_binary(16).expect("a width")
     );
-    assert_eq!(held[1].dtype(), &DataType::Direction);
+    assert_eq!(held[1].dtype(), &DataType::MsgDirection);
 
     // Same tags a venue's own could be, and different identities.
     for (field, tag) in held

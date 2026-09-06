@@ -60,7 +60,7 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             // one width for all: a venue's message type is what runs long.
             ("side", DataType::Side, 4),
             ("msgtype", DataType::MsgType, 8),
-            ("direction", DataType::Direction, 4),
+            ("msgdirection", DataType::MsgDirection, 4),
         ]
     );
 

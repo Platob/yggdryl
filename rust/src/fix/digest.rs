@@ -67,7 +67,7 @@ impl FixMsg {
     /// as the empty walk - the same answer for every such message, which is
     /// correct: none of them arrived.
     ///
-    /// [`Direction`]: crate::types::Direction
+    /// [`Direction`]: crate::types::MsgDirection
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {

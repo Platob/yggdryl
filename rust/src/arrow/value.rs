@@ -181,7 +181,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::MsgType => code_array::<MSGTYPE_WIDTH>(dtype, values)?,
-        DataType::Direction => code_array::<DIRECTION_WIDTH>(dtype, values)?,
+        DataType::MsgDirection => code_array::<DIRECTION_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
@@ -480,9 +480,9 @@ pub(crate) fn value_from_array(
                 code_cell_text(dtype, fixed.value(index))?,
             )?))
         }
-        DataType::Direction => {
+        DataType::MsgDirection => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Direction(crate::types::Direction::new(
+            Scalar::Ascii(AsciiFamily::MsgDirection(crate::types::MsgDirection::new(
                 code_cell_text(dtype, fixed.value(index))?,
             )?))
         }

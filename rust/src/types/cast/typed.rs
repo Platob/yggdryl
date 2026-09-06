@@ -162,7 +162,7 @@ typed_array!(
     arrow_array::FixedSizeBinaryArray
 );
 typed_array!(
-    crate::types::ascii::DirectionType,
+    crate::types::ascii::MsgDirectionType,
     arrow_array::FixedSizeBinaryArray
 );
 // A UUID stores as the fixed binary of its sixteen bytes.

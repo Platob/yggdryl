@@ -3,7 +3,7 @@ use std::hint::black_box;
 use criterion::Criterion;
 use yggdryl::{DataType, Field, FixLineageEntry, FixPedigree, FixRegistry, Version};
 
-use super::{LARGE_FIELDS, generated, seed};
+use super::{LARGE_FIELDS, seed};
 
 /// The versions a dated dictionary is read at.
 fn version(text: &str) -> Version {

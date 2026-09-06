@@ -283,9 +283,9 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   assert.deepEqual(Object.keys(prebuilt).sort(), [
     'country',
     'currency',
-    'direction',
     'exchange',
     'mic',
+    'msgdirection',
     'side',
   ])
   // `exchange` is FIX's name for the ISO 10383 code, so it is one list.

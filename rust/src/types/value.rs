@@ -613,7 +613,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             None => canonicalization_failure(dtype),
         },
         // A code canonicalizes the same way, at the width its own type fixes.
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => {
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::MsgDirection => {
             match ascii_bytes(value) {
                 Some(bytes) => {
                     let text = code_cell_text(dtype, bytes)?;
@@ -630,8 +630,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                         D::MsgType => {
                             Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::new(text)?))
                         }
-                        D::Direction => Scalar::Ascii(AsciiFamily::Direction(
-                            crate::types::Direction::new(text)?,
+                        D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
+                            crate::types::MsgDirection::new(text)?,
                         )),
                         _ => unreachable!("registered ASCII datatype matched above"),
                     };
@@ -643,7 +643,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                             | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
                             | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
                             | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
-                            | (D::Direction, Scalar::Ascii(AsciiFamily::Direction(_)))
+                            | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
                     );
                     Ok(if unchanged {
                         (value.clone(), false)
@@ -1239,7 +1239,7 @@ fn validate_dtype_value(
             },
             None => Err(expected(dtype.name(), value)),
         },
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::Direction => {
+        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::MsgDirection => {
             match ascii_bytes(value) {
                 Some(bytes) => code_cell_text(dtype, bytes)
                     .map(|_| ())

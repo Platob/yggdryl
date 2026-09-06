@@ -41,7 +41,7 @@ use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions;
-use crate::types::Direction;
+use crate::types::MsgDirection;
 use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
 use super::msg::FixMsg;
@@ -153,7 +153,7 @@ impl Default for FixOptions {
                 .iter()
                 .map(|held| (*held).to_owned())
                 .collect(),
-            direction: Some(Direction::SENT),
+            direction: Some(MsgDirection::SENT),
             dedup: false,
         }
     }
@@ -518,7 +518,7 @@ fn empty(reader: &FixReader) -> FixMsg {
 /// The direction a whole captured line moved.
 fn direction_of(line: &[u8], default: Option<&'static str>) -> Option<&'static str> {
     let at = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-    Direction::at_payload(line, at, default)
+    MsgDirection::at_payload(line, at, default)
 }
 
 /// One row's values beside the names its schema gave them.
@@ -555,7 +555,7 @@ fn column_text(record: &[(SmolStr, Scalar)], name: &str) -> Option<String> {
 /// The direction a record states, which outranks any reading.
 fn stated(record: &[(SmolStr, Scalar)]) -> Option<&'static str> {
     let held = column_text(record, DIRECTION_COLUMN)?;
-    [Direction::SENT, Direction::RECV]
+    [MsgDirection::SENT, MsgDirection::RECV]
         .into_iter()
         .find(|known| known.eq_ignore_ascii_case(&held))
 }

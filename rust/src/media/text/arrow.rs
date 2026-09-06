@@ -608,7 +608,7 @@ impl<R: Read> RawRows<R> {
         // reading it takes it off the body: a body that kept it would carry a
         // word no protocol sent.
         let direction = if options.with_direction {
-            let (direction, kept) = crate::types::Direction::split_bytes(&body[start..end]);
+            let (direction, kept) = crate::types::MsgDirection::split_bytes(&body[start..end]);
             start = end - kept.len();
             direction
         } else {
@@ -931,7 +931,7 @@ impl<R: Read> Records<R> {
             entries.push((
                 SmolStr::new_static("direction"),
                 row.direction.map_or(Scalar::Null, |direction| {
-                    DataType::Direction
+                    DataType::MsgDirection
                         .scalar(Scalar::from(direction))
                         .unwrap_or(Scalar::Null)
                 }),

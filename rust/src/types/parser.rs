@@ -88,7 +88,7 @@ impl fmt::Display for DataType {
             D::Cfi => formatter.write_str("cfi"),
             D::Side => formatter.write_str("side"),
             D::MsgType => formatter.write_str("msgtype"),
-            D::Direction => formatter.write_str("direction"),
+            D::MsgDirection => formatter.write_str("msgdirection"),
             D::Uuid => formatter.write_str("uuid"),
             D::Version => formatter.write_str("version"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),

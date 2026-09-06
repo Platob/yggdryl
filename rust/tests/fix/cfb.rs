@@ -47,6 +47,7 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 		<vocabulary-tag name="60" alt="TransactTime" type="utc-timestamp" />
 		<vocabulary-tag name="273" alt="MDEntryTime" type="utc-time-only" />
 		<vocabulary-tag name="59" alt="TimeInForce" type="char" />
+		<vocabulary-tag name="4" alt="AdvSide" type="char" />
 	</vocabulary>
 	<grammar-binding type="7">
 		<grammar checkordering="false">
@@ -82,6 +83,26 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 			<tag-constraint name="8" part="trailer" required="false" />
 		</grammar>
 	</grammar-binding>
+	<maps>
+		<map name="ADVSIDE" read-only="false">
+			<description>Used for the decoding of UlMessage tag ADVSIDE</description>
+			<entries>
+				<entry key="buy" value="B" />
+				<entry key="cross" value="X" />
+				<entry key="sell" value="S" />
+				<entry key="trade" value="T" />
+			</entries>
+		</map>
+		<map name="TimeInForce" read-only="false">
+			<entries>
+				<entry key="0" value="day" />
+				<entry key="1" value="goodtillcancel" />
+			</entries>
+		</map>
+		<map name="NOTAFIELD" read-only="false">
+			<entries><entry key="a" value="1" /></entries>
+		</map>
+	</maps>
 	<normalization-binding>
 		<normalization type="7">
 			<rule from="$35" to="$35" />
@@ -138,7 +159,7 @@ fn children(root: &Field) -> Vec<&str> {
 #[test]
 fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
     let (registry, _) = parse(CBLOCK);
-    assert_eq!(registry.len(), 14);
+    assert_eq!(registry.len(), 15);
 
     // Named by `alt` lower-cased, with the file's own spelling kept beside it,
     // so a caller spelling it the file's way still resolves.
@@ -429,4 +450,29 @@ fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
 
     let refused = FixRegistry::from_cfb(&handle(&body), None).unwrap_err();
     assert!(refused.to_string().contains("deep"), "{refused}");
+}
+
+#[test]
+fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
+    let (registry, _) = parse(CBLOCK);
+
+    // A CBlock writes `key="buy" value="B"`, so the name keys and the value
+    // is the value - which is already the order a code set wants.
+    let advside = registry.field_by_tag(4).expect("AdvSide");
+    let view = advside.as_fix();
+    assert_eq!(view.code_value("buy"), Some("B"));
+    assert_eq!(view.code_name("X"), Some("cross"));
+    assert_eq!(view.codes().count(), 4);
+
+    // One written the other way round would put `B` in a name and `buy` on
+    // the wire, so the side that looks like a wire value decides: short and
+    // wordless is the value, whichever attribute carries it.
+    let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
+    let view = timeinforce.as_fix();
+    assert_eq!(view.code_value("day"), Some("0"));
+    assert_eq!(view.code_name("1"), Some("goodtillcancel"));
+
+    // A map naming no field is skipped rather than refused: a CBlock maps
+    // things that are not fields.
+    assert_eq!(registry.get_field_by_name("notafield", None), None);
 }

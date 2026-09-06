@@ -114,7 +114,9 @@ impl DataType {
         // because every captured line has one whatever protocol it carried.
         ("side", DataType::Side),
         ("msgtype", DataType::MsgType),
-        ("direction", DataType::Direction),
+        ("msgdirection", DataType::MsgDirection),
+        // The spelling this datatype was first published under.
+        ("direction", DataType::MsgDirection),
         // The rest are names over an ASCII width, which is all they need.
         ("language", DataType::FixedAscii(2)),
         ("monthyear", DataType::FixedAscii(8)),

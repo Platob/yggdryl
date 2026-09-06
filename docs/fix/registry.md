@@ -647,8 +647,8 @@ Deciding what one captured line is, what message type it declares and which way 
 | --- | --- |
 | `MimeType::infer_bytes` / `infer_text` | what the line is |
 | `MsgType::infer_bytes` / `infer_text` | the message type it declares, borrowed |
-| `Direction::infer_bytes` / `infer_text` | which way it moved |
-| `Direction::split_bytes` / `split_text` | the same, with the marker taken off the line |
+| `MsgDirection::infer_bytes` / `infer_text` | which way it moved |
+| `MsgDirection::split_bytes` / `split_text` | the same, with the marker taken off the line |
 
 One shallow scan answers all three. It reads no message and allocates nothing, and every answer is a slice of the caller's bytes.
 
@@ -673,7 +673,7 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     let line = b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=001|";
     assert_eq!(MimeType::infer_bytes(line), MimeType::FIX);
     assert_eq!(MsgType::infer_bytes(line), Some(&b"D"[..]));
-    assert_eq!(Direction::infer_bytes(line), Some(Direction::SENT));
+    assert_eq!(MsgDirection::infer_bytes(line), Some(MsgDirection::SENT));
 
     // No frame, but pairs throughout.
     assert_eq!(
@@ -684,8 +684,8 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     assert_eq!(MimeType::infer_bytes(b"<Order id='1'/>"), MimeType::XML);
 
     // Reading the verb takes it off the line, and takes nothing else.
-    let (direction, body) = Direction::split_bytes(line);
-    assert_eq!(direction, Some(Direction::SENT));
+    let (direction, body) = MsgDirection::split_bytes(line);
+    assert_eq!(direction, Some(MsgDirection::SENT));
     assert_eq!(body, b">> 8=FIX.4.4|35=D|55=AAPL|10=001|");
     ```
 

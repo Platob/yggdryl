@@ -119,7 +119,7 @@ enum DataTypeRef<'a> {
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
-    Direction {},
+    MsgDirection {},
     Uuid {},
     Version {},
     List {
@@ -249,7 +249,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Cfi => Self::Cfi {},
             D::Side => Self::Side {},
             D::MsgType => Self::MsgType {},
-            D::Direction => Self::Direction {},
+            D::MsgDirection => Self::MsgDirection {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::List(field) => Self::List { field },
@@ -368,7 +368,7 @@ enum DataTypeValue {
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
-    Direction {},
+    MsgDirection {},
     Uuid {},
     Version {},
     List {
@@ -482,7 +482,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Cfi {} => Self::Cfi,
             DataTypeValue::Side {} => Self::Side,
             DataTypeValue::MsgType {} => Self::MsgType,
-            DataTypeValue::Direction {} => Self::Direction,
+            DataTypeValue::MsgDirection {} => Self::MsgDirection,
             DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::Version {} => Self::Version,
             DataTypeValue::List { field } => Self::list(field),
@@ -612,7 +612,7 @@ impl DataType {
             D::Cfi => tag("cfi"),
             D::Side => tag("side"),
             D::MsgType => tag("msgtype"),
-            D::Direction => tag("direction"),
+            D::MsgDirection => tag("msgdirection"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::DateTime64 { unit, timezone } => {
@@ -850,7 +850,9 @@ impl DataType {
             "cfi" => Self::Cfi,
             "side" => Self::Side,
             "msgtype" => Self::MsgType,
-            "direction" => Self::Direction,
+            // `direction` was this datatype's first spelling; a schema
+            // written under it still reads.
+            "msgdirection" | "direction" => Self::MsgDirection,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
             "datetime64" => {

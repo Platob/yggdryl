@@ -200,7 +200,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Cfi(_)) => Ok(DataType::Cfi),
             Self::Ascii(AsciiFamily::Side(_)) => Ok(DataType::Side),
             Self::Ascii(AsciiFamily::MsgType(_)) => Ok(DataType::MsgType),
-            Self::Ascii(AsciiFamily::Direction(_)) => Ok(DataType::Direction),
+            Self::Ascii(AsciiFamily::MsgDirection(_)) => Ok(DataType::MsgDirection),
             Self::Version(_) => Ok(DataType::Version),
             Self::Uuid(_) => Ok(DataType::Uuid),
             Self::Enum(_) => Ok(DataType::Utf8),

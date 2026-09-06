@@ -143,7 +143,7 @@ pub enum DataTypeId {
     /// FIX's message type, eight ASCII bytes.
     MsgType,
     /// Which way a captured line moved, four ASCII bytes.
-    Direction,
+    MsgDirection,
 }
 
 impl DataTypeId {
@@ -206,7 +206,7 @@ impl DataTypeId {
         Self::Version,
         Self::Side,
         Self::MsgType,
-        Self::Direction,
+        Self::MsgDirection,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -264,7 +264,7 @@ impl DataTypeId {
             Self::Cfi => "cfi",
             Self::Side => "side",
             Self::MsgType => "msgtype",
-            Self::Direction => "direction",
+            Self::MsgDirection => "msgdirection",
             Self::Uuid => "uuid",
             Self::List => "list",
             Self::ListView => "list_view",
@@ -348,7 +348,7 @@ impl DataTypeId {
             | Self::Cfi
             | Self::Side
             | Self::MsgType
-            | Self::Direction => DataTypeKind::Ascii,
+            | Self::MsgDirection => DataTypeKind::Ascii,
             Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
@@ -489,7 +489,7 @@ impl DataTypeId {
             Self::Country => Some(2),
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
-            Self::Side | Self::Direction => Some(4),
+            Self::Side | Self::MsgDirection => Some(4),
             Self::MsgType => Some(8),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),

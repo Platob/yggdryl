@@ -260,7 +260,9 @@ impl Serialize for Scalar {
                 AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
                 AsciiFamily::Side(value) => tagged(serializer, "side", &value.as_str()),
                 AsciiFamily::MsgType(value) => tagged(serializer, "msgtype", &value.as_str()),
-                AsciiFamily::Direction(value) => tagged(serializer, "direction", &value.as_str()),
+                AsciiFamily::MsgDirection(value) => {
+                    tagged(serializer, "direction", &value.as_str())
+                }
             },
             Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
             Self::Version(value) => tagged(serializer, "version", value),
@@ -865,7 +867,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Cfi(_)) => DataTypeId::Cfi,
             Self::Ascii(AsciiFamily::Side(_)) => DataTypeId::Side,
             Self::Ascii(AsciiFamily::MsgType(_)) => DataTypeId::MsgType,
-            Self::Ascii(AsciiFamily::Direction(_)) => DataTypeId::Direction,
+            Self::Ascii(AsciiFamily::MsgDirection(_)) => DataTypeId::MsgDirection,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Enum(_) => DataTypeId::Utf8,
@@ -923,7 +925,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Cfi(_)) => "cfi",
             Self::Ascii(AsciiFamily::Side(_)) => "side",
             Self::Ascii(AsciiFamily::MsgType(_)) => "msgtype",
-            Self::Ascii(AsciiFamily::Direction(_)) => "direction",
+            Self::Ascii(AsciiFamily::MsgDirection(_)) => "direction",
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Enum(_) => "enum",

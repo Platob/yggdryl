@@ -17,7 +17,7 @@ define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(SideType, "side", crate::DataType::Side);
 define_field_types!(MsgTypeType, "msgtype", crate::DataType::MsgType);
-define_field_types!(DirectionType, "direction", crate::DataType::Direction);
+define_field_types!(MsgDirectionType, "direction", crate::DataType::MsgDirection);
 
 /// A variable-width ASCII-typed field.
 pub type AsciiField = TypedField<AsciiType>;
@@ -36,7 +36,7 @@ pub type SideField = TypedField<SideType>;
 /// A message-type-typed field: FIX's `MsgType`.
 pub type MsgTypeField = TypedField<MsgTypeType>;
 /// A direction-typed field: which way a captured line moved.
-pub type DirectionField = TypedField<DirectionType>;
+pub type DirectionField = TypedField<MsgDirectionType>;
 
 impl Field {
     /// The enum this field's ASCII values name, if one is declared.

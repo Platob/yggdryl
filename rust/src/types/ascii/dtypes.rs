@@ -169,7 +169,11 @@ impl DataType {
         ("cfi", DataType::Cfi, CFI_WIDTH as i32),
         ("side", DataType::Side, SIDE_WIDTH as i32),
         ("msgtype", DataType::MsgType, MSGTYPE_WIDTH as i32),
-        ("direction", DataType::Direction, DIRECTION_WIDTH as i32),
+        (
+            "msgdirection",
+            DataType::MsgDirection,
+            DIRECTION_WIDTH as i32,
+        ),
     ];
 
     /// Creates ISO 3166-1's two-letter country code.
@@ -249,7 +253,7 @@ impl DataType {
             Self::Cfi => Some("cfi"),
             Self::Side => Some("side"),
             Self::MsgType => Some("msgtype"),
-            Self::Direction => Some("direction"),
+            Self::MsgDirection => Some("msgdirection"),
             _ => None,
         }
     }
@@ -277,7 +281,7 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::MsgType => Some(MSGTYPE_EXTENSION_NAME),
-        DataType::Direction => Some(DIRECTION_EXTENSION_NAME),
+        DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
         _ => None,
     }
 }
@@ -295,7 +299,7 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         CFI_EXTENSION_NAME => DataType::Cfi,
         SIDE_EXTENSION_NAME => DataType::Side,
         MSGTYPE_EXTENSION_NAME => DataType::MsgType,
-        DIRECTION_EXTENSION_NAME => DataType::Direction,
+        DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
         _ => return None,
     };
     (dtype.ascii_width() == Some(width)).then_some(dtype)
@@ -335,7 +339,7 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::MsgType => code_text::<MSGTYPE_WIDTH>(bytes),
-        DataType::Direction => code_text::<DIRECTION_WIDTH>(bytes),
+        DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
     }
 }
@@ -407,7 +411,7 @@ impl DataType {
             Self::Cfi => Some(CFI_WIDTH as i32),
             Self::Side => Some(SIDE_WIDTH as i32),
             Self::MsgType => Some(MSGTYPE_WIDTH as i32),
-            Self::Direction => Some(DIRECTION_WIDTH as i32),
+            Self::MsgDirection => Some(DIRECTION_WIDTH as i32),
             _ => None,
         }
     }

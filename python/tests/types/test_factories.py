@@ -79,7 +79,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "version": types.version("value"),
         "side": types.side("value"),
         "msgtype": types.msgtype("value"),
-        "direction": types.direction("value"),
+        "msgdirection": types.msgdirection("value"),
         "geometry": types.geometry("value"),
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }

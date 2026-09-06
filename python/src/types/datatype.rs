@@ -432,7 +432,7 @@ impl PyDataType {
             "cfi" => CoreDataType::Cfi,
             "side" => CoreDataType::Side,
             "msgtype" => CoreDataType::MsgType,
-            "direction" => CoreDataType::Direction,
+            "msgdirection" => CoreDataType::MsgDirection,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             _ => {

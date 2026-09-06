@@ -115,7 +115,7 @@ ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
 ascii_code_leaf!(Side, 4);
 ascii_code_leaf!(MsgType, 8);
-ascii_code_leaf!(Direction, 4);
+ascii_code_leaf!(MsgDirection, 4);
 
 impl MsgType {
     /// Reads the message type one captured byte line declares.
@@ -155,7 +155,7 @@ impl MsgType {
     }
 }
 
-impl Direction {
+impl MsgDirection {
     /// The direction a line moved when nothing in it says otherwise.
     ///
     /// A session's own log is written by the side doing the sending, so its
@@ -178,24 +178,24 @@ impl Direction {
     /// would be a guess.
     ///
     /// ```
-    /// use yggdryl::types::Direction;
+    /// use yggdryl::types::MsgDirection;
     ///
     /// assert_eq!(
-    ///     Direction::infer_bytes(b"sending >> 8=FIX.4.2|35=D|10=203|"),
-    ///     Some(Direction::SENT)
+    ///     MsgDirection::infer_bytes(b"sending >> 8=FIX.4.2|35=D|10=203|"),
+    ///     Some(MsgDirection::SENT)
     /// );
     /// assert_eq!(
-    ///     Direction::infer_bytes(b"recv 8=FIX.4.4|35=0|10=017|"),
-    ///     Some(Direction::RECV)
+    ///     MsgDirection::infer_bytes(b"recv 8=FIX.4.4|35=0|10=017|"),
+    ///     Some(MsgDirection::RECV)
     /// );
     /// // A verb only inside the payload is the payload's word, not a marker.
     /// assert_eq!(
-    ///     Direction::infer_bytes(b"8=FIX.4.4|35=8|58=sent earlier|10=1|"),
+    ///     MsgDirection::infer_bytes(b"8=FIX.4.4|35=8|58=sent earlier|10=1|"),
     ///     None
     /// );
     /// // English that merely contains the letters is not a marker.
-    /// assert_eq!(Direction::infer_bytes(b"sending in session 3"), None);
-    /// assert_eq!(Direction::infer_bytes(b"received out of order"), None);
+    /// assert_eq!(MsgDirection::infer_bytes(b"sending in session 3"), None);
+    /// assert_eq!(MsgDirection::infer_bytes(b"received out of order"), None);
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Option<&'static str> {
@@ -216,14 +216,14 @@ impl Direction {
     /// whitespace after it, never the payload.
     ///
     /// ```
-    /// use yggdryl::types::Direction;
+    /// use yggdryl::types::MsgDirection;
     ///
-    /// let (direction, body) = Direction::split_bytes(b"sending >> 8=FIX.4.2|35=D|");
-    /// assert_eq!(direction, Some(Direction::SENT));
+    /// let (direction, body) = MsgDirection::split_bytes(b"sending >> 8=FIX.4.2|35=D|");
+    /// assert_eq!(direction, Some(MsgDirection::SENT));
     /// assert_eq!(body, b">> 8=FIX.4.2|35=D|");
     ///
     /// // Nothing read is nothing removed.
-    /// let (none, whole) = Direction::split_bytes(b"8=FIX.4.4|35=D|");
+    /// let (none, whole) = MsgDirection::split_bytes(b"8=FIX.4.4|35=D|");
     /// assert_eq!(none, None);
     /// assert_eq!(whole, b"8=FIX.4.4|35=D|");
     /// ```
@@ -242,26 +242,26 @@ impl Direction {
     /// The default fills silence and never overrides a statement: a line
     /// carrying a verb answers that verb, and only a line carrying none - or
     /// carrying both, which is a line no reading can prefer one of - takes
-    /// the default. FIX parsing passes [`Direction::SENT`], because a
+    /// the default. FIX parsing passes [`MsgDirection::SENT`], because a
     /// session's own log is written by the side doing the sending and its
     /// unmarked lines are the ones it sent.
     ///
     /// ```
-    /// use yggdryl::types::Direction;
+    /// use yggdryl::types::MsgDirection;
     ///
     /// let line = b"sending >> 8=FIX.4.2|35=D|58=received out of order|10=0|";
     /// let at = 11; // where the reader found the frame
     /// assert_eq!(
-    ///     Direction::at_payload(line, at, Some(Direction::SENT)),
-    ///     Some(Direction::SENT),
+    ///     MsgDirection::at_payload(line, at, Some(MsgDirection::SENT)),
+    ///     Some(MsgDirection::SENT),
     ///     "the verb inside Text(58) is payload, not prose",
     /// );
     ///
     /// // A line the transport did not mark takes the default, and a line
     /// // with no default takes nothing.
     /// let bare = b"8=FIX.4.2|35=D|10=0|";
-    /// assert_eq!(Direction::at_payload(bare, 0, Some(Direction::SENT)), Some(Direction::SENT));
-    /// assert_eq!(Direction::at_payload(bare, 0, None), None);
+    /// assert_eq!(MsgDirection::at_payload(bare, 0, Some(MsgDirection::SENT)), Some(MsgDirection::SENT));
+    /// assert_eq!(MsgDirection::at_payload(bare, 0, None), None);
     /// ```
     #[must_use]
     pub fn at_payload(
@@ -323,19 +323,19 @@ impl Direction {
 /// inferred from spelling. The third element marks the two bare forms, which
 /// match under a stricter rule.
 const VERBS: [(&[u8], &str, bool); 13] = [
-    (b"sending", Direction::SENT, false),
-    (b"sent", Direction::SENT, false),
-    (b"send", Direction::SENT, false),
-    (b"outbound", Direction::SENT, false),
-    (b"outgoing", Direction::SENT, false),
-    (b"out", Direction::SENT, true),
-    (b"receiving", Direction::RECV, false),
-    (b"received", Direction::RECV, false),
-    (b"receive", Direction::RECV, false),
-    (b"recv", Direction::RECV, false),
-    (b"inbound", Direction::RECV, false),
-    (b"incoming", Direction::RECV, false),
-    (b"in", Direction::RECV, true),
+    (b"sending", MsgDirection::SENT, false),
+    (b"sent", MsgDirection::SENT, false),
+    (b"send", MsgDirection::SENT, false),
+    (b"outbound", MsgDirection::SENT, false),
+    (b"outgoing", MsgDirection::SENT, false),
+    (b"out", MsgDirection::SENT, true),
+    (b"receiving", MsgDirection::RECV, false),
+    (b"received", MsgDirection::RECV, false),
+    (b"receive", MsgDirection::RECV, false),
+    (b"recv", MsgDirection::RECV, false),
+    (b"inbound", MsgDirection::RECV, false),
+    (b"incoming", MsgDirection::RECV, false),
+    (b"in", MsgDirection::RECV, true),
 ];
 
 /// Every direction marker standing in one prefix, with its bounds.
@@ -426,7 +426,7 @@ pub enum AsciiFamily {
     /// FIX's message type, case-bearing.
     MsgType(MsgType),
     /// Which way a captured line moved.
-    Direction(Direction),
+    MsgDirection(MsgDirection),
 }
 
 impl AsciiFamily {
@@ -441,7 +441,7 @@ impl AsciiFamily {
             Self::Cfi(value) => value.as_str(),
             Self::Side(value) => value.as_str(),
             Self::MsgType(value) => value.as_str(),
-            Self::Direction(value) => value.as_str(),
+            Self::MsgDirection(value) => value.as_str(),
         }
     }
 }
@@ -553,11 +553,11 @@ ascii_value!(
     Some(8)
 );
 ascii_value!(
-    Direction,
-    super::DirectionType,
-    Direction,
-    Direction,
-    Direction,
+    MsgDirection,
+    super::MsgDirectionType,
+    MsgDirection,
+    MsgDirection,
+    MsgDirection,
     Some(4)
 );
 
@@ -616,7 +616,7 @@ impl ScalarFamily for AsciiFamily {
             Self::Cfi(_) => DataTypeId::Cfi,
             Self::Side(_) => DataTypeId::Side,
             Self::MsgType(_) => DataTypeId::MsgType,
-            Self::Direction(_) => DataTypeId::Direction,
+            Self::MsgDirection(_) => DataTypeId::MsgDirection,
         }
     }
 
@@ -630,7 +630,7 @@ impl ScalarFamily for AsciiFamily {
             Self::Cfi(_) => Ok(DataType::Cfi),
             Self::Side(_) => Ok(DataType::Side),
             Self::MsgType(_) => Ok(DataType::MsgType),
-            Self::Direction(_) => Ok(DataType::Direction),
+            Self::MsgDirection(_) => Ok(DataType::MsgDirection),
         }
     }
 
@@ -675,8 +675,8 @@ define_scalar_type!(
     crate::DataType::MsgType
 );
 define_scalar_type!(
-    DirectionScalar,
-    super::DirectionType,
+    MsgDirectionScalar,
+    super::MsgDirectionType,
     "direction",
-    crate::DataType::Direction
+    crate::DataType::MsgDirection
 );

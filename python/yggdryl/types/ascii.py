@@ -1,7 +1,7 @@
 """The ASCII field factories: variable, fixed-width, and by registered code.
 
 The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, and FIX's
-own ``side``, ``msgtype`` and ``direction`` - are
+own ``side``, ``msgtype`` and ``msgdirection`` - are
 datatypes of their own, each storing the width its standard fixes, so a code
 factory is not a width factory wearing a name: the field it builds carries the
 code's identity across Arrow. The declared vocabularies live in
@@ -26,11 +26,11 @@ if TYPE_CHECKING:
     CfiField: TypeAlias = TypedField[Literal["cfi"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     MsgTypeField: TypeAlias = TypedField[Literal["msgtype"], str]
-    DirectionField: TypeAlias = TypedField[Literal["direction"], str]
+    MsgDirectionField: TypeAlias = TypedField[Literal["msgdirection"], str]
 else:
     AsciiField = FixedAsciiField = CountryField = CurrencyField = MicField = (
         CfiField
-    ) = SideField = MsgTypeField = DirectionField = Field
+    ) = SideField = MsgTypeField = MsgDirectionField = Field
 
 _ASCII = simple_dtype("ascii")
 _COUNTRY = simple_dtype("country")
@@ -39,7 +39,7 @@ _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
 _SIDE = simple_dtype("side")
 _MSGTYPE = simple_dtype("msgtype")
-_DIRECTION = simple_dtype("direction")
+_DIRECTION = simple_dtype("msgdirection")
 
 
 def ascii(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> AsciiField:
@@ -103,15 +103,15 @@ def msgtype(name: str, *, nullable: bool = True, metadata: MetadataInput = None)
     return new_field(MsgTypeField, name, _MSGTYPE, nullable, metadata)
 
 
-def direction(
+def msgdirection(
     name: str,
     *,
     nullable: bool = True,
     metadata: MetadataInput = None,
-) -> DirectionField:
+) -> MsgDirectionField:
     """Which way a captured line moved, as the packed four bytes."""
 
-    return new_field(DirectionField, name, _DIRECTION, nullable, metadata)
+    return new_field(MsgDirectionField, name, _DIRECTION, nullable, metadata)
 
 
 __all__ = [
@@ -119,7 +119,7 @@ __all__ = [
     "CfiField",
     "CountryField",
     "CurrencyField",
-    "DirectionField",
+    "MsgDirectionField",
     "FixedAsciiField",
     "MicField",
     "MsgTypeField",
@@ -128,7 +128,7 @@ __all__ = [
     "cfi",
     "country",
     "currency",
-    "direction",
+    "msgdirection",
     "fixed_ascii",
     "mic",
     "msgtype",

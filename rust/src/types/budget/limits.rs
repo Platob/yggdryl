@@ -285,7 +285,7 @@ impl MaterializationBudget {
             DataType::Country => self.add_fixed_rows(rows, 2)?,
             DataType::Currency => self.add_fixed_rows(rows, 3)?,
             DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Side | DataType::Direction => self.add_fixed_rows(rows, 4)?,
+            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
             DataType::MsgType => self.add_fixed_rows(rows, 8)?,
             // A fixed ASCII column charges the width it stores, whatever it is.
             DataType::FixedAscii(width) => {
@@ -394,7 +394,7 @@ impl MaterializationBudget {
             DataType::Country => self.add_fixed_rows(rows, 2)?,
             DataType::Currency => self.add_fixed_rows(rows, 3)?,
             DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Side | DataType::Direction => self.add_fixed_rows(rows, 4)?,
+            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
             DataType::MsgType => self.add_fixed_rows(rows, 8)?,
             // A fixed ASCII column charges the width it stores, whatever it is.
             DataType::FixedAscii(width) => {

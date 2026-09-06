@@ -158,7 +158,7 @@ impl AsciiEnum {
         ("mic", Self::MICS),
         ("exchange", Self::MICS),
         ("side", Self::SIDES),
-        ("direction", Self::DIRECTIONS),
+        ("msgdirection", Self::DIRECTIONS),
     ];
 
     /// Creates the enum a registered logical name prebuilds.

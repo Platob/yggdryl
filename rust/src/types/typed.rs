@@ -906,7 +906,7 @@ static_field_constructor!(super::ascii::MicType, DataType::Mic);
 static_field_constructor!(super::ascii::CfiType, DataType::Cfi);
 static_field_constructor!(super::ascii::SideType, DataType::Side);
 static_field_constructor!(super::ascii::MsgTypeType, DataType::MsgType);
-static_field_constructor!(super::ascii::DirectionType, DataType::Direction);
+static_field_constructor!(super::ascii::MsgDirectionType, DataType::MsgDirection);
 static_field_constructor!(super::nested::VariantType, DataType::Variant);
 static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
 static_field_constructor!(super::version::VersionType, DataType::Version);

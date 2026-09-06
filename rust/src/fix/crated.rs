@@ -56,7 +56,7 @@ fn build() -> Result<[Field; 2]> {
 
     // The packed four-byte coded datatype, the same discipline every coded
     // column in the crate keeps: the value, not a name for it.
-    let mut direction = DataType::Direction.nullable_field("direction");
+    let mut direction = DataType::MsgDirection.nullable_field("direction");
     direction.as_fix_mut().set_id(&branch, DIRECTION_TAG)?;
 
     Ok([msghash, direction])

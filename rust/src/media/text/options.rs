@@ -473,7 +473,7 @@ impl TextOptions {
             fields.push(DataType::Int64.required_field("rownum"));
         }
         if self.with_direction {
-            fields.push(DataType::Direction.nullable_field("direction"));
+            fields.push(DataType::MsgDirection.nullable_field("direction"));
         }
         if self.with_mimetype {
             fields.push(DataType::Utf8.required_field("mimetype"));

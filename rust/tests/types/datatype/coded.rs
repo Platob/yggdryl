@@ -11,7 +11,7 @@ use yggdryl::{AsciiEnum, DataType, DataTypeId, DataTypeKind, Field, Scalar, type
 const CODED: [(&str, DataType, i32); 3] = [
     ("side", DataType::Side, 4),
     ("msgtype", DataType::MsgType, 8),
-    ("direction", DataType::Direction, 4),
+    ("msgdirection", DataType::MsgDirection, 4),
 ];
 
 #[test]
@@ -102,8 +102,8 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
         (DataType::MsgType, "AB"),
         (DataType::MsgType, "VENUEMSG"),
         (DataType::Side, "1"),
-        (DataType::Direction, "SENT"),
-        (DataType::Direction, "RECV"),
+        (DataType::MsgDirection, "SENT"),
+        (DataType::MsgDirection, "RECV"),
     ] {
         let packed = dtype.ascii_packed(value.as_bytes()).unwrap();
         let read = dtype.ascii_value(packed).unwrap();
@@ -155,7 +155,7 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     for (dtype, outside) in [
         (DataType::Side, "Z"),
         (DataType::MsgType, "VENUE1"),
-        (DataType::Direction, "BOTH"),
+        (DataType::MsgDirection, "BOTH"),
     ] {
         let stored = dtype.scalar(Scalar::from(outside)).unwrap();
         assert_eq!(stored.as_str(), Some(outside), "{dtype}");
@@ -167,7 +167,7 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     // same members because it is a constant.
     for (name, count) in [
         ("side", AsciiEnum::SIDES.len()),
-        ("direction", AsciiEnum::DIRECTIONS.len()),
+        ("msgdirection", AsciiEnum::DIRECTIONS.len()),
     ] {
         let built = AsciiEnum::from_logical_name(name).unwrap();
         assert_eq!(built.len(), count, "{name}");
@@ -181,7 +181,10 @@ fn a_listing_is_a_vocabulary_and_never_a_gate_on_the_value() {
     assert_eq!(AsciiEnum::MSGTYPES.len(), 152);
     assert_eq!(AsciiEnum::DIRECTIONS, &["RECV", "SENT"][..]);
     // Every prebuilt member fits the width its own datatype fixes.
-    for (name, dtype) in [("side", DataType::Side), ("direction", DataType::Direction)] {
+    for (name, dtype) in [
+        ("side", DataType::Side),
+        ("msgdirection", DataType::MsgDirection),
+    ] {
         AsciiEnum::from_logical_name(name)
             .unwrap()
             .into_members(&dtype)
@@ -196,7 +199,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     assert!(!AsciiEnum::DIRECTIONS.contains(&"UNKNOWN"));
     assert!(!AsciiEnum::DIRECTIONS.contains(&"NONE"));
 
-    let field = Field::new("direction", DataType::Direction, true);
+    let field = Field::new("direction", DataType::MsgDirection, true);
     let row = Field::new(
         "row",
         DataType::from_fields([field.clone()]).unwrap(),
@@ -211,7 +214,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // and not the datatype's.
     let required = Field::new(
         "row",
-        DataType::from_fields([Field::new("direction", DataType::Direction, false)]).unwrap(),
+        DataType::from_fields([Field::new("direction", DataType::MsgDirection, false)]).unwrap(),
         false,
     );
     assert!(
@@ -226,7 +229,7 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
     for (dtype, value) in [
         (DataType::Side, "1"),
         (DataType::MsgType, "D"),
-        (DataType::Direction, "SENT"),
+        (DataType::MsgDirection, "SENT"),
     ] {
         let stored = dtype.scalar(Scalar::from(value)).unwrap();
         // To text, which is what the value already is.
@@ -247,34 +250,34 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
 
 #[test]
 fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
-    use yggdryl::types::Direction;
+    use yggdryl::types::MsgDirection;
 
     // Read, with the marker taken off the body.
     for (line, direction, body) in [
         (
             "sending >> 8=FIX.4.2|9=176|35=D|10=203|",
-            Some(Direction::SENT),
+            Some(MsgDirection::SENT),
             ">> 8=FIX.4.2|9=176|35=D|10=203|",
         ),
         (
             "recv 8=FIX.4.4|35=0|10=017|",
-            Some(Direction::RECV),
+            Some(MsgDirection::RECV),
             "8=FIX.4.4|35=0|10=017|",
         ),
         (
             "Receiving XmlApi: <Execution ExecID='E1'/>",
-            Some(Direction::RECV),
+            Some(MsgDirection::RECV),
             "XmlApi: <Execution ExecID='E1'/>",
         ),
         (
             "[OUT] 8=FIX.4.4|35=D|",
-            Some(Direction::SENT),
+            Some(MsgDirection::SENT),
             "8=FIX.4.4|35=D|",
         ),
-        ("(in) ACCOUNT=A1", Some(Direction::RECV), "ACCOUNT=A1"),
+        ("(in) ACCOUNT=A1", Some(MsgDirection::RECV), "ACCOUNT=A1"),
     ] {
-        assert_eq!(Direction::infer_text(line), direction, "{line}");
-        assert_eq!(Direction::split_text(line).1, body, "{line}");
+        assert_eq!(MsgDirection::infer_text(line), direction, "{line}");
+        assert_eq!(MsgDirection::split_text(line).1, body, "{line}");
     }
 
     // Nothing read is nothing removed, and these are the shapes that must
@@ -296,7 +299,7 @@ fn a_direction_is_the_verb_in_front_of_the_payload_and_nothing_else() {
         "8=FIX.4.4|35=D|",
         "no level printed by this plugin",
     ] {
-        assert_eq!(Direction::infer_text(line), None, "{line}");
-        assert_eq!(Direction::split_text(line).1, line, "{line}");
+        assert_eq!(MsgDirection::infer_text(line), None, "{line}");
+        assert_eq!(MsgDirection::split_text(line).1, line, "{line}");
     }
 }
