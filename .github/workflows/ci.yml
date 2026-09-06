@@ -63,6 +63,12 @@ jobs:
         run: cargo clippy --locked ${{ matrix.clippy_packages }} --all-targets ${{ matrix.flags }} --no-deps -- -D warnings
       - name: Tests and benchmark smoke tests
         run: cargo test --locked -p yggdryl --all-targets ${{ matrix.flags }}
+      # `--all-targets` is `--lib --bins --examples --tests --benches`, and
+      # doctests are none of those: the step above has never compiled one.
+      # They are the examples the published API pages carry, so they are the
+      # examples most read and least run - 190 of them on default features.
+      - name: Rustdoc examples
+        run: cargo test --locked -p yggdryl --doc ${{ matrix.flags }}
       - name: Documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -239,12 +245,14 @@ jobs:
           path: python/dist
       # `pandas` and `polars` are not runtime dependencies; they are installed
       # so the tests covering the frame entry points run here instead of
-      # skipping. Both are optional for PyArrow itself, so the pinned PyArrow
-      # in the matrix still decides which one is used.
+      # skipping. `xxhash` is the outside C binding the digest parity suite
+      # measures this implementation against: `python/tests/xxhash` opens with
+      # `pytest.importorskip("xxhash")`, so without it every parity test in
+      # that suite silently skipped, in both matrix legs.
       - name: Install test tools
         run: >-
           python -m pip install "${{ matrix.pyarrow }}"
-          "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata
+          "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata xxhash
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       - name: Smoke tests

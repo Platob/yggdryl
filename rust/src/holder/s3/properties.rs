@@ -77,6 +77,7 @@ impl S3Options {
     /// ])?;
     /// assert_eq!(options.endpoint(), Some("http://localhost:9000"));
     /// assert!(options.bucket_creation());
+    /// # Ok::<(), yggdryl::Error>(())
     /// ```
     pub fn with_properties<K, V>(
         mut self,
