@@ -29,6 +29,9 @@ arrow-schema = { version = "59.2.0", features = ["ffi"] }
 arrow-select = "59.2.0"
 base64 = "0.23"
 half = "2.7"
+# The logging facade. Nothing is emitted unless the host installs a logger,
+# so a library build pays one atomic load per record site and nothing else.
+log = "0.4"
 napi = { version = "3.12.1", default-features = false, features = ["napi8"] }
 napi-build = "2.4.1"
 napi-derive = "3.6.3"

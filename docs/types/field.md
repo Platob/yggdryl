@@ -523,20 +523,21 @@ pulled - which is what lets a partitioned read be handed straight to a write.
         Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     )])?;
 
-    let applied = root.apply_arrow_batch(&batch, true, true, true)?;
+    let applied = root.apply_arrow_batch(&batch, true, true, true, true)?;
 
     assert_eq!(applied.num_columns(), 3);
     // The digest saw the derived column, because the partition step ran first.
     assert_eq!(applied.column(2).null_count(), 0);
     // Applying again writes nothing: every column now holds a written value.
-    assert_eq!(root.apply_arrow_batch(&applied, true, true, true)?, applied);
+    assert_eq!(root.apply_arrow_batch(&applied, true, true, true, true)?, applied);
 
     // The same shape, with no rows read and no batch pulled.
-    let shape = root.apply_arrow_schema(batch.schema(), true, true, true)?;
+    let shape = root.apply_arrow_schema(batch.schema(), true, true, true, true)?;
     assert_eq!(shape, applied.schema());
 
     let mut stream = root.apply_arrow_reader(
         yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+        true,
         true,
         true,
         true,

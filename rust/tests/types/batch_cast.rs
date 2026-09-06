@@ -126,17 +126,17 @@ fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
         .with_field(declared)
         .with_select_by_names(["PRICE", "symbol"]);
 
-    let cast = options.cast_arrow_batch(batch, Some(&stored)).unwrap();
+    let shaped = options.apply_arrow_batch(batch, Some(&stored)).unwrap();
 
-    let names: Vec<_> = cast
+    let names: Vec<_> = shaped
         .schema()
         .fields()
         .iter()
         .map(|field| field.name().to_owned())
         .collect();
     assert_eq!(names, ["price", "symbol", "volume"]);
-    assert_eq!(cast.column(0).data_type(), &ArrowDataType::Int64);
-    assert_eq!(cast.num_rows(), 1);
+    assert_eq!(shaped.column(0).data_type(), &ArrowDataType::Int64);
+    assert_eq!(shaped.num_rows(), 1);
 
     // A name the rows do not have is an error, not a null column.
     let missing = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
@@ -148,7 +148,7 @@ fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
         false,
     )])));
     let error = missing
-        .cast_arrow_batch(empty, None)
+        .apply_arrow_batch(empty, None)
         .unwrap_err()
         .to_string();
     assert!(error.contains("absent"), "{error}");

@@ -336,6 +336,24 @@ impl<'field> PartitionField<'field> {
         }))
     }
 
+    /// Returns whether this root declares a derived column anywhere.
+    ///
+    /// The answer walks the declared Structs, which is exactly the reach
+    /// [`Self::apply_arrow_batch`] has, and reads no rows. It answers on the
+    /// stored property rather than the parsed expression, so a malformed
+    /// declaration still reports as one and is refused where it is read.
+    pub fn declares_derivation(&self) -> bool {
+        fn any_derivation(fields: &[Field]) -> bool {
+            fields.iter().any(|field| {
+                let partition = field.as_partition();
+                partition.contains_key(SOURCES)
+                    || partition.contains_key(TRANSFORM)
+                    || (field.is_struct() && any_derivation(field.fields()))
+            })
+        }
+        any_derivation(self.as_field().fields())
+    }
+
     /// Name the full source key a declaration was refused under.
     fn invalid_sources(&self, reason: smol_str::SmolStr) -> Error {
         Error::InvalidMetadataValue {
@@ -497,15 +515,19 @@ fn filled_columns(declared: &Field, batch: &RecordBatch) -> Result<Option<Record
     let mut changed = false;
 
     for child in declared.fields() {
+        // The declaration is the cheap question and it is asked first: a
+        // column that derives nothing is skipped without reading a row, where
+        // `is_unwritten` decodes every cell of a column whose default is not
+        // null - once per batch, for every ordinary column in the schema.
+        let Some(expression) = child.as_partition().expression()? else {
+            continue;
+        };
         let held = batch.schema().index_of(child.name()).ok();
         if let Some(index) = held {
             if !is_unwritten(child, columns[index].as_ref(), rows)? {
                 continue;
             }
         }
-        let Some(expression) = child.as_partition().expression()? else {
-            continue;
-        };
         // Strict: a declared type the computed value does not fit is an error,
         // not a column of silent nulls.
         let array = child.cast_arrow_array(expression.bind(&stored)?.evaluate(batch)?, false)?;

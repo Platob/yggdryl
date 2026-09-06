@@ -961,6 +961,7 @@ class Field:
         digest: bool = True,
         partition: bool = True,
         cast: bool = True,
+        safe: bool = True,
     ) -> pyarrow.RecordBatch: ...
     # The applied shape, derived from the two schemas without reading a row.
     def apply_arrow_schema(
@@ -970,6 +971,7 @@ class Field:
         digest: bool = True,
         partition: bool = True,
         cast: bool = True,
+        safe: bool = True,
     ) -> pyarrow.Schema: ...
     def apply_arrow_reader(
         self,
@@ -978,6 +980,7 @@ class Field:
         digest: bool = True,
         partition: bool = True,
         cast: bool = True,
+        safe: bool = True,
     ) -> pyarrow.RecordBatchReader: ...
     def cast_arrow_batch(
         self, value: pyarrow.RecordBatch, *, safe: bool = True

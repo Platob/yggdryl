@@ -534,7 +534,8 @@ impl PyField {
     /// finally stand. Each protocol walks the declared Structs beneath this
     /// root and leaves a column holding anything but its canonical default
     /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true))]
+    #[allow(clippy::fn_params_excessive_bools)] // Keyword-only in Python.
     fn apply_arrow_batch<'py>(
         &self,
         py: Python<'py>,
@@ -542,10 +543,11 @@ impl PyField {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
         self.inner
-            .apply_arrow_batch(&batch, digest, partition, cast)
+            .apply_arrow_batch(&batch, digest, partition, cast, safe)
             .map_err(value_error)?
             .to_pyarrow(py)
     }
@@ -555,7 +557,8 @@ impl PyField {
     /// The declarations name every column they add, so the applied shape is a
     /// property of two schemas: nothing is decoded, and a declaration that
     /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true))]
+    #[allow(clippy::fn_params_excessive_bools)] // Keyword-only in Python.
     fn apply_arrow_schema<'py>(
         &self,
         py: Python<'py>,
@@ -563,10 +566,11 @@ impl PyField {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         self.inner
-            .apply_arrow_schema(schema, digest, partition, cast)
+            .apply_arrow_schema(schema, digest, partition, cast, safe)
             .map_err(value_error)?
             .to_pyarrow(py)
     }
@@ -575,7 +579,8 @@ impl PyField {
     ///
     /// The applied schema is derived once, so the returned reader answers it
     /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true))]
+    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true))]
+    #[allow(clippy::fn_params_excessive_bools)] // Keyword-only in Python.
     fn apply_arrow_reader<'py>(
         &self,
         py: Python<'py>,
@@ -583,11 +588,12 @@ impl PyField {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner
-            .apply_arrow_reader(reader, digest, partition, cast)
+            .apply_arrow_reader(reader, digest, partition, cast, safe)
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, applied)
     }

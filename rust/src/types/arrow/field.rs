@@ -153,14 +153,14 @@ impl Field {
     ///     Arc::new(Date32Array::from(vec![19_723])) as ArrayRef,
     /// )])?;
     ///
-    /// let applied = root.apply_arrow_batch(&batch, true, true, true)?;
+    /// let applied = root.apply_arrow_batch(&batch, true, true, true, true)?;
     ///
     /// assert_eq!(applied.num_columns(), 3);
     /// // The digest saw the derived column, because the partition step ran first.
     /// assert_eq!(applied.column(2).null_count(), 0);
     ///
     /// // Applying again changes nothing: every column now holds a written value.
-    /// assert_eq!(root.apply_arrow_batch(&applied, true, true, true)?, applied);
+    /// assert_eq!(root.apply_arrow_batch(&applied, true, true, true, true)?, applied);
     /// # Ok(())
     /// # }
     /// ```
@@ -176,18 +176,28 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> Result<arrow_array::RecordBatch> {
         use crate::types::cast::ArrowCast as _;
 
         let mut applied = if cast {
-            self.cast_arrow_batch(batch.clone(), true)?
+            self.cast_arrow_batch(batch.clone(), safe)?
         } else {
             batch.clone()
         };
-        if partition {
+        // Each protocol is asked whether it declares anything before it is
+        // run: both walk the batch, and the digest fill casts it a second time
+        // to materialize holder columns. A root that declares neither is the
+        // ordinary schema, and applying it must cost exactly the cast - but a
+        // root the protocols cannot run on at all is still refused here, where
+        // skipping the run would otherwise swallow the refusal.
+        if partition || digest {
+            self.require_struct()?;
+        }
+        if partition && self.as_partition().declares_derivation() {
             applied = self.as_partition().apply_arrow_batch(&applied)?;
         }
-        if digest {
+        if digest && self.as_digest().declares_holder() {
             applied = self.as_digest().apply_arrow_batch(&applied)?;
         }
         Ok(applied)
@@ -222,7 +232,7 @@ impl Field {
     ///     false,
     /// )]);
     ///
-    /// let applied = root.apply_arrow_schema(stored.into(), true, true, true)?;
+    /// let applied = root.apply_arrow_schema(stored.into(), true, true, true, true)?;
     ///
     /// assert_eq!(applied.fields().len(), 2);
     /// assert_eq!(applied.field(1).name(), "year");
@@ -240,10 +250,11 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> Result<arrow_schema::SchemaRef> {
         let empty = arrow_array::RecordBatch::new_empty(schema);
         Ok(self
-            .apply_arrow_batch(&empty, digest, partition, cast)?
+            .apply_arrow_batch(&empty, digest, partition, cast, safe)?
             .schema())
     }
 
@@ -268,11 +279,20 @@ impl Field {
         digest: bool,
         partition: bool,
         cast: bool,
+        safe: bool,
     ) -> Result<crate::arrow::BatchReader> {
-        if !digest && !partition && !cast {
-            return Ok(inner);
+        let digest = digest && self.as_digest().declares_holder();
+        let partition = partition && self.as_partition().declares_derivation();
+        if !digest && !partition {
+            // Nothing is derived, so the whole apply is the cast - and that has
+            // its own short-circuit for a reader already in the declared shape,
+            // which wrapping every batch here would throw away.
+            return match cast {
+                true => Ok(crate::arrow::cast_reader(inner, self, safe)?),
+                false => Ok(inner),
+            };
         }
-        let schema = self.apply_arrow_schema(inner.schema(), digest, partition, cast)?;
+        let schema = self.apply_arrow_schema(inner.schema(), digest, partition, cast, safe)?;
         Ok(Box::new(AppliedReader {
             inner,
             root: self.clone(),
@@ -280,6 +300,7 @@ impl Field {
             digest,
             partition,
             cast,
+            safe,
         }))
     }
 
@@ -691,6 +712,7 @@ struct AppliedReader {
     digest: bool,
     partition: bool,
     cast: bool,
+    safe: bool,
 }
 
 #[cfg(feature = "arrow")]
@@ -704,7 +726,7 @@ impl Iterator for AppliedReader {
         };
         Some(
             self.root
-                .apply_arrow_batch(&batch, self.digest, self.partition, self.cast)
+                .apply_arrow_batch(&batch, self.digest, self.partition, self.cast, self.safe)
                 .map_err(|error| {
                     arrow_schema::ArrowError::ComputeError(format!(
                         "the declared columns could not be applied: {error}"
