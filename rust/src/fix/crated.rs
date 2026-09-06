@@ -136,9 +136,19 @@ fn build() -> Result<Vec<Field>> {
     )?;
     // Named by the column it reads, which is the tag, because that is what
     // the column is called in a row.
+    //
+    // Written through the protocol view rather than through
+    // `PartitionFieldMut::set_sources`, because that half of the partition
+    // layer is built only with Arrow and these fields exist whether or not it
+    // is. The rendering is the crate's one canonical spelling either way, and
+    // the metadata write validates it exactly as the setter's would.
+    let sources = crate::metadata::render_source_list(
+        crate::metadata::PARTITION_SOURCES_KEY,
+        [super::schema::rendered(TIMESTAMP_TAG)],
+    )?;
     unixpartition
         .as_partition_mut()
-        .set_sources([super::schema::rendered(TIMESTAMP_TAG)])?;
+        .insert("sources", sources)?;
     // `truncate[3600]`, not `hour`: the value is seconds floored to a multiple
     // of the width, which is what Iceberg's truncate transform means, whereas
     // its `hour` yields hours since the epoch and the grammar's own `hour`
