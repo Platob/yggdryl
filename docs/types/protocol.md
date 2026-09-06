@@ -450,7 +450,7 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 - `HTTPS:Content-Type`, `HTTP:content-type`, `http:content-type` -> one entry, matched case-insensitively.
 - `https` -> no accessor; either scheme's view reports `http`.
 - Rust `field.location()` -> straight `location`; `as_http().location()` -> `http:location` (`http_location` / `httpLocation` in the bindings).
-- `set_init`, `is_init`, `with_init` -> Rust only; the bindings' mapping write validates identically.
+- `with_init` -> Rust only; `set_init` and `is_init` are in Python, and the bindings' mapping write validates identically.
 - `display` -> named in all three (`set_display`, `display`, `remove_display`) on the field and every view; `try_with_display` is Rust only.
 - Deleting a protocol's namespace -> leaves `Field`'s own reserved state untouched.
 - Protocol write -> invalidates a populated Arrow projection, like a direct metadata write.
@@ -480,7 +480,7 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_field.py -k "http or protocol or partition or typed_names"
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

@@ -341,14 +341,27 @@ trait MetadataInput {
 }
 
 /// Positional bytes over an `IOBase`, with a skip that performs no read.
+///
+/// Deliberately unbuffered: a metadata walk reads a message header and then
+/// skips its body, and a read-ahead window would transfer the bodies it exists
+/// to skip - which on a large stream is the whole value to count its rows. The
+/// length is taken once, because every skip is bounded against it and it
+/// cannot change inside one walk.
 struct HandleInput<'handle, H: IOBase + ?Sized> {
     handle: &'handle H,
     offset: u64,
+    /// The value's length when the walk began.
+    size: u64,
 }
 
 impl<'handle, H: IOBase + ?Sized> HandleInput<'handle, H> {
-    const fn new(handle: &'handle H) -> Self {
-        Self { handle, offset: 0 }
+    fn new(handle: &'handle H) -> Self {
+        let size = handle.size();
+        Self {
+            handle,
+            offset: 0,
+            size,
+        }
     }
 }
 
@@ -380,7 +393,7 @@ impl<H: IOBase + ?Sized> MetadataInput for HandleInput<'_, H> {
         let end = self
             .offset
             .checked_add(length as u64)
-            .filter(|end| *end <= self.handle.size())
+            .filter(|end| *end <= self.size)
             .ok_or_else(|| ipc_metadata_error("IPC message body ends past the stream"))?;
         self.offset = end;
         Ok(())

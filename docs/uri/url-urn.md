@@ -15,7 +15,7 @@ This page owns `Url` and `Urn`, the two narrowed forms of the canonical [`Uri`](
 | `is_local`, `join_path` | scheme is `file:`; `Path::join` for URLs, one segment per component |
 | `exists`, `is_dir`, `is_file` | local URL only; `false` for every other scheme, no network call |
 | `local_mime_type` | existing directory: [`MimeType::DIRECTORY`](../types/scalar.md); local file: from its name, else `FILE`; remote: `mime_type` |
-| Rust only | `default_port`, `is_local`, `join_path`, `local_mime_type`; the three predicates exist in both bindings |
+| Bindings | Python answers `default_port`, `is_local`, `local_mime_type`, and reaches `join_path` by handing `joinpath` an `os.PathLike`; JavaScript is Rust-only here. The three predicates exist in both bindings |
 | Errors | Rust `Err`, Python `ValueError`, JavaScript throw |
 
 ## Use
@@ -97,7 +97,7 @@ Both narrowed forms are the same canonical value, so conversion either way is fr
 
 ## What the scheme decides
 
-Rust only. The `exists`, `is_dir`, and `is_file` predicates are in both bindings, under those names.
+Rust and Python; JavaScript reaches none of this section. The `exists`, `is_dir`, and `is_file` predicates are in all three, under those names.
 
 === "Rust"
 

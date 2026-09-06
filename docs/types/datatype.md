@@ -13,7 +13,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
-| Rust only | the enum, `validate`; YAML, TOML, `pretty` pending in JavaScript |
+| Rust only | the enum itself; YAML, TOML, `pretty` pending in JavaScript |
 
 ## Use
 
@@ -585,7 +585,7 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 
 ## Building the enum directly
 
-Rust only. `validate` catches states the public enum admits but no constructor produces.
+Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
 use yggdryl::{DataType, Field, TimeUnit};
@@ -625,7 +625,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - JSON emit order -> `name`, `dtype`, `nullable`, `dictionary_id` when non-zero, `dictionary_is_ordered` when set, then `metadata`.
 - unset optional attributes -> omitted by every format and by `pretty`, never null.
 - `pretty()` -> stable across runs; nothing in it iterates a hash map.
-- a value from Python or JavaScript -> already validated at the entry point; `validate` is Rust only.
+- a value from Python or JavaScript -> already validated at the entry point, so `validate` only ever re-checks; JavaScript does not bind it.
 
 ## Commands
 
@@ -643,7 +643,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_datatype.py python/tests/types/test_defaults.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

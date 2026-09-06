@@ -155,21 +155,40 @@ fn key_indices(schema: &arrow_schema::Schema, merge_by_names: &[String]) -> Resu
     merge_by_names
         .iter()
         .map(|name| {
-            schema.index_of(name).map_err(|_| {
-                let stored = schema
-                    .fields()
-                    .iter()
-                    .map(|field| field.name().as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                Error::InvalidRecord {
+            // Folded, because every other name resolution in the crate folds:
+            // a key is validated against the partition columns with the same
+            // fold, and the cast that shaped these rows matched their columns
+            // with it, so an exact lookup here refuses a key the layers around
+            // it already accepted.
+            let mut found = schema
+                .fields()
+                .iter()
+                .enumerate()
+                .filter(|(_, field)| field.name().eq_ignore_ascii_case(name));
+            match (found.next(), found.next()) {
+                (Some((index, _)), None) => Ok(index),
+                (Some(_), Some(_)) => Err(Error::InvalidRecord {
                     path: smol_str::format_smolstr!("$.{name}"),
-                    reason: crate::text::expected_got(
-                        format_args!("merge_by_names column {name:?} among the stored columns"),
-                        crate::text::elide_display(&stored),
+                    reason: smol_str::format_smolstr!(
+                        "merge_by_names column {name:?} matches more than one stored column"
                     ),
+                }),
+                (None, _) => {
+                    let stored = schema
+                        .fields()
+                        .iter()
+                        .map(|field| field.name().as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Err(Error::InvalidRecord {
+                        path: smol_str::format_smolstr!("$.{name}"),
+                        reason: crate::text::expected_got(
+                            format_args!("merge_by_names column {name:?} among the stored columns"),
+                            crate::text::elide_display(&stored),
+                        ),
+                    })
                 }
-            })
+            }
         })
         .collect()
 }

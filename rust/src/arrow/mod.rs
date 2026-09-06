@@ -12,11 +12,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::cast::ArrowCastPlan;
 use crate::{DataType, Field, Scalar};
-use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
+use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
+mod scalars;
 pub(crate) mod value;
+
+pub use scalars::{ArrowShape, ArrowValue};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
 ///
@@ -663,6 +666,22 @@ impl arrow_array::RecordBatchReader for Cast {
     }
 }
 
+/// Return whether two schemas name the same columns, in the same order.
+///
+/// This is the question a stream asks of a batch that is not the shape it
+/// expected: same columns is a batch that reconciles - differing only in a
+/// nullable flag, an extension entry, or a storage width - and different
+/// columns is different data, which no reconciliation should invent its way
+/// past. Names fold the way every other lookup in the crate folds them.
+pub(crate) fn same_columns(left: &arrow_schema::Schema, right: &arrow_schema::Schema) -> bool {
+    left.fields().len() == right.fields().len()
+        && left
+            .fields()
+            .iter()
+            .zip(right.fields())
+            .all(|(left, right)| left.name().eq_ignore_ascii_case(right.name()))
+}
+
 /// Return `reader`'s batches cast to `field`, one batch at a time.
 ///
 /// This is the cast half of a schema-directed read: the encoding has already
@@ -783,17 +802,12 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
         expected: SmolStr::new_static("a sequence of array values"),
         actual: SmolStr::new(values.kind()),
     })?;
-    let root = DataType::from_fields([field.clone()])?.required_field("row");
     let mut canonical = Vec::with_capacity(values.len());
     for value in values {
-        let row = Scalar::from_sequence([value.clone()]);
-        let row = root.canonicalize_value(row)?;
-        canonical.push(
-            row.as_sequence()
-                .and_then(|row| row.first())
-                .cloned()
-                .ok_or_else(|| Error::internal("arrow::array_from_value"))?,
-        );
+        // The field's own value contract, one value at a time: a synthetic row
+        // around each element would allocate a sequence per value and answer
+        // the same thing.
+        canonical.push(field.scalar(value.clone())?);
     }
     let borrowed = canonical.iter().collect::<Vec<_>>();
     value::array_from_values(field, &borrowed)
@@ -890,73 +904,6 @@ pub(crate) fn validate_scalar_value(field: &Field, value: Scalar) -> Result<Scal
     // The field's own value contract, which is the same walk a column value
     // takes with no synthetic row built around it.
     Ok(field.scalar(value)?)
-}
-
-/// One real Arrow struct scalar paired with its exact Yggdryl root field.
-#[derive(Clone, Debug)]
-pub struct StructScalar {
-    field: Field,
-    array: StructArray,
-}
-
-impl StructScalar {
-    /// Validates one non-null Arrow struct row against a canonical schema.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless the array is exactly one present row with a
-    /// physical Struct layout compatible with `schema`.
-    pub fn from_parts(schema: Field, array: StructArray) -> Result<Self> {
-        if array.len() != 1 {
-            return Err(Error::IncompatibleSchema(format!(
-                "struct scalar must contain exactly one row, got {}",
-                array.len()
-            )));
-        }
-        if array.is_null(0) {
-            return Err(Error::IncompatibleSchema(
-                "a native Scalar cannot represent a null root struct".to_owned(),
-            ));
-        }
-        ensure_struct_compatible(&schema, &array)?;
-        Ok(Self {
-            field: schema,
-            array,
-        })
-    }
-
-    /// Returns the exact root field.
-    pub const fn field(&self) -> &Field {
-        &self.field
-    }
-
-    /// Borrows the one-row Arrow struct array.
-    pub const fn array(&self) -> &StructArray {
-        &self.array
-    }
-
-    /// Returns a zero-copy one-element slice of the child at `index`.
-    pub fn get(&self, index: usize) -> Option<ArrayRef> {
-        self.array
-            .columns()
-            .get(index)
-            .map(|array| array.slice(0, 1))
-    }
-
-    /// Returns a zero-copy one-element slice by exact field name.
-    pub fn get_by_name(&self, name: &str) -> Option<ArrayRef> {
-        self.field.index_of(name).and_then(|index| self.get(index))
-    }
-
-    /// Returns the exact Field and its zero-copy one-element Arrow slice.
-    pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)> {
-        Some((self.field.get_field(index)?, self.get(index)?))
-    }
-
-    /// Consumes this value into Arrow's scalar marker.
-    pub fn into_arrow_scalar(self) -> ArrowScalar<StructArray> {
-        ArrowScalar::new(self.array)
-    }
 }
 
 /// Read one Arrow array as a sequence of values, typed by `field`.
@@ -1261,24 +1208,6 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     }
     field.validate_struct_root()?;
     Ok(field)
-}
-
-/// Check that a struct array carries exactly the columns a field declares.
-///
-/// # Errors
-///
-/// Returns an error naming both schemas when they disagree.
-fn ensure_struct_compatible(schema: &Field, array: &StructArray) -> Result<()> {
-    let expected = arrow_schema_from_field(schema)?;
-    let actual = array.fields();
-    if expected.fields().as_ref() != actual.as_ref() {
-        return Err(Error::IncompatibleSchema(format!(
-            "expected a struct array matching {}, got {}",
-            crate::text::elide_display(&expected),
-            crate::text::elide_display(&arrow_schema::Schema::new(actual.clone()))
-        )));
-    }
-    Ok(())
 }
 
 /// Projects a non-null Struct root Field as an Arrow schema.

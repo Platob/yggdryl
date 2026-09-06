@@ -7,6 +7,7 @@
 | Page | Purpose |
 | --- | --- |
 | [Scalars](scalars.md) | One value across the array boundary, with materialization budgets. |
+| [Values](values.md) | `ArrowValue`: one scalar, column, table, or stream, and the one entry from every columnar runtime. |
 | [Readers](readers.md) | `BatchReader`, the one shape of a record read or write. |
 | [Schema](schema.md) | A non-null Struct root to an Arrow `Schema` and back. |
 
@@ -15,6 +16,7 @@
 | | |
 | --- | --- |
 | Units | Exactly two: a `RecordBatch` and a one-row array; no row objects. |
+| Shapes | `ArrowValue` regroups both plus a column and a stream ([Values](values.md)). |
 | Owns | `default_arrow_array` on `DataType` and `Field`; `scalar_value` decodes the row under its Field. |
 | `DataType` default | The datatype's present value through a synthetic required Field; never null. |
 | `Field` default | Logical null when nullable; carries name, dictionary options, metadata, extension identity. |
@@ -220,7 +222,7 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 
     ```bash
     python/.venv/bin/python -m pytest python/tests/types/test_defaults.py
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     ```
 
 === "JavaScript"

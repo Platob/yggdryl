@@ -159,8 +159,10 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
         }
         let (key, value) = split_key_value(member, offset, ':')?;
         let value_offset = offset + member.find(value).unwrap_or_default();
-        let normalized = key.trim().to_ascii_lowercase();
-        match normalized.as_str() {
+        // The same normalization the token grammar uses, so both readings of
+        // this one form answer to the same key set rather than two.
+        let key_name = crate::types::parser::normalized(key);
+        match key_name.as_str() {
             "name" => {
                 if name.is_some() {
                     return Err(parse_error(offset, "duplicate field name"));
@@ -168,13 +170,13 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
                 name =
                     Some(parse_string(value).map_err(|error| offset_error(error, value_offset))?);
             }
-            "dtype" | "type" => {
+            "datatype" | "dtype" | "type" => {
                 if dtype.is_some() {
                     return Err(parse_error(offset, "duplicate field datatype"));
                 }
                 dtype = Some(parse_dtype(value, value_offset)?);
             }
-            "nullable" | "is_nullable" => {
+            "nullable" | "isnullable" => {
                 if nullable.is_some() {
                     return Err(parse_error(offset, "duplicate nullability"));
                 }
@@ -187,13 +189,13 @@ fn parse_arrow_field(body: &str) -> Result<Field> {
                 metadata = parse_metadata(value, value_offset)?;
                 saw_metadata = true;
             }
-            "dict_id" | "dictionary_id" => {
+            "dictionaryid" | "dictid" => {
                 if dictionary_id.is_some() {
                     return Err(parse_error(offset, "duplicate dictionary id"));
                 }
                 dictionary_id = Some(parse_i64(value, offset)?);
             }
-            "dict_is_ordered" | "dictionary_is_ordered" => {
+            "dictionaryisordered" | "dictisordered" => {
                 if dictionary_is_ordered.is_some() {
                     return Err(parse_error(offset, "duplicate dictionary ordering flag"));
                 }
@@ -415,12 +417,27 @@ fn unescape_quoted(value: &str, quote: char) -> Result<String> {
 }
 
 fn strip_optional_wrappers(value: &str) -> Result<Cow<'_, str>> {
-    strip_optional_wrappers_at_depth(value, 0)
+    strip_optional_wrappers_at_depth(value, 0, 0)
 }
 
-fn strip_optional_wrappers_at_depth(value: &str, depth: usize) -> Result<Cow<'_, str>> {
+fn strip_optional_wrappers_at_depth(
+    value: &str,
+    depth: usize,
+    offset: usize,
+) -> Result<Cow<'_, str>> {
+    // A wrapper is not a constructor, so this counts the wrappers stripped
+    // rather than the datatypes entered: exactly the limit many are accepted.
+    // The refusal names the limit and the text it stopped in, as the datatype
+    // grammar's does.
     if depth > DataType::PARSE_RECURSION_LIMIT {
-        return Err(parse_error(0, "field wrapper recursion limit exceeded"));
+        return Err(parse_error(
+            offset,
+            format!(
+                "field nesting exceeds the limit of {}; near {:?}",
+                DataType::PARSE_RECURSION_LIMIT,
+                &value[..value.len().min(24)]
+            ),
+        ));
     }
     let value = value.trim();
     if value.len() < 2 {
@@ -431,7 +448,7 @@ fn strip_optional_wrappers_at_depth(value: &str, depth: usize) -> Result<Cow<'_,
     {
         let parsed = parse_string(value)?;
         return Ok(Cow::Owned(
-            strip_optional_wrappers_at_depth(&parsed, depth + 1)?.into_owned(),
+            strip_optional_wrappers_at_depth(&parsed, depth + 1, offset)?.into_owned(),
         ));
     }
     let pair = match value.chars().next() {
@@ -447,6 +464,7 @@ fn strip_optional_wrappers_at_depth(value: &str, depth: usize) -> Result<Cow<'_,
         return strip_optional_wrappers_at_depth(
             &value[open.len_utf8()..value.len() - close.len_utf8()],
             depth + 1,
+            offset + open.len_utf8(),
         );
     }
     Ok(Cow::Borrowed(value))

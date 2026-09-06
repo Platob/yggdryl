@@ -18,16 +18,45 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
   pub type Result<T> = std::result::Result<T, Error>;
   pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef>
   pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar>
-  pub struct StructScalar
-  pub fn from_parts(schema: Field, array: StructArray) -> Result<Self>
-  pub const fn field(&self) -> &Field
-  pub const fn array(&self) -> &StructArray
-  pub fn get(&self, index: usize) -> Option<ArrayRef>
-  pub fn get_by_name(&self, name: &str) -> Option<ArrayRef>
-  pub fn entry(&self, index: usize) -> Option<(&Field, ArrayRef)>
-  pub fn into_arrow_scalar(self) -> Scalar<StructArray>
   pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar>
   pub fn batch_to_value(batch: &RecordBatch) -> Result<Scalar>
+
+### yggdryl::arrow::scalars  [rust\src\arrow\scalars.rs]
+pub enum ArrowShape
+  pub const ALL: [Self; 4]
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_tabular(self) -> bool
+  pub const fn is_streamed(self) -> bool
+  pub fn from_str(value: &str) -> crate::Result<Self>
+pub struct ArrowValue
+  pub fn from_scalar_array(field: Field, array: ArrayRef) -> Result<Self>
+  pub fn from_array(field: Field, array: ArrayRef) -> Result<Self>
+  pub fn from_batch(batch: RecordBatch) -> Result<Self>
+  pub fn from_batch_as(root: Field, batch: RecordBatch) -> Result<Self>
+  pub fn from_reader(reader: BatchReader) -> Result<Self>
+  pub fn from_reader_as(root: Field, reader: BatchReader) -> Result<Self>
+  pub fn from_value(field: &Field, value: &Scalar) -> Result<Self>
+  pub fn from_values(field: &Field, values: &Scalar) -> Result<Self>
+  pub fn from_rows(root: &Field, rows: &Scalar) -> Result<Self>
+  pub const fn field(&self) -> &Field
+  pub fn dtype(&self) -> &DataType
+  pub const fn shape(&self) -> ArrowShape
+  pub const fn is_scalar(&self) -> bool
+  pub const fn is_array(&self) -> bool
+  pub const fn is_batch(&self) -> bool
+  pub const fn is_stream(&self) -> bool
+  pub fn row_size(&self) -> Option<usize>
+  pub fn column_size(&self) -> usize
+  pub const fn as_array(&self) -> Option<&ArrayRef>
+  pub const fn as_batch(&self) -> Option<&RecordBatch>
+  pub fn root(&self) -> Result<Field>
+  pub fn schema(&self) -> Result<SchemaRef>
+  pub fn into_array(self) -> Result<ArrayRef>
+  pub fn into_batch(self) -> Result<RecordBatch>
+  pub fn into_reader(self) -> Result<BatchReader>
+  pub fn into_scalar(self) -> Result<Scalar>
+  pub fn into_arrow_scalar(self) -> Result<arrow_array::Scalar<ArrayRef>>
+  pub fn cast(self, field: &Field, options: ArrowCastOptions) -> Result<Self>
 
 ### yggdryl::root::bytestream  [rust\src\bytestream.rs]
 pub struct ByteStream<'source>
@@ -634,6 +663,8 @@ pub trait IOMedia: Send
   fn read_parquet_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics>
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader>
+  fn read_arrow_value(&self, field: Option<&crate::Field>) -> Result<crate::arrow::ArrowValue>
+  fn write_arrow_value(&mut self, value: crate::arrow::ArrowValue, mode: crate::IOMode) -> Result<()>
   fn write_arrow_reader(&mut self, batches: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
   fn overwrite_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
   fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
@@ -1164,6 +1195,7 @@ pub const NULL_PARTITION: &str = "null";
   pub fn sources(&self) -> Result<Option<Vec<String>>>
   pub fn transform(&self) -> Result<Option<Function>>
   pub fn expression(&self) -> Result<Option<Expression>>
+  pub fn declares_derivation(&self) -> bool
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
   impl PartitionFieldMut<'_>
   pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
@@ -1992,6 +2024,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub fn validate_value(&self, value: &Scalar) -> Result<()>
   pub fn canonicalize_value(&self, value: Scalar) -> Result<Scalar>
   pub fn from_natural_value(&self, value: Scalar) -> Result<Scalar>
+  pub fn into_natural_value(&self, value: Scalar) -> Result<Scalar>
   pub fn require_struct(&self) -> Result<()>
   pub fn validate_struct_root(&self) -> Result<()>
   pub const fn dictionary_id(&self) -> Option<i64>
@@ -2750,13 +2783,14 @@ pub struct Authority(SmolStr);
 
 ### yggdryl::xxhash::arrow  [rust\src\xxhash\arrow.rs]
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef>
-  pub fn column_digests(array: &dyn Array, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn column_digests(array: ArrayRef, field: &Field, algorithm: DigestAlgorithm) -> Result<ArrayRef>
 
 ### yggdryl::xxhash::field  [rust\src\xxhash\field.rs]
 impl DigestField<'_>
   pub fn is_holder(&self) -> bool
   pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>>
   pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn declares_holder(&self) -> bool
   pub fn apply_arrow_batch(&self, batch: &arrow_array::RecordBatch) -> Result<arrow_array::RecordBatch>
   impl DigestFieldMut<'_>
   pub fn set_holder(&mut self) -> Result<()>

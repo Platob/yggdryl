@@ -9,25 +9,26 @@
 //! sequence, and a column digest feeds that cell's value. Where the layout
 //! allows it the bytes are read straight from the Arrow buffer into the same
 //! encoding; everything else falls back to the shared scalar boundary, so the
-//! path stays exhaustive over every datatype family.
+//! path stays exhaustive over every datatype family. That exhaustiveness is
+//! the compiler's: [`DataType`] is matched arm by arm, so a datatype added to
+//! the model cannot reach a digest without a decision here. `variant` is the
+//! one datatype a column refuses, because its binary encoding lands with the
+//! Iceberg v3 layer and the boundary has no value to feed.
 
 use std::collections::HashSet;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-use arrow_array::cast::AsArray as _;
-use arrow_array::types::{
-    Date32Type, Date64Type, DurationMicrosecondType, DurationMillisecondType,
-    DurationNanosecondType, DurationSecondType, Float16Type, Float32Type, Float64Type, Int8Type,
-    Int16Type, Int32Type, Int64Type, Time32MillisecondType, Time32SecondType,
-    Time64MicrosecondType, Time64NanosecondType, TimestampMicrosecondType,
-    TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt8Type, UInt16Type,
-    UInt32Type, UInt64Type,
-};
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Decimal32Array, Decimal64Array, Decimal128Array,
-    Decimal256Array, FixedSizeBinaryArray, RecordBatch, RecordBatchOptions, StructArray,
-    UInt32Array, UInt64Array,
+    Array, ArrayRef, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Date64Array,
+    Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array, DurationMicrosecondArray,
+    DurationMillisecondArray, DurationNanosecondArray, DurationSecondArray, FixedSizeBinaryArray,
+    Float16Array, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
+    LargeBinaryArray, LargeStringArray, RecordBatch, RecordBatchOptions, StringArray,
+    StringViewArray, StructArray, Time32MillisecondArray, Time32SecondArray,
+    Time64MicrosecondArray, Time64NanosecondArray, TimestampMicrosecondArray,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_buffer::NullBuffer;
 use arrow_select::zip::zip;
@@ -35,13 +36,13 @@ use arrow_select::zip::zip;
 use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::metadata::is_all_sources;
-use crate::types::cast::{ArrowCast, ArrowCastOptions, Representation};
+use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
 use super::field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes, holder_accepts,
-    is_digest_source,
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
+    holder_accepts, is_digest_source,
 };
 use super::scalar::{
     write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
@@ -157,8 +158,8 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     batch: RecordBatch,
     force: bool,
 ) -> Result<RecordBatch> {
-    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
     let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
+    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
     let row_count = batch.num_rows();
     let (columns, changed) =
         fill_struct(prototype, &plan, batch.columns(), None, force, row_count)?;
@@ -204,6 +205,9 @@ impl<'field> StructPlan<'field> {
         let mut holders = Vec::new();
         for (index, field) in fields.iter().enumerate() {
             let field_path = child_path(path, field.name());
+            if !field.is_struct() {
+                reject_unreachable_digests(field.dtype(), &field_path, &field_path)?;
+            }
             let sources = field.as_digest().sources().map_err(|error| {
                 digest_sources_error(&field_path, format!("cannot read stored sources: {error}"))
             })?;
@@ -310,11 +314,75 @@ fn digest_algorithm_error(holder: &str, reason: impl std::fmt::Display) -> Error
     digest_metadata_error(DIGEST_ALGORITHM_KEY, holder, reason)
 }
 
+fn digest_role_error(holder: &str, reason: impl std::fmt::Display) -> Error {
+    digest_metadata_error(DIGEST_ROLE_KEY, holder, reason)
+}
+
 fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt::Display) -> Error {
     Error::Core(crate::Error::InvalidMetadataValue {
         key: smol_str::SmolStr::new_static(key),
         reason: smol_str::format_smolstr!("holder {holder}: {reason}"),
     })
+}
+
+/// Refuse a digest declaration no fill plan can reach.
+///
+/// A plan descends into Struct children, because those are the ones that are
+/// columns of their own. Under a list, map, union, dictionary, or run-end
+/// layout a holder is written by nobody and left at its canonical default,
+/// which a containing holder would then read as though it were an answer. The
+/// declaration is refused where it is written rather than silently ignored,
+/// exactly as a `digest:sources` path that descends through a collection is.
+fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
+    // A dictionary encodes a value type rather than a child column, so what it
+    // holds carries no name of its own to extend the path with.
+    if let DataType::Dictionary(dictionary) = dtype {
+        reject_unreachable_digests(dictionary.value(), path, container)?;
+    }
+    for index in 0..dtype.field_len() {
+        let Some(child) = dtype.get_field_at(index) else {
+            continue;
+        };
+        let child_path = child_path(path, child.name());
+        let digest = child.as_digest();
+        if digest.is_holder() {
+            return Err(digest_role_error(
+                &child_path,
+                format!(
+                    "a holder is filled as a Struct column, and no fill descends into {container}"
+                ),
+            ));
+        }
+        if digest
+            .sources()
+            .map_err(|error| {
+                digest_sources_error(&child_path, format!("cannot read stored sources: {error}"))
+            })?
+            .is_some()
+        {
+            return Err(digest_sources_error(
+                &child_path,
+                "digest:sources belongs only to a digest holder",
+            ));
+        }
+        if digest
+            .algorithm()
+            .map_err(|error| {
+                digest_algorithm_error(
+                    &child_path,
+                    format!("cannot read stored algorithm: {error}"),
+                )
+            })?
+            .is_some()
+        {
+            return Err(digest_algorithm_error(
+                &child_path,
+                "digest:algorithm belongs only to a digest holder",
+            ));
+        }
+        reject_unreachable_digests(child.dtype(), &child_path, container)?;
+    }
+    Ok(())
 }
 
 fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
@@ -569,7 +637,7 @@ fn feed_selected_cell(
     if field.as_digest().is_holder() && !array.is_null(index) {
         match field.dtype() {
             DataType::Int32 => {
-                let value = array.as_primitive::<Int32Type>().value(index);
+                let value = downcast::<Int32Array>(array)?.value(index);
                 write_unsigned(
                     digester,
                     u128::from(u32::from_ne_bytes(value.to_ne_bytes())),
@@ -577,7 +645,7 @@ fn feed_selected_cell(
                 return Ok(());
             }
             DataType::Int64 => {
-                let value = array.as_primitive::<Int64Type>().value(index);
+                let value = downcast::<Int64Array>(array)?.value(index);
                 write_unsigned(
                     digester,
                     u128::from(u64::from_ne_bytes(value.to_ne_bytes())),
@@ -590,12 +658,13 @@ fn feed_selected_cell(
     feed_cell(digester, field.dtype(), array, index)
 }
 
-/// Digest every row of a batch, in selected schema order.
+/// Digest every row of a batch, in schema order.
 ///
-/// Explicit `digest:role=component` fields form the input. When none are
-/// explicit, every field except one carrying `digest:role=holder` contributes.
-/// The selected values remain an ordered sequence, which is the canonical row
-/// shape everywhere in this project.
+/// Every field contributes except one carrying `digest:role=holder`, which is
+/// an output rather than an input. `holder` is the only digest role, so a
+/// schema marks the field it fills and leaves the ones that field reads
+/// ordinary columns. The contributing values remain an ordered sequence, which
+/// is the canonical row shape everywhere in this project.
 ///
 /// The result is a `UInt32Array` for XXH32, a `UInt64Array` for the two
 /// 64-bit algorithms, and a `FixedSizeBinary(16)` of canonical big-endian
@@ -675,15 +744,35 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
 /// around it. A null feeds the null tag, so a null and an empty string never
 /// collide.
 ///
+/// The array is reconciled to `field` first, because the answer is defined by
+/// the value model rather than by the layout: an `int32` column read under an
+/// `int64` declaration is the same numbers and must answer the same digests,
+/// and a struct whose children are stored in another order is the same row.
+/// Reconciling costs nothing when the array is already the declared shape.
+///
+/// The reconciliation is strict on both questions a cast asks, unlike the one
+/// that completes a stored shape on a write: a value the declaration cannot
+/// hold is named rather than nulled, because a null is a value here and two
+/// unconvertible cells must not answer one digest, and a required column the
+/// array does not carry is named rather than defaulted, because a digest of an
+/// invented value is worse than no digest.
+///
 /// # Errors
 ///
-/// Returns an error when `field` does not describe `array`, or a value cannot
-/// be represented.
+/// Returns an error when the array cannot be reconciled to `field`, or a value
+/// cannot be represented.
 pub fn column_digests(
-    array: &dyn Array,
+    array: ArrayRef,
     field: &Field,
     algorithm: DigestAlgorithm,
 ) -> Result<ArrayRef> {
+    let array = field.cast_arrow_array(
+        array,
+        ArrowCastOptions::new()
+            .with_safe(false)
+            .with_nullability(Nullability::Strict),
+    )?;
+    let array = array.as_ref();
     let mut digests = Vec::with_capacity(array.len());
     let mut digester = algorithm.digester();
     for index in 0..array.len() {
@@ -748,70 +837,62 @@ fn feed_cell(
     }
     match dtype {
         DataType::Null => write_null(digester),
-        DataType::Boolean => write_bool(digester, array.as_boolean().value(index)),
+        DataType::Boolean => write_bool(digester, downcast::<BooleanArray>(array)?.value(index)),
         DataType::Int8 => write_signed(
             digester,
-            i128::from(array.as_primitive::<Int8Type>().value(index)),
+            i128::from(downcast::<Int8Array>(array)?.value(index)),
         ),
-        DataType::Int16 => {
-            write_signed(
-                digester,
-                i128::from(array.as_primitive::<Int16Type>().value(index)),
-            );
-        }
-        DataType::Int32 => {
-            write_signed(
-                digester,
-                i128::from(array.as_primitive::<Int32Type>().value(index)),
-            );
-        }
-        DataType::Int64 => {
-            write_signed(
-                digester,
-                i128::from(array.as_primitive::<Int64Type>().value(index)),
-            );
-        }
-        DataType::UInt8 => {
-            write_unsigned(
-                digester,
-                u128::from(array.as_primitive::<UInt8Type>().value(index)),
-            );
-        }
-        DataType::UInt16 => {
-            write_unsigned(
-                digester,
-                u128::from(array.as_primitive::<UInt16Type>().value(index)),
-            );
-        }
-        DataType::UInt32 => {
-            write_unsigned(
-                digester,
-                u128::from(array.as_primitive::<UInt32Type>().value(index)),
-            );
-        }
-        DataType::UInt64 => {
-            write_unsigned(
-                digester,
-                u128::from(array.as_primitive::<UInt64Type>().value(index)),
-            );
-        }
+        DataType::Int16 => write_signed(
+            digester,
+            i128::from(downcast::<Int16Array>(array)?.value(index)),
+        ),
+        DataType::Int32 => write_signed(
+            digester,
+            i128::from(downcast::<Int32Array>(array)?.value(index)),
+        ),
+        DataType::Int64 => write_signed(
+            digester,
+            i128::from(downcast::<Int64Array>(array)?.value(index)),
+        ),
+        DataType::UInt8 => write_unsigned(
+            digester,
+            u128::from(downcast::<UInt8Array>(array)?.value(index)),
+        ),
+        DataType::UInt16 => write_unsigned(
+            digester,
+            u128::from(downcast::<UInt16Array>(array)?.value(index)),
+        ),
+        DataType::UInt32 => write_unsigned(
+            digester,
+            u128::from(downcast::<UInt32Array>(array)?.value(index)),
+        ),
+        DataType::UInt64 => write_unsigned(
+            digester,
+            u128::from(downcast::<UInt64Array>(array)?.value(index)),
+        ),
         DataType::Float16 => write_float(
             digester,
-            f64::from(array.as_primitive::<Float16Type>().value(index).to_f32()),
+            f64::from(downcast::<Float16Array>(array)?.value(index).to_f32()),
         ),
         DataType::Float32 => write_float(
             digester,
-            f64::from(array.as_primitive::<Float32Type>().value(index)),
+            f64::from(downcast::<Float32Array>(array)?.value(index)),
         ),
-        DataType::Float64 => {
-            write_float(digester, array.as_primitive::<Float64Type>().value(index))
+        DataType::Float64 => write_float(digester, downcast::<Float64Array>(array)?.value(index)),
+        DataType::Utf8 => write_string(digester, downcast::<StringArray>(array)?.value(index)),
+        DataType::LargeUtf8 => {
+            write_string(digester, downcast::<LargeStringArray>(array)?.value(index));
         }
-        DataType::Utf8 => write_string(digester, array.as_string::<i32>().value(index)),
-        DataType::LargeUtf8 => write_string(digester, array.as_string::<i64>().value(index)),
-        DataType::Utf8View => write_string(digester, array.as_string_view().value(index)),
-        DataType::Binary => write_binary(digester, array.as_binary::<i32>().value(index)),
-        DataType::LargeBinary => write_binary(digester, array.as_binary::<i64>().value(index)),
-        DataType::BinaryView => write_binary(digester, array.as_binary_view().value(index)),
+        DataType::Utf8View => {
+            write_string(digester, downcast::<StringViewArray>(array)?.value(index));
+        }
+        DataType::Binary => write_binary(digester, downcast::<BinaryArray>(array)?.value(index)),
+        DataType::LargeBinary => {
+            write_binary(digester, downcast::<LargeBinaryArray>(array)?.value(index));
+        }
+        DataType::BinaryView => {
+            write_binary(digester, downcast::<BinaryViewArray>(array)?.value(index));
+        }
         DataType::FixedSizeBinary(_) => write_binary(
             digester,
             downcast::<FixedSizeBinaryArray>(array)?.value(index),
@@ -843,21 +924,21 @@ fn feed_cell(
         DataType::Date32 => temporal(
             digester,
             TemporalFamily::Date,
-            i64::from(array.as_primitive::<Date32Type>().value(index)),
+            i64::from(downcast::<Date32Array>(array)?.value(index)),
             TimeUnit::Day,
             &Timezone::NAIVE,
         ),
         DataType::Date64 => temporal(
             digester,
             TemporalFamily::Date,
-            array.as_primitive::<Date64Type>().value(index),
+            downcast::<Date64Array>(array)?.value(index),
             TimeUnit::Millisecond,
             &Timezone::NAIVE,
         ),
         DataType::Time32(unit) => {
             let count = match unit {
-                TimeUnit::Second => array.as_primitive::<Time32SecondType>().value(index),
-                TimeUnit::Millisecond => array.as_primitive::<Time32MillisecondType>().value(index),
+                TimeUnit::Second => downcast::<Time32SecondArray>(array)?.value(index),
+                TimeUnit::Millisecond => downcast::<Time32MillisecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
             temporal(
@@ -870,8 +951,8 @@ fn feed_cell(
         }
         DataType::Time64(unit) => {
             let count = match unit {
-                TimeUnit::Microsecond => array.as_primitive::<Time64MicrosecondType>().value(index),
-                TimeUnit::Nanosecond => array.as_primitive::<Time64NanosecondType>().value(index),
+                TimeUnit::Microsecond => downcast::<Time64MicrosecondArray>(array)?.value(index),
+                TimeUnit::Nanosecond => downcast::<Time64NanosecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
             temporal(
@@ -884,30 +965,20 @@ fn feed_cell(
         }
         DataType::DateTime64 { unit, timezone } => {
             let count = match unit {
-                TimeUnit::Second => array.as_primitive::<TimestampSecondType>().value(index),
-                TimeUnit::Millisecond => array
-                    .as_primitive::<TimestampMillisecondType>()
-                    .value(index),
-                TimeUnit::Microsecond => array
-                    .as_primitive::<TimestampMicrosecondType>()
-                    .value(index),
-                TimeUnit::Nanosecond => {
-                    array.as_primitive::<TimestampNanosecondType>().value(index)
-                }
+                TimeUnit::Second => downcast::<TimestampSecondArray>(array)?.value(index),
+                TimeUnit::Millisecond => downcast::<TimestampMillisecondArray>(array)?.value(index),
+                TimeUnit::Microsecond => downcast::<TimestampMicrosecondArray>(array)?.value(index),
+                TimeUnit::Nanosecond => downcast::<TimestampNanosecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
             temporal(digester, TemporalFamily::DateTime, count, *unit, timezone);
         }
         DataType::Duration64(unit) => {
             let count = match unit {
-                TimeUnit::Second => array.as_primitive::<DurationSecondType>().value(index),
-                TimeUnit::Millisecond => {
-                    array.as_primitive::<DurationMillisecondType>().value(index)
-                }
-                TimeUnit::Microsecond => {
-                    array.as_primitive::<DurationMicrosecondType>().value(index)
-                }
-                TimeUnit::Nanosecond => array.as_primitive::<DurationNanosecondType>().value(index),
+                TimeUnit::Second => downcast::<DurationSecondArray>(array)?.value(index),
+                TimeUnit::Millisecond => downcast::<DurationMillisecondArray>(array)?.value(index),
+                TimeUnit::Microsecond => downcast::<DurationMicrosecondArray>(array)?.value(index),
+                TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
             temporal(
@@ -918,11 +989,42 @@ fn feed_cell(
                 &Timezone::NAIVE,
             );
         }
-        // Ascii text is trimmed on the way out, geospatial carries its own
-        // tag, and every nested, dictionary, union, run-end, and variant
-        // layout composes values rather than holding one buffer, so all of
-        // them read through the shared boundary.
-        _ => return fallback(digester, dtype, array, index),
+        // Everything below reads through the shared scalar boundary. The arms
+        // are spelled out rather than caught by `_` so a datatype added to the
+        // model is a compile error here, not a silent fallback: ASCII and code
+        // storage trims the padding its layout adds, an identifier and a
+        // version restate their canonical text, an interval and a 32-bit
+        // duration validate components the buffer alone does not fix, a
+        // geospatial payload carries its own tag, and every list, struct, map,
+        // union, dictionary, and run-end layout composes child values instead
+        // of holding one buffer. A variant refuses by name there, because its
+        // binary encoding lands with the Iceberg v3 layer.
+        DataType::Duration32(_)
+        | DataType::Interval(_)
+        | DataType::Ascii
+        | DataType::FixedAscii(_)
+        | DataType::Country
+        | DataType::Currency
+        | DataType::Mic
+        | DataType::Cfi
+        | DataType::Side
+        | DataType::MsgType
+        | DataType::MsgDirection
+        | DataType::Uuid
+        | DataType::Version
+        | DataType::List(_)
+        | DataType::ListView(_)
+        | DataType::FixedSizeList(..)
+        | DataType::LargeList(_)
+        | DataType::LargeListView(_)
+        | DataType::Struct(_)
+        | DataType::Union(..)
+        | DataType::Dictionary(_)
+        | DataType::Map(_)
+        | DataType::RunEndEncoded(_)
+        | DataType::Variant
+        | DataType::Geometry(_)
+        | DataType::Geography(_) => return fallback(digester, dtype, array, index),
     }
     Ok(())
 }

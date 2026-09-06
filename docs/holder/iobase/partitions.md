@@ -498,7 +498,7 @@ column that is absent, or present holding nothing but nulls, is filled.
     ```bash
     python/.venv/bin/python -m pytest python/tests/holder/test_io.py -k "Partitions"
     python/.venv/bin/python -m pytest python/tests/types/test_field.py -k partition
-    python/.venv/bin/python python/benchmarks/types.py --iterations 2000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 2000
     ```
 
 === "JavaScript"

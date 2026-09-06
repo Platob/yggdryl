@@ -17,6 +17,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Store](fix/store.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
+| Holder | [Amazon S3](holder/backends/s3.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
 | Holder | [Bytes](holder/iobase/bytes.md) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
 | Holder | [Records](holder/iobase/records.md) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
 | Holder | [Values](holder/iobase/values.md) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
@@ -32,7 +33,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
 | xxHash | [Handles](xxhash/handles.md) | One containerized x86_64 Linux run (benchmarks): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 relea... |
-| xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/xxhash.py`, and `node/benchmarks/xxhash.js` measure one pro... |
+| xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/digest.py`, and `node/benchmarks/xxhash.js` measure one pro... |
 | xxHash | [Values](xxhash/values.md) | One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin... |
 
 ## Running every target
@@ -47,14 +48,14 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench coding
     cargo bench --bench xxhash
     cargo bench --bench fix
-    cargo bench --bench holder --features "parquet"
+    cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python python/benchmarks/types.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
@@ -65,7 +66,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
-    python/.venv/bin/python python/benchmarks/xxhash.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```

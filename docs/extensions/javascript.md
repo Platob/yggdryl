@@ -678,8 +678,10 @@ its algorithm, seed, and secret.
 ## FIX is a namespace
 
 `fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`,
-`fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH` (`'standard'`), and
-`fix.STANDARD_TAG_LIMIT` (`5000`) are the whole surface. The `fix:` vocabulary
+`fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH` (`''`, what an absent
+`fix:branch` means), and `fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX`
+(`40000`), the half-open tag range a non-standard branch may claim, are the
+whole surface. The `fix:` vocabulary
 is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
 `aliases`, and `description`.
 
@@ -688,10 +690,10 @@ is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
 | tag key | a `number`, coerced once and checked exactly |
 | name or path key | a `string`, standard branch; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
-| `fieldByName`, `fieldByPath` | take the branch as leading argument |
+| `fieldByName`, `fieldByPath` | take the branch after the name it qualifies, defaulting to the standard one |
 | `fieldByTag` | means the standard branch exactly |
-| `field.fix.id` | `'branch:tag'`, `null` exactly when `fix:tag` is absent; assigning one moves both halves |
-| `field.fix.branch` | `'standard'` when the key is absent; assigning `'standard'` removes it |
+| `field.fix.id` | `'tag:branch'`, `null` exactly when `fix:tag` is absent; assigning one moves both halves |
+| `field.fix.branch` | `''` when the key is absent; assigning `''` removes it |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | iteration | registry branch-major then by tag, message in the root's declared order |
@@ -719,13 +721,14 @@ assert.throws(() => registry.get(55n), {
   message: 'key must be a number tag or a string name, got BigInt',
 })
 
-// A branch and an identifier cross as text: the branch follows the name or
-// path it qualifies, and a malformed one throws rather than missing.
+// A branch and an identifier cross as text: a lookup takes the branch after
+// the name it qualifies, an identifier is the tag then the branch, and a
+// malformed one throws rather than missing.
 assert.equal(fix.STANDARD_BRANCH, '')
 assert.deepEqual([fix.USER_TAG_MIN, fix.USER_TAG_MAX], [5_000, 40_000])
 // Names are folded once, so a caller spells one however they have it.
-assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
-assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', fix.STANDARD_BRANCH).fix.tag, 448)
+assert.equal(registry.fieldByName('SYMBOL').name, 'symbol')
+assert.equal(registry.fieldByPath('NoPartyIDs.PartyID').fix.tag, 448)
 assert.equal(registry.fieldById('55:').fix.id, '55:')
 assert.throws(() => registry.fieldByName('symbol', '2cme'), /fix branch/)
 assert.throws(() => registry.fieldById('55'), /fix identifier/)
@@ -733,10 +736,10 @@ assert.throws(() => registry.fieldById(55), /into rust type `String`/)
 
 // Absence throws with the native message; the `get` half answers null.
 assert.throws(
-  () => registry.fieldByName('Nope', fix.STANDARD_BRANCH),
+  () => registry.fieldByName('Nope'),
   /expected a fix field at "name/,
 )
-assert.equal(registry.getFieldByName('Nope', fix.STANDARD_BRANCH), null)
+assert.equal(registry.getFieldByName('Nope'), null)
 assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
 
 // The typed vocabulary is answered by the fix view alone, and a tag the FIX

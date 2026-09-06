@@ -54,13 +54,20 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
 }
 
 /// Retain branch text beside a packed identifier for a field write.
+///
+/// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
+/// the colon first would answer a malformed identifier with a message of this
+/// binding's own invention, where Python answers with the core's - and the
+/// core's is the one every test and every documented example spells.
 pub(crate) fn id_parts_from_js(text: &str) -> Result<(CoreFixBranch, CoreFixId)> {
     // The core parses first, so a malformed identifier is refused in the
     // grammar's own words - the same words Python's boundary answers with -
-    // rather than in a sentence this file invented. A parsed identifier
-    // always carries the colon, so the split below cannot fail after it.
+    // rather than in a sentence this file invented.
     let id = id_from_js(text)?;
-    let branch = text.split_once(':').map_or("", |(_, branch)| branch);
+    let branch = text
+        .split_once(':')
+        .map(|(_, branch)| branch)
+        .ok_or_else(|| napi::Error::from_reason("a FIX identifier requires tag:branch"))?;
     Ok((branch_from_js(branch)?, id))
 }
 

@@ -6,13 +6,14 @@ One value across the array boundary, both ways, under the materialization budget
 
 | Key | Value |
 | --- | --- |
-| Owns | `scalar_array`, `scalar_value`, `TypedScalar::into_arrow_array`, `from_arrow_array`, `try_from_arrow_array`, `arrow::StructScalar` |
+| Owns | `scalar_array`, `scalar_value`, `TypedScalar::into_arrow_array`, `from_arrow_array`, `try_from_arrow_array` |
 | Validates | The exact `Field`: name, nullability, dictionary options, metadata, extension identity |
 | Null rule | A non-nullable Field takes a logical null only as its datatype's canonical default |
-| Copies | None; `StructScalar` column reads are slices |
+| Copies | None; a decoded child is a slice of its parent's buffers |
 | Limits | 1,000,000 expanded slots and 64 MiB fixed bytes, summed across siblings, checked before allocation |
 | Errors | `Error::IncompatibleSchema` (shape), `Error::PhysicalLimit` (budget), `Error::Allocation` (allocator) |
 | Bindings | Rust; Python `DataType.arrow_scalar` and `Field.arrow_scalar`; JavaScript none |
+| Shapes | Anything wider than one row is an [`ArrowValue`](values.md) |
 
 ## Use
 
@@ -69,55 +70,6 @@ A [`TypedScalar`](../types/scalar.md) projects through a synthetic non-nullable 
     // ...an int64 null belongs to a nullable Field, so the pairing refuses it.
     let absent = TypedScalar::from_parts(DataType::Int64, Scalar::Null)?;
     assert!(absent.into_arrow_array().is_err());
-    ```
-
-## StructScalar
-
-One present struct row with its root Field; `into_arrow_scalar` yields the `Datum` Arrow kernels take for one value.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{ArrayRef, Datum, Int64Array, StringArray, StructArray};
-    use yggdryl::arrow::StructScalar;
-    use yggdryl::{DataType, Field};
-
-    let schema = Field::new(
-        "row",
-        DataType::from_fields([
-            DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
-        ])?,
-        false,
-    );
-
-    let projected = schema.clone().into_arrow_schema()?;
-    let array = StructArray::new(
-        projected.fields().clone(),
-        vec![
-            Arc::new(Int64Array::from(vec![1])) as ArrayRef,
-            Arc::new(StringArray::from(vec![Some("AAPL")])) as ArrayRef,
-        ],
-        None,
-    );
-
-    let row = StructScalar::from_parts(schema, array)?;
-    assert_eq!(row.field().name(), "row");
-    assert_eq!(row.field().field_len(), 2);
-
-    // Children come back as zero-copy one-element slices, by position or by name.
-    let (field, column) = row.entry(0).expect("first column");
-    assert_eq!(field.name(), "id");
-    assert_eq!(column.len(), 1);
-    assert_eq!(row.get_by_name("symbol").map(|column| column.len()), Some(1));
-
-    // Arrow's own scalar marker is a shallow clone away.
-    let marker = row.into_arrow_scalar();
-    let (inner, is_scalar) = marker.get();
-    assert!(is_scalar);
-    assert_eq!(inner.len(), 1);
     ```
 
 ## Materialization budgets
@@ -189,7 +141,6 @@ The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
 
 - Array length other than 1, or a foreign datatype -> `Error::IncompatibleSchema`.
 - Field datatype deeper than the bound -> schema error before Arrow's recursive projection, no stack exhaustion.
-- `StructScalar::from_parts`: not one row, null root, or foreign columns -> `Error::IncompatibleSchema` naming both schemas.
 - Allocator refusal or overflowing `rows * width` -> `Error::Allocation` with the `TryReserveError`.
 - Dense union inactive branch past the budget -> never visited, no error.
 

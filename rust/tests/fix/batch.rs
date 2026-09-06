@@ -219,7 +219,7 @@ fn a_batch_with_no_arrival_record_cannot_be_written() {
     // then the wire is no longer reconstructible, which has to be said rather
     // than guessed at.
     let facets = FixOptions::new().with_select_by_names(["symbol", "side"]);
-    let projected = facets.cast_arrow_reader(reader, None);
+    let projected = facets.apply_arrow_reader(reader, None);
     let projected = match projected {
         Ok(reader) => reader,
         Err(_) => return,

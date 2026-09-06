@@ -186,7 +186,7 @@ Run the focused suite in release mode:
 cargo bench --manifest-path rust/Cargo.toml --bench types
 cargo bench --manifest-path rust/Cargo.toml --bench uri
 cargo bench --manifest-path rust/Cargo.toml --bench text
-python python/benchmarks/types.py --iterations 10000
+python python/benchmarks/datatypes.py --iterations 10000
 ```
 
 The suite measures scalar and deeply nested parsing, canonical field parsing,

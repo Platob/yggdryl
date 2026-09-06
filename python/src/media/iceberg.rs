@@ -244,7 +244,7 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
         return handle.folder_holder();
     }
     let url = core_url_from_value(value)?;
-    Holder::folder(url.into_path().map_err(value_error)?).map_err(value_error)
+    crate::iobase::folder_holder_for(&url)
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
@@ -737,19 +737,12 @@ impl PyCatalog {
     /// The warehouse folder the catalog resolves names against.
     #[getter]
     fn warehouse(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        crate::iobase::describe(
-            py,
-            Holder::folder(
-                self.inner
-                    .warehouse()
-                    .url()
-                    .ok_or_else(|| PyValueError::new_err("this catalog has no location"))?
-                    .clone()
-                    .into_path()
-                    .map_err(value_error)?,
-            )
-            .map_err(value_error)?,
-        )
+        let url = self
+            .inner
+            .warehouse()
+            .url()
+            .ok_or_else(|| PyValueError::new_err("this catalog has no location"))?;
+        crate::iobase::describe(py, crate::iobase::folder_holder_for(url)?)
     }
 
     /// Open the table a dotted name addresses - the one-call spelling of
@@ -989,17 +982,10 @@ impl PyTable {
         if let Some(holder) = crate::iobase::fs_folder_holder(root) {
             return crate::iobase::describe(py, holder);
         }
-        crate::iobase::describe(
-            py,
-            Holder::folder(
-                root.url()
-                    .ok_or_else(|| PyValueError::new_err("this table has no location"))?
-                    .clone()
-                    .into_path()
-                    .map_err(value_error)?,
-            )
-            .map_err(value_error)?,
-        )
+        let url = root
+            .url()
+            .ok_or_else(|| PyValueError::new_err("this table has no location"))?;
+        crate::iobase::describe(py, crate::iobase::folder_holder_for(url)?)
     }
 
     /// The table's base location, as a URI.

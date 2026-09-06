@@ -2,6 +2,8 @@
 
 use arrow_buffer::i256;
 
+use crate::DataType;
+
 pub(crate) struct DecimalText {
     bytes: [u8; 78],
     start: usize,
@@ -54,4 +56,15 @@ impl DecimalText {
     pub(crate) fn as_bytes(&self) -> &[u8] {
         &self.bytes[self.start..]
     }
+}
+
+/// Whether a target datatype holds decimals, however it encodes them.
+pub(crate) fn holds_decimal(target: &DataType) -> bool {
+    matches!(
+        crate::types::cast::text::encoded_value_of(target),
+        DataType::Decimal32 { .. }
+            | DataType::Decimal64 { .. }
+            | DataType::Decimal128 { .. }
+            | DataType::Decimal256 { .. }
+    )
 }

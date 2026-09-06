@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
-use pyo3::PyTypeInfo;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{
     PyArithmeticError, PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError,
@@ -19,6 +18,7 @@ use pyo3::types::{
     PyAny, PyBool, PyByteArray, PyBytes, PyComplex, PyDict, PyFloat, PyFrozenSet, PyInt, PyList,
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
+use pyo3::{IntoPyObjectExt, PyTypeInfo};
 use yggdryl::arrow::{
     array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
 };
@@ -832,6 +832,29 @@ impl PyScalar {
         from_py(value).map(Self::from_inner)
     }
 
+    /// Build a record: the sorted name-to-value map a struct row canonicalizes.
+    ///
+    /// A Python mapping is a mapping, so this is how a caller says that names
+    /// are field names rather than keys. A duplicate name is a `ValueError`.
+    #[staticmethod]
+    fn from_record(entries: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let mut pairs: Vec<(String, Scalar)> = Vec::new();
+        if let Ok(mapping) = entries.cast::<PyDict>() {
+            for (name, value) in mapping.iter() {
+                pairs.push((record_name(&name)?, from_py(&value)?));
+            }
+        } else {
+            for entry in entries.try_iter()? {
+                let entry = entry?;
+                let (name, value): (Bound<'_, PyAny>, Bound<'_, PyAny>) = entry.extract()?;
+                pairs.push((record_name(&name)?, from_py(&value)?));
+            }
+        }
+        Scalar::from_record(pairs)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     /// Build an identity-preserving member of a core enum.
     #[staticmethod]
     fn from_enum(kind: &str, value: &str) -> PyResult<Self> {
@@ -1163,6 +1186,65 @@ impl PyScalar {
         self.inner.as_bytes().map(|value| PyBytes::new(py, value))
     }
 
+    /// The payload bytes of any value: no type tag, no length prefix.
+    ///
+    /// A string answers its exact UTF-8, a byte value its bytes, a decimal
+    /// its coefficient, a temporal its stored count. `None` for null and for
+    /// a container, which has no payload of its own. `as_bytes` is the
+    /// narrower question - the bytes a byte-shaped value already holds.
+    fn as_value_bytes<'py>(&self, py: Python<'py>) -> Option<Bound<'py, PyBytes>> {
+        self.inner
+            .as_value_bytes()
+            .map(|value| PyBytes::new(py, &value))
+    }
+
+    /// Return whether this is the null value.
+    fn is_null(&self) -> bool {
+        self.inner.is_null()
+    }
+
+    /// Return whether this holds other values: a sequence, mapping, or record.
+    fn is_container(&self) -> bool {
+        self.inner.is_container()
+    }
+
+    /// Return whether this is a number of any width: integer, float, decimal.
+    fn is_number(&self) -> bool {
+        self.inner.is_number()
+    }
+
+    /// Return whether this is an exact integer of any signedness or width.
+    fn is_integer(&self) -> bool {
+        self.inner.is_integer()
+    }
+
+    /// The boolean this is, or `None` for every other value.
+    fn as_bool(&self) -> Option<bool> {
+        self.inner.as_bool()
+    }
+
+    /// The integer this is, at full magnitude, or `None`.
+    ///
+    /// Python integers are unbounded, so the answer never wraps and never
+    /// narrows: an unsigned value above the signed range crosses whole.
+    fn as_int<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        if let Some(value) = self.inner.as_i128() {
+            return value.into_bound_py_any(py).map(Some);
+        }
+        match self.inner.as_u128() {
+            Some(value) => value.into_bound_py_any(py).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// The floating-point value this is, or `None`.
+    ///
+    /// A 32-bit float widens exactly, so no width answers differently here
+    /// than it would at its own.
+    fn as_float(&self) -> Option<f64> {
+        self.inner.as_f64()
+    }
+
     fn as_utf8(&self) -> Option<&str> {
         self.inner.as_utf8()
     }
@@ -1291,6 +1373,15 @@ impl PyScalar {
     fn get(&self, key: &Bound<'_, PyAny>) -> PyResult<Option<Self>> {
         self.child_for_key(key)
             .map(|child| child.cloned().map(Self::from_inner))
+    }
+
+    /// Look one name up, falling back when it is absent or stored as null.
+    ///
+    /// A stored null is treated as no answer, which is what a caller reading
+    /// a configuration document means by a default.
+    fn get_or(&self, key: &str, default: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let default = from_py(default)?;
+        Ok(Self::from_inner(self.inner.get_or(key, &default).clone()))
     }
 
     /// Walk a dotted mapping/record/sequence path.
@@ -1509,6 +1600,14 @@ impl PyScalarEntryIterator {
 /// Returns an error for a cyclic graph, a graph deeper than the codec limit, a
 /// mapping whose distinct Python keys collide as values, or an object that has
 /// no value shape at all.
+/// Read one record field name, which is always text.
+fn record_name(value: &Bound<'_, PyAny>) -> PyResult<String> {
+    value
+        .cast::<PyString>()
+        .map_err(|_| PyTypeError::new_err("record field names must be str"))?
+        .extract()
+}
+
 pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     Encoder::default().convert(value, 0)
 }

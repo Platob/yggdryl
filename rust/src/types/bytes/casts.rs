@@ -9,10 +9,76 @@ use arrow_array::{
     UnionArray,
 };
 
-use crate::DataType;
+use std::sync::Arc;
+
+use arrow_array::ArrayRef;
+use arrow_buffer::BooleanBuffer;
+use arrow_cast::can_cast_types;
+use arrow_schema::DataType as ArrowDataType;
+
 use crate::arrow::{Error, Result};
-use crate::types::cast::downcast;
+use crate::types::budget::MaterializationBudget;
+use crate::types::cast::{arrow_cast_exposed, downcast};
 use crate::types::nested::casts::null_buffers_ptr_eq;
+use crate::{DataType, Field};
+
+/// Whether one byte layout reaches another only through Arrow's `Binary`.
+///
+/// Arrow's kernel reads every variable byte layout as every other one, but it
+/// has no direct reading between a fixed binary and text, nor between a binary
+/// view and a fixed binary. Both of those are the same payload under two
+/// framings, and `Binary` is the framing both sides already convert to, so the
+/// reading exists - it just takes two hops instead of one.
+pub(crate) fn bridges_through_binary(source: &ArrowDataType, target: &ArrowDataType) -> bool {
+    is_byte_layout(source)
+        && is_byte_layout(target)
+        && !can_cast_types(source, target)
+        && can_cast_types(source, &ArrowDataType::Binary)
+        && can_cast_types(&ArrowDataType::Binary, target)
+}
+
+/// Whether an Arrow layout stores one byte payload per row.
+fn is_byte_layout(dtype: &ArrowDataType) -> bool {
+    matches!(
+        dtype,
+        ArrowDataType::Binary
+            | ArrowDataType::LargeBinary
+            | ArrowDataType::BinaryView
+            | ArrowDataType::FixedSizeBinary(_)
+            | ArrowDataType::Utf8
+            | ArrowDataType::LargeUtf8
+            | ArrowDataType::Utf8View
+    )
+}
+
+/// A byte source under the one variable framing every value reader takes.
+///
+/// A payload is one payload under all four binary framings; only the offsets
+/// differ. A reader that validates values - an ASCII width, a code, a UUID -
+/// takes those bytes directly, because pushing them through a text temporary
+/// first turns a payload that is not UTF-8 into a null instead of the refusal
+/// the value rule owes it. A text source is not bytes and answers `None`, so
+/// it keeps the text path it always had, and a fixed binary answers `None` too
+/// because its reader already knows the width it carries.
+pub(crate) fn variable_binary_source(
+    array: &ArrayRef,
+    field: &Field,
+    exposure: Option<&BooleanBuffer>,
+    budget: &mut MaterializationBudget,
+) -> Result<Option<ArrayRef>> {
+    match array.data_type() {
+        ArrowDataType::Binary => Ok(Some(Arc::clone(array))),
+        ArrowDataType::LargeBinary | ArrowDataType::BinaryView => Ok(Some(arrow_cast_exposed(
+            array,
+            &ArrowDataType::Binary,
+            false,
+            exposure,
+            &Field::new(field.name(), DataType::Binary, true),
+            budget,
+        )?)),
+        _ => Ok(None),
+    }
+}
 
 pub(crate) fn projected_byte_len(
     array: &dyn Array,

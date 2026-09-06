@@ -88,6 +88,19 @@ test('credentials and S3 locations are parsed by the native core', () => {
   assert.equal(compatible.hostname, 'objects.example.io')
   assert.equal(compatible.bucket, 'archive')
   assert.equal(compatible.region, null)
+
+  // The key is the path below the bucket, as the path spells it.
+  assert.equal(bucket.key, 'year=2026/data.parquet')
+  assert.equal(endpoint.key, 'data.parquet')
+  assert.equal(Uri.fromString('s3://market-data/lake/').key, 'lake/')
+  assert.equal(Uri.fromString('s3://market-data/').key, '')
+  assert.equal(Uri.fromString('https://example.com/data.parquet').key, null)
+
+  // A port, an IP literal, or `localhost` names an endpoint, never a bucket.
+  const local = Uri.fromString('s3://localhost:9000/market-data/lake/part.parquet')
+  assert.equal(local.hostname, 'localhost')
+  assert.equal(local.bucket, 'market-data')
+  assert.equal(local.key, 'lake/part.parquet')
 })
 
 test('fromPath normalizes Windows drives and UNC shares as file URIs', () => {

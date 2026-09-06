@@ -192,8 +192,11 @@ impl Folder {
     }
 
     /// Resolve one entry into the holder that fits it.
+    ///
+    /// A trailing slash settles the role without a stat: a caller who spells
+    /// `lake/` has said what it is, whether or not it exists yet.
     fn hold(url: &Url) -> Result<Holder> {
-        if url.is_dir() {
+        if url.has_trailing_slash() || url.is_dir() {
             return Ok(Holder::Folder(Self { url: url.clone() }));
         }
         Holder::file(url.clone().into_path()?)

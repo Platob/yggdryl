@@ -339,6 +339,24 @@ impl<'field> PartitionField<'field> {
         }))
     }
 
+    /// Returns whether this root declares a derived column anywhere.
+    ///
+    /// The answer walks the declared Structs, which is exactly the reach
+    /// [`Self::apply_arrow_batch`] has, and reads no rows. It answers on the
+    /// stored property rather than the parsed expression, so a malformed
+    /// declaration still reports as one and is refused where it is read.
+    pub fn declares_derivation(&self) -> bool {
+        fn any_derivation(fields: &[Field]) -> bool {
+            fields.iter().any(|field| {
+                let partition = field.as_partition();
+                partition.contains_key(SOURCES)
+                    || partition.contains_key(TRANSFORM)
+                    || (field.is_struct() && any_derivation(field.fields()))
+            })
+        }
+        any_derivation(self.as_field().fields())
+    }
+
     /// Name the full source key a declaration was refused under.
     fn invalid_sources(&self, reason: smol_str::SmolStr) -> Error {
         Error::InvalidMetadataValue {
@@ -500,15 +518,19 @@ fn filled_columns(declared: &Field, batch: &RecordBatch) -> Result<Option<Record
     let mut changed = false;
 
     for child in declared.fields() {
+        // The declaration is the cheap question and it is asked first: a
+        // column that derives nothing is skipped without reading a row, where
+        // `is_unwritten` decodes every cell of a column whose default is not
+        // null - once per batch, for every ordinary column in the schema.
+        let Some(expression) = child.as_partition().expression()? else {
+            continue;
+        };
         let held = batch.schema().index_of(child.name()).ok();
         if let Some(index) = held {
             if !is_unwritten(child, columns[index].as_ref(), rows)? {
                 continue;
             }
         }
-        let Some(expression) = child.as_partition().expression()? else {
-            continue;
-        };
         // Strict: a declared type the computed value does not fit is an error,
         // not a column of silent nulls.
         let array = child.cast_arrow_array(
@@ -799,7 +821,17 @@ fn write_partition_columns(
                 .collect()
         })
         .unwrap_or_default();
-    if stored.is_empty() || declared.is_empty() || stored == declared {
+    // Order is the nesting order and stays exact - `year/venue` is a different
+    // tree from `venue/year` - but the spelling folds, because every name in
+    // the crate resolves that way and a declaration spelling `Year` over a
+    // tree storing `year` names the same column. The stored spelling wins,
+    // because it is the one the paths carry.
+    let same = stored.len() == declared.len()
+        && stored
+            .iter()
+            .zip(&declared)
+            .all(|(stored, declared)| stored.eq_ignore_ascii_case(declared));
+    if stored.is_empty() || declared.is_empty() || same {
         return Ok(if stored.is_empty() { declared } else { stored });
     }
     Err(Error::InvalidRecord {
@@ -822,7 +854,15 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
     let format = partition_format();
     let mut rendered: Vec<Vec<String>> = vec![Vec::with_capacity(columns.len()); batch.num_rows()];
     for column in columns {
-        let Ok(index) = batch.schema().index_of(column) else {
+        // Folded, like the layout comparison and the cast that shaped this
+        // batch: a tree storing `Year=2024` names the column its declaration
+        // spells `year`.
+        let found = batch
+            .schema()
+            .fields()
+            .iter()
+            .position(|field| field.name().eq_ignore_ascii_case(column));
+        let Some(index) = found else {
             return Err(Error::InvalidRecord {
                 path: smol_str::format_smolstr!("$.{column}"),
                 reason: crate::text::expected_got(

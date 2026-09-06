@@ -526,6 +526,34 @@ pub(crate) fn value_from_array(
         )?,
         DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
+            // A downcast answers the layout and nothing else, and the zip
+            // below reads children by position: a declaration naming fewer or
+            // more children than the array stores would answer a value quietly
+            // narrower than the column, and one naming the same children in
+            // another order would answer the neighbour's value under this
+            // one's name. Names fold the way every other lookup in the crate
+            // folds them, so only a real disagreement refuses.
+            let stored = array.fields();
+            let aligned = fields.len() == stored.len()
+                && fields
+                    .iter()
+                    .zip(stored.iter())
+                    .all(|(field, child)| field.name().eq_ignore_ascii_case(child.name()));
+            if !aligned {
+                return Err(Error::IncompatibleSchema(format!(
+                    "a struct of [{}] does not describe an Arrow struct array of [{}]",
+                    fields
+                        .iter()
+                        .map(Field::name)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    stored
+                        .iter()
+                        .map(|child| child.name().as_str())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )));
+            }
             let values = fields
                 .iter()
                 .zip(array.columns())

@@ -1055,3 +1055,26 @@ test('compressInto and decompressInto round-trip through a real .gz', (t) => {
     /invalid gzip header/,
   )
 })
+
+test('every s3 url spelling reaches the native backend without touching it', () => {
+  // `s3`, `s3a`, and `s3n` name one protocol - the Hadoop spellings differ
+  // only in the connector that once read them - so all three select the same
+  // backend. Nothing here contacts a store: the point is that the scheme
+  // selects the backend and that construction stays lazy across the boundary.
+  for (const scheme of ['s3', 's3a', 's3n']) {
+    const handle = new IOBase(`${scheme}://trades/lake/year=2026/part.parquet`)
+
+    assert.equal(handle.url.scheme, scheme)
+    assert.equal(handle.url.bucket, 'trades')
+    assert.equal(handle.url.key, 'lake/year=2026/part.parquet')
+    assert.equal(handle.name, 'part.parquet')
+    // The media type comes from the key, so it costs no request.
+    assert.equal(handle.mediaType.toString(), 'application/vnd.apache.parquet')
+    assert.deepEqual(handle.partitions, [{ column: 'year', value: '2026' }])
+
+    // A child resolves without asking the store anything, and it reports the
+    // spelling the caller used.
+    const child = new IOBase(`${scheme}://trades/lake/`).joinpath('year=2026', 'part.parquet')
+    assert.equal(child.url.toString(), `${scheme}://trades/lake/year=2026/part.parquet`)
+  }
+})

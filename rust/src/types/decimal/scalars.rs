@@ -16,9 +16,10 @@
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::typed::define_scalar_type;
@@ -890,5 +891,125 @@ const fn decimal_overflow(operation: Arithmetic, wide: bool) -> Error {
     Error::ArithmeticOverflow {
         operation: operation.name(),
         kind: if wide { "d256" } else { "d128" },
+    }
+}
+
+/// Read a decimal coefficient out of its canonical spelling, at one scale.
+///
+/// The spelling is what a decimal prints plus a scientific exponent, and the
+/// restatement is exact: a digit the declared scale cannot hold is refused
+/// rather than rounded away, which is the same rule a decimal value already
+/// carried between two scales.
+pub(crate) fn decimal_from_text(
+    text: &str,
+    target_scale: i8,
+) -> std::result::Result<I256, &'static str> {
+    let text = text.trim();
+    let exponent_at = text.find(['e', 'E']);
+    let (mantissa, exponent) = exponent_at.map_or((text, 0_i32), |position| {
+        let exponent = text[position + 1..].parse::<i32>().unwrap_or(i32::MIN);
+        (&text[..position], exponent)
+    });
+    if exponent == i32::MIN
+        || exponent_at.is_some_and(|position| text[position + 1..].contains(['e', 'E']))
+    {
+        return Err("invalid decimal exponent");
+    }
+    let (sign, mantissa) = match mantissa.as_bytes().first() {
+        Some(b'-') => ("-", &mantissa[1..]),
+        Some(b'+') => ("", &mantissa[1..]),
+        _ => ("", mantissa),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    if whole.contains('.')
+        || fraction.contains('.')
+        || (whole.is_empty() && fraction.is_empty())
+        || !whole
+            .bytes()
+            .chain(fraction.bytes())
+            .all(|byte| byte.is_ascii_digit())
+    {
+        return Err("invalid decimal digits");
+    }
+    let digits = format!("{sign}{whole}{fraction}");
+    let mut coefficient =
+        I256::from_str(&digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
+    if coefficient == I256::ZERO {
+        return Ok(coefficient);
+    }
+    let source_scale = i32::try_from(fraction.len())
+        .map_err(|_| "decimal scale is too large")?
+        .checked_sub(exponent)
+        .ok_or("decimal scale is too large")?;
+    let shift = i32::from(target_scale)
+        .checked_sub(source_scale)
+        .ok_or("decimal scale is too large")?;
+    if shift >= 0 {
+        for _ in 0..shift {
+            coefficient = coefficient
+                .checked_mul_ten()
+                .ok_or("decimal coefficient exceeds 256 bits")?;
+        }
+    } else {
+        for _ in 0..-shift {
+            coefficient = coefficient
+                .divided_by_ten()
+                .ok_or("decimal has more fractional digits than the field allows")?;
+        }
+    }
+    Ok(coefficient)
+}
+
+impl Scalar {
+    /// Read a decimal out of its text spelling, at one datatype's scale.
+    ///
+    /// The counterpart of [`Scalar::from_temporal_text`] for the other family
+    /// whose text carries a precision the storage may not hold: text that is
+    /// not a decimal at all is a parse failure, and a decimal the declared
+    /// scale cannot state exactly is read and then refused, because dropping a
+    /// digit off a price is a value change and not a restatement.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] for text that is not a decimal, and
+    /// [`Error::InvalidRecord`] for one the declared scale or width cannot
+    /// hold.
+    pub(crate) fn from_decimal_text(dtype: &DataType, text: &str) -> Result<Self> {
+        let scale = match dtype {
+            DataType::Decimal32 { scale, .. }
+            | DataType::Decimal64 { scale, .. }
+            | DataType::Decimal128 { scale, .. }
+            | DataType::Decimal256 { scale, .. } => *scale,
+            other => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("{other} is not a decimal datatype"),
+                });
+            }
+        };
+        let coefficient = decimal_from_text(text, scale).map_err(|reason| {
+            if reason.starts_with("invalid") {
+                Error::Parse {
+                    target: "decimal",
+                    position: 0,
+                    reason: SmolStr::new(reason),
+                }
+            } else {
+                Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: SmolStr::new(reason),
+                }
+            }
+        })?;
+        if matches!(dtype, DataType::Decimal256 { .. }) {
+            return Ok(Self::d256(coefficient, scale));
+        }
+        coefficient
+            .as_i128()
+            .map(|coefficient| Self::d128(coefficient, scale))
+            .ok_or_else(|| Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: SmolStr::new_static("decimal coefficient exceeds 128 bits"),
+            })
     }
 }

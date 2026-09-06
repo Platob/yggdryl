@@ -11,7 +11,8 @@ mod scalars;
 mod vocabulary;
 
 pub use dictionary::AsciiEnum;
-#[cfg(feature = "arrow")]
+// The padding is the payload a declared width stores, which a value answers
+// with or without an Arrow array around it.
 pub(crate) use dtypes::ascii_padded;
 pub(crate) use dtypes::{
     ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, MIC_WIDTH,

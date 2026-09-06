@@ -791,8 +791,11 @@ def test_message_refuses_a_value_its_field_refuses(seed: FixRegistry) -> None:
     root = Field(
         "row", DataType.from_fields([seed.field_by_tag(55)]), nullable=False
     )
+    # A text field reads any value that spells text, a number included, so
+    # what it refuses is a value with no spelling at all. The dictionary folds
+    # its names, so the field the refusal names is `symbol`.
     with pytest.raises(ValueError, match="symbol"):
-        FixMsg(root, {"symbol": 5})
+        FixMsg(root, {"symbol": [1]})
     with pytest.raises(ValueError):
         FixMsg(Field("scalar", "utf8"), {"symbol": "AAPL"})
 
@@ -1022,3 +1025,71 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     held = fields["unixpartition"]
     assert held.metadata["partition:sources"] == '["30004"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
+
+def test_a_branch_declaration_carries_its_dialect_and_its_session() -> None:
+    import copy
+    import pickle
+
+    from yggdryl.fix import FixBranch
+
+    branch = FixBranch("CME", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+
+    # The name is folded once and is the identity; the rest describes it.
+    assert branch.name == "cme"
+    assert str(branch) == "cme"
+    assert branch.version == "4.4"
+    assert branch.sender_comp_id == "ME"
+    assert branch.target_comp_id == "CLIENT"
+    assert not branch.is_standard()
+    assert branch.digest() == FixBranch("cme").digest()
+
+    # Equality is the whole declaration, not the name it is keyed by: two
+    # branches naming the same dictionary can still declare different sessions.
+    assert branch != FixBranch.from_value("cme")
+    assert branch == FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    assert hash(branch) == hash(copy.copy(branch))
+    assert copy.copy(branch) == branch
+    assert pickle.loads(pickle.dumps(branch)) == branch
+    assert eval(repr(branch), {"FixBranch": FixBranch}) == branch
+
+    standard = FixBranch.STANDARD
+    assert standard.is_standard()
+    assert standard.name == ""
+    assert FixBranch().is_standard()
+    assert FixBranch.MAX_LENGTH == 23
+
+    with pytest.raises(ValueError):
+        FixBranch("2cme")
+    with pytest.raises(ValueError):
+        FixBranch("a" * (FixBranch.MAX_LENGTH + 1))
+
+
+def test_a_registry_declares_the_branches_it_resolves_against() -> None:
+    from yggdryl.fix import FixBranch
+
+    registry = FixRegistry()
+    assert registry.branches() == []
+
+    branch = FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    registry.set_branch(branch)
+
+    assert [held.name for held in registry.branches()] == ["cme"]
+    assert registry.branch_named("cme") == branch
+    assert registry.branch_named("CME").version == "4.4"
+    assert registry.branch_named("absent") is None
+
+    # A session is both CompIDs, folded, or it is no session.
+    assert registry.branch_for_session("me", "client") == branch
+    assert registry.branch_for_session("me", "other") is None
+    assert registry.branch_for_session("", "") is None
+
+    # An identifier carries the branch's identity, so it resolves to the
+    # declaration without a second lookup. A non-standard branch claims a tag
+    # in the user-defined range.
+    assert registry.branch_of(f"{USER_TAG_MIN}:cme") == branch
+    assert registry.branch_of(f"{USER_TAG_MIN}:absent") is None
+
+    # The standard branch declares no dialect and no session.
+    with pytest.raises(ValueError):
+        registry.set_branch(FixBranch("", version="4.4"))
+

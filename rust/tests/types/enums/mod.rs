@@ -87,6 +87,8 @@ fn every_known_scheme_parses_to_its_static_value() {
         ("IDENTITY", Scheme::IDENTITY),
         ("PARTITION", Scheme::PARTITION),
         ("S3", Scheme::S3),
+        ("S3A", Scheme::S3A),
+        ("S3N", Scheme::S3N),
         ("GS", Scheme::GS),
     ] {
         let parsed = Scheme::from_str(source).unwrap();
@@ -94,6 +96,27 @@ fn every_known_scheme_parses_to_its_static_value() {
         assert!(parsed.is_known());
         assert_eq!(parsed.as_str(), source.to_ascii_lowercase());
     }
+}
+
+#[test]
+fn the_three_s3_spellings_are_one_protocol_and_stay_distinct_values() {
+    // A backend asks `is_s3`, never which spelling it was handed: the Hadoop
+    // names differ only in the connector that once read them.
+    for scheme in [Scheme::S3, Scheme::S3A, Scheme::S3N] {
+        assert!(scheme.is_s3(), "{scheme}");
+        assert!(scheme.is_storage(), "{scheme}");
+    }
+    for scheme in [Scheme::FILE, Scheme::HTTPS, Scheme::GS, Scheme::AZ] {
+        assert!(!scheme.is_s3(), "{scheme}");
+    }
+    assert!(!Scheme::from_str("s3x").unwrap().is_s3());
+
+    // One protocol is not one value: a location reports the spelling it was
+    // written with, so equality and ordering keep the three apart.
+    assert_ne!(Scheme::S3, Scheme::S3A);
+    assert_ne!(Scheme::S3A, Scheme::S3N);
+    assert_eq!(Scheme::S3A.as_str(), "s3a");
+    assert_eq!(Scheme::S3N.as_str(), "s3n");
 }
 
 #[test]

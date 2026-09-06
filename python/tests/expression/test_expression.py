@@ -340,3 +340,173 @@ def test_the_pair_spelling_and_the_expression_spelling_are_one_plan(tmp_path) ->
         == table.scan_matching("venue = 'XLON'").read_all().column("id").to_pylist()
         == [3, 4]
     )
+
+
+def test_an_expression_composes_without_going_back_through_text() -> None:
+    price = Expression.column("price")
+    symbol = Expression.column("symbol")
+
+    assert str(price.eq(100)) == "price = 100"
+    assert str(price.ne(100)) == "price <> 100"
+    assert str(price.lt(100)) == "price < 100"
+    assert str(price.le(100)) == "price <= 100"
+    assert str(price.gt(100)) == "price > 100"
+    assert str(price.ge(100)) == "price >= 100"
+    assert str(price.compare("is distinct from", 100)) == "price is distinct from 100"
+
+    assert str(price.is_in([1, 2, 3])) == "price in (1, 2, 3)"
+    assert str(price.between(10, 20)) == "price between 10 and 20"
+    assert str(price.is_null()) == "price is null"
+    assert str(price.is_not_null()) == "price is not null"
+    assert str(symbol.like("'AA%'")) == "symbol like 'AA%'"
+    assert str(symbol.ilike("'aa%'")) == "symbol ilike 'aa%'"
+    assert str(symbol.glob("'*.parquet'")) == "symbol glob '*.parquet'"
+    assert str(price.cast("int64")) == "cast(price as int64)"
+    assert str(price.try_cast("int32")) == "try_cast(price as int32)"
+
+    # Composed and parsed reach the same tree.
+    assert price.gt(100) == Expression("price > 100")
+    assert Expression.all([price.gt(1), symbol.eq("'AAPL'")]) == Expression(
+        "price > 1 and symbol = 'AAPL'"
+    )
+
+    with pytest.raises(ValueError):
+        price.compare("approximately", 1)
+
+
+def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
+    from yggdryl.expression import COMPARISONS, FUNCTIONS, HOLDER_ATTRIBUTES, needs_quoting
+
+    assert "=" in COMPARISONS
+    assert "is distinct from" in COMPARISONS
+    assert "year" in FUNCTIONS
+    assert len(FUNCTIONS) == 18
+    assert "size" in HOLDER_ATTRIBUTES
+    assert "url" in HOLDER_ATTRIBUTES
+
+    assert str(Expression.call("year", [Expression.column("event")])) == "year(event)"
+    with pytest.raises(ValueError):
+        Expression.call("median", [Expression.column("price")])
+
+    assert not needs_quoting("price")
+    assert needs_quoting("total price")
+
+
+def test_an_expression_reaches_into_a_nested_value_and_names_a_constant() -> None:
+    trade = Expression.column("trade")
+
+    assert str(trade.child("leg").at(0)) == "trade.leg[0]"
+    assert str(trade.path(["leg", 0])) == "trade.leg[0]"
+    assert trade.path(["leg", 0]) == trade.child("leg").at(0)
+    # A negative position counts back from the end.
+    assert str(trade.at(-1)) == "trade[-1]"
+
+    literal = Expression.literal(5)
+    assert literal.is_literal
+    value, dtype = literal.as_literal()
+    assert value.as_py() == 5
+    assert str(dtype) == "int64"
+    assert Expression.column("price").as_literal() is None
+    assert Expression.column("price").as_column() == "price"
+    assert literal.as_column() is None
+
+    assert str(Expression.typed_literal("int32", 5)) == "int32 '5'"
+
+    assert Expression.always_true().is_always_true
+    assert Expression.always_false().is_always_false
+    assert Expression.all([]).is_always_true
+    assert Expression.any([]).is_always_false
+
+    assert Expression.column("price").gt(1).node_count() == 3
+    assert Expression.column("price").check_budget() is None
+
+
+def test_a_conditional_is_built_from_its_branches() -> None:
+    price = Expression.column("price")
+    branched = Expression.case([(price.gt(100), "'high'")], "'low'")
+
+    assert str(branched) == "case when price > 100 then 'high' else 'low' end"
+    # An absent else means null, which is what SQL's CASE means.
+    assert "else" not in str(Expression.case([(price.gt(100), "'high'")]))
+
+
+def test_a_bound_predicate_answers_a_whole_batch_at_once() -> None:
+    root = Field("row", "struct<price:int64,symbol:utf8>", nullable=False)
+    bound = Expression.column("price").gt(100).bind(root)
+
+    assert bound.schema == root
+    assert bound.column_indices == [0]
+
+    batch = pa.record_batch(
+        {
+            "price": pa.array([50, 150, 250], pa.int64()),
+            "symbol": pa.array(["A", "B", "C"]),
+        }
+    )
+    assert bound.filter_mask_arrow_batch(batch).to_pylist() == [False, True, True]
+    assert bound.filter_arrow_batch(batch).column("price").to_pylist() == [150, 250]
+
+    # A mask that keeps every row hands the caller's own batch back.
+    everything = Expression.always_true().bind(root)
+    assert everything.filter_arrow_batch(batch) is batch
+
+    values = Expression.column("price").bind(root).evaluate_arrow_batch(batch)
+    assert values.to_pylist() == [50, 150, 250]
+
+    reader = pa.RecordBatchReader.from_batches(batch.schema, [batch, batch])
+    assert sum(part.num_rows for part in bound.filter_arrow_reader(reader)) == 4
+
+
+def test_statistics_settle_a_container_without_reading_it() -> None:
+    from yggdryl import Bounds
+
+    root = Field("row", "struct<price:int64>", nullable=False)
+    bound = Expression.column("price").gt(100).bind(root)
+
+    # False is a proof: nothing in this container can match.
+    below = Bounds(rows=3).with_column("price", 1, 9, 0)
+    assert not bound.statistics_prune(below)
+    assert bound.statistics_certainty(below) is False
+
+    # Straddling the bound: the statistics do not say, so the rows decide.
+    straddling = Bounds(rows=3).with_column("price", 50, 250, 0)
+    assert bound.statistics_prune(straddling)
+    assert bound.statistics_certainty(straddling) is None
+
+    # Entirely above: every row matches.
+    above = Bounds(rows=3).with_column("price", 500, 900, 0)
+    assert bound.statistics_prune(above)
+    assert bound.statistics_certainty(above) is True
+
+    assert straddling.column("price")[0].as_py() == 50
+    assert straddling.column("price")[2] == 0
+    assert straddling.column("absent") is None
+
+    # A path's partition values are bounds too: one value, so minimum is maximum.
+    partitioned = Bounds.from_partitions(
+        Field("row", "struct<year:int32>", nullable=False), [("year", "2024")]
+    )
+    minimum, maximum, _ = partitioned.column("year")
+    assert minimum.as_py() == maximum.as_py() == 2024
+
+
+def test_a_statement_is_built_from_its_clauses() -> None:
+    price = Expression.column("price")
+    statement = (
+        Statement.select([price, (Expression.column("symbol"), "sym")])
+        .with_predicate(price.gt(100))
+        .with_ordering([(price, "desc", "last")])
+        .with_limit(10)
+    )
+
+    assert statement.projections == ["price", "sym"]
+    assert statement.predicate == price.gt(100)
+    assert statement.limit == 10
+    assert not statement.is_all
+    assert statement == Statement(str(statement))
+
+    assert Statement.all().is_all
+    assert str(Statement.all()) == "select *"
+
+    with pytest.raises(ValueError):
+        Statement.select([price]).with_ordering([(price, "sideways")])

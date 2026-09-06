@@ -115,6 +115,128 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     assert_eq!(https.hostname(), Some("example.com"));
     assert_eq!(https.bucket(), None);
     assert_eq!(https.region(), None);
+    assert_eq!(https.key(), None);
+}
+
+#[test]
+fn s3_local_endpoints_are_hostnames_before_the_suffix_rule() {
+    // A port, an IP literal, or `localhost` is something no bucket is named.
+    let port = Uri::from_str("s3://localhost:9000/archive/key").unwrap();
+    assert_eq!(port.hostname(), Some("localhost"));
+    assert_eq!(port.bucket(), Some("archive"));
+    assert_eq!(port.key(), Some("key"));
+
+    let bare = Uri::from_str("s3://localhost/archive/key").unwrap();
+    assert_eq!(bare.hostname(), Some("localhost"));
+    assert_eq!(bare.bucket(), Some("archive"));
+
+    let ipv4 = Uri::from_str("s3://127.0.0.1:9000/archive/key").unwrap();
+    assert_eq!(ipv4.hostname(), Some("127.0.0.1"));
+    assert_eq!(ipv4.bucket(), Some("archive"));
+
+    let ipv6 = Uri::from_str("s3://[::1]:9000/archive/key").unwrap();
+    assert_eq!(ipv6.hostname(), Some("::1"));
+    assert_eq!(ipv6.bucket(), Some("archive"));
+
+    let ported_host = Uri::from_str("s3://minio.internal:9000/archive/key").unwrap();
+    assert_eq!(ported_host.hostname(), Some("minio.internal"));
+    assert_eq!(ported_host.bucket(), Some("archive"));
+
+    // Without any of those signals the rule stays: a plain name is the bucket.
+    let plain = Uri::from_str("s3://minio.internal/archive/key").unwrap();
+    assert_eq!(plain.hostname(), None);
+    assert_eq!(plain.bucket(), Some("minio.internal"));
+    assert_eq!(plain.key(), Some("archive/key"));
+}
+
+#[test]
+fn s3_keys_are_the_path_below_the_bucket_spelled_as_the_path_spells_it() {
+    assert_eq!(
+        Url::from_str("s3://market-data/year=2026/part.parquet")
+            .unwrap()
+            .key(),
+        Some("year=2026/part.parquet")
+    );
+    // A trailing slash and percent escapes are kept: the key is path text.
+    assert_eq!(
+        Url::from_str("s3://market-data/year=2026/").unwrap().key(),
+        Some("year=2026/")
+    );
+    assert_eq!(
+        Url::from_str("s3://market-data/a%20b/c.txt").unwrap().key(),
+        Some("a%20b/c.txt")
+    );
+    assert_eq!(Url::from_str("s3://market-data/").unwrap().key(), Some(""));
+    assert_eq!(Url::from_str("s3://market-data").unwrap().key(), Some(""));
+
+    // The segments an endpoint and a path-style bucket consume are not key.
+    assert_eq!(
+        Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data/year=2026/part.parquet")
+            .unwrap()
+            .key(),
+        Some("year=2026/part.parquet")
+    );
+    assert_eq!(
+        Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data")
+            .unwrap()
+            .key(),
+        Some("")
+    );
+    assert_eq!(
+        Url::from_str("s3://market-data.s3.ap-south-1.amazonaws.com/market-data/key")
+            .unwrap()
+            .key(),
+        Some("market-data/key")
+    );
+    assert_eq!(
+        Url::from_str("s3://localhost:9000/archive/a/b")
+            .unwrap()
+            .key(),
+        Some("a/b")
+    );
+    assert_eq!(
+        Uri::from_str("s3:s3.us-east-2.amazonaws.com/archive/key")
+            .unwrap()
+            .key(),
+        Some("key")
+    );
+}
+
+#[test]
+fn a_trailing_slash_names_a_container_and_survives_canonicalization() {
+    let folder = Url::from_str("s3://market-data/lake/").unwrap();
+    assert!(folder.has_trailing_slash());
+    assert!(folder.path().has_trailing_slash());
+    assert_eq!(folder.file_name(), None);
+    assert_eq!(folder.to_string(), "s3://market-data/lake/");
+
+    let leaf = Url::from_str("s3://market-data/lake").unwrap();
+    assert!(!leaf.has_trailing_slash());
+    assert_eq!(leaf.file_name(), Some("lake"));
+
+    // The root can only hold others, and joining onto a container keeps the
+    // slash on the child a caller spells with one.
+    assert!(
+        Url::from_str("s3://market-data/")
+            .unwrap()
+            .has_trailing_slash()
+    );
+    assert!(Url::from_path("/tmp/lake/").unwrap().has_trailing_slash());
+    assert!(!Url::from_path("/tmp/lake").unwrap().has_trailing_slash());
+    assert!(leaf.joinpath("year=2026/").unwrap().has_trailing_slash());
+    assert!(!leaf.joinpath("year=2026").unwrap().has_trailing_slash());
+    // The last segment decides privacy, whether or not a slash follows it.
+    assert!(
+        Url::from_str("s3://market-data/.git/")
+            .unwrap()
+            .is_private()
+    );
+    assert!(Url::from_str("s3://market-data/.git").unwrap().is_private());
+    assert!(
+        !Url::from_str("s3://market-data/.git/head")
+            .unwrap()
+            .is_private()
+    );
 }
 
 #[test]

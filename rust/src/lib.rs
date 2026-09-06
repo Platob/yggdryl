@@ -50,6 +50,8 @@ mod uri;
 // `xxhash/arrow.rs` is gated.
 pub mod xxhash;
 
+#[cfg(feature = "arrow")]
+pub use arrow::{ArrowShape, ArrowValue};
 pub use bytestream::ByteStream;
 pub use codec::{Codec, Encoder, Level};
 pub use datatype_id::DataTypeId;

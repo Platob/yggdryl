@@ -177,3 +177,16 @@ define_scalar_type!(
     "boolean",
     crate::DataType::Boolean
 );
+
+/// Read a boolean out of its canonical spelling.
+///
+/// `true` and `false` are what a boolean prints, so they are what it reads;
+/// the case is not part of the spelling. A column keeps Arrow's wider reading
+/// behind this one, exactly as a temporal column does.
+pub(crate) fn boolean_from_text(text: &str) -> Option<Scalar> {
+    match text.trim() {
+        value if value.eq_ignore_ascii_case("true") => Some(Scalar::from(true)),
+        value if value.eq_ignore_ascii_case("false") => Some(Scalar::from(false)),
+        _ => None,
+    }
+}

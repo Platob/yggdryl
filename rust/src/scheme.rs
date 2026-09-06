@@ -28,6 +28,8 @@ enum SchemeValue {
     Identity,
     Partition,
     S3,
+    S3a,
+    S3n,
     Gs,
     Az,
     Spark,
@@ -78,6 +80,10 @@ impl Scheme {
     pub const PARTITION: Self = Self(SchemeValue::Partition);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeValue::S3);
+    /// The Hadoop `s3a` spelling of the same Amazon S3 protocol.
+    pub const S3A: Self = Self(SchemeValue::S3a);
+    /// The Hadoop `s3n` spelling of the same Amazon S3 protocol.
+    pub const S3N: Self = Self(SchemeValue::S3n);
     /// The Google Cloud Storage protocol scheme.
     pub const GS: Self = Self(SchemeValue::Gs);
     /// The Azure Blob Storage protocol scheme.
@@ -128,6 +134,8 @@ impl Scheme {
             SchemeValue::Identity => "identity",
             SchemeValue::Partition => "partition",
             SchemeValue::S3 => "s3",
+            SchemeValue::S3a => "s3a",
+            SchemeValue::S3n => "s3n",
             SchemeValue::Gs => "gs",
             SchemeValue::Az => "az",
             SchemeValue::Spark => "spark",
@@ -157,6 +165,20 @@ impl Scheme {
         }
     }
 
+    /// Return whether the scheme addresses Amazon S3.
+    ///
+    /// `s3`, `s3a`, and `s3n` name one protocol: the two Hadoop spellings
+    /// differ only in the connector that once read them, and every store,
+    /// bucket, and key they address is the same. This is what a caller asks
+    /// before selecting the S3 backend, so the three never drift apart into
+    /// separate scheme comparisons.
+    pub const fn is_s3(&self) -> bool {
+        matches!(
+            self.0,
+            SchemeValue::S3 | SchemeValue::S3a | SchemeValue::S3n
+        )
+    }
+
     /// Return whether the scheme addresses a byte-oriented storage location.
     ///
     /// These are the schemes a filesystem abstraction can open, as opposed to
@@ -168,6 +190,8 @@ impl Scheme {
                 | SchemeValue::Http
                 | SchemeValue::Https
                 | SchemeValue::S3
+                | SchemeValue::S3a
+                | SchemeValue::S3n
                 | SchemeValue::Gs
                 | SchemeValue::Az
         )
@@ -221,6 +245,8 @@ impl FromStr for Scheme {
             2 if value.eq_ignore_ascii_case("s3") => Some(Self::S3),
             2 if value.eq_ignore_ascii_case("gs") => Some(Self::GS),
             2 if value.eq_ignore_ascii_case("az") => Some(Self::AZ),
+            3 if value.eq_ignore_ascii_case("s3a") => Some(Self::S3A),
+            3 if value.eq_ignore_ascii_case("s3n") => Some(Self::S3N),
             3 if value.eq_ignore_ascii_case("urn") => Some(Self::URN),
             3 if value.eq_ignore_ascii_case("sql") => Some(Self::SQL),
             3 if value.eq_ignore_ascii_case("fix") => Some(Self::FIX),

@@ -127,15 +127,17 @@ impl ResolvedFileSystemUri {
         // Validate syntax with the one core URI grammar. Raw slices below are
         // deliberate: rebuilding the parsed URI would normalize escape text.
         let parsed = Uri::from_str(&uri)?;
-        let scheme = parsed.scheme().as_str().to_owned();
-        match scheme.as_str() {
-            "file" => resolve_file(uri, parsed),
-            "s3" | "s3a" | "s3n" => resolve_s3(uri, parsed, options),
-            _ => Err(Error::Unsupported {
-                operation: "filesystem URI scheme",
-                filesystem: scheme.into(),
-            }),
+        let scheme = parsed.scheme().clone();
+        if scheme == crate::Scheme::FILE {
+            return resolve_file(uri, parsed);
         }
+        if scheme.is_s3() {
+            return resolve_s3(uri, parsed, options);
+        }
+        Err(Error::Unsupported {
+            operation: "filesystem URI scheme",
+            filesystem: scheme.as_str().into(),
+        })
     }
 
     /// Borrow the resolved backend configuration.

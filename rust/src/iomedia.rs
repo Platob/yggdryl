@@ -81,15 +81,18 @@ pub trait IOMedia: Send {
             return Ok(field.fields().len());
         }
         let handle = self.as_io_base();
+        // Asked once and reused: on a store an unresolved location answers
+        // this with a listing, and the two routes below want the same answer.
+        let container = handle.is_container();
         #[cfg(feature = "iceberg")]
-        if handle.is_container() {
+        if container {
             if let Some(table) = crate::media::iceberg::located(handle)? {
                 return table.column_size();
             }
         }
         // Preserve the container route: its canonical field may include Hive
         // partition columns restored from paths across multiple leaves.
-        if handle.is_container() {
+        if container {
             return Ok(self.read_arrow_field(&options)?.fields().len());
         }
         if handle.is_empty() && !matches!(options, RecordOptions::Text(_)) {
@@ -263,6 +266,100 @@ pub trait IOMedia: Send {
         };
         let reader = crate::media::partition::filtered_reader(reader, options)?;
         options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
+    }
+
+    /// Read this resource's rows as one [`ArrowValue`](crate::ArrowValue).
+    ///
+    /// This is the Arrow-shaped sibling of
+    /// [`read_scalar`](crate::IOBase::read_scalar), and the one entry point
+    /// that does not need the caller to know first what the resource is. A
+    /// record encoding - Arrow IPC, Parquet, Avro, plain text - answers the
+    /// stream [`read_arrow_reader`](Self::read_arrow_reader) already
+    /// produces; a structured text document - JSON, JSON Lines, YAML, TOML -
+    /// answers the batch its rows parse into, because a document has no frame
+    /// to read a prefix of.
+    ///
+    /// `field` declares the root the rows land under. Without one, a record
+    /// encoding answers its stored schema and a document names the root its
+    /// own contents prove.
+    ///
+    /// ```
+    /// use yggdryl::{ArrowShape, Field, IOMedia, IOBase, Scalar, Url, holder::Buffer};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut handle = Buffer::new()
+    ///     .with_media_type(Url::from_str("file:///trades.jsonl")?.media_type());
+    /// handle.write_all_bytes(b"{\"symbol\": \"AAPL\", \"size\": 100}\n")?;
+    ///
+    /// let value = handle.read_arrow_value(None)?;
+    /// assert_eq!(value.shape(), ArrowShape::Batch);
+    /// assert_eq!(value.row_size(), Some(1));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a read, decoding, parse, inference, or cast failure, or an
+    /// error naming the media type when it is neither a record encoding this
+    /// build implements nor a structured text format.
+    #[cfg(feature = "arrow")]
+    fn read_arrow_value(&self, field: Option<&crate::Field>) -> Result<crate::arrow::ArrowValue> {
+        use crate::media::IORecordOptions;
+
+        let handle = self.as_io_base();
+        if crate::text::Structured::for_media_type(handle.media_type()).is_ok() {
+            return crate::media::structured::read_arrow_value(handle, field);
+        }
+        let mut options = RecordOptions::for_media_type(handle.media_type())?;
+        if let Some(field) = field {
+            options.set_field(field.clone());
+        }
+        Ok(crate::arrow::ArrowValue::from_reader(
+            self.read_arrow_reader(&options)?,
+        )?)
+    }
+
+    /// Write one [`ArrowValue`](crate::ArrowValue) as this resource's rows.
+    ///
+    /// The Arrow-shaped sibling of
+    /// [`write_scalar`](crate::IOBase::write_scalar). A record encoding takes
+    /// the value's stream through the same publication path every record
+    /// write uses, so every [`IOMode`](crate::IOMode) applies. A structured
+    /// text document is one frame around every row it holds, so it is
+    /// replaced whole and only [`IOMode::Overwrite`](crate::IOMode::Overwrite)
+    /// applies.
+    ///
+    /// # Errors
+    ///
+    /// Returns a schema, value, encoding, or write failure, an error naming
+    /// the media type when it names no format, or an error naming the mode
+    /// when a structured text document is asked for anything but an
+    /// overwrite.
+    #[cfg(feature = "arrow")]
+    fn write_arrow_value(
+        &mut self,
+        value: crate::arrow::ArrowValue,
+        mode: crate::IOMode,
+    ) -> Result<()> {
+        if crate::text::Structured::for_media_type(self.as_io_base().media_type()).is_ok() {
+            if mode != crate::IOMode::Overwrite {
+                return Err(crate::Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$.mode"),
+                    reason: smol_str::format_smolstr!(
+                        "a structured text document is one frame around its rows, so it is written \
+                         whole; expected overwrite, got {mode}"
+                    ),
+                });
+            }
+            return crate::media::structured::write_arrow_value(
+                self.as_io_base_mut(),
+                value,
+                crate::text::Formatting::default(),
+            );
+        }
+        let options = RecordOptions::for_media_type(self.as_io_base().media_type())?;
+        self.write_arrow_reader(value.into_reader()?, mode, &options)
     }
 
     /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).

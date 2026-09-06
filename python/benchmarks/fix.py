@@ -22,7 +22,7 @@ import tempfile
 import timeit
 from collections.abc import Callable
 
-from yggdryl import DataType, Field
+from yggdryl import DataType, Field, MimeType
 from yggdryl.fix import STANDARD_BRANCH, FixMsg, FixRegistry
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -43,9 +43,11 @@ ORDER = Field(
 MESSAGE = FixMsg(
     ORDER,
     {
-        "Symbol": "AAPL",
-        "OrderQty": 100,
-        "NoPartyIDs": [{"PartyID": "BROKER", "PartyIDSource": "D", "PartyRole": 1}],
+        "symbol": "AAPL",
+        "orderqty": 100.0,
+        "nopartyids": [
+            {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1}
+        ],
     },
     SEED_REGISTRY,
 )

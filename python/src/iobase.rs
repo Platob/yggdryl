@@ -21,6 +21,7 @@ use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
+use crate::arrow::PyArrowValue;
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
@@ -71,6 +72,31 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
         .map(yggdryl::holder::fs::located)
 }
 
+/// Hold the resource `url` names, on the store its scheme selects.
+///
+/// The scheme is what says which backend a location belongs to. Any S3 URL -
+/// `s3`, `s3a`, or `s3n`, which name one protocol - reaches the native S3
+/// backend; everything else stays local, exactly as it did. Construction
+/// touches nothing on either.
+pub(crate) fn located_holder(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme().is_s3() {
+        return yggdryl::holder::s3::located(&url.to_string())
+            .map_err(crate::holder::fs::storage_error);
+    }
+    Holder::local(url.clone().into_path().map_err(value_error)?)
+        .map_err(crate::holder::fs::storage_error)
+}
+
+/// Hold `url` as a container, on the store its scheme selects.
+pub(crate) fn folder_holder_for(url: &yggdryl::Url) -> PyResult<Holder> {
+    if url.scheme().is_s3() {
+        return yggdryl::holder::s3::folder(&url.to_string())
+            .map(Holder::S3Folder)
+            .map_err(crate::holder::fs::storage_error);
+    }
+    Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
+}
+
 /// Address a foreign-filesystem handle's location as a container.
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     inner
@@ -94,6 +120,9 @@ pub(crate) enum Role {
     FsFolder,
     FsPath,
     FsFile,
+    S3Folder,
+    S3Path,
+    S3File,
     Buffered,
     Coded(Codec),
     Text,
@@ -113,6 +142,9 @@ impl Role {
             Holder::FsFolder(_) => Self::FsFolder,
             Holder::FsPath(_) => Self::FsPath,
             Holder::FsFile(_) => Self::FsFile,
+            Holder::S3Folder(_) => Self::S3Folder,
+            Holder::S3Path(_) => Self::S3Path,
+            Holder::S3File(_) => Self::S3File,
             Holder::Buffered(_) => Self::Buffered,
             Holder::Text(_) => Self::Text,
             Holder::Coded(coded) => Self::Coded(coded.codec()),
@@ -136,6 +168,9 @@ impl Role {
             Self::FsFolder => "FsFolder",
             Self::FsPath => "FsPath",
             Self::FsFile => "FsFile",
+            Self::S3Folder => "S3Folder",
+            Self::S3Path => "S3Path",
+            Self::S3File => "S3File",
             Self::Buffered => "Buffered",
             Self::Coded(Codec::Gzip) => "Gzip",
             Self::Coded(Codec::Zlib | Codec::Deflate) => "Zlib",
@@ -172,6 +207,9 @@ pub(crate) fn describe(py: Python<'_>, holder: Holder) -> PyResult<Py<PyAny>> {
         Role::FsFolder => Py::new(py, base.add_subclass(roles::PyFsFolder))?.into_any(),
         Role::FsPath => Py::new(py, base.add_subclass(roles::PyFsPath))?.into_any(),
         Role::FsFile => Py::new(py, base.add_subclass(roles::PyFsFile))?.into_any(),
+        Role::S3Folder => Py::new(py, base.add_subclass(roles::PyS3Folder))?.into_any(),
+        Role::S3Path => Py::new(py, base.add_subclass(roles::PyS3Path))?.into_any(),
+        Role::S3File => Py::new(py, base.add_subclass(roles::PyS3File))?.into_any(),
         Role::Buffered => Py::new(py, base.add_subclass(roles::PyBuffered))?.into_any(),
         Role::Text => encodings::describe_text(py, base)?,
         Role::Coded(codec) => codings::describe(py, base, codec)?,
@@ -312,6 +350,14 @@ impl PyIOBase {
         Holder::local(path).map_err(crate::holder::fs::storage_error)
     }
 
+    /// Describe the resource `url` names, on the store its scheme selects.
+    ///
+    /// A location is what says which backend it belongs to, so this is the one
+    /// place that decides. Nothing is opened or contacted here either way.
+    fn located_url(url: &yggdryl::Url) -> PyResult<Holder> {
+        located_holder(url)
+    }
+
     /// Build a second holder on the same location.
     ///
     /// A handle owns backend state - such as a mapping or an open descriptor -
@@ -326,7 +372,7 @@ impl PyIOBase {
         let url = self.inner()?.url().ok_or_else(|| {
             PyValueError::new_err("an in-memory resource has no location to rebuild from")
         })?;
-        Self::located(&url.clone().into_path().map_err(value_error)?)
+        Self::located_url(url)
     }
 
     /// Build a container handle on the same location.
@@ -344,7 +390,7 @@ impl PyIOBase {
             .inner()?
             .url()
             .ok_or_else(|| PyValueError::new_err("an in-memory resource is not a container"))?;
-        Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)
+        folder_holder_for(url)
     }
 
     /// Build a handle on `path` over a held `pyarrow.fs.FileSystem`.
@@ -667,7 +713,7 @@ impl PyIOBase {
             );
         }
         let url = core_url_from_value(value)?;
-        declared(py, Self::located(&url.into_path().map_err(value_error)?)?)
+        declared(py, Self::located_url(&url)?)
     }
 
     /// Describe a resource on any `pyarrow.fs.FileSystem`.
@@ -730,19 +776,30 @@ impl PyIOBase {
     }
 
     /// Describe an in-memory resource holding `data`.
+    ///
+    /// `capacity` reserves the allocation up front, so a caller who knows the
+    /// final length pays for one allocation rather than a run of growths. It
+    /// changes what the buffer can hold without changing what it holds.
     #[classmethod]
-    #[pyo3(signature = (data = None))]
+    #[pyo3(signature = (data = None, *, capacity = None))]
     fn from_bytes(
         _cls: &Bound<'_, PyType>,
         py: Python<'_>,
         data: Option<Vec<u8>>,
+        capacity: Option<usize>,
     ) -> PyResult<Py<PyAny>> {
-        describe(
-            py,
-            Holder::Buffer(yggdryl::holder::Buffer::from_bytes(
-                data.unwrap_or_default(),
-            )),
-        )
+        let buffer = match (data, capacity) {
+            (None, Some(capacity)) => yggdryl::holder::Buffer::with_capacity(capacity),
+            (data, Some(capacity)) => {
+                let mut buffer = yggdryl::holder::Buffer::with_capacity(capacity);
+                buffer
+                    .write_all_bytes(&data.unwrap_or_default())
+                    .map_err(crate::holder::fs::storage_error)?;
+                buffer
+            }
+            (data, None) => yggdryl::holder::Buffer::from_bytes(data.unwrap_or_default()),
+        };
+        describe(py, Holder::Buffer(buffer))
     }
 
     /// The location this handle addresses.
@@ -1392,6 +1449,42 @@ impl PyIOBase {
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
+    /// Read this resource's rows as one `ArrowValue`, whatever it holds.
+    ///
+    /// The Arrow-shaped sibling of `read_scalar`, and the one read that does
+    /// not need the caller to know first what the resource is: a record
+    /// encoding answers its batch stream and a structured text document
+    /// answers the batch its rows parse into.
+    #[pyo3(signature = (field = None))]
+    fn read_arrow_value(&self, field: Option<&Bound<'_, PyAny>>) -> PyResult<PyArrowValue> {
+        let field = field.map(core_field_from_value).transpose()?;
+        self.inner()?
+            .read_arrow_value(field.as_ref())
+            .map(PyArrowValue::from_inner)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Write any Arrow-convertible object as this resource's rows.
+    ///
+    /// The value crosses through `ArrowValue`, so a `pyarrow` container, a
+    /// pandas or polars frame, a `NumPy` array, and an Arrow C stream exporter
+    /// all reach the same publication path. A structured text document is one
+    /// frame around its rows, so only `overwrite` applies to one.
+    #[pyo3(signature = (value, mode = "overwrite", field = None))]
+    fn write_arrow_value(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        mode: &str,
+        field: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<()> {
+        let value =
+            crate::arrow::arrow_value_from_py(value, field, yggdryl::ArrowCastOptions::new())?;
+        let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
+        self.inner_mut()?
+            .write_arrow_value(value, mode)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
     /// Replace what is here with `data`, as `Path.write_bytes`.
     fn write_bytes(&mut self, data: &[u8]) -> PyResult<usize> {
         self.inner_mut()?
@@ -1629,7 +1722,7 @@ impl PyIOBase {
             let url = self.inner()?.url().ok_or_else(|| {
                 PyValueError::new_err("an in-memory resource cannot become a directory")
             })?;
-            Holder::folder(url.clone().into_path().map_err(value_error)?).map_err(value_error)?
+            folder_holder_for(url)?
         };
         if let Some(bound) = folder.bound_location() {
             bound
@@ -1711,6 +1804,55 @@ impl PyIOBase {
     fn truncate(&mut self, size: u64) -> PyResult<()> {
         self.inner_mut()?
             .truncate(size)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// Read exactly `length` bytes from `offset`, or refuse naming the shortfall.
+    ///
+    /// `read_range_bytes` answers what exists; this is the form that treats a
+    /// short resource as an error, which is what a fixed-width header or a
+    /// footer of known length wants.
+    fn pread_exact<'py>(
+        &self,
+        py: Python<'py>,
+        offset: u64,
+        length: usize,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let mut buffer = vec![0_u8; length];
+        self.inner()?
+            .pread_exact(offset, &mut buffer)
+            .map_err(crate::holder::fs::storage_error)?;
+        Ok(PyBytes::new(py, &buffer))
+    }
+
+    /// Write every byte at `offset`, or refuse naming the shortfall.
+    ///
+    /// `pwrite` answers how many bytes landed; this loops until they all do,
+    /// which is what a caller placing a whole record at a known offset means.
+    fn pwrite_all(&mut self, offset: u64, data: &[u8]) -> PyResult<()> {
+        self.inner_mut()?
+            .pwrite_all(offset, data)
+            .map_err(crate::holder::fs::storage_error)
+    }
+
+    /// The allocation behind this resource, never less than `size`.
+    ///
+    /// A memory-mapped local file grows its mapping geometrically, so its
+    /// capacity outruns the size a flush publishes; an in-memory buffer
+    /// answers what it has room for before it grows again.
+    #[getter]
+    fn capacity(&self) -> PyResult<u64> {
+        Ok(self.inner()?.capacity())
+    }
+
+    /// Grow the allocation so at least `capacity` bytes fit without a growth.
+    ///
+    /// Reserving never shrinks and never changes `size`, so it is what a
+    /// caller with a known final length asks before writing. Like every other
+    /// write it creates the resource if naming it did not.
+    fn reserve(&mut self, capacity: u64) -> PyResult<()> {
+        self.inner_mut()?
+            .reserve(capacity)
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -1811,6 +1953,19 @@ impl PyIOBase {
         // The codec is parsed before the value is taken, so a rejected
         // argument never leaves this handle spent.
         describe(py, self.take()?.into_coded_with(codec, level))
+    }
+
+    /// Retain the record encoding this resource turns out to hold.
+    ///
+    /// `into_text` and `into_coded` name what the wrapper is; this asks the
+    /// resource. An unresolved location is asked of the store, so a name that
+    /// says nothing still answers the encoding its bytes are in - and a
+    /// resource that is not a record encoding answers itself.
+    ///
+    /// The handle is spent, the way every other wrapper conversion spends it.
+    #[allow(clippy::wrong_self_convention)] // A pyclass method cannot consume its receiver.
+    fn into_media(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        describe(py, self.take()?.into_media())
     }
 
     /// Materialize the resource and cache what repeated calls would re-derive.
@@ -1992,6 +2147,30 @@ impl PyIOBase {
             .read_parquet_statistics()
             .map_err(value_error)?;
         decoded_as_py(py, &yggdryl::Scalar::from(statistics), None)
+    }
+
+    /// The row-group split offsets a Parquet footer records.
+    ///
+    /// This is what a table format writes as a data file's split points, so
+    /// a reader can divide the file without decoding it.
+    fn read_parquet_split_offsets(&self) -> PyResult<Vec<i64>> {
+        Ok(self
+            .inner()?
+            .read_parquet_statistics()
+            .map_err(value_error)?
+            .split_offsets())
+    }
+
+    /// The null count one Parquet leaf column records across every row group.
+    ///
+    /// `None` when no row group recorded the statistic, which is not the same
+    /// answer as zero: a missing statistic prunes nothing.
+    fn read_parquet_null_count(&self, path: &str) -> PyResult<Option<u64>> {
+        Ok(self
+            .inner()?
+            .read_parquet_statistics()
+            .map_err(value_error)?
+            .null_count(path))
     }
 
     /// Recompute one Parquet geospatial column's bounds and geometry types.
@@ -2990,6 +3169,16 @@ impl PyIOCursor {
     // Position and the addressed resource both change over time.
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
+
+    /// The resource this cursor rides.
+    ///
+    /// The cursor owns only its position, so this is the way back to every
+    /// question the whole resource answers - its media type, its listing, its
+    /// records - without leaving the position behind.
+    #[getter]
+    fn handle(&self, py: Python<'_>) -> Py<PyIOBase> {
+        self.handle.clone_ref(py)
+    }
 
     /// The current position, in bytes from the start.
     fn tell(&self) -> PyResult<u64> {

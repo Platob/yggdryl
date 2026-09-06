@@ -70,6 +70,20 @@ def test_credentials_and_s3_location_are_parsed_by_the_core() -> None:
     assert compatible.bucket == "archive"
     assert compatible.region is None
 
+    # The key is the path below the bucket, as the path spells it.
+    assert bucket.key == "year=2026/data.parquet"
+    assert endpoint.key == "data.parquet"
+    assert compatible.key == "data.parquet"
+    assert Uri("s3://market-data/lake/").key == "lake/"
+    assert Uri("s3://market-data/").key == ""
+    assert Uri("https://example.com/data.parquet").key is None
+
+    # A port, an IP literal, or `localhost` names an endpoint, never a bucket.
+    local = Uri("s3://localhost:9000/market-data/lake/part.parquet")
+    assert local.hostname == "localhost"
+    assert local.bucket == "market-data"
+    assert local.key == "lake/part.parquet"
+
 
 def test_uri_joinpath_and_division_use_the_core_path_resolver() -> None:
     base = Uri("https://example.com/a/b?q=1#rows")
@@ -522,3 +536,164 @@ def test_the_pair_views_are_read_more_than_once() -> None:
     assert parameters.values() == ("1", "2", "3")
     assert parameters.items() == (("a", "1"), ("b", "2"), ("a", "3"))
     assert list(parameters) == ["a", "b", "a"]
+
+
+def test_the_scheme_and_the_authority_answer_what_they_alone_decide() -> None:
+    value = Uri("https://reader:pa:ss@example.com:8443/a")
+
+    # The port written in the authority and the port the scheme implies are
+    # two different answers, so they have two names.
+    assert value.port == 8443
+    assert value.default_port == 443
+    assert value.host_port == "example.com:8443"
+    assert value.user == "reader"
+    assert value.password == "pa:ss"
+    assert value.is_storage()
+    assert value.has_authority
+
+    assert Uri("postgres://host/db").default_port == 5432
+    assert Uri("mysql://host/db").default_port == 3306
+    assert Uri("s3://bucket/key").default_port is None
+    assert not Uri("s3://bucket/key").port
+    assert not Uri("urn:isbn:9780131103627").is_storage()
+
+    # An IPv6 host keeps its brackets out of the port.
+    assert Uri("https://[2001:db8::1]:9000/a").port == 9000
+    assert Uri("https://[2001:db8::1]/a").port is None
+
+    # `mailto:` writes no authority marker; `file:` writes an empty one.
+    assert not Uri("mailto:desk@example.com").has_authority
+    assert Uri("file:///lake").has_authority
+    assert Url("file:///lake").default_port is None
+
+
+def test_an_s3_location_names_its_endpoint_and_its_addressing() -> None:
+    virtual = Uri("s3://bucket.s3.us-east-1.amazonaws.com/key")
+    assert virtual.is_s3_virtual()
+    assert virtual.s3_endpoint == "s3.us-east-1.amazonaws.com"
+    assert virtual.bucket == "bucket"
+    assert virtual.region == "us-east-1"
+
+    plain = Url("s3://bucket/key")
+    assert not plain.is_s3_virtual()
+    assert plain.s3_endpoint is None
+    assert plain.bucket == "bucket"
+
+    assert Uri("https://example.com/a").s3_endpoint is None
+    assert not Uri("https://example.com/a").is_s3_virtual()
+
+
+def test_a_uri_is_built_from_its_parts_and_validated_as_a_whole() -> None:
+    value = Uri.from_parts("https", "example.com", "/a/b", "raw=true", "top")
+    assert str(value) == "https://example.com/a/b?raw=true#top"
+    assert value.validate() is None
+
+    assert str(Uri.from_parts("mailto", "", "desk@example.com")) == "mailto:desk@example.com"
+    assert Uri.from_parts("https", "example.com", "/a").query() is None
+
+    # A path after an authority is empty or slash-rooted.
+    with pytest.raises(ValueError):
+        Uri.from_parts("https", "example.com", "a/b")
+    with pytest.raises(ValueError):
+        Uri.from_parts("not a scheme", "", "/a")
+
+
+def test_a_uri_navigates_the_path_it_addresses() -> None:
+    value = Uri("https://example.com/a/b/../c.json?raw=true")
+
+    # `parts` is what the path reaches; `path_segments` is what it says.
+    assert value.parts == ("a", "c.json")
+    assert value.path_segments == ("a", "b", "..", "c.json")
+    assert Url("file:///a/./b/../c").parts == ("a", "c")
+
+    # Scheme, authority, and query survive the walk to the root.
+    assert str(value.parent) == "https://example.com/a?raw=true"
+    assert [str(parent) for parent in value.parents] == [
+        "https://example.com/a?raw=true",
+        "https://example.com/?raw=true",
+    ]
+
+    # A location at the root is its own parent, which is what `pathlib` does.
+    root = Uri("https://example.com/")
+    assert str(root.parent) == str(root)
+    assert root.parents == ()
+
+
+def test_a_glob_url_splits_into_the_root_a_listing_starts_from() -> None:
+    pattern = Url("file:///lake/trades/year=2024/**/*.parquet")
+    assert pattern.is_glob()
+    assert pattern.is_recursive_glob()
+
+    root, rest = pattern.glob_parts()
+    assert str(root) == "file:///lake/trades/year=2024"
+    assert rest == "**/*.parquet"
+
+    # A location that is not a glob is its own root with no pattern.
+    plain = Url("file:///lake/trades/part-0.parquet")
+    assert not plain.is_glob()
+    assert not plain.is_recursive_glob()
+    assert plain.glob_parts() == (plain, None)
+
+    assert Url.is_pattern("part-*")
+    assert Url.is_pattern("[ab]c")
+    assert not Url.is_pattern("part-0.parquet")
+
+
+def test_a_pattern_matches_anchored_at_the_root_it_was_split_from() -> None:
+    root = Url("file:///lake/trades")
+    leaf = Url("file:///lake/trades/year=2024/part-0.parquet")
+
+    assert leaf.full_match_under(root, "**/*.parquet")
+    assert leaf.full_match_under("file:///lake/trades", "year=2024/*.parquet")
+    # Anchored at the root, so a bare name does not reach two levels down.
+    assert not leaf.full_match_under(root, "*.parquet")
+    # A location outside the root never matches.
+    assert not leaf.full_match_under("file:///elsewhere", "**/*.parquet")
+
+    # The same pattern read from `glob_parts` matches what it was split from.
+    pattern_root, pattern = Url("file:///lake/trades/**/*.parquet").glob_parts()
+    assert pattern is not None
+    assert leaf.full_match_under(pattern_root, pattern)
+
+
+def test_hive_partitions_are_read_relative_to_the_address_they_hang_under() -> None:
+    leaf = Url("file:///lake/year=2024/month=01/part-0.parquet")
+
+    assert leaf.is_partitioned()
+    assert leaf.partitions == (("year", "2024"), ("month", "01"))
+    assert leaf.partitions_under("file:///lake") == (("year", "2024"), ("month", "01"))
+    # A directory in the table's own address is not a partition of it.
+    assert leaf.partitions_under("file:///lake/year=2024") == (("month", "01"),)
+    assert leaf.partitions_under("file:///elsewhere") == ()
+
+    assert str(Url("file:///lake").with_partition("year", "2024")) == "file:///lake/year=2024"
+    assert not Url("file:///lake/part-0.parquet").is_partitioned()
+
+
+def test_a_url_says_whether_it_is_local_and_what_the_local_entry_is(
+    tmp_path: Any,
+) -> None:
+    directory = Url.from_path(os.fspath(tmp_path))
+    assert directory.is_local()
+    assert str(directory.local_mime_type) == str(MimeType.DIRECTORY)
+
+    leaf = directory / "trades.parquet"
+    assert str(leaf.local_mime_type) == "application/vnd.apache.parquet"
+
+    remote = Url("https://example.com/trades.parquet")
+    assert not remote.is_local()
+    assert str(remote.local_mime_type) == str(remote.mime_type)
+
+
+def test_joining_a_path_like_value_reads_its_own_separators() -> None:
+    base = Url("file:///lake")
+
+    # A `str` is one URL path component, joined as written.
+    assert str(base.joinpath("a", "b")) == "file:///lake/a/b"
+    assert str(base / "a/b") == "file:///lake/a/b"
+
+    # An `os.PathLike` is an operating system path, read component by
+    # component, so `.` and `..` resolve the way the core resolves them.
+    assert str(base / PurePosixPath("a/b")) == "file:///lake/a/b"
+    assert str(base / PurePosixPath("a/./b/../c")) == "file:///lake/a/c"
+    assert str(base.joinpath(PurePosixPath("a"), PurePosixPath("b"))) == "file:///lake/a/b"

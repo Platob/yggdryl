@@ -457,29 +457,37 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Cast one batch the way these options say, completed by what is stored.
+    /// Shape one batch the way these options say, completed by what is stored.
     ///
-    /// This is the one definition of option-driven casting, in three layers
+    /// This is the one definition of option-driven shaping, in three layers
     /// applied in order: the declared [`field`](Self::field) says what the
     /// rows are meant to be, [`select_by_names`](Self::select_by_names)
     /// narrows and orders the columns, and `existing` - a holder's stored
-    /// shape - is what the batch is finally cast onto, always safely, so a
-    /// value that will not convert into a stored column becomes null rather
+    /// shape - is what the batch is finally completed onto, always safely, so
+    /// a value that will not convert into a stored column becomes null rather
     /// than quietly redefining that column for every reader of the resource.
     /// Each absent layer costs nothing.
     ///
+    /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
+    /// casting: a declaration is a cast *and* the `partition:` and `digest:`
+    /// columns it derives, so a column a schema declares arrives written
+    /// rather than arriving as the default nothing filled. The selection in
+    /// between only narrows, because deriving there would restore the columns
+    /// it was asked to drop. A root that declares no derivation applies as the
+    /// cast alone.
+    ///
     /// # Errors
     ///
-    /// Returns an error when a cast cannot be planned or a selected name is
-    /// not a column of the rows.
-    fn cast_arrow_batch(
+    /// Returns an error when a cast cannot be planned, a declaration cannot be
+    /// satisfied, or a selected name is not a column of the rows.
+    fn apply_arrow_batch(
         &self,
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
         let options = ArrowCastOptions::new().with_safe(self.safe());
         let batch = match self.field() {
-            Some(declared) => declared.cast_arrow_batch(batch, options)?,
+            Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
             None => batch,
         };
         let root = crate::arrow::field_from_arrow_schema(self.name(), batch.schema().as_ref())?;
@@ -488,28 +496,33 @@ pub trait IORecordOptions: Sized {
             None => batch,
         };
         match existing {
-            Some(stored) => Ok(stored.cast_arrow_batch(batch, ArrowCastOptions::new())?),
+            // A holder already holding a value is left alone, so this fills
+            // only what the destination declares and the incoming rows do not
+            // already carry.
+            Some(stored) => {
+                Ok(stored.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?)
+            }
             None => Ok(batch),
         }
     }
 
-    /// Cast a whole reader as [`cast_arrow_batch`](Self::cast_arrow_batch)
-    /// casts one batch, streaming - nothing is collected, each batch is cast
-    /// as it is pulled, and a layer whose target already matches costs
+    /// Shape a whole reader as [`apply_arrow_batch`](Self::apply_arrow_batch)
+    /// shapes one batch, streaming - nothing is collected, each batch is
+    /// shaped as it is pulled, and a layer whose target already matches costs
     /// nothing at all.
     ///
     /// # Errors
     ///
-    /// Returns an error when a cast cannot be planned or a selected name is
-    /// not a column of the reader.
-    fn cast_arrow_reader(
+    /// Returns an error when a cast cannot be planned, a declaration cannot be
+    /// satisfied, or a selected name is not a column of the reader.
+    fn apply_arrow_reader(
         &self,
         reader: crate::arrow::BatchReader,
         existing: Option<&Field>,
     ) -> Result<crate::arrow::BatchReader> {
         let options = ArrowCastOptions::new().with_safe(self.safe());
         let reader = match self.field() {
-            Some(declared) => crate::arrow::cast_reader(reader, &declared, options)?,
+            Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
             None => reader,
         };
         let root = crate::arrow::field_from_arrow_schema(self.name(), reader.schema().as_ref())?;
@@ -519,11 +532,9 @@ pub trait IORecordOptions: Sized {
             None => reader,
         };
         match existing {
-            Some(stored) => Ok(crate::arrow::cast_reader(
-                reader,
-                stored,
-                ArrowCastOptions::new(),
-            )?),
+            Some(stored) => {
+                Ok(stored.apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())?)
+            }
             None => Ok(reader),
         }
     }
@@ -532,7 +543,7 @@ pub trait IORecordOptions: Sized {
     /// [`max_byte_size`](Self::max_byte_size).
     ///
     /// This is one more transform of the same option-driven shaping seam as
-    /// [`cast_arrow_reader`](Self::cast_arrow_reader), applied *last*: the
+    /// [`apply_arrow_reader`](Self::apply_arrow_reader), applied *last*: the
     /// order is declared schema, then selection, then completion cast, then
     /// partition filter, then the limit, so the limit counts result rows and
     /// never rows an earlier layer dropped or reshaped. No media implements a

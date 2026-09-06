@@ -7,11 +7,12 @@
 //! view class [`crate::types::field::PyProtocolField`], which is what `field.fix`
 //! already answers.
 //!
-//! A branch and an identifier cross as `str` and are parsed once here through
-//! [`branch_from_py`] and [`id_from_py`], so neither gets a class of its own in
-//! Python and the grammar, the folding and the standard-tag rule all stay the
-//! core's. A bare tag or name uses the core's deterministic best match, and a
-//! colon-bearing string is a name, never an identifier.
+//! A branch *key* and an identifier cross as `str` and are parsed once here
+//! through [`branch_from_py`] and [`id_from_py`], so the grammar, the folding
+//! and the standard-tag rule all stay the core's. A bare tag or name uses the
+//! core's deterministic best match, and a colon-bearing string is a name, never
+//! an identifier. [`PyFixBranch`] is what a branch *declaration* is: a key
+//! names a dictionary, a declaration also carries its dialect and its session.
 
 use std::sync::Arc;
 
@@ -384,6 +385,59 @@ impl PyFixRegistry {
             .inner_mut()?
             .remove(key.as_key())
             .map(PyField::from_inner))
+    }
+
+    /// The branch an identifier belongs to, or `None`.
+    ///
+    /// The identifier carries the branch's identity, so this is what a
+    /// `tag:branch` string resolves to without a second lookup.
+    fn branch_of(&self, id: &str) -> PyResult<Option<PyFixBranch>> {
+        let id = id_from_py(id)?;
+        Ok(self
+            .inner
+            .branch_of(id)
+            .cloned()
+            .map(PyFixBranch::from_core))
+    }
+
+    /// The branch declared under one canonical name, or `None`.
+    fn branch_named(&self, name: &str) -> Option<PyFixBranch> {
+        self.inner
+            .branch_named(name)
+            .cloned()
+            .map(PyFixBranch::from_core)
+    }
+
+    /// The branch declaring one exact session pair, or `None`.
+    ///
+    /// The comparison folds ASCII case, and a branch declaring only one half
+    /// of the pair never matches: a session is both `CompID`s or neither.
+    fn branch_for_session(&self, sender: &str, target: &str) -> Option<PyFixBranch> {
+        self.inner
+            .branch_for_session(sender, target)
+            .cloned()
+            .map(PyFixBranch::from_core)
+    }
+
+    /// Every branch this registry declares.
+    fn branches(&self) -> Vec<PyFixBranch> {
+        self.inner
+            .branches()
+            .cloned()
+            .map(PyFixBranch::from_core)
+            .collect()
+    }
+
+    /// Install or replace one complete branch declaration.
+    ///
+    /// The standard branch declares no dialect and no session, and two
+    /// different names may not claim one identity - both are refused here
+    /// rather than stored and discovered later.
+    fn set_branch(&mut self, branch: &Bound<'_, PyAny>) -> PyResult<()> {
+        let branch = branch_value_from_py(branch)?;
+        self.inner_mut()?
+            .set_branch(branch.as_inner().clone())
+            .map_err(value_error)
     }
 
     /// Remove the field a canonical or alternate identifier names, answering
@@ -1281,4 +1335,211 @@ pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {
 #[pyo3(name = "install_global_registry")]
 pub(crate) fn fix_install_global_registry(registry: &PyFixRegistry) -> PyResult<()> {
     CoreFixRegistry::install_global((*registry.inner).clone()).map_err(value_error)
+}
+
+/// One FIX dictionary declaration: a name, a dialect, and a session.
+///
+/// A branch crosses as `str` wherever it is a *key* - `field.fix.branch`, a
+/// `tag:branch` identifier, a lookup - because a key is a name. This class is
+/// what a *declaration* is, because a declaration also carries the dialect's
+/// default FIX version and the session `CompID`s that select it.
+#[pyclass(
+    name = "FixBranch",
+    module = "yggdryl._native",
+    skip_from_py_object,
+    frozen
+)]
+#[derive(Clone)]
+pub(crate) struct PyFixBranch {
+    inner: CoreFixBranch,
+}
+
+impl PyFixBranch {
+    pub(crate) const fn from_core(inner: CoreFixBranch) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) const fn as_inner(&self) -> &CoreFixBranch {
+        &self.inner
+    }
+}
+
+#[pymethods]
+impl PyFixBranch {
+    /// Declare a branch, validating and folding its name once.
+    ///
+    /// An empty name is the standard branch, which declares no dialect and no
+    /// session; the version is the dialect's own default, spelled the way the
+    /// specification spells it.
+    #[new]
+    #[pyo3(signature = (name = "", *, version = None, sender_comp_id = "", target_comp_id = ""))]
+    fn new(
+        name: &str,
+        version: Option<&str>,
+        sender_comp_id: &str,
+        target_comp_id: &str,
+    ) -> PyResult<Self> {
+        let version = match version {
+            Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
+            None => yggdryl::Version::default(),
+        };
+        CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
+            .map(Self::from_core)
+            .map_err(value_error)
+    }
+
+    /// Parse a branch name, with no dialect and no session.
+    #[staticmethod]
+    fn from_str(value: &str) -> PyResult<Self> {
+        branch_from_py(value).map(Self::from_core)
+    }
+
+    /// Accept a branch, or the name of one.
+    #[staticmethod]
+    fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        branch_value_from_py(value)
+    }
+
+    /// The FIX specification's own dictionary, and what an absent branch means.
+    #[classattr]
+    #[pyo3(name = "STANDARD")]
+    fn standard() -> Self {
+        Self::from_core(CoreFixBranch::STANDARD)
+    }
+
+    /// The longest a branch name may be, in bytes.
+    #[classattr]
+    #[pyo3(name = "MAX_LENGTH")]
+    const MAX_LENGTH: usize = CoreFixBranch::MAX_LENGTH;
+
+    /// The canonical lowercase name.
+    #[getter]
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    /// The dialect's default FIX version.
+    #[getter]
+    fn version(&self) -> String {
+        self.inner.version().to_string()
+    }
+
+    /// The session sender as declared.
+    #[getter]
+    fn sender_comp_id(&self) -> &str {
+        self.inner.sender_comp_id()
+    }
+
+    /// The session target as declared.
+    #[getter]
+    fn target_comp_id(&self) -> &str {
+        self.inner.target_comp_id()
+    }
+
+    /// Whether this is the FIX specification's own dictionary.
+    fn is_standard(&self) -> bool {
+        self.inner.is_standard()
+    }
+
+    /// The identity packed into every identifier of this branch.
+    fn digest(&self) -> u32 {
+        self.inner.digest()
+    }
+
+    /// The deterministic cross-language hash of the whole declaration.
+    ///
+    /// Equality is the whole declaration, so the hash is too; `digest` is the
+    /// narrower answer, the name identity a packed identifier carries.
+    fn stable_hash(&self) -> u64 {
+        Scalar::from_sequence([
+            Scalar::from(self.inner.name()),
+            Scalar::from(self.inner.version().to_string()),
+            Scalar::from(self.inner.sender_comp_id()),
+            Scalar::from(self.inner.target_comp_id()),
+        ])
+        .stable_hash()
+    }
+
+    fn __str__(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "FixBranch({:?}, version={:?}, sender_comp_id={:?}, target_comp_id={:?})",
+            self.inner.name(),
+            self.inner.version().to_string(),
+            self.inner.sender_comp_id(),
+            self.inner.target_comp_id(),
+        )
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.stable_hash())
+    }
+
+    fn __richcmp__(
+        &self,
+        other: &Bound<'_, PyAny>,
+        operation: pyo3::class::basic::CompareOp,
+    ) -> PyResult<Py<PyAny>> {
+        let py = other.py();
+        let Ok(other) = branch_value_from_py(other) else {
+            return Ok(py.NotImplemented());
+        };
+        Ok(crate::compare(self.inner.cmp(&other.inner), operation)
+            .into_pyobject(py)?
+            .to_owned()
+            .into_any()
+            .unbind())
+    }
+
+    fn __reduce__(&self) -> (Py<PyAny>, (String, String, String, String)) {
+        Python::attach(|py| {
+            (
+                py.get_type::<Self>()
+                    .getattr("_from_parts")
+                    .unwrap()
+                    .unbind(),
+                (
+                    self.inner.name().to_owned(),
+                    self.inner.version().to_string(),
+                    self.inner.sender_comp_id().to_owned(),
+                    self.inner.target_comp_id().to_owned(),
+                ),
+            )
+        })
+    }
+
+    /// Rebuild the exact declaration pickle and repr carry.
+    #[staticmethod]
+    fn _from_parts(
+        name: &str,
+        version: &str,
+        sender_comp_id: &str,
+        target_comp_id: &str,
+    ) -> PyResult<Self> {
+        Self::new(name, Some(version), sender_comp_id, target_comp_id)
+    }
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// Read a branch declaration, or the name of one.
+pub(crate) fn branch_value_from_py(value: &Bound<'_, PyAny>) -> PyResult<PyFixBranch> {
+    if let Ok(branch) = value.extract::<PyRef<'_, PyFixBranch>>() {
+        return Ok(branch.clone());
+    }
+    if let Ok(text) = value.extract::<&str>() {
+        return branch_from_py(text).map(PyFixBranch::from_core);
+    }
+    Err(PyTypeError::new_err(
+        "expected a yggdryl.fix.FixBranch or a branch name",
+    ))
 }

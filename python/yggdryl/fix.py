@@ -3,8 +3,8 @@
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``fix:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``branch``,
 ``id``, ``tag``, ``tags``, ``aliases``, ``description`` - so nothing here is a
-second field class. A branch and an identifier cross as ``str``, coerced once at
-the boundary, so there is no class for either. :class:`FixRegistry` resolves
+second field class. A branch key and an identifier cross as ``str``, coerced
+once at the boundary, so neither has a class of its own. :class:`FixRegistry` resolves
 those fields by identifier, by tag, by branch-qualified name or by
 branch-qualified dotted path and persists them as JSON shards through any
 ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
@@ -20,6 +20,10 @@ indexed read rather than a dictionary lookup per column, and
 specification: the digest, the version read, the cross-venue symbol, the market
 clock, the partition it falls in, and the two parent order identifiers.
 
+A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
+*declaration* is, because a declaration also carries the dialect's default FIX
+version and the session ``CompID`` pair that selects it.
+
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
 ``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a
 non-standard branch may claim.
@@ -31,6 +35,7 @@ from ._native import (
     STANDARD_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
+    FixBranch,
     FixMsg,
     FixProjection,
     FixReader,
@@ -46,6 +51,7 @@ __all__ = [
     "STANDARD_BRANCH",
     "USER_TAG_MAX",
     "USER_TAG_MIN",
+    "FixBranch",
     "FixMsg",
     "FixProjection",
     "FixReader",

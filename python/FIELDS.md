@@ -146,7 +146,7 @@ See the [Field page](../docs/types/field.md) and the
 The reproducible decorator benchmarks are:
 
 ```console
-python benchmarks/types.py --iterations 10000
+python benchmarks/datatypes.py --iterations 10000
 python benchmarks/types/arrow.py --iterations 10000
 ```
 
