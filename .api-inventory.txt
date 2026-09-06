@@ -13,7 +13,7 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
   pub fn batch_reader<I>(schema: SchemaRef, batches: I) -> BatchReader where I: IntoIterator<Item = arrow_array::RecordBatch>, I::IntoIter: Send + 'static,
   pub fn combined_as(left: BatchReader, right: BatchReader, field: &Field, safe: bool) -> Result<BatchReader>
   pub fn combined(left: BatchReader, right: BatchReader) -> Result<BatchReader>
-  pub fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader>
+  pub fn cast_reader( inner: BatchReader, field: &Field, options: crate::ArrowCastOptions, ) -> Result<BatchReader>
   pub type Result<T> = std::result::Result<T, Error>;
   pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef>
   pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar>
@@ -1735,9 +1735,9 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn into_arrow_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow(self) -> Result<ArrowField>
   pub fn into_arrow_ref(self) -> Result<FieldRef>
-  pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, ) -> Result<arrow_array::RecordBatch>
-  pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, ) -> Result<arrow_schema::SchemaRef>
-  pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, ) -> Result<crate::arrow::BatchReader>
+  pub fn apply_arrow_batch( &self, batch: &arrow_array::RecordBatch, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_array::RecordBatch>
+  pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_schema::SchemaRef>
+  pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
 ### yggdryl::types::ascii  [rust\src\types\ascii\dtypes.rs]
@@ -1806,21 +1806,45 @@ pub const CURRENCIES: &'static [&'static str]
 
 ### yggdryl::types::cast  [rust\src\types\cast.rs]
 pub trait ArrowFieldType: FieldType
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<ArrayRef>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int32Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt32Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<Int64Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
-  pub fn cast_arrow_array_bits(&self, array: ArrayRef) -> Result<UInt64Array>
-  pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
-  pub fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<K::Array>>
-  pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array>
+  pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array>
+  pub fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<Scalar<K::Array>>
+  pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array>
   pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()>
-  pub fn preflight_arrow_batch_cast( source: &Field, target: Option<&Field>, safe: bool, ) -> Result<()>
+  pub fn preflight_arrow_batch_cast( source: &Field, target: Option<&Field>, options: ArrowCastOptions, ) -> Result<()>
 pub trait ArrowCast
+  fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<ArrayRef>
+  fn cast_arrow_batch(&self, batch: RecordBatch, options: ArrowCastOptions) -> Result<RecordBatch>
+  fn cast_arrow_scalar( &self, array: ArrayRef, options: ArrowCastOptions, ) -> Result<ArrowScalar<ArrayRef>>
+
+### yggdryl::types::cast::options  [rust\src\types\cast\options.rs]
+pub enum Nullability
+  pub const ALL: [Self; 2]
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_strict(self) -> bool
+pub enum Representation
+  pub const ALL: [Self; 2]
+  pub fn from_str(value: &str) -> Result<Self>
+  pub const fn as_str(self) -> &'static str
+  pub const fn is_bits(self) -> bool
+pub struct ArrowCastOptions
+  pub const fn new() -> Self
+  pub const fn with_safe(mut self, safe: bool) -> Self
+  pub const fn with_nullability(mut self, nullability: Nullability) -> Self
+  pub const fn with_representation(mut self, representation: Representation) -> Self
+  pub const fn is_safe(self) -> bool
+  pub const fn nullability(self) -> Nullability
+  pub const fn representation(self) -> Representation
+
+### yggdryl::types::cast::plan  [rust\src\types\cast\plan.rs]
+pub struct ArrowCastPlan
+  pub fn compile(source: &Schema, target: &Field, options: ArrowCastOptions) -> Result<Self>
+  pub const fn as_field(&self) -> &Field
+  pub const fn as_source_schema(&self) -> &SchemaRef
+  pub const fn as_schema(&self) -> &SchemaRef
+  pub const fn as_options(&self) -> &ArrowCastOptions
+  pub fn preflight(&self) -> Result<()>
+  pub fn apply(&self, batch: RecordBatch) -> Result<RecordBatch>
 
 ### yggdryl::types::compatibility  [rust\src\types\compatibility.rs]
 pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
