@@ -2486,19 +2486,24 @@ fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
 }
 
 #[test]
-fn a_version_hides_a_code_added_later_and_one_deprecated_at_or_before() {
+fn a_version_prefers_the_codes_it_knows_and_still_reads_the_rest() {
     let field = side();
     let view = field.as_fix();
 
     assert_eq!(view.code_value_at(version("4.2"), "CrossShort"), Some("9"));
-    assert_eq!(view.code_value_at(version("4.1"), "CrossShort"), None);
-    assert_eq!(view.code_name_at(version("4.1"), "9"), None);
+    // A capture whose frame says 4.1 routinely carries values added in 4.2 -
+    // a venue upgrades one side, a bridge relabels a session - and refusing
+    // them drops exactly the traffic someone is trying to explain. The
+    // version prefers, it does not gate.
+    assert_eq!(view.code_value_at(version("4.1"), "CrossShort"), Some("9"));
+    assert_eq!(view.code_name_at(version("4.1"), "9"), Some("CrossShort"));
     assert_eq!(view.code_name_at(version("4.2"), "9"), Some("CrossShort"));
 
-    // A code dated by extension pack alone is unresolvable before it existed.
+    // A code dated by extension pack alone reads the same way, and its
+    // pedigree stays readable beside the value it resolved to.
     let comm = comm_type();
     let comm = comm.as_fix();
-    assert_eq!(comm.code_value_at(version("4.4"), "BasisPoints"), None);
+    assert_eq!(comm.code_value_at(version("4.4"), "BasisPoints"), Some("7"));
     assert_eq!(
         comm.code_value_at(version("5.0SP2"), "BasisPoints"),
         Some("7")
@@ -2514,12 +2519,16 @@ fn a_version_hides_a_code_added_later_and_one_deprecated_at_or_before() {
             .with_deprecated(version("4.4"))])
         .unwrap();
     let retired = retired.as_fix();
+    // Deprecation reads the same way: a venue that never stopped sending a
+    // retired code is a venue whose traffic still has to be read, and the
+    // code's own `deprecated` pedigree is what says it should not be sent.
     assert_eq!(retired.code_value_at(version("4.3"), "Retired"), Some("R"));
-    assert_eq!(retired.code_value_at(version("4.4"), "Retired"), None);
+    assert_eq!(retired.code_value_at(version("4.4"), "Retired"), Some("R"));
+    assert_eq!(retired.code_value("Retired"), Some("R"));
     assert_eq!(
-        retired.code_value("Retired"),
-        Some("R"),
-        "unfiltered still answers"
+        retired.code("R").and_then(super::FixCodeValue::deprecated),
+        Some(version("4.4")),
+        "what the version knows is still readable beside the value",
     );
 }
 

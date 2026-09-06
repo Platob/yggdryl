@@ -180,3 +180,79 @@ impl super::FixRegistry {
         Ok(self)
     }
 }
+
+/// FIX's own tag for a message's type.
+pub const MSGTYPE_TAG: i32 = 35;
+
+impl super::FixRegistry {
+    /// Registers one message type, answering the value it takes.
+    ///
+    /// A dictionary is never complete. Venues invent message types, bridges
+    /// write composite keys like `P Report Ack`, and a reader that refused
+    /// what it had not been told about would drop exactly the traffic someone
+    /// is trying to understand. So a type the code set does not have is added
+    /// to it rather than rejected, and the value it takes is
+    /// [`MsgType::coerce`](crate::types::MsgType::coerce)'s - itself where it
+    /// fits, a stable synthesized value where it does not.
+    ///
+    /// Nothing is hard-coded: the vocabulary is the dictionary's own code set
+    /// on tag 35, and this adds to it exactly as a generator would.
+    ///
+    /// Idempotent. Registering a type the dictionary already spells answers
+    /// its existing value and changes nothing, so a reader may call it per
+    /// row without growing the code set per row.
+    ///
+    /// # Errors
+    ///
+    /// Returns the registry's own refusal when tag 35 is absent, when its
+    /// code set will not read, or when the synthesized value collides with a
+    /// different spelling - which is a real conflict and not something to
+    /// resolve by picking one.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::FixRegistry;
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+    ///
+    /// // One the specification publishes is already there.
+    /// assert_eq!(registry.register_msgtype("NewOrderSingle")?.as_str(), "D");
+    ///
+    /// // One a bridge invents is added, and stays put.
+    /// let held = registry.register_msgtype("P Report Ack")?;
+    /// assert!(held.is_synthetic());
+    /// assert_eq!(registry.register_msgtype("P Report Ack")?, held);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn register_msgtype(&mut self, spelling: &str) -> Result<crate::types::MsgType> {
+        let field = self.field_by_tag(MSGTYPE_TAG)?;
+        let view = field.as_fix();
+        // Already spelled, by name or by value: answer what it already is.
+        if let Some(held) = view.code_value(spelling) {
+            return crate::types::MsgType::new(held);
+        }
+        let value = crate::types::MsgType::coerce(spelling);
+        if let Some(taken) = view.code_name(value.as_str()) {
+            return Err(crate::Error::Conflict {
+                expected: "a free message type value".into(),
+                actual: "one another spelling holds".into(),
+                path: crate::text::expected_got(
+                    format_args!("{spelling:?} at {:?}", value.as_str()),
+                    format_args!("{taken:?}"),
+                ),
+            });
+        }
+        let mut codes: Vec<super::FixCode> = view
+            .codes()
+            .filter_map(std::result::Result::ok)
+            .map(super::FixCode::from)
+            .collect();
+        codes.push(super::FixCode::new(spelling, value.as_str()));
+        let mut field = field.clone();
+        field.as_fix_mut().set_codes(&codes)?;
+        self.update(field)?;
+        Ok(value)
+    }
+}

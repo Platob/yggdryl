@@ -118,6 +118,94 @@ ascii_code_leaf!(MsgType, 8);
 ascii_code_leaf!(MsgDirection, 4);
 
 impl MsgType {
+    /// The alphabet a synthesized message type is rendered in.
+    ///
+    /// Digits and upper-case letters, minus the four that read as each other
+    /// in a log line - `I`/`1`, `O`/`0` - because a synthetic value is read
+    /// by people before it is read by anything else. Thirty-two symbols, so
+    /// each carries exactly five bits and the rendering is a shift rather
+    /// than a division.
+    const ALPHABET: &'static [u8; 32] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+    /// How many symbols a synthesized value spends.
+    ///
+    /// Seven of the eight bytes, leaving the first to mark it as synthetic.
+    /// Seven symbols is thirty-five bits, so two distinct spellings collide
+    /// at around a quarter of a million of them - far past what a venue
+    /// declares, and the registration refuses a collision anyway rather than
+    /// letting one happen quietly.
+    const SYNTHETIC_SYMBOLS: usize = 7;
+
+    /// The byte a synthesized value opens with.
+    ///
+    /// `~` is outside the alphabet and outside every message type FIX
+    /// publishes, so a synthetic value is recognisable at a glance and can
+    /// never be confused with one a venue actually sent.
+    pub const SYNTHETIC_MARK: u8 = b'~';
+
+    /// This spelling as a message type, synthesizing one where it will not fit.
+    ///
+    /// FIX's own types are one or two characters and this datatype holds
+    /// eight, which is enough for every type the specification publishes and
+    /// for most a venue invents. It is not enough for the composite keys a
+    /// bridge writes - `P Report Ack` is twelve - and a value that does not
+    /// fit cannot simply be truncated, because two keys sharing a prefix
+    /// would become one message type.
+    ///
+    /// So a spelling that does not fit is *hashed* into one that does. The
+    /// mapping is stable across processes and versions, because it is this
+    /// crate's own digest over the exact bytes, and it is one-way: the
+    /// spelling it came from is kept by whoever registers it, not recovered
+    /// from the value.
+    ///
+    /// ```
+    /// use yggdryl::types::MsgType;
+    ///
+    /// // What fits is itself, unchanged.
+    /// assert_eq!(MsgType::coerce("D").as_str(), "D");
+    /// assert_eq!(MsgType::coerce("AB").as_str(), "AB");
+    ///
+    /// // What does not is stable, marked, and never two things at once.
+    /// let held = MsgType::coerce("P Report Ack");
+    /// assert_eq!(held, MsgType::coerce("P Report Ack"));
+    /// assert_ne!(held, MsgType::coerce("P Report Nack"));
+    /// assert!(held.is_synthetic());
+    /// assert_eq!(held.as_str().len(), 8);
+    /// ```
+    #[must_use]
+    pub fn coerce(spelling: &str) -> Self {
+        if let Ok(held) = Self::new(spelling) {
+            return held;
+        }
+        Self::synthesized(spelling)
+    }
+
+    /// The synthetic value one spelling hashes to.
+    fn synthesized(spelling: &str) -> Self {
+        let digest = crate::digest::DigestAlgorithm::Xxh3
+            .digest(spelling.as_bytes())
+            .as_u64()
+            .unwrap_or_default();
+        let mut rendered = [0_u8; 8];
+        rendered[0] = Self::SYNTHETIC_MARK;
+        for (at, slot) in rendered[1..].iter_mut().enumerate() {
+            let shift = 5 * (Self::SYNTHETIC_SYMBOLS - 1 - at);
+            let symbol = (digest >> shift) & 0b1_1111;
+            *slot = Self::ALPHABET[symbol as usize];
+        }
+        // Every byte is from the alphabet or the mark, so the width and the
+        // ASCII rule both hold by construction.
+        Self(SmolStr::new(
+            std::str::from_utf8(&rendered).unwrap_or("~UNKNOWN"),
+        ))
+    }
+
+    /// Whether this value was synthesized rather than sent.
+    #[must_use]
+    pub fn is_synthetic(&self) -> bool {
+        self.as_str().as_bytes().first() == Some(&Self::SYNTHETIC_MARK)
+    }
+
     /// Reads the message type one captured byte line declares.
     ///
     /// The same shallow scan [`MimeType::infer_bytes`](crate::MimeType) runs,

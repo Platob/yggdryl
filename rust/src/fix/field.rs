@@ -307,8 +307,13 @@ impl<'field> FixField<'field> {
     }
 
     /// Returns the code one wire value stands for at `at`.
+    ///
+    /// The version is a preference here too: a value the message actually
+    /// carries is named whether or not the version it claims had heard of it,
+    /// because a value in the data is a fact and a version in the frame is an
+    /// assertion.
     pub fn code_at(&self, at: Version, value: &str) -> Option<FixCodeValue<'field>> {
-        self.code(value).filter(|code| code.defined_at(at))
+        self.code(value)
     }
 
     /// Resolves any spelling of a code to its wire value.
@@ -338,35 +343,27 @@ impl<'field> FixField<'field> {
         self.code_at(at, value).map(FixCodeValue::name)
     }
 
-    /// The three tiers, optionally filtered to one version.
+    /// The three tiers, preferring what the version knows.
     ///
-    /// The document is read once and the tiers share it. Each tier asking for
-    /// it separately is three metadata lookups, and every value a reader
-    /// types goes through here - including the overwhelming majority, which
-    /// have no code set at all and used to pay all three to learn it.
+    /// The version is a *preference*, not a gate. A capture whose frame says
+    /// 4.2 routinely carries values the specification added in 4.4 - a venue
+    /// upgrades one side, a bridge relabels a session, a configuration is
+    /// copied from another desk - and a reader that refused them would drop
+    /// exactly the traffic someone is trying to explain. So a code the
+    /// version knows wins, and a code it does not is still read rather than
+    /// discarded.
+    ///
+    /// The preference is what keeps it honest: where two spellings differ
+    /// only by version, the one the message's own version declares answers,
+    /// so a dated read is still a dated read.
     fn resolve_value(&self, text: &str, at: Option<Version>) -> Option<&'field str> {
         let stored = self.get(CODES)?;
-        let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
-        // Tier 1: the text as a wire value, exactly. A spelling that is
-        // already a legal code is never reinterpreted as somebody's name, and
-        // the record a value opens is addressed rather than searched for.
-        if let Some(code) = FixCodes::seek_value(stored, text) {
-            if visible(&code) {
-                return Some(code.value());
+        if at.is_some() {
+            if let Some(held) = resolve_in(stored, text, at) {
+                return Some(held);
             }
         }
-        // Tier 2: the folded symbolic name, then any alias.
-        if let Some(code) = one_matching(stored, |code| visible(code) && code.is_spelled(text)) {
-            return Some(code.value());
-        }
-        // Tier 3: the leading parenthesized abbreviation of the description.
-        one_matching(stored, |code| {
-            visible(code)
-                && code
-                    .abbreviation()
-                    .is_some_and(|short| folds_equal(short, text))
-        })
-        .map(FixCodeValue::value)
+        resolve_in(stored, text, None)
     }
 
     /// The one code a predicate matches, or nothing when several do.
@@ -992,4 +989,29 @@ fn one_matching<'field>(
         found = Some(code);
     }
     found
+}
+
+/// The three tiers over one already-read document, at one visibility.
+fn resolve_in<'field>(stored: &'field str, text: &str, at: Option<Version>) -> Option<&'field str> {
+    let visible = |code: &FixCodeValue<'field>| at.is_none_or(|at| code.defined_at(at));
+    // Tier 1: the text as a wire value, exactly. A spelling that is already a
+    // legal code is never reinterpreted as somebody's name, and the record a
+    // value opens is addressed rather than searched for.
+    if let Some(code) = FixCodes::seek_value(stored, text) {
+        if visible(&code) {
+            return Some(code.value());
+        }
+    }
+    // Tier 2: the folded symbolic name, then any alias.
+    if let Some(code) = one_matching(stored, |code| visible(code) && code.is_spelled(text)) {
+        return Some(code.value());
+    }
+    // Tier 3: the leading parenthesized abbreviation of the description.
+    one_matching(stored, |code| {
+        visible(code)
+            && code
+                .abbreviation()
+                .is_some_and(|short| folds_equal(short, text))
+    })
+    .map(FixCodeValue::value)
 }
