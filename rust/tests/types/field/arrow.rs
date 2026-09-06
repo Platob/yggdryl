@@ -6,7 +6,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
     assert!(schema.flags().unwrap().contains(flag));
@@ -406,7 +406,9 @@ fn events() -> arrow_array::RecordBatch {
 fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
     let root = applied_root();
 
-    let applied = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+    let applied = root
+        .apply_arrow_batch(&events(), true, true, true, Nullability::Default)
+        .unwrap();
 
     assert_eq!(applied.num_columns(), 3);
     let trade = applied
@@ -451,10 +453,13 @@ fn apply_arrow_batch_runs_every_protocol_and_walks_nested_declarations() {
 #[test]
 fn apply_arrow_batch_answers_the_same_batch_the_second_time() {
     let root = applied_root();
-    let once = root.apply_arrow_batch(&events(), true, true, true).unwrap();
+    let once = root
+        .apply_arrow_batch(&events(), true, true, true, Nullability::Default)
+        .unwrap();
 
     assert_eq!(
-        root.apply_arrow_batch(&once, true, true, true).unwrap(),
+        root.apply_arrow_batch(&once, true, true, true, Nullability::Default)
+            .unwrap(),
         once
     );
 }
@@ -465,7 +470,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
 
     // Cast alone materializes every declared column and writes none of them.
     let cast_only = root
-        .apply_arrow_batch(&events(), false, false, true)
+        .apply_arrow_batch(&events(), false, false, true, Nullability::Default)
         .unwrap();
     assert_eq!(cast_only.num_columns(), 3);
     assert_eq!(
@@ -479,7 +484,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
 
     // Partition alone leaves the holders untouched.
     let partitioned = root
-        .apply_arrow_batch(&events(), false, true, true)
+        .apply_arrow_batch(&events(), false, true, true, Nullability::Default)
         .unwrap();
     assert_eq!(
         partitioned
@@ -502,7 +507,7 @@ fn apply_arrow_batch_runs_only_the_protocols_it_is_asked_for() {
     // A digest over the uncast batch still reconciles for itself, because a
     // holder is addressed by position.
     let digested = root
-        .apply_arrow_batch(&events(), true, false, false)
+        .apply_arrow_batch(&events(), true, false, false, Nullability::Default)
         .unwrap();
     assert_eq!(
         digested.column_by_name("row_digest").unwrap().null_count(),
@@ -516,7 +521,7 @@ fn apply_arrow_batch_refuses_a_root_that_is_not_a_struct() {
     let root = DataType::Int64.required_field("id");
 
     assert!(
-        root.apply_arrow_batch(&events(), false, true, false)
+        root.apply_arrow_batch(&events(), false, true, false, Nullability::Default)
             .is_err()
     );
 }
@@ -527,7 +532,7 @@ fn apply_arrow_schema_answers_the_shape_without_reading_a_row() {
     let stored = events().schema();
 
     let applied = root
-        .apply_arrow_schema(Arc::clone(&stored), true, true, true)
+        .apply_arrow_schema(Arc::clone(&stored), true, true, true, Nullability::Default)
         .unwrap();
 
     assert_eq!(
@@ -546,7 +551,7 @@ fn apply_arrow_schema_answers_the_shape_without_reading_a_row() {
     // It is exactly the schema a batch comes back with.
     assert_eq!(
         applied,
-        root.apply_arrow_batch(&events(), true, true, true)
+        root.apply_arrow_batch(&events(), true, true, true, Nullability::Default)
             .unwrap()
             .schema()
     );
@@ -563,7 +568,7 @@ fn apply_arrow_schema_refuses_a_declaration_the_reader_cannot_satisfy() {
 
     // Nothing is decoded, and the missing source is named before any row is.
     let error = root
-        .apply_arrow_schema(unrelated, false, true, false)
+        .apply_arrow_schema(unrelated, false, true, false, Nullability::Default)
         .unwrap_err()
         .to_string();
     assert!(error.contains("trade"), "{error}");
@@ -575,7 +580,9 @@ fn apply_arrow_reader_reports_the_applied_schema_before_the_first_batch() {
     let stored = events().schema();
     let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events(), events()]);
 
-    let mut applied = root.apply_arrow_reader(reader, true, true, true).unwrap();
+    let mut applied = root
+        .apply_arrow_reader(reader, true, true, true, Nullability::Default)
+        .unwrap();
 
     // Read before pulling: the shape is a property of the two schemas.
     let reported = arrow_array::RecordBatchReader::schema(&applied);
@@ -602,7 +609,7 @@ fn apply_arrow_reader_asked_for_nothing_hands_the_reader_back() {
     let reader = yggdryl::arrow::batch_reader(Arc::clone(&stored), [events()]);
 
     let mut untouched = root
-        .apply_arrow_reader(reader, false, false, false)
+        .apply_arrow_reader(reader, false, false, false, Nullability::Default)
         .unwrap();
 
     assert_eq!(arrow_array::RecordBatchReader::schema(&untouched), stored);

@@ -96,6 +96,11 @@ function installRecords({
     throw new TypeError('native binding is missing Field._emptyArrowReaderNative')
   }
   delete Field.prototype._emptyArrowReaderNative
+  const castArrowReader = Field.prototype._castArrowReaderNative
+  if (typeof castArrowReader !== 'function') {
+    throw new TypeError('native binding is missing Field._castArrowReaderNative')
+  }
+  delete Field.prototype._castArrowReaderNative
   const requireWritePreflight = RecordOptions.prototype._requireWritePreflightNative
   if (typeof requireWritePreflight !== 'function') {
     throw new TypeError('native binding is missing RecordOptions._requireWritePreflightNative')
@@ -809,16 +814,43 @@ function installRecords({
     },
   })
 
+  // The stream cast: whatever Arrow JS holds becomes the one native reader
+  // shape and comes back a `BatchReader` that has not been drained. Nothing is
+  // collected, one compiled plan serves the stream, and the source reader is
+  // consumed exactly as a write consumes one.
+  Object.defineProperty(Field.prototype, 'castArrowReader', {
+    configurable: true,
+    value(rows, options) {
+      return Reflect.apply(castArrowReader, this, [
+        batchReader(rows, this.name),
+        options?.safe,
+        options?.nullability,
+      ])
+    },
+  })
+
+  // The batch cast: one Apache Arrow JS record batch in, one out. Eager,
+  // because a batch is already held whole.
+  Object.defineProperty(Field.prototype, 'castArrowBatch', {
+    configurable: true,
+    value(batch, options) {
+      const runtime = arrow()
+      if (!(batch instanceof runtime.RecordBatch)) {
+        throw new TypeError('castArrowBatch takes one Apache Arrow JS RecordBatch')
+      }
+      return recordBatchFromIPC(this.castArrowReader(batch, options).intoIpc())
+    },
+  })
+
   // The generic cast: whatever Arrow JS holds - a Table, a RecordBatch, a
-  // BatchReader, IPC bytes - casts to this exact Field batch by batch and
-  // comes back a Table. `cast` is the same call under the generic name.
+  // BatchReader, IPC bytes - casts to this exact Field batch by batch and is
+  // drained into a Table. `cast` is the same call under the generic name; the
+  // lazy reading is `castArrowReader`.
   for (const name of ['castArrow', 'cast']) {
     Object.defineProperty(Field.prototype, name, {
       configurable: true,
       value(rows, options) {
-        const safe = options?.safe ?? true
-        const bytes = batchReader(rows, this.name).intoIpc()
-        return arrow().tableFromIPC(this._castArrowIpc(bytes, safe))
+        return this.castArrowReader(rows, options).intoTable()
       },
     })
   }

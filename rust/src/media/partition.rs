@@ -28,7 +28,7 @@ use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema
 use crate::expression::{Expression, Function};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::cast_field_array;
+use crate::types::cast::{ArrowCastOptions, cast_field_array};
 use crate::{ArrowCast, DataType, Error, Field, PartitionField, PartitionFieldMut, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
@@ -103,7 +103,10 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
 fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<ArrayRef> {
     let text: ArrayRef = Arc::new(StringArray::from(vec![value; rows]));
     match child {
-        Some(child) => Ok(child.cast_arrow_array(text, child.is_nullable())?),
+        Some(child) => {
+            Ok(child
+                .cast_arrow_array(text, ArrowCastOptions::new().with_safe(child.is_nullable()))?)
+        }
         None => Ok(text),
     }
 }
@@ -508,7 +511,10 @@ fn filled_columns(declared: &Field, batch: &RecordBatch) -> Result<Option<Record
         };
         // Strict: a declared type the computed value does not fit is an error,
         // not a column of silent nulls.
-        let array = child.cast_arrow_array(expression.bind(&stored)?.evaluate(batch)?, false)?;
+        let array = child.cast_arrow_array(
+            expression.bind(&stored)?.evaluate(batch)?,
+            ArrowCastOptions::new().with_safe(false),
+        )?;
         match held {
             Some(index) => columns[index] = array,
             None => {
@@ -840,7 +846,7 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 &DataType::Utf8.nullable_field(column.as_str()),
                 Some(schema.field(index).metadata()),
                 Arc::clone(batch.column(index)),
-                false,
+                ArrowCastOptions::new().with_safe(false),
             )?
         } else {
             Arc::clone(batch.column(index))
@@ -1123,7 +1129,11 @@ fn part_reader(
     }
     let reader = crate::iobase::leaf_reader(part, &leaf)?;
     let restored = partitioned_reader(reader, pairs, Some(field.clone()))?;
-    Ok(crate::arrow::cast_reader(restored, field, options.safe())?)
+    Ok(crate::arrow::cast_reader(
+        restored,
+        field,
+        ArrowCastOptions::new().with_safe(options.safe()),
+    )?)
 }
 
 /// One stable routing plan for every cadence of a folder write.

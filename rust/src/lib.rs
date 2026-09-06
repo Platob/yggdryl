@@ -86,7 +86,7 @@ pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 #[cfg(feature = "arrow")]
-pub use types::cast::{ArrowCast, ArrowFieldType};
+pub use types::cast::{ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability};
 pub use types::floating::scalars::{Float16, Float32, Float64};
 pub use types::protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,

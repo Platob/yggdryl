@@ -139,30 +139,30 @@ impl JsField {
             .map_err(napi_error)
     }
 
-    /// Cast one Arrow IPC stream to this exact Field, batch by batch.
+    /// Cast a whole stream to this exact Field, one batch at a time.
     ///
-    /// The loader wraps this as `castArrow`/`cast`, which hand over whatever
-    /// Arrow JS holds and read the result back as a `Table`.
-    #[napi(js_name = "_castArrowIpc", skip_typescript)]
-    pub fn cast_arrow_ipc(&self, bytes: Uint8Array, safe: Option<bool>) -> Result<Buffer> {
-        use arrow_ipc::reader::StreamReader;
-        use arrow_ipc::writer::StreamWriter;
-        use yggdryl::ArrowCast;
-
-        let safe = safe.unwrap_or(true);
-        let reader = StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None)
-            .map_err(napi_error)?;
-        let schema = self.inner.clone().into_arrow_schema().map_err(napi_error)?;
-        let mut writer = StreamWriter::try_new(Vec::new(), schema.as_ref()).map_err(napi_error)?;
-        for batch in reader {
-            let cast = self
-                .inner
-                .cast_arrow_batch(batch.map_err(napi_error)?, safe)
-                .map_err(napi_error)?;
-            writer.write(&cast).map_err(napi_error)?;
-        }
-        writer.finish().map_err(napi_error)?;
-        Ok(Buffer::from(writer.into_inner().map_err(napi_error)?))
+    /// The source reader is consumed, exactly as a write consumes one: a stream
+    /// is read once, and the reader handed back is the only one that still
+    /// yields rows. Nothing is drained here - one compiled cast plan serves the
+    /// whole stream, each batch is cast when it is pulled, and a batch's
+    /// failure surfaces at that pull.
+    ///
+    /// The loader wraps this as `castArrowReader`, and `castArrowBatch`,
+    /// `castArrow`, and `cast` are the eager readings of the same call.
+    #[napi(js_name = "_castArrowReaderNative", skip_typescript)]
+    pub fn cast_arrow_reader(
+        &self,
+        rows: &mut crate::iomedia::JsBatchReader,
+        safe: Option<bool>,
+        nullability: Option<String>,
+    ) -> Result<crate::iomedia::JsBatchReader> {
+        let options = crate::cast_options(safe, nullability.as_deref())?;
+        let cast =
+            yggdryl::arrow::cast_reader(rows.take()?, &self.inner, options).map_err(napi_error)?;
+        Ok(crate::iomedia::JsBatchReader::from_core(
+            cast,
+            self.inner.name(),
+        ))
     }
 
     /// Bit-cast one opposite-signed, same-width Arrow JS integer vector.

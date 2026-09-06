@@ -7,6 +7,7 @@ use arrow_buffer::ScalarBuffer;
 
 use super::ArrowCast as _;
 use crate::arrow::{Error, Result};
+use crate::types::cast::ArrowCastOptions;
 use crate::types::typed::{FieldType, TypedField, TypedFieldRef};
 use crate::{DataType, Field};
 
@@ -252,7 +253,7 @@ impl Field {
                 )));
             }
         };
-        self.cast_arrow_array(cast, false)
+        self.cast_arrow_array(cast, ArrowCastOptions::new().with_safe(false))
     }
 }
 
@@ -315,17 +316,16 @@ impl<K: ArrowFieldType> TypedField<K> {
     /// Cast an incoming Arrow array to this field, returning its exact array.
     ///
     /// The field is the target: `array` is reconciled to the field's datatype
-    /// and nullability. `safe` is Arrow's cast option - conversion failures
-    /// become null when it is true and errors when it is false - and a
-    /// non-nullable field then replaces any resulting null with its canonical
-    /// default.
+    /// and nullability. [`ArrowCastOptions`] carries both answers - whether a
+    /// failed conversion becomes null, and whether a null a non-nullable field
+    /// cannot hold takes its canonical default or is refused by path.
     ///
     /// # Errors
     ///
     /// Returns an error for an unsupported cast, a value that cannot satisfy
     /// the field, or a default that cannot be materialized.
-    pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array> {
-        K::downcast_array(self.as_field().cast_arrow_array(array, safe)?)
+    pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array> {
+        K::downcast_array(self.as_field().cast_arrow_array(array, options)?)
     }
 
     /// Cast a one-element Arrow array to this field as a typed scalar.
@@ -334,14 +334,18 @@ impl<K: ArrowFieldType> TypedField<K> {
     ///
     /// Returns an error when `array` does not hold exactly one value, or any
     /// error [`Self::cast_arrow_array`] returns.
-    pub fn cast_arrow_scalar(&self, array: ArrayRef, safe: bool) -> Result<Scalar<K::Array>> {
+    pub fn cast_arrow_scalar(
+        &self,
+        array: ArrayRef,
+        options: ArrowCastOptions,
+    ) -> Result<Scalar<K::Array>> {
         if array.len() != 1 {
             return Err(Error::IncompatibleSchema(format!(
                 "expected exactly 1 value to cast as a scalar, got {}",
                 array.len()
             )));
         }
-        Ok(Scalar::new(self.cast_arrow_array(array, safe)?))
+        Ok(Scalar::new(self.cast_arrow_array(array, options)?))
     }
 }
 
@@ -351,7 +355,7 @@ impl<K: ArrowFieldType> TypedFieldRef<'_, K> {
     /// # Errors
     ///
     /// Returns any error [`TypedField::cast_arrow_array`] returns.
-    pub fn cast_arrow_array(&self, array: ArrayRef, safe: bool) -> Result<K::Array> {
-        K::downcast_array(self.as_field().cast_arrow_array(array, safe)?)
+    pub fn cast_arrow_array(&self, array: ArrayRef, options: ArrowCastOptions) -> Result<K::Array> {
+        K::downcast_array(self.as_field().cast_arrow_array(array, options)?)
     }
 }

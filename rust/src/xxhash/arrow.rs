@@ -35,10 +35,9 @@ use arrow_select::zip::zip;
 use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::metadata::is_all_sources;
+use crate::types::cast::{ArrowCast, ArrowCastOptions};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{
-    ArrowCast, DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone,
-};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes, holder_accepts,
@@ -158,7 +157,7 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     batch: RecordBatch,
     force: bool,
 ) -> Result<RecordBatch> {
-    let batch = root.cast_arrow_batch(batch, true)?;
+    let batch = root.cast_arrow_batch(batch, ArrowCastOptions::new())?;
     let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
     let row_count = batch.num_rows();
     let (columns, changed) =

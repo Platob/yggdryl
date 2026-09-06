@@ -90,7 +90,7 @@ use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::ArrowCast;
+use crate::types::cast::{ArrowCast, ArrowCastOptions};
 use crate::{DataType, Error, Field, IOKind, MimeType, Result, Scalar};
 use crate::{IOBase, IOMedia};
 
@@ -1098,7 +1098,10 @@ impl<H: IOBase> Table<H> {
         // the write is not streamed.
         let mut incoming = Vec::new();
         for batch in batches {
-            let batch = schema.cast_arrow_batch(batch.map_err(Error::Arrow)?, safe)?;
+            let batch = schema.cast_arrow_batch(
+                batch.map_err(Error::Arrow)?,
+                ArrowCastOptions::new().with_safe(safe),
+            )?;
             if batch.num_rows() > 0 {
                 incoming.push(batch);
             }
@@ -2795,7 +2798,10 @@ fn grouped_batches(
     let transforms = spec.write_transforms(schema, partition)?;
 
     for batch in batches {
-        let batch = schema.cast_arrow_batch(batch.map_err(Error::Arrow)?, false)?;
+        let batch = schema.cast_arrow_batch(
+            batch.map_err(Error::Arrow)?,
+            ArrowCastOptions::new().with_safe(false),
+        )?;
         if batch.num_rows() == 0 {
             continue;
         }

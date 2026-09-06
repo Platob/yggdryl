@@ -618,13 +618,27 @@ pub(crate) fn cast_dictionary_planned(
         ArrowDataType::UInt32 => rebuild!(UInt32Type),
         ArrowDataType::UInt64 => rebuild!(UInt64Type),
         _ => {
-            return arrow_cast_exposed(&array, expected, plan.safe, exposure, &plan.field, budget);
+            return arrow_cast_exposed(
+                &array,
+                expected,
+                plan.safe(),
+                exposure,
+                &plan.field,
+                budget,
+            );
         }
     };
     if rebuilt.data_type() == expected {
         Ok(rebuilt)
     } else {
-        arrow_cast_exposed(&rebuilt, expected, plan.safe, exposure, &plan.field, budget)
+        arrow_cast_exposed(
+            &rebuilt,
+            expected,
+            plan.safe(),
+            exposure,
+            &plan.field,
+            budget,
+        )
     }
 }
 

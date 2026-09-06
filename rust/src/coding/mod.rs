@@ -251,7 +251,11 @@ impl<H: IOBase> Coding<H> {
         use crate::media::IORecordOptions;
 
         let reader = match options.field() {
-            Some(field) => crate::arrow::cast_reader(reader, &field, options.safe())?,
+            Some(field) => crate::arrow::cast_reader(
+                reader,
+                &field,
+                crate::ArrowCastOptions::new().with_safe(options.safe()),
+            )?,
             None => reader,
         };
         let reader = crate::media::partition::filtered_reader(reader, options)?;

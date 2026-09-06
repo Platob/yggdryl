@@ -423,13 +423,24 @@ declare module './index' {
     intoSchemeCompat(target: CompatibilityScheme): Field
     /**
      * Cast whatever Arrow JS holds - a Table, RecordBatch, BatchReader, or
-     * IPC bytes - to this exact Field, batch by batch, as a Table.
+     * IPC bytes - to this exact Field, batch by batch, as a Table. Eager: the
+     * stream is drained here.
      */
-    castArrow(rows: BatchSource, options?: { safe?: boolean }): unknown
+    castArrow(rows: BatchSource, options?: ArrowCastOptions): unknown
+    /** Cast one Apache Arrow JS record batch to this exact Field. */
+    castArrowBatch(
+      batch: ArrowRecordBatch,
+      options?: ArrowCastOptions,
+    ): ArrowRecordBatch
+    /**
+     * Cast a whole stream to this exact Field, lazily. The source reader is
+     * consumed and the returned reader casts one batch per pull.
+     */
+    castArrowReader(rows: BatchSource, options?: ArrowCastOptions): BatchReader
     /** Bit-cast an opposite-signed, same-width Arrow integer vector. */
     castArrowArrayBits(values: ArrowVector): ArrowVector
     /** The same cast under the generic name. */
-    cast(rows: BatchSource, options?: { safe?: boolean }): unknown
+    cast(rows: BatchSource, options?: ArrowCastOptions): unknown
   }
 
   interface Xxh32 {
@@ -2543,6 +2554,22 @@ declare module './index' {
  * record batches, plus the JavaScript rows the record surface accepts.
  */
 export type IcebergSource = BatchSource | RecordSource
+
+/**
+ * What a cast does about a non-nullable target field the source cannot fill:
+ * `"default"` writes its canonical default, `"strict"` refuses by path.
+ */
+export type Nullability = 'default' | 'strict'
+
+/**
+ * The two independent answers every Arrow cast needs: `safe` decides whether a
+ * present value may be converted, `nullability` whether a declared value may be
+ * absent.
+ */
+export interface ArrowCastOptions {
+  safe?: boolean
+  nullability?: Nullability
+}
 
 /** Anything that names a stream of Arrow record batches. */
 export type BatchSource =

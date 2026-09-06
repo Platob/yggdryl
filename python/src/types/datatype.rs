@@ -21,9 +21,10 @@ use yggdryl::{
 use crate::types::field::PyField;
 use crate::types::scalar::{arrow_scalar_into_array, from_py};
 use crate::{
-    FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
+    FieldKey, PyDifferenceIterator, cast_options, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
 };
+use yggdryl::ArrowCastOptions;
 
 fn import_ffi_schema<'py>(
     py: Python<'py>,
@@ -146,7 +147,10 @@ pub(crate) fn core_arrow_scalar<'py>(
     let field = yggdryl::Field::new("value", dtype.clone(), true);
     let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
         field
-            .cast_arrow_array(arrow_scalar_into_array(value)?, safe)
+            .cast_arrow_array(
+                arrow_scalar_into_array(value)?,
+                ArrowCastOptions::new().with_safe(safe),
+            )
             .map_err(value_error)?
     } else {
         yggdryl::arrow::scalar_array(&field, &from_py(value)?).map_err(value_error)?
@@ -844,17 +848,18 @@ impl PyDataType {
     }
 
     /// Casts one `PyArrow` Array through Yggdryl's native Arrow kernels.
-    #[pyo3(signature = (value, *, safe=true))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default"))]
     fn cast_arrow_array<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let input = arrow_array_from_pyarrow(value)?;
         let array = self
             .inner
-            .cast_arrow_array(Arc::clone(&input), safe)
+            .cast_arrow_array(Arc::clone(&input), cast_options(safe, nullability)?)
             .map_err(value_error)?;
         if Arc::ptr_eq(&input, &array) {
             return Ok(value.clone());
@@ -863,19 +868,20 @@ impl PyDataType {
     }
 
     /// Reconciles one `PyArrow` `RecordBatch` to this Struct datatype.
-    #[pyo3(signature = (value, *, safe=true))]
+    #[pyo3(signature = (value, *, safe=true, nullability="default"))]
     fn cast_arrow_batch<'py>(
         &self,
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         safe: bool,
+        nullability: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
         let source_schema = batch.schema();
         let source_columns = batch.columns().to_vec();
         let cast = self
             .inner
-            .cast_arrow_batch(batch, safe)
+            .cast_arrow_batch(batch, cast_options(safe, nullability)?)
             .map_err(value_error)?;
         if Arc::ptr_eq(&source_schema, &cast.schema())
             && source_columns

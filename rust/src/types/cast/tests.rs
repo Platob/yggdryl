@@ -7,7 +7,7 @@ use arrow_array::{
     StructArray, UInt32Array, UInt64Array,
 };
 
-use super::ArrowCast;
+use super::{ArrowCast, ArrowCastOptions};
 use crate::types::{
     DateTime64Field, GeometryField, Int32Field, Int64Field, StructField, UInt32Field, UInt64Field,
     Utf8Field, VariantField,
@@ -21,7 +21,9 @@ fn a_typed_field_returns_its_own_array_type() {
     let source: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
 
     // The binding is an Int64Array; no downcast at the call site.
-    let ids: Int64Array = field.cast_arrow_array(source, false).unwrap();
+    let ids: Int64Array = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(ids.values(), &[1, 2, 3]);
 }
 
@@ -30,7 +32,9 @@ fn a_string_field_parses_and_formats_through_the_same_call() {
     let field = Utf8Field::new("symbol", false);
     let numbers: ArrayRef = Arc::new(Float64Array::from(vec![1.5, 2.5]));
 
-    let text: StringArray = field.cast_arrow_array(numbers, false).unwrap();
+    let text: StringArray = field
+        .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(text.value(0), "1.5");
     assert_eq!(text.value(1), "2.5");
 }
@@ -40,10 +44,16 @@ fn an_unsafe_cast_fails_and_a_safe_one_defaults() {
     let field = Int64Field::new("id", false);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
-    assert!(field.cast_arrow_array(Arc::clone(&text), false).is_err());
+    assert!(
+        field
+            .cast_arrow_array(Arc::clone(&text), ArrowCastOptions::new().with_safe(false))
+            .is_err()
+    );
 
     // Safe casting nulls the failure, and a non-null field then defaults it.
-    let ids = field.cast_arrow_array(text, true).unwrap();
+    let ids = field
+        .cast_arrow_array(text, ArrowCastOptions::new())
+        .unwrap();
     assert_eq!(ids.values(), &[1, 0]);
     assert_eq!(ids.null_count(), 0);
 }
@@ -53,7 +63,9 @@ fn a_nullable_field_keeps_the_null_a_safe_cast_produced() {
     let field = Int64Field::new("id", true);
     let text: ArrayRef = Arc::new(StringArray::from(vec!["1", "not a number"]));
 
-    let ids = field.cast_arrow_array(text, true).unwrap();
+    let ids = field
+        .cast_arrow_array(text, ArrowCastOptions::new())
+        .unwrap();
     assert!(ids.is_null(1));
 }
 
@@ -89,7 +101,9 @@ fn a_struct_field_casts_children_by_name() {
         ),
     ]));
 
-    let row = field.cast_arrow_array(source, false).unwrap();
+    let row = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(row.num_columns(), 2);
     assert_eq!(row.column(0).data_type(), &arrow_schema::DataType::Int64);
 }
@@ -108,7 +122,9 @@ fn a_parameterized_temporal_field_casts_to_a_shared_array() {
     .unwrap();
     let source: ArrayRef = Arc::new(Int64Array::from(vec![1_700_000_000_000]));
 
-    let cast: ArrayRef = field.cast_arrow_array(source, false).unwrap();
+    let cast: ArrayRef = field
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     assert_eq!(cast.len(), 1);
     assert_eq!(
         cast.data_type(),
@@ -122,12 +138,17 @@ fn a_scalar_cast_requires_exactly_one_value() {
     let one: ArrayRef = Arc::new(Int32Array::from(vec![9]));
     let two: ArrayRef = Arc::new(Int32Array::from(vec![9, 10]));
 
-    let scalar = field.cast_arrow_scalar(one, false).unwrap();
+    let scalar = field
+        .cast_arrow_scalar(one, ArrowCastOptions::new().with_safe(false))
+        .unwrap();
     let (array, is_scalar) = scalar.get();
     assert!(is_scalar);
     assert_eq!(array.len(), 1);
 
-    let message = field.cast_arrow_scalar(two, false).unwrap_err().to_string();
+    let message = field
+        .cast_arrow_scalar(two, ArrowCastOptions::new().with_safe(false))
+        .unwrap_err()
+        .to_string();
     assert!(message.contains("exactly 1 value"), "{message}");
 }
 
@@ -138,7 +159,10 @@ fn a_borrowed_typed_field_casts_the_same_way() {
     let source: ArrayRef = Arc::new(Int32Array::from(vec![4]));
 
     assert_eq!(
-        borrowed.cast_arrow_array(source, false).unwrap().values(),
+        borrowed
+            .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
+            .unwrap()
+            .values(),
         &[4]
     );
 }
@@ -260,7 +284,14 @@ fn generic_and_borrowed_fields_expose_the_same_strict_bit_cast() {
 fn ordinary_integer_casting_remains_numeric() {
     let field = Int64Field::new("digest", true);
     let source: ArrayRef = Arc::new(UInt64Array::from(vec![u64::MAX]));
-    assert!(field.cast_arrow_array(Arc::clone(&source), false).is_err());
+    assert!(
+        field
+            .cast_arrow_array(
+                Arc::clone(&source),
+                ArrowCastOptions::new().with_safe(false)
+            )
+            .is_err()
+    );
     assert_eq!(field.cast_arrow_array_bits(source).unwrap().value(0), -1);
 }
 
@@ -301,7 +332,7 @@ fn cast_shape_to(
     target: Field,
 ) -> crate::arrow::Result<arrow_array::RecordBatch> {
     let root = Field::new("row", DataType::from_fields([target]).unwrap(), false);
-    root.cast_arrow_batch(batch, false)
+    root.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
 }
 
 #[test]
@@ -311,18 +342,26 @@ fn binary_bytes_entering_a_geometry_field_are_validated_as_wkb() {
     let source: ArrayRef = Arc::new(BinaryArray::from(vec![Some(point.as_slice()), None]));
 
     // Valid WKB passes with the same bytes; the untyped cast is the identity.
-    let cast = field.cast_arrow_array(Arc::clone(&source), false).unwrap();
+    let cast = field
+        .cast_arrow_array(
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
     assert_eq!(cast.value(0), point.as_slice());
     let identity = field
         .as_field()
-        .cast_arrow_array(Arc::clone(&source), false)
+        .cast_arrow_array(
+            Arc::clone(&source),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
     assert!(Arc::ptr_eq(&identity, &source));
 
     // Truncated bytes are refused naming the field and the row.
     let broken: ArrayRef = Arc::new(BinaryArray::from(vec![Some([1u8, 1, 0].as_slice())]));
     let refused = field
-        .cast_arrow_array(broken, false)
+        .cast_arrow_array(broken, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("shape"), "{refused}");
@@ -428,7 +467,7 @@ fn text_into_a_geospatial_target_names_the_absent_wkt_parser() {
     let field = Field::new("shape", DataType::geometry(None).unwrap(), true);
     let source: ArrayRef = Arc::new(StringArray::from(vec!["POINT (1 2)"]));
     let refused = field
-        .cast_arrow_array(source, false)
+        .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("WKT parser"), "{refused}");
@@ -440,11 +479,19 @@ fn a_variant_casts_only_to_itself_until_the_codec_lands() {
     let storage = variant_storage_array(2);
 
     // The identity works, and the untyped cast returns the same array.
-    let cast = field.cast_arrow_array(Arc::clone(&storage), false).unwrap();
+    let cast = field
+        .cast_arrow_array(
+            Arc::clone(&storage),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
     assert_eq!(cast.len(), 2);
     let identity = field
         .as_field()
-        .cast_arrow_array(Arc::clone(&storage), false)
+        .cast_arrow_array(
+            Arc::clone(&storage),
+            ArrowCastOptions::new().with_safe(false),
+        )
         .unwrap();
     assert!(Arc::ptr_eq(&identity, &storage));
 
@@ -452,7 +499,7 @@ fn a_variant_casts_only_to_itself_until_the_codec_lands() {
     let numbers: ArrayRef = Arc::new(Int64Array::from(vec![7]));
     let refused = field
         .as_field()
-        .cast_arrow_array(numbers, false)
+        .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("Iceberg v3 layer"), "{refused}");
@@ -473,7 +520,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
         false,
     );
     let refused = target
-        .cast_arrow_batch(batch, false)
+        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
     assert!(refused.contains("Iceberg v3 layer"), "{refused}");

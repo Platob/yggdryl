@@ -88,6 +88,25 @@ pub(crate) fn json_document(value: serde_json::Value) -> serde_json::Result<serd
     }
 }
 
+/// Coerce the two cast answers JavaScript spells separately into one native
+/// value.
+///
+/// `safe` decides whether a present value may be converted; `nullability`
+/// names the policy for a declared value that is absent. Both cross explicitly
+/// on every cast entry point, so neither is inferred from the other.
+pub(crate) fn cast_options(
+    safe: Option<bool>,
+    nullability: Option<&str>,
+) -> napi::Result<yggdryl::ArrowCastOptions> {
+    let nullability = match nullability {
+        Some(value) => yggdryl::Nullability::from_str(value).map_err(napi_error)?,
+        None => yggdryl::Nullability::Default,
+    };
+    Ok(yggdryl::ArrowCastOptions::new()
+        .with_safe(safe.unwrap_or(true))
+        .with_nullability(nullability))
+}
+
 pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
 }

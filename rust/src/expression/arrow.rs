@@ -47,7 +47,7 @@ use super::parser::{Direction, NullsOrder};
 use super::selector::Attributes;
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result};
-use crate::types::cast::cast_field_array;
+use crate::types::cast::{ArrowCastOptions, cast_field_array};
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
@@ -555,7 +555,7 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
                 &node.field,
                 Some(source.metadata()),
                 array,
-                safety.is_safe(),
+                ArrowCastOptions::new().with_safe(safety.is_safe()),
             )?))
         }
         // Arithmetic, the string functions, path steps, and the constructors

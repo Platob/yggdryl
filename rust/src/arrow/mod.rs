@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::cast::ArrowCastPlan;
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -51,6 +52,19 @@ pub enum Error {
         expected: SmolStr,
         /// What the caller supplied, bounded by the shared error-text limit.
         actual: SmolStr,
+    },
+    /// A non-nullable target field the source does not satisfy.
+    ///
+    /// Only [`Nullability::Strict`](crate::Nullability::Strict) produces this:
+    /// the default policy writes the field's canonical
+    /// [default](crate::Field::default_value) instead.
+    #[non_exhaustive]
+    RequiredField {
+        /// Dot/bracket path from the cast root, such as `$.users[].zip`.
+        path: SmolStr,
+        /// Exposed rows holding logical null, or `None` when no source column
+        /// carries the field at all.
+        nulls: Option<usize>,
     },
     /// Two physical schemas disagree.
     #[non_exhaustive]
@@ -168,6 +182,16 @@ impl fmt::Display for Error {
                 formatter,
                 "invalid Arrow record value at {path}: expected {expected}, got {actual}"
             ),
+            Self::RequiredField { path, nulls } => match nulls {
+                Some(nulls) => write!(
+                    formatter,
+                    "required Arrow field {path} holds {nulls} null values"
+                ),
+                None => write!(
+                    formatter,
+                    "required Arrow field {path} is missing from the source"
+                ),
+            },
             Self::SchemaMismatch { index, path, diff } => {
                 formatter.write_str("incompatible Arrow record schema")?;
                 if let Some(index) = index {
@@ -224,6 +248,7 @@ impl std::error::Error for Error {
             Self::Allocation { source, .. } => Some(source),
             Self::Unsupported { .. }
             | Self::InvalidValue { .. }
+            | Self::RequiredField { .. }
             | Self::SchemaMismatch { .. }
             | Self::InvalidRootField { .. }
             | Self::PhysicalLimit { .. }
@@ -385,7 +410,11 @@ pub(crate) fn appended(
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
         first: stored,
-        second: cast_reader(incoming, field, safe)?,
+        second: cast_reader(
+            incoming,
+            field,
+            crate::ArrowCastOptions::new().with_safe(safe),
+        )?,
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -434,8 +463,8 @@ pub fn combined_as(
     safe: bool,
 ) -> Result<BatchReader> {
     Ok(Box::new(Chained {
-        first: cast_reader(left, field, safe)?,
-        second: cast_reader(right, field, safe)?,
+        first: cast_reader(left, field, crate::ArrowCastOptions::new().with_safe(safe))?,
+        second: cast_reader(right, field, crate::ArrowCastOptions::new().with_safe(safe))?,
         schema: arrow_schema_from_field(field)?,
     }))
 }
@@ -594,34 +623,43 @@ fn reconciled(left: &Field, right: &Field) -> Result<Field> {
 }
 
 /// One reader's batches, each cast to a declared root Field as it arrives.
+///
+/// The plan is compiled once from the inner reader's schema, so the batches
+/// differ only in the masks, offsets, and dictionary keys they carry. The
+/// inner reader is dropped the moment it can yield nothing more - exhausted,
+/// failed, or refused by the cast - which releases a C stream behind it at the
+/// same point an early close would, and fuses this reader after the failure
+/// rather than asking a source that already reported one.
 struct Cast {
-    inner: BatchReader,
-    field: Field,
-    safe: bool,
-    schema: SchemaRef,
+    inner: Option<BatchReader>,
+    plan: ArrowCastPlan,
 }
 
 impl Iterator for Cast {
     type Item = std::result::Result<arrow_array::RecordBatch, ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        use crate::types::cast::ArrowCast;
-
-        let batch = match self.inner.next()? {
-            Ok(batch) => batch,
-            Err(error) => return Some(Err(error)),
+        let pulled = self.inner.as_mut()?.next();
+        let batch = match pulled {
+            Some(Ok(batch)) => batch,
+            other => {
+                self.inner = None;
+                return other;
+            }
         };
-        Some(
-            self.field
-                .cast_arrow_batch(batch, self.safe)
-                .map_err(|error| ArrowError::ExternalError(Box::new(error))),
-        )
+        match self.plan.apply(batch) {
+            Ok(cast) => Some(Ok(cast)),
+            Err(error) => {
+                self.inner = None;
+                Some(Err(ArrowError::ExternalError(Box::new(error))))
+            }
+        }
     }
 }
 
 impl arrow_array::RecordBatchReader for Cast {
     fn schema(&self) -> SchemaRef {
-        Arc::clone(&self.schema)
+        Arc::clone(self.plan.as_schema())
     }
 }
 
@@ -630,23 +668,28 @@ impl arrow_array::RecordBatchReader for Cast {
 /// This is the cast half of a schema-directed read: the encoding has already
 /// skipped the columns the schema does not name, and this reorders, converts,
 /// and fills what is left so every batch really is the declared shape. Nothing
-/// is collected - a batch is cast when it is pulled.
+/// is collected - a batch is cast when it is pulled - and nothing is planned
+/// twice: one [`ArrowCastPlan`] serves the whole stream, so a schema failure
+/// is reported here rather than on the first batch.
 ///
 /// # Errors
 ///
-/// Returns an error unless `field` is a bounded, non-nullable Struct root.
-pub fn cast_reader(inner: BatchReader, field: &Field, safe: bool) -> Result<BatchReader> {
-    let schema = arrow_schema_from_field(field)?;
-    if inner.schema() == schema {
+/// Returns an error unless `field` is a bounded, non-nullable Struct root, or
+/// when the cast cannot be planned from the reader's schema.
+pub fn cast_reader(
+    inner: BatchReader,
+    field: &Field,
+    options: crate::ArrowCastOptions,
+) -> Result<BatchReader> {
+    let plan = ArrowCastPlan::compile(inner.schema().as_ref(), field, options)?;
+    if plan.is_identity() {
         // An exact reader is already the declared shape, so casting each batch
         // would only rebuild arrays it would then hand back unchanged.
         return Ok(inner);
     }
     Ok(Box::new(Cast {
-        inner,
-        field: field.clone(),
-        safe,
-        schema,
+        inner: Some(inner),
+        plan,
     }))
 }
 

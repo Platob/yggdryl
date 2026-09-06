@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Field, Level, Limits, Metadata};
+use crate::{ArrowCast, ArrowCastOptions, DataType, Field, Level, Limits, Metadata};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
 use super::container::{
@@ -315,7 +315,7 @@ where
         if batch.num_rows() == 0 {
             continue;
         }
-        let batch = crate::types::cast::cast_record_batch(&canonical, batch, false)?;
+        let batch = canonical.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?;
         payload.clear();
         encode_batch(&schema.node, &schema, &batch, &mut payload)?;
         let compressed = coding.dump(&payload, options.level())?;
