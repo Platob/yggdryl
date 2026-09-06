@@ -296,9 +296,19 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // Records travel under the Rust module path, so a core record from
     // `yggdryl::media::iceberg::table` reaches `logging` as
     // `yggdryl.media.iceberg.table` and the package's own logger is its root.
-    // `try_init` because an embedder may have installed a logger already, and
-    // an extension has no business replacing it.
-    if let Ok(handle) = pyo3_log::try_init() {
+    //
+    // The bridge is global, so every crate in the build would otherwise reach
+    // Python: the Avro reader alone narrates a schema parse per manifest, and
+    // that is the flood a caller enabling debug does not want. Only this
+    // project's own targets pass below `warn`, so a dependency still surfaces
+    // what went wrong and never what it did. `install` rather than `init`
+    // because an embedder may have installed a logger already, and an
+    // extension has no business replacing it.
+    let bridge = pyo3_log::Logger::default()
+        .filter(log::LevelFilter::Warn)
+        .filter_target("yggdryl".to_owned(), log::LevelFilter::Trace)
+        .install();
+    if let Ok(handle) = bridge {
         let _ = LOGGING.set(handle);
     }
     register_classes(module)?;

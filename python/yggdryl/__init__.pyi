@@ -1,4 +1,8 @@
-from ._native import __version__ as __version__, combined as combined
+from ._native import (
+    __version__ as __version__,
+    combined as combined,
+    refresh_logging as refresh_logging,
+)
 from .expression import (
     Bound as Bound,
     BoundStatement as BoundStatement,

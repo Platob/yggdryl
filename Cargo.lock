@@ -3515,6 +3515,7 @@ dependencies = [
  "arrow-pyarrow",
  "arrow-schema 59.2.0",
  "half",
+ "log",
  "pyo3",
  "pyo3-log",
  "serde_json",

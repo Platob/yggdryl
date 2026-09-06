@@ -1,7 +1,17 @@
-"""Allocation-conscious types, storage, media, and protocols."""
+"""Allocation-conscious types, storage, media, and protocols.
+
+The native core reports what it does through `logging`, under this package's
+own logger: `yggdryl.media.iceberg.table` and its siblings are the Rust module
+paths the work happens in, so `logging.getLogger("yggdryl")` is the one switch.
+Debug is an operation starting, info is one done and carries the counts a
+monitor watches - a table opened, a scan planned and what its filters pruned,
+a snapshot's rows and files, a commit and the version it landed. Nothing is
+reported per row, per batch, or per file. A level changed after import reaches
+the bridge through `refresh_logging`.
+"""
 
 from . import coding, enums, expression, fix, holder, media, text, types, uri, xxhash
-from ._native import __version__, combined
+from ._native import __version__, combined, refresh_logging
 from .expression import Bound, BoundStatement, Expression, Statement
 from .holder import IOBase, IOCursor
 from .media import MediaType, MimeType, RecordOptions, TextOptions
@@ -47,6 +57,7 @@ __all__ = [
     "fix",
     "holder",
     "media",
+    "refresh_logging",
     "scalar",
     "text",
     "types",

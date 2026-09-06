@@ -11,6 +11,10 @@ import pyarrow.fs  # type: ignore[import-untyped]
 _T = TypeVar("_T")
 
 __version__: str
+
+# Drops the cached Python log levels, so a level changed after import applies.
+def refresh_logging() -> None: ...
+
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
 
