@@ -3543,6 +3543,8 @@ export declare class Uri {
   get hostname(): string | null
   /** S3 bucket name, or `null` for another scheme. */
   get bucket(): string | null
+  /** S3 object key: the path below the bucket, as the path spells it. */
+  get key(): string | null
   /** AWS region inferred from a recognized S3 hostname. */
   get region(): string | null
   /** Normalized slash-separated URI path. */
@@ -3635,6 +3637,8 @@ export declare class Url {
   get hostname(): string | null
   /** S3 bucket name, or `null` for another scheme. */
   get bucket(): string | null
+  /** S3 object key: the path below the bucket, as the path spells it. */
+  get key(): string | null
   /** AWS region inferred from a recognized S3 hostname. */
   get region(): string | null
   /** Normalized slash-separated URL path. */
