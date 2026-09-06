@@ -13,6 +13,7 @@ import pytest
 
 from yggdryl import DataType, IOBase, RecordOptions, TextOptions, Timezone
 from yggdryl.coding import gzip, zstd
+from yggdryl.media import Text
 
 ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 
@@ -254,9 +255,13 @@ def test_retained_text_options_parse_the_real_execution_row(
     )
     options.timezone = Timezone.UTC
 
-    assert source.into_text(options) is source
-    assert source.into_text() is source
-    [row] = list(source.read_records())
+    # A `.log` name already composes to text; naming options replaces the
+    # retained configuration rather than stacking a second wrapper, and the
+    # handle it answers with is the one that carries them.
+    assert isinstance(source, Text)
+    configured = source.into_text(options)
+    assert isinstance(configured, Text)
+    [row] = list(configured.read_records())
 
     assert row["stamp"] == datetime.datetime(
         2026, 8, 29, 0, 0, 0, 434_958, tzinfo=datetime.timezone.utc

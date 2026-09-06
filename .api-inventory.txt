@@ -560,6 +560,11 @@ pub enum Holder
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
+  pub fn into_media_as(self, media_type: &MediaType) -> Self
+  pub fn into_text(self) -> Self
+  pub fn into_text_with(self, options: crate::media::text::TextOptions) -> Self
+  pub fn into_coded(self) -> Self
+  pub fn into_coded_with(self, codec: crate::Codec, level: crate::Level) -> Self
   pub fn open(&mut self) -> Result<()>
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase

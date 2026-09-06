@@ -12,6 +12,9 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 from yggdryl import IOBase, TextOptions
+from yggdryl.coding import Gzip
+from yggdryl.holder import FsPath
+from yggdryl.media import Parquet
 
 
 @pytest.fixture
@@ -214,11 +217,16 @@ class TestConstruction:
     ) -> None:
         handle = IOBase.from_fs(local, f"{root}/trades.parquet")
 
-        # Nothing filesystem-specific leaks into the surface: it is the same
-        # class, with the same pathlib-shaped names.
+        # Nothing filesystem-specific leaks into the surface: the same
+        # contract, with the same pathlib-shaped names. What the class says is
+        # which implementation answers them - the record encoding the name
+        # declares, over the foreign filesystem it stands on.
         assert isinstance(handle, IOBase)
+        assert isinstance(handle, Parquet)
         assert handle.name == "trades.parquet"
         assert str(handle.media_type) == "application/vnd.apache.parquet"
+        # Descending spends the handle, so it is the last thing asked.
+        assert isinstance(handle.into_handle(), FsPath)
 
     def test_a_non_filesystem_first_argument_is_refused_by_name(self) -> None:
         with pytest.raises(ValueError) as failure:
@@ -475,31 +483,37 @@ class TestCustomFilesystems:
         assert (base / "trades" / "part-0.parquet").exists()
         assert pq.read_table(base / "trades" / "part-0.parquet").equals(table())
 
-    def test_a_compressible_name_is_stored_as_the_bytes_it_was_given(
+    def test_a_compressible_name_is_stored_as_the_bytes_the_handle_codes(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
         # PyArrow's output stream infers a codec from the suffix unless told
         # not to, which would gzip a value the handle had already coded - and
-        # store something nothing reads back.
+        # store something nothing reads back. The name declares the coding, so
+        # the handle is the one that applies it, exactly once.
         handle = IOBase.from_fs(local, f"{root}/trades.json.gz")
+        assert isinstance(handle, Gzip)
         handle.write_bytes(b"AAPL")
         handle.close()
 
-        assert pathlib.Path(root, "trades.json.gz").read_bytes() == b"AAPL"
+        assert stdlib_gzip.decompress(pathlib.Path(root, "trades.json.gz").read_bytes()) == (
+            b"AAPL"
+        )
         assert handle.read_bytes() == b"AAPL"
 
     def test_a_content_coding_round_trips_over_a_foreign_filesystem(
         self, local: pafs.LocalFileSystem, root: str
     ) -> None:
-        import gzip
-
-        # The coding belongs to the handle, so what lands is gzip exactly once.
+        # The coding belongs to the handle, so what lands is gzip exactly once
+        # and what the stored-byte role reads is the coded form.
         handle = IOBase.from_fs(local, f"{root}/coded.json.gz")
-        handle.write_bytes(gzip.compress(b'{"symbol":"AAPL"}'))
+        handle.write_bytes(b'{"symbol":"AAPL"}')
         handle.close()
 
         stored = pathlib.Path(root, "coded.json.gz").read_bytes()
-        assert gzip.decompress(stored) == b'{"symbol":"AAPL"}'
+        assert stdlib_gzip.decompress(stored) == b'{"symbol":"AAPL"}'
+        assert IOBase.from_fs(local, f"{root}/coded.json.gz").read_bytes() == (
+            b'{"symbol":"AAPL"}'
+        )
 
     def test_mkdir_creates_the_container_on_the_same_filesystem(self) -> None:
         handler = MemoryHandler()

@@ -287,6 +287,10 @@ impl IOBase for Coded {
         self.as_io().url()
     }
 
+    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+        self.as_io().bound_location()
+    }
+
     fn media_type(&self) -> &MediaType {
         self.as_io().media_type()
     }
