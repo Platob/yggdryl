@@ -140,6 +140,18 @@ pin an unsettled design by implementing a binding first.
 - Storage backends are sibling folders below `holder/`, each containing
   `Path`, `Folder`, and `File`. `holder/local/` is memory-mapped local storage;
   remote backends do not change it or root storage traits.
+- `holder/s3/` speaks the S3 REST API directly - SigV4 over a synchronous
+  HTTP/1.1 client, no SDK, runtime, or object-store layer - behind the
+  non-default `s3` feature. Every operation states its request count on the
+  method that performs it, and the accounting tests assert each one exactly: a
+  ranged read is one ranged `GET`, a whole read or full stream drain is one
+  `GET`, a listing is one request per 1000 entries whether flat or recursive,
+  and a prefix removal is one listing and one bulk delete per 1000 keys.
+  Construction, child resolution, and a trailing-slash location cost nothing.
+  A listing states every entry's size, so a listed object never re-asks; `open`
+  caches an object's metadata and never its bytes. Connections are pooled, so
+  a body is always read to its end. Payloads are signed over plain HTTP and
+  unsigned over HTTPS, where TLS already covers them.
 - Arrow interop lives in `rust/src/arrow/`; recursive cast planning stays with
   `Field`. The default `arrow` feature is optional for schema-only callers.
 - `rust/src/media/{ipc,parquet,avro}/` each own free functions over `IOBase` plus a
@@ -405,7 +417,9 @@ Iceberg contract:
 - Parallel scans honor configured thresholds/width and emit plan order. The
   sequential and parallel paths differ only in speed.
 - Validate exchange formats both directions against an outside implementation;
-  a skipped half is not a pass.
+  a skipped half is not a pass. A wire protocol counts too: a hand-written
+  fake store is written from the same reading of the API as the client, so the
+  two can agree and both be wrong.
 
 ## Datatypes, fields, parsers, and errors
 

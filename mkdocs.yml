@@ -154,6 +154,7 @@ nav:
       - Buffer: holder/backends/buffer.md
       - Local: holder/backends/local.md
       - Filesystems: holder/backends/filesystems.md
+      - Amazon S3: holder/backends/s3.md
       - Buffered: holder/backends/buffered.md
   - Coding:
     - coding/index.md
