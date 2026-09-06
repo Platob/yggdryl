@@ -547,7 +547,12 @@ impl<'a> Parser<'a> {
         let mut dictionary_id = None;
         let mut dictionary_is_ordered = None;
         while self.consume_separator() {
-            if self.consume_label("dictionary_id") || self.consume_label("dict_id") {
+            // The canonical spelling names the nullability first, so it is
+            // probed first: every other argument is rarer than this one.
+            if !saw_nullable && self.consume_label("nullable") {
+                nullable = self.parse_bool("field nullability")?;
+                saw_nullable = true;
+            } else if self.consume_label("dictionary_id") || self.consume_label("dict_id") {
                 if dictionary_id.is_some() {
                     return Err(self.error_here("duplicate dictionary id"));
                 }
@@ -565,11 +570,11 @@ impl<'a> Parser<'a> {
                 }
                 metadata = self.parse_metadata()?;
                 saw_metadata = true;
+            } else if saw_nullable {
+                return Err(self.error_here("unknown field argument"));
             } else {
-                if saw_nullable {
-                    return Err(self.error_here("unknown field argument"));
-                }
-                self.consume_label("nullable");
+                // A bare argument in this position is the nullability, which
+                // the canonical spelling labels and the SQL-ish ones do not.
                 nullable = self.parse_bool("field nullability")?;
                 saw_nullable = true;
             }

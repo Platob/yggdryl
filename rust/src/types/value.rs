@@ -383,6 +383,12 @@ fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
 /// then refused, which keeps the reader's own reason.
 fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
     use DataType as D;
+    // A value already in the datatype's own family has no spelling to read,
+    // and that is what a canonical row is made of, so the walk answers it with
+    // one comparison rather than by falling through every arm below.
+    if dtype.id() == value.id() {
+        return None;
+    }
     match dtype {
         // A text column stores the spelling every tier prints.
         D::Utf8 | D::LargeUtf8 | D::Utf8View if !matches!(value, Scalar::Text(_)) => {
