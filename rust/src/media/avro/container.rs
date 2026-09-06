@@ -682,6 +682,26 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
         self.position >= self.size
     }
 
+    /// Where the current position sits inside the buffered window, when it is
+    /// inside it at all.
+    fn window(&self, count: usize) -> Option<&[u8]> {
+        if self.position < self.start {
+            return None;
+        }
+        let offset = usize::try_from(self.position - self.start).ok()?;
+        self.buffer.get(offset..offset.checked_add(count)?)
+    }
+
+    /// Pull a fresh window starting at the current position.
+    fn refill(&mut self) -> Result<()> {
+        let want = CHUNK.min(usize::try_from(self.size - self.position).unwrap_or(CHUNK));
+        let mut chunk = vec![0; want];
+        self.handle.get().pread_exact(self.position, &mut chunk)?;
+        self.buffer = chunk;
+        self.start = self.position;
+        Ok(())
+    }
+
     /// Serve one byte.
     fn byte(&mut self) -> Result<u8> {
         if self.position >= self.size {
@@ -690,13 +710,8 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
                 SmolStr::new_static("expected another byte, got the end of the container"),
             ));
         }
-        let offset = (self.position - self.start) as usize;
-        if self.position < self.start || offset >= self.buffer.len() {
-            let want = CHUNK.min((self.size - self.position) as usize);
-            let mut chunk = vec![0; want];
-            self.handle.get().pread_exact(self.position, &mut chunk)?;
-            self.buffer = chunk;
-            self.start = self.position;
+        if self.window(1).is_none() {
+            self.refill()?;
         }
         let byte = self.buffer[(self.position - self.start) as usize];
         self.position += 1;
@@ -725,6 +740,13 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
     }
 
     /// Read exactly `count` bytes.
+    ///
+    /// Served from the buffered window whenever it holds them, and filling
+    /// that window when it does not. That is what keeps a header - a magic
+    /// number, a handful of metadata strings, and a sync marker - one read
+    /// rather than one per field, which on a store is one round trip rather
+    /// than seven. A run larger than a window is read straight through,
+    /// because buffering it would only copy it twice.
     fn exact(&mut self, count: usize) -> Result<Vec<u8>> {
         let remaining = self.size.saturating_sub(self.position);
         if count as u64 > remaining {
@@ -732,6 +754,14 @@ impl<'handle, H: IOBase + ?Sized> Pread<'handle, H> {
                 self.position as usize,
                 format_smolstr!("expected {count} bytes, got {remaining} bytes"),
             ));
+        }
+        if self.window(count).is_none() && count <= CHUNK {
+            self.refill()?;
+        }
+        if let Some(window) = self.window(count) {
+            let bytes = window.to_vec();
+            self.position += count as u64;
+            return Ok(bytes);
         }
         let mut bytes = vec![0; count];
         self.handle.get().pread_exact(self.position, &mut bytes)?;

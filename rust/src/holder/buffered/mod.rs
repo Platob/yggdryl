@@ -273,29 +273,59 @@ impl<H: IOBase> Buffered<H> {
         loop {
             let wanted = (buffer.len() as u64).min(size.saturating_sub(offset));
             let pinned = Pinned::for_size(size, page_size);
+            // The bytes one miss already fetched, and the page index they open
+            // at: a run of missing pages is one inner read, and the pages after
+            // the first are served out of it rather than fetched again.
+            let mut run: Option<(u64, Vec<u8>)> = None;
             while filled < wanted {
                 let position = offset + filled;
                 let index = self.options.page_index(position);
                 let page_start = self.options.page_start(index);
                 let within = slot(position - page_start);
                 let take = slot(wanted - filled).min(self.options.page_size() - within);
+                let last = self.options.page_index(offset + wanted - 1);
 
-                // The copy happens inside the lookup so the borrow of the table
-                // ends before the miss path needs it again.
-                let hit = table
-                    .get(index, now, ttl, pinned)
-                    .map(|page| copy_out(page, within, take, &mut buffer[slot(filled)..]));
-                let copied = match hit {
-                    Some(copied) => copied,
-                    None => {
-                        let fetched = self.fetch(page_start)?;
-                        let copied = copy_out(&fetched, within, take, &mut buffer[slot(filled)..]);
-                        // An empty fetch is the end of the value; caching it
-                        // would record an absence the next write has to undo.
-                        if !fetched.is_empty() {
-                            table.insert(index, fetched, now, &self.options, pinned);
-                        }
+                // Serve from the run this request already fetched, if it
+                // reaches this page.
+                let carried = run.as_ref().and_then(|(first, bytes)| {
+                    // The walk only ever moves forward, so this cannot go
+                    // backwards; it is written so it could not if it did.
+                    let skip = slot(index.checked_sub(*first)? * page_size);
+                    let rest = bytes.get(skip..).filter(|rest| !rest.is_empty())?;
+                    Some(rest[..rest.len().min(self.options.page_size())].to_vec())
+                });
+                let copied = match carried {
+                    Some(page) => {
+                        let copied = copy_out(&page, within, take, &mut buffer[slot(filled)..]);
+                        table.insert(index, page, now, &self.options, pinned);
                         copied
+                    }
+                    None => {
+                        run = None;
+                        // The copy happens inside the lookup so the borrow of
+                        // the table ends before the miss path needs it again.
+                        let hit = table
+                            .get(index, now, ttl, pinned)
+                            .map(|page| copy_out(page, within, take, &mut buffer[slot(filled)..]));
+                        match hit {
+                            Some(copied) => copied,
+                            None => {
+                                let pages = self.missing_run(&table, index, last, now, ttl, pinned);
+                                let fetched = self.fetch_run(page_start, pages)?;
+                                let page =
+                                    fetched[..fetched.len().min(self.options.page_size())].to_vec();
+                                let copied =
+                                    copy_out(&page, within, take, &mut buffer[slot(filled)..]);
+                                // An empty fetch is the end of the value;
+                                // caching it would record an absence the next
+                                // write has to undo.
+                                if !page.is_empty() {
+                                    table.insert(index, page, now, &self.options, pinned);
+                                    run = Some((index, fetched));
+                                }
+                                copied
+                            }
+                        }
                     }
                 };
                 filled += copied as u64;
@@ -325,29 +355,72 @@ impl<H: IOBase> Buffered<H> {
         Ok(slot(filled))
     }
 
-    /// Read one page-aligned page from the inner handle.
+    /// The value's length as the cache knows it, asked again only when the
+    /// request would run past what it knows.
     ///
-    /// The result is shorter than a page only at the end of the value, which
-    /// is what makes a short page the record that the value ends there.
-    fn fetch(&self, start: u64) -> Result<Vec<u8>> {
-        let mut page = vec![0_u8; self.options.page_size()];
+    /// That is the one place growth and absence are decided, and it is the
+    /// same rule [`Self::read_at`] already follows for the pages themselves.
+    fn learned_size(&self, wanted_end: u64) -> u64 {
+        let mut table = self.table();
+        match table.known_size() {
+            Some(size) if wanted_end <= size => size,
+            _ => {
+                let size = self.handle.size();
+                table.set_size(size);
+                size
+            }
+        }
+    }
+
+    /// How many pages from `index` through `last` the table cannot answer.
+    ///
+    /// A miss is one inner read whatever it spans, so the run is what decides
+    /// whether a request crossing pages costs one round trip or one each. It
+    /// stops at the first page already held, and at the budget: a run longer
+    /// than the cache is allowed to keep would be read only to be evicted.
+    fn missing_run(
+        &self,
+        table: &PageTable,
+        index: u64,
+        last: u64,
+        now: Instant,
+        ttl: std::time::Duration,
+        pinned: Pinned,
+    ) -> u64 {
+        let cap = (self.options.max_bytes() / self.options.page_size_u64()).max(1);
+        let mut pages = 1;
+        while pages < cap && index + pages <= last && !table.holds(index + pages, now, ttl, pinned)
+        {
+            pages += 1;
+        }
+        pages
+    }
+
+    /// Read `pages` page-aligned pages from the inner handle in one call.
+    ///
+    /// The result is shorter than what was asked for only at the end of the
+    /// value, which is what makes a short last page the record that the value
+    /// ends there.
+    fn fetch_run(&self, start: u64, pages: u64) -> Result<Vec<u8>> {
+        let span = slot(pages * self.options.page_size_u64());
+        let mut run = vec![0_u8; span];
         let mut filled = 0;
-        while filled < page.len() {
+        while filled < run.len() {
             let read = self
                 .handle
-                .pread(start + filled as u64, &mut page[filled..])?;
+                .pread(start + filled as u64, &mut run[filled..])?;
             if read == 0 {
                 break;
             }
             filled += read;
         }
-        if filled < page.len() {
-            page.truncate(filled);
+        if filled < run.len() {
+            run.truncate(filled);
             // The budget counts what a page holds, so a short page gives back
             // the allocation it did not need.
-            page.shrink_to_fit();
+            run.shrink_to_fit();
         }
-        Ok(page)
+        Ok(run)
     }
 
     /// Borrow the cache, treating a poisoned lock as the state it holds.
@@ -439,6 +512,36 @@ impl<H: IOBase> IOBase for Buffered<H> {
         self.read_at(offset, buffer, Instant::now())
     }
 
+    /// Read the whole value, sized from what the cache already knows.
+    ///
+    /// The inherited default asks [`IOBase::size`] and then reads, and this
+    /// wrapper forwards that question to the handle underneath - so a whole
+    /// read cost a metadata round trip on top of the one the read itself was
+    /// about to establish.
+    fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        self.read_range_bytes(0, usize::MAX)
+    }
+
+    /// The same, into a buffer this sizes from what the cache already knows.
+    ///
+    /// The inherited default clamps against [`IOBase::size`], which this
+    /// wrapper forwards to the handle underneath - so a cache hit still cost a
+    /// metadata round trip, on every ranged read, for a bound the cache was
+    /// already holding. Here it is asked again only when the window would run
+    /// past what the cache knows, which is exactly where growth is decided.
+    fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        let wanted_end = offset.saturating_add(length as u64);
+        let available = self.learned_size(wanted_end).saturating_sub(offset);
+        let length = length.min(usize::try_from(available).unwrap_or(usize::MAX));
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(length)
+            .map_err(|_| crate::iobase::oversized(length as u64))?;
+        bytes.resize(length, 0);
+        self.pread_exact(offset, &mut bytes)?;
+        Ok(bytes)
+    }
+
     /// Write through to the inner handle, then fold the write into the cache.
     ///
     /// Every page the write overlapped is patched with the new bytes, or
@@ -449,9 +552,12 @@ impl<H: IOBase> IOBase for Buffered<H> {
         // The guard is taken from the field rather than through `self`, so the
         // one lock this operation needs is held across the write itself.
         let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
-        let previous = match table.known_size() {
-            Some(size) => size,
-            None => self.handle.size(),
+        // A length is worth asking for only when there is something to patch.
+        // A page is never inserted before the size is learned, so a table that
+        // does not know one holds nothing, and the probe would be a round trip
+        // spent to record a fact the next read establishes anyway.
+        let Some(previous) = table.known_size() else {
+            return self.handle.pwrite(offset, bytes);
         };
         let written = self.handle.pwrite(offset, bytes)?;
         let landed = &bytes[..written.min(bytes.len())];
@@ -467,10 +573,10 @@ impl<H: IOBase> IOBase for Buffered<H> {
     /// Resize the inner value and drop every page at or past the new size.
     fn truncate(&mut self, size: u64) -> Result<()> {
         let mut table = self.pages.lock().unwrap_or_else(PoisonError::into_inner);
-        let previous = match table.known_size() {
-            Some(known) => known,
-            None => self.handle.size(),
-        };
+        // A truncation states the new size, so the only thing a length would
+        // decide is which pages to drop - and a table that does not know one
+        // holds none to drop.
+        let previous = table.known_size().unwrap_or(size);
         self.handle.truncate(size)?;
         table.retain_below(previous.min(size), &self.options);
         table.set_size(size);

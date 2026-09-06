@@ -921,7 +921,8 @@ impl StructScalar {
     /// The pairing is exact rather than reconciled - this holds the array the
     /// caller passed beside the field the caller passed, so the two have to
     /// already agree, down to nullability and field metadata. A row that only
-    /// nearly agrees is reconciled by [`Field::cast_arrow_array`] first.
+    /// nearly agrees is reconciled by
+    /// [`ArrowCast::cast_arrow_array`](crate::ArrowCast::cast_arrow_array) first.
     ///
     /// # Errors
     ///

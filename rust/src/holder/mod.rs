@@ -7,8 +7,11 @@
 
 mod buffer;
 pub mod buffered;
+pub mod counted;
 pub mod fs;
 pub mod local;
+#[cfg(feature = "s3")]
+pub mod s3;
 pub mod zip;
 
 pub use buffer::Buffer;
@@ -66,6 +69,15 @@ pub enum Holder {
     FsPath(crate::holder::fs::Path),
     /// A stream-backed file on an Arrow-compatible filesystem.
     FsFile(crate::holder::fs::File),
+    /// A key prefix, or a bucket, on Amazon S3.
+    #[cfg(feature = "s3")]
+    S3Folder(crate::holder::s3::Folder),
+    /// An S3 location that resolves to whatever it turns out to be.
+    #[cfg(feature = "s3")]
+    S3Path(crate::holder::s3::Path),
+    /// One Amazon S3 object.
+    #[cfg(feature = "s3")]
+    S3File(crate::holder::s3::File),
     /// A directory of members inside a ZIP archive, or the archive root.
     ZipFolder(crate::holder::zip::Folder),
     /// A location inside a ZIP archive that resolves to whatever it holds.
@@ -457,6 +469,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipFolder(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipFile(inner) => inner,
@@ -478,6 +496,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipFolder(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipFile(inner) => inner,
@@ -500,6 +524,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipFolder(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipFile(inner) => inner,
@@ -522,6 +552,12 @@ impl Holder {
             Self::FsFolder(inner) => inner,
             Self::FsPath(inner) => inner,
             Self::FsFile(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner,
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner,
             Self::ZipFolder(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipFile(inner) => inner,

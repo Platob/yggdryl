@@ -132,6 +132,26 @@ pub enum Error {
         /// The location addressed, rendered canonically.
         path: SmolStr,
     },
+    /// A remote store refused a request.
+    ///
+    /// Absence and conflict are normalized into [`Self::Absent`] and
+    /// [`Self::Conflict`] at the backend's boundary; this is everything else
+    /// the store said, with its own code and message intact so a caller reads
+    /// the store's verdict rather than a paraphrase of it.
+    Remote {
+        /// The store, such as `s3`.
+        service: &'static str,
+        /// The operation the store names, such as `GetObject`.
+        operation: &'static str,
+        /// The HTTP status the store answered with.
+        status: u16,
+        /// The store's own error code, such as `AccessDenied`.
+        code: SmolStr,
+        /// The store's own message, bounded.
+        message: SmolStr,
+        /// The location addressed, rendered canonically.
+        path: SmolStr,
+    },
     /// Reading or writing codec bytes failed.
     Io(std::io::Error),
     /// An Arrow schema value could not be converted.
@@ -239,6 +259,17 @@ impl fmt::Display for Error {
                 formatter,
                 "expected {operation} on a byte value at {path:?}, got a {kind}"
             ),
+            Self::Remote {
+                service,
+                operation,
+                status,
+                code,
+                message,
+                path,
+            } => write!(
+                formatter,
+                "{service} {operation} at {path:?} failed with {status} {code}: {message}"
+            ),
             Self::Io(error) => write!(formatter, "codec I/O error: {error}"),
             Self::Arrow(error) => write!(formatter, "Arrow schema error: {error}"),
             #[cfg(feature = "iceberg")]
@@ -327,6 +358,34 @@ impl Error {
         Self::Unsupported {
             operation,
             filesystem: SmolStr::new(filesystem.to_string()),
+        }
+    }
+
+    /// Report a remote store's refusal of `operation` at `path`.
+    ///
+    /// The message is bounded to one line of at most 512 bytes: a store's
+    /// text is user-facing, and a page of HTML is not.
+    pub fn remote(
+        service: &'static str,
+        operation: &'static str,
+        status: u16,
+        code: impl AsRef<str>,
+        message: impl AsRef<str>,
+        path: impl fmt::Display,
+    ) -> Self {
+        let message = message.as_ref().lines().next().unwrap_or_default();
+        let end = message
+            .char_indices()
+            .map(|(index, _)| index)
+            .find(|index| *index > 512)
+            .unwrap_or(message.len());
+        Self::Remote {
+            service,
+            operation,
+            status,
+            code: SmolStr::new(code.as_ref()),
+            message: SmolStr::new(&message[..end]),
+            path: SmolStr::new(path.to_string()),
         }
     }
 
@@ -453,6 +512,24 @@ mod tests {
             "/tmp/taken",
         );
         assert!(matches!(conflict, Error::Conflict { .. }));
+    }
+
+    #[test]
+    fn a_remote_refusal_names_the_store_the_operation_and_the_verdict() {
+        let error = Error::remote(
+            "s3",
+            "GetObject",
+            403,
+            "AccessDenied",
+            "Access Denied\nsecond line is dropped",
+            "s3://trades/part.parquet",
+        );
+        assert_eq!(
+            error.to_string(),
+            "s3 GetObject at \"s3://trades/part.parquet\" failed with 403 AccessDenied: Access Denied"
+        );
+        assert!(!error.is_absent());
+        assert!(!error.is_conflict());
     }
 
     #[test]

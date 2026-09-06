@@ -18,6 +18,9 @@ from .._native import (
     IOBase,
     IOCursor,
     Path,
+    S3File,
+    S3Folder,
+    S3Path,
 )
 
 __all__ = [
@@ -31,4 +34,7 @@ __all__ = [
     "IOBase",
     "IOCursor",
     "Path",
+    "S3File",
+    "S3Folder",
+    "S3Path",
 ]
