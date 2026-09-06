@@ -1292,6 +1292,74 @@ fn every_concrete_state_and_the_dispatcher_expose_batch_fill() {
     );
 }
 
+#[test]
+fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
+    // A fill plan descends into Struct children, because those are the ones
+    // that are columns of their own. A holder under any other layout would be
+    // planned by nobody and left at its default, and a containing holder would
+    // then hash that default as though it were an answer - so the schema is
+    // refused where the declaration is.
+    let element = DataType::from_fields([
+        DataType::Int64.nullable_field("value"),
+        holder("inner_digest", DataType::UInt64),
+    ])
+    .unwrap();
+    let item = element.clone().required_field("item");
+
+    let layouts = [
+        DataType::list(item.clone()),
+        DataType::list_view(item.clone()),
+        DataType::large_list(item.clone()),
+        DataType::large_list_view(item.clone()),
+        DataType::fixed_size_list(item.clone(), 1).unwrap(),
+        DataType::map_of(DataType::Utf8, element.clone(), false).unwrap(),
+        DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
+            .unwrap(),
+        DataType::dictionary(DataType::Int32, element.clone()).unwrap(),
+        DataType::dense_union([item.clone()]).unwrap(),
+    ];
+
+    for layout in layouts {
+        let root = root([
+            layout.clone().nullable_field("events"),
+            holder("row_digest", DataType::UInt64),
+        ]);
+        let error = root
+            .as_digest()
+            .apply_arrow_batch(&empty_batch())
+            .expect_err("a holder no plan can reach is not a schema this fills");
+        let error = error.to_string();
+        assert!(error.contains("inner_digest"), "{layout}: {error}");
+        assert!(error.contains("events"), "{layout}: {error}");
+    }
+}
+
+#[test]
+fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
+    // The same reach decides the metadata-ownership rules: `digest:sources` on
+    // a field that is not a holder is refused at the top level, so it cannot
+    // be accepted one layout down.
+    let source = Field::from_parts(
+        "value",
+        DataType::Int64,
+        true,
+        [("digest:sources", "[\"other\"]")],
+    )
+    .unwrap();
+    let element = DataType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap();
+    let root = root([
+        DataType::list(element.required_field("item")).nullable_field("events"),
+        holder("row_digest", DataType::UInt64),
+    ]);
+
+    let error = root
+        .as_digest()
+        .apply_arrow_batch(&empty_batch())
+        .expect_err("digest metadata belongs to a holder, at any depth")
+        .to_string();
+    assert!(error.contains("events.item.value"), "{error}");
+}
+
 fn empty_batch() -> RecordBatch {
     RecordBatch::new_empty(Arc::new(Schema::empty()))
 }

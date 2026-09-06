@@ -95,21 +95,27 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
+The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, the six ASCII datatypes - `ascii`, `ascii(n)`, `country`, `currency`, `mic`, `cfi` - all feed `ascii`, and a geography feeds `geometry`.
+
 | Variant | Tag | Feed after the tag |
 | --- | --- | --- |
 | `Null` | `null` | nothing |
 | `Bool` | `boolean` | `0x00` or `0x01` |
 | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
-| `D128`/`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-| `String` | `utf8` | length `u64` little-endian, then UTF-8 |
+| `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
+| `Text` | `utf8` | length `u64` little-endian, then UTF-8 |
+| `Ascii` | `ascii` | length `u64` little-endian, then the trimmed text |
+| `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
+| `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
 | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
 | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
 | `Geospatial` | `geometry` | length `u64` little-endian, then the WKB |
 | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
 | `Time32`/`Time64` | `time64` | as above |
-| `DateTime64` | `timestamp` | as above |
+| `DateTime64` | `datetime64` | as above |
 | `Duration32`/`Duration64` | `duration64` | as above |
+| `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
 | `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
 | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
 | `Record` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
@@ -264,15 +270,18 @@ assert_ne!(digests.value(0), digests.value(1));
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
 - A `field` whose datatype does not describe the array given to `column_digests` -> `IncompatibleSchema`, never a panic.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
+- A `country`, `currency`, `mic`, `cfi`, `ascii(n)`, or `ascii` cell holding the same text -> one digest; the six compare equal and all feed the `ascii` tag.
+- A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#filling-digest-holders) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.
+- A holder, or `digest:sources`/`digest:algorithm`, under a list, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
 - A holder that selects itself or another holder in the same Struct -> refused.
 - A Struct with several direct holders -> ambiguous; name the intended nested holder by a path.
 - A holder column missing from the batch -> added in the position the root declares.
 - Children below a null Struct -> not read and not changed.
 - A non-default holder under `force=false` -> preserved, though nothing proves which algorithm, seed, or secret produced it.
 - A nullable holder -> null is unfilled and a present zero is kept; a required integer holder reads zero as unfilled.
-- An explicit algorithm differing from the receiver -> a fresh unseeded state, because the receiver's configuration belongs to another algorithm.
+- An algorithm differing from the receiver's, declared or resolved from a holder's width -> a fresh unseeded state, so a seed and a secret reach only the holders sharing that receiver's width.
 - `DigestField::apply_arrow_batch` -> the seedless state's answer, never forcing; a seed, a secret, or a recompute is a state's `apply_arrow_batch`.
 - A signed holder -> bit-cast to the same-width unsigned payload, so `int32`/`uint32` and `int64`/`uint64` schemas answer one digest.
 - A set high bit in a signed holder -> reads as a negative integer, with no overflow and no loss.

@@ -42,8 +42,8 @@ use crate::{
 };
 
 use super::field::{
-    DIGEST_ALGORITHM_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes, holder_accepts,
-    is_digest_source,
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
+    holder_accepts, is_digest_source,
 };
 use super::scalar::{
     write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
@@ -159,8 +159,8 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     batch: RecordBatch,
     force: bool,
 ) -> Result<RecordBatch> {
-    let batch = root.cast_arrow_batch(batch, true)?;
     let plan = StructPlan::new(root.fields(), prototype.algorithm(), "$")?;
+    let batch = root.cast_arrow_batch(batch, true)?;
     let row_count = batch.num_rows();
     let (columns, changed) =
         fill_struct(prototype, &plan, batch.columns(), None, force, row_count)?;
@@ -206,6 +206,9 @@ impl<'field> StructPlan<'field> {
         let mut holders = Vec::new();
         for (index, field) in fields.iter().enumerate() {
             let field_path = child_path(path, field.name());
+            if !field.is_struct() {
+                reject_unreachable_digests(field.dtype(), &field_path, &field_path)?;
+            }
             let sources = field.as_digest().sources().map_err(|error| {
                 digest_sources_error(&field_path, format!("cannot read stored sources: {error}"))
             })?;
@@ -312,11 +315,75 @@ fn digest_algorithm_error(holder: &str, reason: impl std::fmt::Display) -> Error
     digest_metadata_error(DIGEST_ALGORITHM_KEY, holder, reason)
 }
 
+fn digest_role_error(holder: &str, reason: impl std::fmt::Display) -> Error {
+    digest_metadata_error(DIGEST_ROLE_KEY, holder, reason)
+}
+
 fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt::Display) -> Error {
     Error::Core(crate::Error::InvalidMetadataValue {
         key: smol_str::SmolStr::new_static(key),
         reason: smol_str::format_smolstr!("holder {holder}: {reason}"),
     })
+}
+
+/// Refuse a digest declaration no fill plan can reach.
+///
+/// A plan descends into Struct children, because those are the ones that are
+/// columns of their own. Under a list, map, union, dictionary, or run-end
+/// layout a holder is written by nobody and left at its canonical default,
+/// which a containing holder would then read as though it were an answer. The
+/// declaration is refused where it is written rather than silently ignored,
+/// exactly as a `digest:sources` path that descends through a collection is.
+fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
+    // A dictionary encodes a value type rather than a child column, so what it
+    // holds carries no name of its own to extend the path with.
+    if let DataType::Dictionary(dictionary) = dtype {
+        reject_unreachable_digests(dictionary.value(), path, container)?;
+    }
+    for index in 0..dtype.field_len() {
+        let Some(child) = dtype.get_field_at(index) else {
+            continue;
+        };
+        let child_path = child_path(path, child.name());
+        let digest = child.as_digest();
+        if digest.is_holder() {
+            return Err(digest_role_error(
+                &child_path,
+                format!(
+                    "a holder is filled as a Struct column, and no fill descends into {container}"
+                ),
+            ));
+        }
+        if digest
+            .sources()
+            .map_err(|error| {
+                digest_sources_error(&child_path, format!("cannot read stored sources: {error}"))
+            })?
+            .is_some()
+        {
+            return Err(digest_sources_error(
+                &child_path,
+                "digest:sources belongs only to a digest holder",
+            ));
+        }
+        if digest
+            .algorithm()
+            .map_err(|error| {
+                digest_algorithm_error(
+                    &child_path,
+                    format!("cannot read stored algorithm: {error}"),
+                )
+            })?
+            .is_some()
+        {
+            return Err(digest_algorithm_error(
+                &child_path,
+                "digest:algorithm belongs only to a digest holder",
+            ));
+        }
+        reject_unreachable_digests(child.dtype(), &child_path, container)?;
+    }
+    Ok(())
 }
 
 fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
