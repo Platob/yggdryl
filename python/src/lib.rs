@@ -273,6 +273,18 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     )?;
     listing.set_item("io_kinds", IOKind::ALL.map(IOKind::as_str).to_vec())?;
     listing.set_item(
+        "nullabilities",
+        yggdryl::Nullability::ALL
+            .map(yggdryl::Nullability::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
+        "representations",
+        yggdryl::Representation::ALL
+            .map(yggdryl::Representation::as_str)
+            .to_vec(),
+    )?;
+    listing.set_item(
         "compatibility_schemes",
         Scheme::COMPATIBILITY_TARGETS
             .map(|scheme| scheme.as_str().to_owned())
@@ -302,6 +314,12 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
     module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
     module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
+    // The reserved Arrow schema metadata key that carries per-field dictionary
+    // IDs across the C Data Interface, which has no slot for them.
+    module.add(
+        "IPC_DICTIONARY_IDS_KEY",
+        yggdryl::arrow::IPC_DICTIONARY_IDS_KEY,
+    )?;
     Ok(())
 }
 
@@ -326,6 +344,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyFieldPropertyIterator>()?;
     module.add_class::<PyFieldMetadata>()?;
     module.add_class::<PyProtocolField>()?;
+    module.add_class::<types::cast::PyArrowCastPlan>()?;
     module.add_class::<fix::PyFixRegistry>()?;
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;

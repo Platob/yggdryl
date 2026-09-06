@@ -888,6 +888,33 @@ impl PyDataType {
         arrow_scalar_from_core_type(py, value, &self.inner, safe)
     }
 
+    /// Casts one value or one-row `PyArrow` Array to this datatype.
+    ///
+    /// This is `cast_arrow_array` plus the length check that makes a scalar
+    /// answer honest; `Field.cast_arrow_scalar` is the same call with the
+    /// field's name and nullability on top.
+    #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
+    fn cast_arrow_scalar<'py>(
+        &self,
+        py: Python<'py>,
+        value: &Bound<'py, PyAny>,
+        safe: bool,
+        nullability: &str,
+        representation: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        cast_options(safe, nullability, representation)?;
+        if value.is_instance(&py.import("pyarrow")?.getattr("Array")?)? {
+            if value.len()? != 1 {
+                return Err(PyValueError::new_err(format!(
+                    "a scalar cast takes exactly one row, got {}",
+                    value.len()?
+                )));
+            }
+            return self.arrow_scalar(py, &value.get_item(0)?, safe);
+        }
+        self.arrow_scalar(py, value, safe)
+    }
+
     /// Casts one `PyArrow` Array through Yggdryl's native Arrow kernels.
     #[pyo3(signature = (value, *, safe=true, nullability="default", representation="value"))]
     fn cast_arrow_array<'py>(

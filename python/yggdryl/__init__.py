@@ -1,11 +1,12 @@
 """Allocation-conscious types, storage, media, and protocols."""
 
 from . import coding, enums, expression, fix, holder, media, text, types, uri, xxhash
-from ._native import __version__, combined
+from ._native import IPC_DICTIONARY_IDS_KEY, __version__, combined
 from .expression import Bound, BoundStatement, Expression, Statement
 from .holder import IOBase, IOCursor
 from .media import MediaType, MimeType, RecordOptions, TextOptions
 from .types import (
+    ArrowCastPlan,
     AsciiEnum,
     DataType,
     Field,
@@ -18,6 +19,7 @@ from .types.scalar import scalar
 from .uri import Parameters, Uri, Url, Urn
 
 __all__ = [
+    "ArrowCastPlan",
     "AsciiEnum",
     "Bound",
     "BoundStatement",
@@ -40,6 +42,7 @@ __all__ = [
     "Urn",
     "__version__",
     "coding",
+    "IPC_DICTIONARY_IDS_KEY",
     "combined",
     "enums",
     "expression",

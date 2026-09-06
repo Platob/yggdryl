@@ -24,6 +24,8 @@ CODECS: tuple[str, ...]
 DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
 COMPATIBILITY_SCHEMES: tuple[str, ...]
+NULLABILITIES: tuple[str, ...]
+REPRESENTATIONS: tuple[str, ...]
 LEVELS: Mapping[str, int]
 
 __all__ = [
@@ -44,6 +46,8 @@ __all__ = [
     "DIGEST_ALGORITHMS",
     "IO_KINDS",
     "LEVELS",
+    "NULLABILITIES",
+    "REPRESENTATIONS",
     "TIME_UNITS",
     "UNION_MODES",
     "IO_MODES",
