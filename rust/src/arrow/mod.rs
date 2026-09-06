@@ -871,10 +871,15 @@ pub struct StructScalar {
 impl StructScalar {
     /// Validates one non-null Arrow struct row against a canonical schema.
     ///
+    /// The pairing is exact rather than reconciled - this holds the array the
+    /// caller passed beside the field the caller passed, so the two have to
+    /// already agree, down to nullability and field metadata. A row that only
+    /// nearly agrees is reconciled by [`Field::cast_arrow_array`] first.
+    ///
     /// # Errors
     ///
-    /// Returns an error unless the array is exactly one present row with a
-    /// physical Struct layout compatible with `schema`.
+    /// Returns an error unless the array is exactly one present row whose
+    /// Arrow fields are exactly the ones `schema` projects.
     pub fn from_parts(schema: Field, array: StructArray) -> Result<Self> {
         if array.len() != 1 {
             return Err(Error::IncompatibleSchema(format!(
@@ -1232,7 +1237,10 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     Ok(field)
 }
 
-/// Check that a struct array carries exactly the columns a field declares.
+/// Check that a struct array carries exactly the fields a schema projects.
+///
+/// Exactly, including nullability and metadata: this is the pairing check of a
+/// validating constructor, not the reconciliation a read or a write performs.
 ///
 /// # Errors
 ///
