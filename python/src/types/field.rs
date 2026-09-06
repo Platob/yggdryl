@@ -2379,6 +2379,28 @@ impl PyProtocolField {
             self.scheme.as_str()
         )))
     }
+
+    /// The same rule for the `digest:` vocabulary.
+    fn require_digest(&self, property: &str) -> PyResult<()> {
+        if self.scheme == CoreScheme::DIGEST {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "{property} is a digest property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
+
+    /// `sources` is the one property both declaring protocols answer.
+    fn require_sources(&self) -> PyResult<()> {
+        if self.scheme == CoreScheme::PARTITION || self.scheme == CoreScheme::DIGEST {
+            return Ok(());
+        }
+        Err(PyTypeError::new_err(format!(
+            "sources is a partition or digest property, and this is a {} view",
+            self.scheme.as_str()
+        )))
+    }
 }
 
 #[pymethods]
@@ -2689,24 +2711,110 @@ impl PyProtocolField {
     /// column is applied.
     #[getter]
     fn sources(&self, py: Python<'_>) -> PyResult<Option<Vec<String>>> {
-        self.require_partition("sources")?;
+        self.require_sources()?;
         let field = self.borrow_field(py)?;
+        if self.scheme == CoreScheme::DIGEST {
+            return field.inner.as_digest().sources().map_err(value_error);
+        }
         field.inner.as_partition().sources().map_err(value_error)
     }
 
     #[setter]
     fn set_sources(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.require_partition("sources")?;
+        self.require_sources()?;
         let mut paths = Vec::new();
         for path in value.try_iter()? {
             paths.push(path?.extract::<String>()?);
         }
         let mut field = self.borrow_field_mut(value.py())?;
+        if self.scheme == CoreScheme::DIGEST {
+            return field
+                .inner
+                .as_digest_mut()
+                .set_sources(paths)
+                .map_err(value_error);
+        }
         field
             .inner
             .as_partition_mut()
             .set_sources(paths)
             .map_err(value_error)
+    }
+
+    /// Whether this field holds a digest rather than contributing to one.
+    ///
+    /// A holder is what `apply_arrow_batch` fills; every other field in the
+    /// selection is an ordinary column that feeds it.
+    fn is_holder(&self, py: Python<'_>) -> PyResult<bool> {
+        self.require_digest("is_holder")?;
+        Ok(self.borrow_field(py)?.inner.as_digest().is_holder())
+    }
+
+    /// Mark this field as the one that holds the digest.
+    fn set_holder(&self, py: Python<'_>) -> PyResult<()> {
+        self.require_digest("set_holder")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field.inner.as_digest_mut().set_holder().map_err(value_error)
+    }
+
+    /// Remove the role, refusing while holder-only settings are still stored.
+    ///
+    /// A schema can never carry a holder's algorithm or sources on a field
+    /// that is no longer a holder, so those are removed first.
+    fn remove_role(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_role")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .remove_role()
+            .map_err(value_error)
+    }
+
+    /// The algorithm a holder computes, on the `digest` view.
+    ///
+    /// Writing it checks the two invariants the stored form cannot: this
+    /// field is a holder, and its datatype is one the algorithm's exact
+    /// width fits.
+    #[getter]
+    fn algorithm(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_digest("algorithm")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_digest()
+            .algorithm()
+            .map_err(value_error)?
+            .map(yggdryl::DigestAlgorithm::as_str))
+    }
+
+    #[setter]
+    fn set_algorithm(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("algorithm")?;
+        let algorithm = crate::xxhash::algorithm_from_str(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_algorithm(algorithm)
+            .map_err(value_error)
+    }
+
+    /// Remove a holder's declared algorithm, answering what was stored.
+    fn remove_algorithm(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_algorithm")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_algorithm())
+    }
+
+    /// Remove a holder's declared sources, answering what was stored.
+    ///
+    /// A holder with no sources reads every field beside it, so removing the
+    /// list is how a selection goes back to that default.
+    fn remove_sources(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_sources")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_sources())
     }
 
     /// How this partition column derives its value, on the `partition` view.

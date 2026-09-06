@@ -21,6 +21,8 @@ use pyo3::types::{PyBytes, PyString, PyType};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
+use crate::text::codec::PythonReader;
+use crate::types::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::core_field_from_value;
 use crate::types::scalar::PyScalar;
 use crate::value_error;
@@ -41,6 +43,13 @@ pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(pyo3::wrap_pyfunction!(xxh128, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(xxhash_digest, module)?)?;
     module.add_function(pyo3::wrap_pyfunction!(secret_minimum_length, module)?)?;
+    module.add_class::<PyDigester>()?;
+    module.add_function(pyo3::wrap_pyfunction!(row_digests, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(column_digests, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(is_secretable, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(is_seedable, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(algorithm_width, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction!(algorithm_bits, module)?)?;
     Ok(())
 }
 
@@ -84,6 +93,23 @@ fn feed_content(value: &Bound<'_, PyAny>, sink: &mut impl FnMut(&[u8])) -> PyRes
 }
 
 /// Parse an algorithm token, keeping the core's message.
+/// Feed a Python readable to exhaustion through one bounded window.
+///
+/// The reader is drained by the core, which reuses one stream-sized window,
+/// so memory stays flat in the source's length. A Python-side failure is
+/// re-raised as itself rather than as the generic stream error wrapping it.
+fn feed_reader(
+    source: &Bound<'_, PyAny>,
+    sink: &mut impl FnMut(&mut PythonReader<'_>) -> yggdryl::Result<u64>,
+) -> PyResult<u64> {
+    let mut reader = PythonReader::new(source);
+    let written = sink(&mut reader);
+    if let Some(error) = reader.take_error() {
+        return Err(error);
+    }
+    written.map_err(value_error)
+}
+
 pub(crate) fn algorithm_from_str(value: &str) -> PyResult<DigestAlgorithm> {
     DigestAlgorithm::from_str(value).map_err(value_error)
 }
@@ -367,6 +393,24 @@ macro_rules! state {
                 PyDigest::from_core(self.inner.as_digest())
             }
 
+            /// Feed a readable to exhaustion, answering the bytes consumed.
+            ///
+            /// The source is drained through one reused window, so hashing a
+            /// stream costs the window rather than the payload. A failure
+            /// part way through leaves the bytes already fed in the state.
+            fn write_reader(&mut self, source: &Bound<'_, PyAny>) -> PyResult<u64> {
+                let inner = &mut self.inner;
+                feed_reader(source, &mut |reader| inner.write_reader(reader))
+            }
+
+            /// The native-width number of everything fed so far.
+            ///
+            /// `as_digest` answers the same value carrying its algorithm;
+            /// this is the plain integer beside it.
+            fn as_int(&self) -> u128 {
+                payload(self.inner.as_digest())
+            }
+
             /// Reset to the constructed seed and secret, not to a fresh state.
             fn clear(&mut self) {
                 self.inner.clear();
@@ -493,3 +537,179 @@ state!(
         }
     }
 );
+
+/// A streaming digest state whose algorithm is chosen at run time.
+///
+/// This is to the algorithm token what the four named states are to the four
+/// algorithms: one place a value like `"xxh3-64"` read from a configuration
+/// becomes a running state. A caller who writes the algorithm as a literal
+/// uses the named class and pays no dispatch.
+#[pyclass(name = "Digester", module = "yggdryl._native", skip_from_py_object)]
+#[derive(Clone)]
+pub(crate) struct PyDigester {
+    inner: yggdryl::Digester,
+}
+
+#[pymethods]
+impl PyDigester {
+    /// Start a state for one algorithm, optionally seeded.
+    ///
+    /// The seed is one shape for four algorithms, so XXH32 - whose seed is
+    /// 32 bits wide - uses its low half. An algorithm that takes a custom
+    /// secret is constructed through its own class, which is where a secret
+    /// can be spelled.
+    #[new]
+    #[pyo3(signature = (algorithm = "xxh3-64", *, seed = None))]
+    fn new(algorithm: &str, seed: Option<u64>) -> PyResult<Self> {
+        let algorithm = algorithm_from_str(algorithm)?;
+        Ok(Self {
+            inner: match seed {
+                Some(seed) => algorithm.digester_with_seed(seed),
+                None => algorithm.digester(),
+            },
+        })
+    }
+
+    /// The canonical algorithm token this state computes.
+    #[getter]
+    fn algorithm(&self) -> &'static str {
+        self.inner.algorithm().as_str()
+    }
+
+    /// Feed raw bytes, a string, or any buffer.
+    fn write_bytes(&mut self, data: &Bound<'_, PyAny>) -> PyResult<()> {
+        let inner = &mut self.inner;
+        feed_content(data, &mut |bytes| inner.write_bytes(bytes))
+    }
+
+    /// Feed one value's canonical byte representation.
+    fn write_scalar(&mut self, value: &PyScalar) {
+        self.inner.write_scalar(&value.inner);
+    }
+
+    /// Feed a readable to exhaustion, answering the bytes consumed.
+    fn write_reader(&mut self, source: &Bound<'_, PyAny>) -> PyResult<u64> {
+        let inner = &mut self.inner;
+        feed_reader(source, &mut |reader| inner.write_reader(reader))
+    }
+
+    /// Fill default digest holders in one `PyArrow` `RecordBatch`.
+    #[pyo3(signature = (root, batch, *, force = false))]
+    fn apply_arrow_batch<'py>(
+        &self,
+        py: Python<'py>,
+        root: &Bound<'py, PyAny>,
+        batch: &Bound<'py, PyAny>,
+        force: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let root = core_field_from_value(root)?;
+        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        self.inner
+            .apply_arrow_batch(&root, batch, force)
+            .map_err(value_error)?
+            .to_pyarrow(py)
+    }
+
+    /// Answer the digest of everything fed so far, without consuming it.
+    fn as_digest(&self) -> PyDigest {
+        PyDigest::from_core(self.inner.as_digest())
+    }
+
+    /// The native-width number of everything fed so far.
+    fn as_int(&self) -> u128 {
+        payload(self.inner.as_digest())
+    }
+
+    /// Reset to the constructed seed, not to a fresh state.
+    fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Digester({:?})", self.inner.algorithm().as_str())
+    }
+
+    // A state's answer changes as it is fed, so it has no stable hash.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __copy__(&self) -> Self {
+        self.clone()
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.clone()
+    }
+}
+
+/// Digest every row of one `PyArrow` `RecordBatch`.
+///
+/// A row is the ordered sequence of its non-holder columns in schema order,
+/// framed as a sequence so a two-column row and a nested one never collide.
+/// The answer is the exact Arrow width the algorithm names: `uint32` for
+/// XXH32, `uint64` for the two 64-bit algorithms, `fixed_size_binary(16)`
+/// for XXH128.
+#[pyfunction]
+#[pyo3(name = "xxhash_row_digests", signature = (batch, algorithm = "xxh3-64"))]
+pub(crate) fn row_digests<'py>(
+    py: Python<'py>,
+    batch: &Bound<'py, PyAny>,
+    algorithm: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+    let digests = yggdryl::xxhash::arrow::row_digests(&batch, algorithm_from_str(algorithm)?)
+        .map_err(value_error)?;
+    arrow_array_to_pyarrow(py, &digests, None)
+}
+
+/// Digest every cell of one `PyArrow` array under the field that declares it.
+///
+/// There is no row framing here, so a column digest is the value's own feed;
+/// a null feeds the null tag, which is what keeps a null and an empty string
+/// apart.
+#[pyfunction]
+#[pyo3(name = "xxhash_column_digests", signature = (array, field, algorithm = "xxh3-64"))]
+pub(crate) fn column_digests<'py>(
+    py: Python<'py>,
+    array: &Bound<'py, PyAny>,
+    field: &Bound<'py, PyAny>,
+    algorithm: &str,
+) -> PyResult<Bound<'py, PyAny>> {
+    let values = arrow_array_from_pyarrow(array)?;
+    let field = core_field_from_value(field)?;
+    let digests = yggdryl::xxhash::arrow::column_digests(
+        values.as_ref(),
+        &field,
+        algorithm_from_str(algorithm)?,
+    )
+    .map_err(value_error)?;
+    arrow_array_to_pyarrow(py, &digests, None)
+}
+
+/// Return whether an algorithm accepts a custom secret.
+#[pyfunction]
+#[pyo3(name = "xxhash_is_secretable")]
+pub(crate) fn is_secretable(algorithm: &str) -> PyResult<bool> {
+    Ok(algorithm_from_str(algorithm)?.is_secretable())
+}
+
+/// Return whether an algorithm accepts a seed.
+#[pyfunction]
+#[pyo3(name = "xxhash_is_seedable")]
+pub(crate) fn is_seedable(algorithm: &str) -> PyResult<bool> {
+    Ok(algorithm_from_str(algorithm)?.is_seedable())
+}
+
+/// The digest width of an algorithm, in bytes.
+#[pyfunction]
+#[pyo3(name = "xxhash_width")]
+pub(crate) fn algorithm_width(algorithm: &str) -> PyResult<usize> {
+    Ok(algorithm_from_str(algorithm)?.width())
+}
+
+/// The digest width of an algorithm, in bits.
+#[pyfunction]
+#[pyo3(name = "xxhash_bits")]
+pub(crate) fn algorithm_bits(algorithm: &str) -> PyResult<u32> {
+    Ok(algorithm_from_str(algorithm)?.bits())
+}
