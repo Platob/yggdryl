@@ -14,8 +14,9 @@ Six kinds come out of Orchestra and each lands where it can live: fields and
 groups carry a tag so they become registry entries, code sets are a property
 of the field that declares them, datatypes are checked against the crate's
 own logical-name table and stored nowhere, and components and messages have
-no tag so they go to a layouts manifest beside the trees. Nothing is invented
-to make a kind fit.
+no tag so they go to a layouts manifest beside the trees, which also records
+each group's own identifier so a `groupRef` resolves. Nothing is invented to
+make a kind fit.
 
 Usage::
 
@@ -254,6 +255,7 @@ def parse_orchestra(data: bytes) -> dict[str, Any]:
         if counter is None:
             continue
         groups[element.get("name", "")] = {
+            "id": int(element.get("id", "0")),
             "tag": int(counter.get("id", "0")),
             "members": members_of(element),
             "since": version_of(element.get("added")),
@@ -553,6 +555,18 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
         "components": [
             {"name": name, "id": held["id"], "members": held["members"]}
             for name, held in sorted(latest["components"].items())
+        ],
+        # A `groupRef` names the group's own identifier, which is neither a tag
+        # nor a component identifier, so a layout is unwalkable without this
+        # third table. `tag` is the counter the registry holds the group under.
+        "groups": [
+            {
+                "name": name,
+                "id": held["id"],
+                "tag": held["tag"],
+                "members": held["members"],
+            }
+            for name, held in sorted(latest["groups"].items())
         ],
         "messages": [
             {"msgtype": msgtype, "name": held["name"], "id": held["id"], "members": held["members"]}

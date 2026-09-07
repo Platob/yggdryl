@@ -15,6 +15,7 @@ use std::fmt;
 
 use super::entry::FixEntry;
 use super::msg::FixMsg;
+use crate::DataType;
 
 /// The replacement character a lossy decode leaves behind.
 const REPLACEMENT: char = '\u{FFFD}';
@@ -141,17 +142,24 @@ impl<'msg> FixAnomalies<'msg> {
     }
 
     /// The disagreement between a counter and the group it introduces.
+    ///
+    /// Only a counter states a count. A column holding a List of values is a
+    /// tag that arrived twice, not a group, and reading the second
+    /// `PartyRole=1` as a count would invent one - so the column has to be
+    /// the group's own shape, a List of `item` Structs, before its value is
+    /// read as a number of occurrences at all.
     fn miscount(&self, entry: &'msg FixEntry) -> Option<FixAnomaly<'msg>> {
         let stated = entry.value().parse::<i64>().ok()?;
         let held = self.message.get_by_tag(entry.tag())?.as_sequence()?;
         let index = self.message.index_of_tag(entry.tag())?;
-        let name = self
-            .message
-            .as_field()
-            .dtype()
-            .as_fields()?
-            .get(index)?
-            .name();
+        let column = self.message.as_field().dtype().as_fields()?.get(index)?;
+        let (DataType::List(item) | DataType::LargeList(item)) = column.dtype() else {
+            return None;
+        };
+        if !item.dtype().is_nested() {
+            return None;
+        }
+        let name = column.name();
         if i64::try_from(held.len()).is_ok_and(|count| count == stated) {
             return None;
         }

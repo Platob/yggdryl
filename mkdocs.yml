@@ -64,6 +64,7 @@ extra_css:
 
 extra_javascript:
   - assets/playground.js
+  - assets/fix-explorer.js
 
 extra:
   social:
@@ -209,6 +210,9 @@ nav:
     - Values: xxhash/values.md
   - FIX:
     - fix/index.md
+    - Explorer: fix/explorer.md
+    - Decode: fix/decode.md
+    - Encode: fix/encode.md
     - Registry: fix/registry.md
     - Store: fix/store.md
     - Message: fix/message.md
