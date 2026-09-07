@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -30,12 +31,28 @@ STAGE = ROOT / "python" / "wheel-data" / "scripts"
 NAME = "ygg.exe" if sys.platform == "win32" else "ygg"
 
 
-def built(profile: str, target: str | None) -> pathlib.Path:
-    """Where cargo leaves the binary for one profile and target."""
-    directory = ROOT / "target"
-    if target:
-        directory = directory / target
-    return directory / profile / NAME
+def built(messages: str) -> pathlib.Path | None:
+    """Where cargo says it put the binary, rather than where we guessed.
+
+    A build inside the musllinux image targets a triple of its own, so cargo
+    writes to ``target/<triple>/<profile>`` and a path composed here from the
+    profile alone names a file that was never written - staging then fails
+    after a build that worked, which is what the 0.1.2 release did on both
+    musl wheels while every manylinux one passed. ``CARGO_TARGET_DIR`` moves
+    the same path again. The JSON stream carries what cargo actually wrote,
+    so nothing here has to know which of those applied.
+    """
+    for line in messages.splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("reason") != "compiler-artifact":
+            continue
+        produced = message.get("executable")
+        if produced and pathlib.Path(produced).name == NAME:
+            return pathlib.Path(produced)
+    return None
 
 
 def environment() -> dict[str, str]:
@@ -87,14 +104,19 @@ def main() -> int:
         command.append("--release")
     if arguments.target:
         command += ["--target", arguments.target]
+    # The JSON stream names the binary; diagnostics still render to stderr, so
+    # a failing build reads the way it always did.
+    command += ["--message-format", "json-render-diagnostics"]
     print(" ".join(command))
-    result = subprocess.run(command, cwd=ROOT, check=False, env=environment())
+    result = subprocess.run(
+        command, cwd=ROOT, check=False, env=environment(), stdout=subprocess.PIPE, text=True
+    )
     if result.returncode != 0:
         return result.returncode
 
-    source = built("debug" if arguments.debug else "release", arguments.target)
-    if not source.exists():
-        print(f"cargo built nothing at {source}", file=sys.stderr)
+    source = built(result.stdout)
+    if source is None or not source.exists():
+        print("cargo reported no ygg binary to stage", file=sys.stderr)
         return 1
     shutil.copy2(source, staged)
     # The executable bit is what makes the staged file runnable once an
