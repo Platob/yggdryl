@@ -25,22 +25,27 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
-let report
+// npm answers `pack --json` in two envelopes, and the release job installs
+// whatever `npm@latest` is on the day it runs: through npm 11 `pack` buffers
+// each tarball under its array index and prints `[report]`; from npm 12 it
+// keys by package name and prints `{ "<name>": report }`. The report inside
+// is the same object either way. Reading only the array left `report`
+// undefined under npm 12, and the audit died on a TypeError reading `.files`.
+let packed
 try {
-  // npm answers `pack --json` two ways, and the release job installs whatever
-  // `npm@latest` is on the day it runs: through npm 11 it is an array of
-  // reports, one per tarball packed; from npm 12 it is an object keyed by
-  // package name. The report inside is identical, so both spellings are read
-  // rather than one pinned - reading only the array left `report` undefined
-  // under npm 12 and the audit died on a TypeError three lines later.
-  const packed = JSON.parse(result.stdout)
-  report = Array.isArray(packed) ? packed[0] : Object.values(packed)[0]
+  packed = JSON.parse(result.stdout)
 } catch (cause) {
   throw new Error('npm pack --dry-run did not return its JSON report', { cause })
 }
 
-if (!report || !Array.isArray(report.files)) {
-  throw new Error('npm pack --dry-run reported no packed files')
+// Chosen by shape rather than by position: npm merges an `error` key into the
+// object envelope beside the reports, and that key has no `files`.
+const report = (Array.isArray(packed) ? packed : Object.values(packed ?? {}))
+  .find((entry) => entry && Array.isArray(entry.files))
+if (!report) {
+  throw new Error(
+    `npm pack --dry-run named no packed files: ${result.stdout.slice(0, 400)}`,
+  )
 }
 
 const files = new Set(report.files.map(({ path }) => path.replaceAll('\\', '/')))
