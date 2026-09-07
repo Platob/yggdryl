@@ -49,7 +49,7 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
 use super::codec::FixCodec;
 use super::msg::FixMsg;
-use super::{FixBranch, FixRegistry};
+use super::{ENTRIES_COLUMN, FixBranch, FixRegistry};
 
 /// The column a payload is read from when the options name none.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -438,7 +438,7 @@ fn row_of(
     // carries no tag, so it comes back null and is filled here rather than
     // spliced in, which keeps `position_of` an index into the row itself.
     let mut held = message
-        .to_row(projection)
+        .to_row(projection)?
         .as_sequence()
         .map(<[Scalar]>::to_vec)
         .unwrap_or_default();
@@ -553,6 +553,52 @@ fn direction_of(line: &[u8], default: Option<&'static str>) -> Option<&'static s
 }
 
 /// One row's values beside the names its schema gave them.
+/// Emits one arrival entry and everything under it, in wire order.
+///
+/// The materialized levels are walked as they stand; the binary leaf is
+/// decoded through the crate's one JSON parser and walked the same way. A
+/// leaf that cannot be decoded is rejected, never skipped, because a
+/// re-emitted line must reproduce a line that actually arrived - a hole where
+/// a pair was is a different message.
+///
+/// # Errors
+///
+/// Returns the JSON reader's failure on an undecodable leaf.
+fn emit_entry(pair: &[Scalar], separator: u8, line: &mut Vec<u8>) -> Result<()> {
+    if let (Some(key), Some(value)) = (
+        pair.get(2).and_then(Scalar::as_str),
+        pair.get(3).and_then(Scalar::as_str),
+    ) {
+        line.extend_from_slice(key.as_bytes());
+        line.push(b'=');
+        line.extend_from_slice(value.as_bytes());
+        line.push(separator);
+    }
+    let Some(tail) = pair.get(4) else {
+        return Ok(());
+    };
+    if let Some(children) = tail.as_sequence() {
+        for child in children {
+            if let Some(held) = child.as_sequence() {
+                emit_entry(held, separator, line)?;
+            }
+        }
+        return Ok(());
+    }
+    if let Some(bytes) = tail.as_bytes() {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let decoded = crate::from_json_scalar(bytes)?;
+        for child in decoded.as_sequence().unwrap_or_default() {
+            if let Some(held) = child.as_sequence() {
+                emit_entry(held, separator, line)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn named(names: &[SmolStr], row: &Scalar) -> Vec<(SmolStr, Scalar)> {
     let Some(values) = row.as_sequence() else {
         return Vec::new();
@@ -717,9 +763,9 @@ pub fn write_fix(
                 .collect()
         })
         .unwrap_or_default();
-    if !names.iter().any(|held| held == "entries") {
+    if !names.iter().any(|held| held == ENTRIES_COLUMN) {
         return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("entries"),
+            path: SmolStr::new(ENTRIES_COLUMN),
             reason: crate::text::expected_got(
                 "a batch carrying its arrival record",
                 "one holding only lifted columns",
@@ -732,7 +778,7 @@ pub fn write_fix(
         let rows = crate::arrow::batch_to_value(&batch)?;
         for row in rows.as_sequence().unwrap_or_default() {
             let record = named(&names, row);
-            let Some(held) = column(&record, "entries").and_then(Scalar::as_sequence) else {
+            let Some(held) = column(&record, ENTRIES_COLUMN).and_then(Scalar::as_sequence) else {
                 continue;
             };
             let mut line = Vec::new();
@@ -740,16 +786,7 @@ pub fn write_fix(
                 let Some(pair) = entry.as_sequence() else {
                     continue;
                 };
-                let (Some(key), Some(value)) = (
-                    pair.get(2).and_then(Scalar::as_str),
-                    pair.get(3).and_then(Scalar::as_str),
-                ) else {
-                    continue;
-                };
-                line.extend_from_slice(key.as_bytes());
-                line.push(b'=');
-                line.extend_from_slice(value.as_bytes());
-                line.push(options.separator);
+                emit_entry(pair, options.separator, &mut line)?;
             }
             line.push(b'\n');
             sink.write_all(&line)?;

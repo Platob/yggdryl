@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsecurityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -57,7 +57,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "hop",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -112,7 +112,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legalloc",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -235,7 +235,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstipulation",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentscheduleratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstub",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -368,7 +368,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovision",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -640,7 +640,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisioncashsettlpaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -682,7 +682,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisionoptionexercisefixeddate",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -361,7 +361,9 @@ fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
     let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
-    assert_eq!(item.name(), "item");
+    // The occurrence carries the component the counter heads: `NoLegs`
+    // heads occurrences called `Leg`.
+    assert_eq!(item.name(), "leg");
     assert!(!item.is_nullable());
 
     // Everything after the counter, in document order, by the same rules.

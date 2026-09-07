@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamcompoundingdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamcompoundingdatesbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamfixingdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -120,7 +120,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamformula",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -172,7 +172,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstubenddatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -406,7 +406,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -448,7 +448,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventtime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -492,7 +492,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "leginstrumentparty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -554,7 +554,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "leginstrumentpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [

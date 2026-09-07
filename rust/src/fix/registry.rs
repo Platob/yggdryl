@@ -41,9 +41,19 @@ impl Mix {
 /// The generic walk matches a child's name exactly, which is right for a schema
 /// a caller wrote and wrong for a dictionary: the head already folded, so
 /// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
-/// one function disagreeing with itself. The exact walk is still tried first,
-/// because it is the cheap answer and the common one.
+/// one function disagreeing with itself.
+///
+/// A list is stepped through before anything else, including the exact walk.
+/// A repeating group's occurrence is not a path segment - nobody spelling a
+/// path names it - so consulting [`Field::get_field_by_path`] first would let
+/// the occurrence match by its own name, which is exactly what this walk must
+/// not allow now that the occurrence carries the component's name. The exact
+/// walk still runs under the list, because it is the cheap answer and the
+/// common one.
 fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        return descend(item, path);
+    }
     if let Some(held) = field.get_field_by_path(path) {
         return Some(held);
     }
@@ -58,15 +68,18 @@ fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
     }
 }
 
-/// One child by folded name, reaching through a group's item where it has one.
+/// One child by folded name, reaching through a group's occurrence.
 ///
-/// A repeating group is a List of one `item` Struct, so a member is the item's
-/// child and not the list's - and nobody spelling a path says `item`.
+/// A repeating group is a List of one Struct, so a member is that struct's
+/// child and not the list's. The occurrence is transparent: it is recursed
+/// through without consuming a segment and it is never matched by its own
+/// name, because that name is the component's - `NoPartyIDs.PartyID` names
+/// tag 448 and must never answer the struct that happens to share its
+/// spelling. 269 of the 521 shipped groups derive a name a member of their own
+/// struct already carries, so matching the occurrence would shadow every one
+/// of them silently.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
     if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
-        if crate::types::folds_equal(item.name(), name) {
-            return Some(item);
-        }
         return folded_child(item, name);
     }
     field
@@ -466,6 +479,28 @@ impl FixRegistry {
     /// Returns the branch for `id`.
     pub fn branch_of(&self, id: FixId) -> Option<&FixBranch> {
         self.branches.get(&id.branch_digest())
+    }
+
+    /// Returns the branch one digest names, or `None`.
+    ///
+    /// The reverse of the digest an entry stores: a capture's `bid` column
+    /// joins to a whole dialect declaration through this, which is what makes
+    /// the capture self-describing rather than merely legible. A value no
+    /// `u32` can hold names no branch, because the digest is one.
+    pub fn get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch> {
+        u32::try_from(bid)
+            .ok()
+            .and_then(|digest| self.branches.get(&digest))
+    }
+
+    /// Returns the branch one digest names, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns absence naming the digest when no branch carries it.
+    pub fn branch_by_bid(&self, bid: i64) -> Result<&FixBranch> {
+        self.get_branch_by_bid(bid)
+            .ok_or_else(|| absent(format_args!("branch #{bid:08x}")))
     }
 
     /// Returns the branch `name` reaches, canonically or by an alias.

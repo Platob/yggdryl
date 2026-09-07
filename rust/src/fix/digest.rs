@@ -126,29 +126,46 @@ impl FixMsg {
     #[must_use]
     pub fn digest(&self) -> u128 {
         let mut state = DigestAlgorithm::Xxh128.digester();
-        for entry in self.entries() {
-            let tag = entry.tag();
-            if is_envelope(tag) {
-                continue;
-            }
-            state.write_bytes(&tag.to_be_bytes());
-            // The key only where the tag named no field. A resolved entry is
-            // identified by its tag, and two spellings of one tag are one
-            // field; an unresolved one has nothing but its key, so two rows
-            // whose unknown keys differ are two messages.
-            if tag == 0 {
-                let key = entry.key().as_bytes();
-                state.write_bytes(&length_of(key));
-                state.write_bytes(key);
-            }
-            let value = entry.value().as_bytes();
-            state.write_bytes(&length_of(value));
-            state.write_bytes(value);
-        }
+        walk(&mut state, self.entries());
         state
             .as_digest()
             .as_u128()
             .expect("the 128-bit algorithm answers 128 bits")
+    }
+}
+
+/// Feeds one level of entries, pre-order, children under their parent.
+///
+/// After each entry's length-prefixed value bytes comes its child count as
+/// four big-endian bytes - zero included - and then the children themselves,
+/// recursed directly over the slice with nothing allocated. The count is what
+/// separates a parent of two from two flat siblings, so two messages that
+/// differ only below the Arrow materialization depth still hash apart: the
+/// digest walks the Rust tree, which is never truncated.
+///
+/// An excluded envelope tag excludes its entire subtree, exactly as it
+/// excluded its flat entry before entries nested.
+fn walk(state: &mut crate::digest::Digester, entries: &[super::FixEntry]) {
+    for entry in entries {
+        let tag = entry.tag();
+        if is_envelope(tag) {
+            continue;
+        }
+        state.write_bytes(&tag.to_be_bytes());
+        // The key only where the tag named no field. A resolved entry is
+        // identified by its tag, and two spellings of one tag are one
+        // field; an unresolved one has nothing but its key, so two rows
+        // whose unknown keys differ are two messages.
+        if tag == 0 {
+            let key = entry.key().as_bytes();
+            state.write_bytes(&length_of(key));
+            state.write_bytes(key);
+        }
+        let value = entry.value().as_bytes();
+        state.write_bytes(&length_of(value));
+        state.write_bytes(value);
+        state.write_bytes(&(entry.children().len() as u32).to_be_bytes());
+        walk(state, entry.children());
     }
 }
 

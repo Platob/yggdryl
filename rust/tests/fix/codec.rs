@@ -230,7 +230,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     let DataType::List(item) = field.dtype() else {
         panic!("a list, got {}", field.dtype());
     };
-    assert_eq!(item.name(), "item");
+    assert_eq!(item.name(), "partyid");
     assert!(!item.is_nullable());
 }
 
@@ -276,14 +276,29 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
         Some(3),
         "three members, split on the control bytes"
     );
-    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    // The members arrived under the counter pair that heads them, so the
+    // arrival record nests exactly as the wire stated: the counter entry
+    // carries them and the top level does not repeat them.
+    let counter = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 453)
+        .expect("the counter pair");
+    let keys: Vec<&str> = counter.children().iter().map(FixEntry::key).collect();
     assert_eq!(
-        &keys[5..],
+        keys,
         [
             "NOPARTYIDS[0].PARTYID",
             "NOPARTYIDS[0].PARTYIDSOURCE",
             "NOPARTYIDS[0].PARTYROLE",
         ]
+    );
+    assert!(
+        message
+            .entries()
+            .iter()
+            .all(|entry| !entry.key().starts_with("NOPARTYIDS[0].")),
+        "a member rides under its counter, not beside it",
     );
 
     // Which is enough to lift the party the frame is about.
@@ -606,17 +621,25 @@ fn separatorless_group_inference_uses_only_direct_members() {
         )
         .expect("a bridge row");
 
-    let unknown = message
+    // The counter pair arrived, so its members - the unknown residue
+    // included - ride under it in the arrival record.
+    let counter = message
         .entries()
+        .iter()
+        .find(|entry| entry.tag() == 453)
+        .expect("the counter pair");
+    let unknown = counter
+        .children()
         .iter()
         .find(|entry| entry.key() == "NOPARTYIDS[0].VENUEFLAG")
         .expect("the unknown member residue");
     assert_eq!(unknown.tag(), 0);
     assert_eq!(unknown.value(), "XSymbol=TTF");
     assert!(
-        message
-            .entries()
+        counter
+            .children()
             .iter()
+            .chain(message.entries())
             .all(|entry| entry.key() != "NOPARTYIDS[0].Symbol")
     );
     let members = message
@@ -631,18 +654,17 @@ fn separatorless_group_inference_uses_only_direct_members() {
     let numeric_name = reader
         .read_line(b"MSGTYPE=D|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
         .expect("a bridge row");
-    let party = numeric_name
+    let flat: Vec<&FixEntry> = numeric_name
         .entries()
+        .iter()
+        .flat_map(|entry| std::iter::once(entry).chain(entry.children()))
+        .collect();
+    let party = flat
         .iter()
         .find(|entry| entry.key() == "453[0].PARTYID")
         .expect("the one unsplit member");
     assert_eq!(party.value(), "BUYSIDEPARTYROLE=1");
-    assert!(
-        numeric_name
-            .entries()
-            .iter()
-            .all(|entry| entry.key() != "453[0].PARTYROLE")
-    );
+    assert!(flat.iter().all(|entry| entry.key() != "453[0].PARTYROLE"));
 }
 
 /// A row's content can never fail the batch it arrives in.
@@ -662,7 +684,7 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
         .read_line(b"toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE")
         .expect("a bridge row");
 
-    let row = held.to_row(&projection);
+    let row = held.to_row(&projection).unwrap();
     let field = fix_schema(&registry, "fix").expect("the fixed root");
     // The completion is what a batch does with the row; it must not refuse.
     field

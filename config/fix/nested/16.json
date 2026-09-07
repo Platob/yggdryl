@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "throttle",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -76,7 +76,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "throttlemsgtype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -108,7 +108,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "matchinst",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -170,7 +170,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "limitamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -272,7 +272,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "marginreqmtinqqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -304,7 +304,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "marginamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -406,7 +406,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relatedinstrument",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -529,7 +529,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "instrumentscope",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -561,7 +561,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "requestingpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -623,7 +623,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "requestingpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -665,7 +665,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "requestedrisklimittype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -697,7 +697,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partydetail",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -769,7 +769,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partyupdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -851,7 +851,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partyrisklimit",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -963,7 +963,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partydetailsubid",
         "dtype": {
           "type": "struct",
           "fields": [

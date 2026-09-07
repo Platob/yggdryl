@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "linesoftext",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -58,7 +58,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "order",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1079,7 +1079,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "alloc",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1632,7 +1632,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dlvyinst",
         "dtype": {
           "type": "struct",
           "fields": [

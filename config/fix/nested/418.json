@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreamassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdeliverystreamcycle",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -108,7 +108,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdeliverystreamcommoditysource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -140,7 +140,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -172,7 +172,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingoptionexercisedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -214,7 +214,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingoptionexerciseexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -246,7 +246,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingoptionexerciseexpirationdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -288,7 +288,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingmarketdisruptionevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -330,7 +330,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingmarketdisruptionfallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -372,7 +372,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingmarketdisruptionfallbackreferenceprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -484,7 +484,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentschedulefixingday",
         "dtype": {
           "type": "struct",
           "fields": [

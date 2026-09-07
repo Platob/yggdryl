@@ -158,6 +158,7 @@ mod build;
 mod cfb;
 mod codec;
 mod codes;
+mod component;
 mod constants;
 mod crated;
 mod digest;
@@ -182,6 +183,7 @@ pub use batch::{
 };
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
+pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     CRATE_BRANCH, DEFAULT_PARTITION_SECONDS, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG,
@@ -577,7 +579,7 @@ impl FixId {
         branch.is_standard() || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
     }
 
-    const fn pack(branch_digest: u32, tag: i32) -> Self {
+    pub(super) const fn pack(branch_digest: u32, tag: i32) -> Self {
         Self((tag as i64) << 32 | branch_digest as i64)
     }
 }

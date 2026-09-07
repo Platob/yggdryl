@@ -121,6 +121,38 @@ fn tag_positions(field: &Field) -> Vec<(i32, usize)> {
     held
 }
 
+/// Emits entries pre-order: each pair, then everything that arrived under it.
+///
+/// Wire order is arrival order, and a member arrived after the counter that
+/// heads it - so the pre-order walk is the wire, exactly.
+fn emit_bytes(entries: &[FixEntry], separator: u8, bytes: &mut Vec<u8>) {
+    for entry in entries {
+        bytes.extend_from_slice(entry.key().as_bytes());
+        bytes.push(b'=');
+        bytes.extend_from_slice(entry.value().as_bytes());
+        bytes.push(separator);
+        emit_bytes(entry.children(), separator, bytes);
+    }
+}
+
+/// The same walk as text, refusing a control byte at every depth.
+fn emit_text(entries: &[FixEntry], separator: char, text: &mut String) -> Result<()> {
+    for entry in entries {
+        if entry.value().chars().any(char::is_control) {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new(entry.key()),
+                reason: "expected a printable value, got a control byte".into(),
+            });
+        }
+        text.push_str(entry.key());
+        text.push('=');
+        text.push_str(entry.value());
+        text.push(separator);
+        emit_text(entry.children(), separator, text)?;
+    }
+    Ok(())
+}
+
 impl FixMsg {
     /// Builds a message against the process-wide registry.
     ///
@@ -202,12 +234,7 @@ impl FixMsg {
     #[must_use]
     pub fn into_bytes(&self, separator: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
-        for entry in &self.entries {
-            bytes.extend_from_slice(entry.key().as_bytes());
-            bytes.push(b'=');
-            bytes.extend_from_slice(entry.value().as_bytes());
-            bytes.push(separator);
-        }
+        emit_bytes(&self.entries, separator, &mut bytes);
         bytes
     }
 
@@ -220,18 +247,7 @@ impl FixMsg {
     /// round-trip through text.
     pub fn into_text(&self, separator: char) -> Result<String> {
         let mut text = String::new();
-        for entry in &self.entries {
-            if entry.value().chars().any(char::is_control) {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new(entry.key()),
-                    reason: "expected a printable value, got a control byte".into(),
-                });
-            }
-            text.push_str(entry.key());
-            text.push('=');
-            text.push_str(entry.value());
-            text.push(separator);
-        }
+        emit_text(&self.entries, separator, &mut text)?;
         Ok(text)
     }
 

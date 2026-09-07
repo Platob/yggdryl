@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradetype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "alloctrdregtimestamp",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -100,7 +100,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "algosystemmodule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -154,7 +154,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testscenario",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -262,7 +262,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "teststep",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -368,7 +368,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "teststepparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -420,7 +420,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testsystemmodule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -474,7 +474,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testmeasure",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -586,7 +586,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testorder",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -698,7 +698,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testgatewaydetail",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -760,7 +760,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "individualallocsubqtyattribute",
         "dtype": {
           "type": "struct",
           "fields": [

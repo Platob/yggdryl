@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcashsettldatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendaccrualpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -68,7 +68,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendfxtriggerdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -100,7 +100,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -312,7 +312,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -344,7 +344,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legextraordinaryevent",
         "dtype": {
           "type": "struct",
           "fields": [

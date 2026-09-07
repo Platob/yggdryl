@@ -29,7 +29,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
 use super::project::{Projections, is_binary};
-use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -298,7 +298,6 @@ impl<'registry> Builder<'registry> {
     ) {
         let (member_field, member_tag) = self.field_for(member);
         let value = self.typed(&member_field, raw, text);
-        self.record(key, text, member_tag);
 
         // The same resolution the flat counter uses, so a group addressed by
         // its tag and one addressed by its name reach one slot: `FixKey` reads
@@ -319,6 +318,9 @@ impl<'registry> Builder<'registry> {
                 ),
             },
         };
+        // Recorded after the group resolves, so the entry can ride under the
+        // counter pair that heads it - when that pair actually arrived.
+        self.record_under(group_tag, key, text, member_tag);
         let slot = self.slot_for(group_field, group_tag);
         slot.group = true;
         while slot.occurrences.len() <= occurrence {
@@ -348,8 +350,37 @@ impl<'registry> Builder<'registry> {
         }
     }
 
+    /// Records what arrived under the counter that heads it, where one did.
+    ///
+    /// The counter pair itself must have arrived: an entry is the arrival
+    /// record, and a parent nobody sent would be an invention. A member whose
+    /// counter never arrived stays flat at the top, exactly as a wire with no
+    /// stated structure keeps it, and the latest arrival of the counter is
+    /// the one that takes the member - which is what nests each occurrence
+    /// under its own heading.
+    fn record_under(&mut self, counter_tag: i32, key: &str, value: &str, tag: i32) {
+        let entry = FixEntry::new(tag, key, value);
+        let mut entry = if tag == 0 {
+            entry
+        } else {
+            entry.with_branch(&self.branch)
+        };
+        if counter_tag != 0 {
+            for root in self.entries.iter_mut().rev() {
+                match root.adopt(counter_tag, entry) {
+                    None => return,
+                    Some(back) => entry = back,
+                }
+            }
+        }
+        self.entries.push(entry);
+    }
+
     /// Records what arrived, whatever the row made of it.
     fn record(&mut self, key: &str, value: &str, tag: i32) {
+        // A key that named no field resolved in no dialect, so it keeps the
+        // standard digest the constructor set; anything the dictionary
+        // answered carries the branch that answered it.
         let entry = FixEntry::new(tag, key, value);
         let entry = if tag == 0 {
             entry
@@ -423,7 +454,9 @@ impl Slot {
             // They have no field of their own, so they are what `field_for`
             // typed them as - text.
             let absent = self.values.iter().any(Scalar::is_null);
-            let item = DataType::Utf8.named_field("item", absent);
+            // One group has one occurrence name whatever the occurrence's
+            // type, so the stand-in is named exactly as a member-bearing one.
+            let item = DataType::Utf8.named_field(occurrence_name(&self.field), absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
             let _ = list.set_metadata(self.field.as_metadata().iter());
@@ -445,7 +478,10 @@ impl Slot {
             // A tag appearing twice stays two occurrences in input order: a
             // map keyed by tag would lose a repeating group. Indices may be
             // gapped, and a gap is null, so the item takes that nullability.
-            let mut item = self.field.clone().with_name("item");
+            // Not a group: no counter arrived, so there is no component to
+            // name. The occurrence takes the repeated field's own name, which
+            // is what keeps this shape distinguishable from a repeating group.
+            let mut item = self.field.clone().with_name(self.field.name().to_owned());
             item.set_nullable(absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
@@ -469,7 +505,8 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from_fields(member_fields.clone())?.required_field("item");
+        let mut item = DataType::from_fields(member_fields.clone())?
+            .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if self.occurrences.iter().any(Vec::is_empty) {
             item.set_nullable(true);

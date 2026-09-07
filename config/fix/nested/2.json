@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "routingid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -47,7 +47,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "stipulation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -90,7 +90,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mdentrytype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -123,7 +123,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mdentry",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1225,7 +1225,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quoteentry",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1572,7 +1572,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quoteset",
         "dtype": {
           "type": "struct",
           "fields": [

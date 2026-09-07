@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "position",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -117,7 +117,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlying",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -180,7 +180,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quotequalifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -213,7 +213,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "posamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -356,7 +356,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested2partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -419,7 +419,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "trdregtimestamp",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -564,7 +564,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlinst",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -813,7 +813,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlpartyid",
         "dtype": {
           "type": "struct",
           "fields": [

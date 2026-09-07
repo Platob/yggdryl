@@ -123,14 +123,15 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
 }
 
 #[test]
-fn a_repeating_group_is_a_list_of_one_item_struct_keyed_by_its_counter() {
+fn a_repeating_group_is_a_list_of_one_component_struct_keyed_by_its_counter() {
     let registry = seed();
     let parties = registry.field_by_tag(453).expect("NoPartyIDs");
     assert_eq!(parties.name(), "nopartyids");
     let DataType::List(item) = parties.dtype() else {
         panic!("a list, got {}", parties.dtype());
     };
-    assert_eq!(item.name(), "item");
+    // `NoPartyIDs` heads occurrences called `PartyID`, folded.
+    assert_eq!(item.name(), "partyid");
     assert!(!item.is_nullable());
     let members: Vec<&str> = item
         .dtype()

@@ -443,7 +443,11 @@ impl FixRegistry {
 fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
     let mut record = vec![
         ("name", Scalar::from(branch.name())),
-        ("digest", Scalar::from(branch.digest())),
+        // The published join key, not a cache: the folded-name derivation is
+        // a one-way XXH32, so an external reader joining a capture's `bid`
+        // column to this manifest could not reproduce it otherwise. Spelled
+        // and typed exactly as that column is.
+        ("bid", Scalar::from(i64::from(branch.digest()))),
         ("version", Scalar::from(branch.version())),
     ];
     // Written only when there are any, so a dictionary that declares no
@@ -470,7 +474,7 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
             reason: crate::text::expected_got("a FIX branch record", value.kind()),
         });
     };
-    const KEYS: [&str; 4] = ["name", "digest", "version", "aliases"];
+    const KEYS: [&str; 4] = ["name", "bid", "version", "aliases"];
     if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
         return Err(Error::InvalidRecord {
             path: key.clone(),
@@ -516,20 +520,20 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
         }
         branch = branch.with_aliases(held)?;
     }
-    if let Some(digest) = record.get("digest") {
-        let declared = digest
-            .as_u64()
+    if let Some(bid) = record.get("bid") {
+        let declared = bid
+            .as_i64()
             .and_then(|value| u32::try_from(value).ok())
             .ok_or_else(|| Error::InvalidRecord {
-                path: "digest".into(),
-                reason: "a branch digest must be a uint32".into(),
+                path: "bid".into(),
+                reason: "a branch bid must fit a uint32".into(),
             })?;
         if declared != branch.digest() {
             return Err(Error::InvalidRecord {
                 path: branch.name().into(),
                 reason: crate::text::expected_got(
-                    format_args!("the derived digest {}", branch.digest()),
-                    format_args!("declared digest {declared}"),
+                    format_args!("the derived bid {}", branch.digest()),
+                    format_args!("declared bid {declared}"),
                 ),
             });
         }

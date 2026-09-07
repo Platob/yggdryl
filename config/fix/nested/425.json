@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstubstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -268,7 +268,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratefxconversion",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -320,7 +320,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -595,7 +595,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrateinformationsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -647,7 +647,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrateprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -709,7 +709,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratevaluationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -741,7 +741,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratevaluationdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -783,7 +783,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsettlmethodelectiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

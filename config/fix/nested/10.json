@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "sidetrdregts",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -59,7 +59,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "instrumentparty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -122,7 +122,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "instrumentpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -165,7 +165,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "undlyinstrumentparty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -228,7 +228,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "undlyinstrumentpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [

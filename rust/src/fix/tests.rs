@@ -12,7 +12,7 @@ use super::store::shard_of;
 use crate::holder::local::Folder;
 use crate::types::MsgType;
 use crate::{
-    DataType, Error, Field, FixBranch, FixCode, FixId, FixKey, FixLineageEntry, FixMsg,
+    DataType, Error, Field, FixBranch, FixCode, FixEntry, FixId, FixKey, FixLineageEntry, FixMsg,
     FixPedigree, FixRegistry, MimeType, Scalar, Version,
 };
 
@@ -1623,7 +1623,7 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert_eq!(
         registry
-            .field_by_path("nopartyids.item.PartyRole", Some(&FixBranch::STANDARD))
+            .field_by_path("nopartyids.PartyRole", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "PartyRole"
@@ -3094,4 +3094,477 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     bare.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
     assert_eq!(field, before);
+}
+
+/// The committed dictionary, loaded through the store the way every seed case
+/// loads it.
+fn committed() -> FixRegistry {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap()
+}
+
+#[test]
+fn the_component_rule_has_one_case_for_every_arm() {
+    use super::component::component_name;
+
+    // Arm 1, Latin, and the only arm that can lose case inside the stem.
+    assert_eq!(
+        component_name("NoContractualMatrices").as_deref(),
+        Some("ContractualMatrix")
+    );
+    assert_eq!(
+        component_name("NoLegContractualMatrices").as_deref(),
+        Some("LegContractualMatrix")
+    );
+    // Matched case-insensitively, and the replacement takes the case it found.
+    assert_eq!(
+        component_name("Noindices").as_deref(),
+        None,
+        "No + lowercase is not a counter"
+    );
+    assert_eq!(component_name("NoXindices").as_deref(), Some("Xindex"));
+    // R5 preserves the case of the *first* replaced character, not the run.
+    assert_eq!(component_name("NoXINDICES").as_deref(), Some("XIndex"));
+    assert_eq!(component_name("NoAppendices").as_deref(), Some("Appendix"));
+    assert_eq!(component_name("NoVertices").as_deref(), Some("Vertex"));
+
+    // Arm 2, already singular, tested byte-exact so an uppercase S survives.
+    assert_eq!(
+        component_name("NoSideTrdRegTS").as_deref(),
+        Some("SideTrdRegTS")
+    );
+    assert_eq!(
+        component_name("NoInstrumentParty").as_deref(),
+        Some("InstrumentParty")
+    );
+
+    // Arm 3, `ss`, which no shipped counter reaches.
+    assert_eq!(component_name("NoAddress").as_deref(), Some("Address"));
+    assert_eq!(component_name("NoBusiness").as_deref(), Some("Business"));
+
+    // Arm 4, `ies`, and the length guard that keeps `Ties` off it.
+    assert_eq!(component_name("NoParties").as_deref(), Some("Party"));
+    assert_eq!(
+        component_name("NoTies").as_deref(),
+        Some("Tie"),
+        "four bytes falls to arm 7"
+    );
+
+    // Arm 5, `sses`.
+    assert_eq!(component_name("NoClasses").as_deref(), Some("Class"));
+    assert_eq!(component_name("NoAddresses").as_deref(), Some("Address"));
+
+    // Arm 6, sibilant `es`, which no shipped counter reaches either.
+    assert_eq!(component_name("NoBoxes").as_deref(), Some("Box"));
+    assert_eq!(component_name("NoBranches").as_deref(), Some("Branch"));
+    assert_eq!(component_name("NoBrushes").as_deref(), Some("Brush"));
+    assert_eq!(component_name("NoBuzzes").as_deref(), Some("Buzz"));
+
+    // Arm 7, the default, which never removes more than the final `s` - so a
+    // trailing uppercase run survives and no acronym pass is needed.
+    assert_eq!(component_name("NoPartyIDs").as_deref(), Some("PartyID"));
+    assert_eq!(component_name("NoLegs").as_deref(), Some("Leg"));
+
+    // The two results that read oddly and are still right.
+    assert_eq!(
+        component_name("NoLinesOfText").as_deref(),
+        Some("LinesOfText")
+    );
+    assert_eq!(component_name("NoOfSecSizes").as_deref(), Some("OfSecSize"));
+
+    // Not a counter spelling: the caller keeps the counter's own name. These
+    // are the shipped `No...` non-counters the rule must never claim.
+    for held in [
+        "NotifyBrokerOfCredit",
+        "NonCashDividendTreatment",
+        "Notification",
+        "No",
+        "N",
+        "",
+        "Nothing",
+    ] {
+        assert_eq!(component_name(held), None, "{held}");
+    }
+}
+
+#[test]
+fn the_component_rule_names_every_shipped_group_distinctly() {
+    use super::component::component_name;
+
+    let registry = committed();
+    let mut derived: Vec<(SmolStr, SmolStr)> = Vec::new();
+    for field in registry.iter() {
+        if !matches!(field.dtype(), DataType::List(_) | DataType::LargeList(_)) {
+            continue;
+        }
+        let display = field
+            .display()
+            .unwrap_or_else(|| panic!("{} states no display", field.name()));
+        let name = component_name(display)
+            .unwrap_or_else(|| panic!("{display} is a counter the rule does not name"));
+        derived.push((SmolStr::new(display), name));
+    }
+
+    assert_eq!(derived.len(), 521, "shipped repeating groups");
+    let distinct: HashSet<&SmolStr> = derived.iter().map(|(_, name)| name).collect();
+    assert_eq!(
+        distinct.len(),
+        521,
+        "one component name per group, none shared"
+    );
+    // Nothing derives to an empty name, and nothing keeps its counter spelling.
+    for (display, name) in &derived {
+        assert!(!name.is_empty(), "{display}");
+        assert_ne!(name, display, "{display}");
+    }
+}
+
+#[test]
+fn the_fix_walk_reaches_through_a_group_and_never_matches_its_occurrence() {
+    use super::component::component_name;
+
+    let registry = committed();
+
+    // The decisive case: `PartyID` under `NoPartyIDs` is tag 448, the member,
+    // and never the occurrence struct that will carry the same spelling.
+    let held = registry
+        .field_by_path("NoPartyIDs.PartyID", None)
+        .expect("the member, by its component-shaped spelling");
+    assert_eq!(held.as_fix().tag().unwrap(), Some(448));
+    assert_eq!(held.name(), "partyid");
+
+    // Every group whose derived name collides with a member of its own struct
+    // must resolve to that member. This is the assertion the item rename would
+    // otherwise break silently, so it is pinned before the rename and again
+    // after it.
+    let mut shadowed = 0_usize;
+    for field in registry.iter() {
+        let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
+            continue;
+        };
+        let display = field.display().expect("a counter states a display");
+        let derived = component_name(display).expect("a counter the rule names");
+        let Some(member) = item
+            .fields()
+            .iter()
+            .find(|held| crate::types::folds_equal(held.name(), &derived))
+        else {
+            continue;
+        };
+        shadowed += 1;
+        let path = format!("{}.{derived}", field.name());
+        let reached = registry
+            .field_by_path(&path, None)
+            .unwrap_or_else(|error| panic!("{path}: {error}"));
+        assert_eq!(
+            reached.name(),
+            member.name(),
+            "{path} reached the occurrence"
+        );
+        assert_eq!(
+            reached.as_fix().tag().unwrap(),
+            member.as_fix().tag().unwrap(),
+            "{path}",
+        );
+    }
+    assert_eq!(
+        shadowed, 269,
+        "groups whose component name a member already carries"
+    );
+
+    // An occurrence is not a path segment, so nobody may spell one.
+    assert!(
+        registry
+            .get_field_by_path("NoPartyIDs.item.PartyRole", None)
+            .is_none()
+    );
+    assert!(
+        registry
+            .get_field_by_path("NoPartyIDs.item", None)
+            .is_none()
+    );
+}
+
+#[test]
+fn every_shipped_occurrence_carries_the_name_the_rust_rule_derives() {
+    let registry = committed();
+    let mut named = 0_usize;
+    for field in registry.iter() {
+        let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
+            continue;
+        };
+        named += 1;
+        // The cross-host assertion: the dictionary generator wrote these names
+        // in Python, and the Rust rule must answer the same thing for every
+        // one of them or the two hosts have forked.
+        assert_eq!(
+            item.name(),
+            super::occurrence_name(field),
+            "{} occurrence",
+            field.name(),
+        );
+        // The occurrence carries only its name: no display, no `fix:tag`, no
+        // metadata at all, because its display is the counter's and storing a
+        // derivable fact twice is what N4 forbids.
+        assert!(item.as_metadata().is_empty(), "{} occurrence", field.name());
+        assert_eq!(item.display(), None, "{} occurrence", field.name());
+        assert!(
+            item.as_fix().tag().unwrap().is_none(),
+            "{} occurrence",
+            field.name()
+        );
+        assert!(!item.is_nullable(), "{} occurrence", field.name());
+        assert_ne!(item.name(), "item", "{} occurrence", field.name());
+    }
+    assert_eq!(named, 521, "shipped repeating groups");
+}
+
+#[test]
+fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
+    // The measured footprint, so the report states the tree's number rather
+    // than an estimate. Four members: `i32`, `i64`, and two `SmolStr`.
+    //
+    // The shape this replaced, laid out by the same rules, is declared beside
+    // it so the saving is measured rather than reasoned about: a name is a
+    // whole `SmolStr` where a digest is eight bytes.
+    struct Was {
+        _tag: i32,
+        _branch: Option<SmolStr>,
+        _key: SmolStr,
+        _value: SmolStr,
+    }
+    assert_eq!(std::mem::size_of::<Was>(), 80, "the branch-name entry");
+    // 80 before this work; 64 once the name became a digest; 88 once the
+    // children vector joined. The digest saved sixteen bytes and the
+    // recursion spent twenty-four, and an entry that never nests allocates
+    // nothing for it.
+    assert_eq!(
+        std::mem::size_of::<FixEntry>(),
+        88,
+        "one entry, as this tree lays it out",
+    );
+
+    let cme = cme();
+    let mut registry =
+        FixRegistry::from_fields([tagged("Symbol", 55), identified("VenueSym", &cme, 5_055)])
+            .unwrap();
+    registry.set_branch(cme.clone()).unwrap();
+    let registry = Arc::new(registry);
+
+    // The reverse resolution the digest exists for.
+    assert_eq!(
+        registry.branch_by_bid(i64::from(cme.digest())).unwrap(),
+        &cme
+    );
+    // 0 is the standard branch and resolves to it, so a reader joining the
+    // column never meets a row it cannot explain.
+    assert_eq!(registry.get_branch_by_bid(0), Some(&FixBranch::STANDARD),);
+    // A value no digest can hold names no branch rather than panicking.
+    assert!(registry.get_branch_by_bid(-1).is_none());
+    assert!(
+        registry
+            .get_branch_by_bid(i64::from(u32::MAX) + 1)
+            .is_none()
+    );
+    let refused = registry.branch_by_bid(-1).unwrap_err();
+    assert!(refused.is_absent(), "{refused}");
+
+    // Every entry states a dialect, the standard one included, and a standard
+    // row states 0 rather than nothing.
+    let codec = super::FixCodec::new(Arc::clone(&registry)).with_branch(&cme);
+    let msg = codec
+        .read_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|")
+        .expect("a readable frame");
+    let entries = msg.entries();
+    assert!(!entries.is_empty());
+    for entry in entries {
+        assert!(entry.bid() >= 0, "{}", entry.key());
+    }
+    let venue = entries.iter().find(|held| held.tag() == 5_055).unwrap();
+    assert_eq!(venue.bid(), i64::from(cme.digest()));
+    assert_eq!(
+        registry.branch_by_bid(venue.bid()).unwrap(),
+        &cme,
+        "the digest resolves to the dialect that answered the pair",
+    );
+    // A key that named no field at all resolved in no dialect, which is 0.
+    let unknown = entries
+        .iter()
+        .find(|held| held.tag() == 0)
+        .expect("the key no dictionary explained");
+    assert_eq!(unknown.bid(), i64::from(FixBranch::STANDARD.digest()));
+    assert_eq!(unknown.bid(), 0);
+    assert_eq!(unknown.id(), None, "no tag is no identity");
+
+    // The identity an entry names is packed from the digest it stores.
+    assert_eq!(venue.id().unwrap(), FixId::from_parts(&cme, 5_055).unwrap());
+}
+
+#[test]
+fn the_entry_column_states_a_non_null_bid() {
+    let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
+    for column in [super::ENTRIES_COLUMN, super::UNMAPPED_COLUMN] {
+        let held = root
+            .fields()
+            .iter()
+            .find(|field| field.name() == column)
+            .unwrap_or_else(|| panic!("a {column} column"));
+        let DataType::List(item) = held.dtype() else {
+            panic!("a list, got {}", held.dtype());
+        };
+        // Exactly three fixentry levels on every root-to-leaf path, each with
+        // the same five members, the fifth a non-null nofixentries that is a
+        // deeper list twice and the binary leaf at the bottom.
+        let mut held = item;
+        for level in 1..=3 {
+            assert_eq!(held.name(), "fixentry", "{column} level {level}");
+            assert!(!held.is_nullable(), "{column} level {level}");
+            let members = held.dtype().as_fields().expect("an occurrence struct");
+            let names: Vec<&str> = members.iter().map(Field::name).collect();
+            assert_eq!(
+                names,
+                ["tag", "bid", "key", "value", "nofixentries"],
+                "{column} level {level}",
+            );
+            let bid = &members[1];
+            assert_eq!(bid.dtype(), &DataType::Int64, "{column} level {level}");
+            assert!(
+                !bid.is_nullable(),
+                "{column} bid carries no validity bitmap"
+            );
+            let tail = &members[4];
+            assert!(!tail.is_nullable(), "{column} level {level} tail");
+            match tail.dtype() {
+                DataType::List(deeper) if level < 3 => held = deeper,
+                DataType::Binary if level == 3 => break,
+                other => panic!("{column} level {level}: {other}"),
+            }
+        }
+    }
+}
+
+/// A chain of entries `depth` long, each child the sole passenger of the one
+/// above, ending in a leaf pair carrying `value`.
+fn nested_entries(depth: usize, value: &str) -> Vec<FixEntry> {
+    let mut held = FixEntry::new(523, "523", value);
+    for level in (1..depth).rev() {
+        let mut parent = FixEntry::new(453, "453", level.to_string());
+        parent.push(held);
+        held = parent;
+    }
+    vec![FixEntry::new(35, "35", "D"), held]
+}
+
+#[test]
+fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
+    let registry = Arc::new(committed());
+    let root = DataType::from_fields([DataType::Utf8.nullable_field("35")])
+        .unwrap()
+        .required_field("D");
+    let message = |value: &str| {
+        FixMsg::from_parts(
+            Arc::clone(&registry),
+            root.clone(),
+            Scalar::from_sequence([Scalar::from("D")]),
+            nested_entries(5, value),
+        )
+        .unwrap()
+    };
+    let deep = message("x");
+
+    // The Rust tree is never truncated: all five levels are held whole.
+    let mut held = &deep.entries()[1];
+    let mut levels = 1;
+    while let Some(next) = held.children().first() {
+        held = next;
+        levels += 1;
+    }
+    assert_eq!(levels, 5, "the record holds what the wire nested");
+
+    // The Arrow value materializes exactly three fixentry levels; the fourth
+    // and fifth fold into a non-empty leaf.
+    let projection = super::FixProjection::new(&registry, "row").unwrap();
+    let row = deep.to_row(&projection).unwrap();
+    let columns = row.as_sequence().expect("a row").to_vec();
+    let entries = columns[columns.len() - 2]
+        .as_sequence()
+        .expect("the arrival column");
+    let level1 = entries[1].as_sequence().expect("the counter entry");
+    let level2 = level1[4].as_sequence().expect("one child list")[0]
+        .as_sequence()
+        .expect("the level-2 entry")
+        .to_vec();
+    let level3 = level2[4].as_sequence().expect("one child list")[0]
+        .as_sequence()
+        .expect("the level-3 entry")
+        .to_vec();
+    let leaf = level3[4].as_bytes().expect("the binary leaf");
+    assert!(!leaf.is_empty(), "two levels folded into it");
+
+    // The leaf recovers exactly the folded entries through the one JSON
+    // parser this crate has: level 4 carrying level 5.
+    let decoded = crate::from_json_scalar(leaf).expect("a decodable leaf");
+    let folded = decoded.as_sequence().expect("the folded children");
+    assert_eq!(folded.len(), 1);
+    let level4 = folded[0].as_sequence().expect("the level-4 entry").to_vec();
+    assert_eq!(level4[0].as_i64(), Some(453));
+    let level5 = level4[4].as_sequence().expect("its children")[0]
+        .as_sequence()
+        .expect("the level-5 entry")
+        .to_vec();
+    assert_eq!(level5[0].as_i64(), Some(523));
+    assert_eq!(level5[3].as_str(), Some("x"));
+
+    // A flat sibling's child list is empty: nothing arrived under it and
+    // nothing was folded for it.
+    let flat = entries[0].as_sequence().expect("the msgtype entry");
+    assert_eq!(flat[4].as_sequence().map(<[Scalar]>::len), Some(0));
+
+    // Wire emission walks the whole tree pre-order, so what comes back is
+    // what went in.
+    let bytes = deep.into_bytes(b'|');
+    assert_eq!(
+        std::str::from_utf8(&bytes).unwrap(),
+        "35=D|453=1|453=2|453=3|453=4|523=x|",
+    );
+
+    // Two messages that differ only below the materialization depth still
+    // hash apart, because the digest walks the untruncated tree.
+    assert_ne!(message("x").digest(), message("y").digest());
+    // And a parent of one is not a flat pair beside one: the hashed child
+    // count is what separates them.
+    let nested = FixMsg::from_parts(
+        Arc::clone(&registry),
+        root.clone(),
+        Scalar::from_sequence([Scalar::from("D")]),
+        nested_entries(2, "x"),
+    )
+    .unwrap();
+    let flattened = FixMsg::from_parts(
+        Arc::clone(&registry),
+        root.clone(),
+        Scalar::from_sequence([Scalar::from("D")]),
+        vec![
+            FixEntry::new(35, "35", "D"),
+            FixEntry::new(453, "453", "1"),
+            FixEntry::new(523, "523", "x"),
+        ],
+    )
+    .unwrap();
+    assert_ne!(nested.digest(), flattened.digest());
+
+    // Depth is a materialization concern, never a refusal: thirty levels
+    // read, fold and type without a complaint.
+    let towering = FixMsg::from_parts(
+        Arc::clone(&registry),
+        root.clone(),
+        Scalar::from_sequence([Scalar::from("D")]),
+        nested_entries(30, "deep"),
+    )
+    .unwrap();
+    let row = towering.to_row(&projection).expect("no depth refusal");
+    assert!(row.as_sequence().is_some());
 }

@@ -423,6 +423,70 @@ def codes_document(codes: list[dict[str, Any]]) -> str:
     return canonical_json({"codes": rendered})
 
 
+# The Latin plurals, longest first so a longer suffix is never shadowed. This
+# mirrors `fix::component::LATIN`; the cross-host test asserts the two agree
+# for every shipped group.
+LATIN = (
+    ("appendices", "appendix"),
+    ("matrices", "matrix"),
+    ("vertices", "vertex"),
+    ("indices", "index"),
+)
+
+
+def component_name(counter_display: str) -> str | None:
+    """Return the component name headed by a repeating-group counter.
+
+    The Python half of one rule; `rust/src/fix/component.rs` is the other and
+    owns its reasoning. Reads the counter's display spelling, never its folded
+    name, and answers None where the spelling is not a counter's.
+    """
+    if not counter_display.startswith("No"):
+        return None
+    stem = counter_display[2:]
+    head = stem[:1]
+    if not head.isascii() or not head.isupper():
+        return None
+    return _singularize(stem)
+
+
+def _singularize(stem: str) -> str:
+    """The stripped stem as one occurrence, by the first arm that matches."""
+    # Arm 1. The only arm that rewrites inside the stem, so the only one that
+    # can lose case: the replacement takes the case of the byte it replaces.
+    for plural, singular in LATIN:
+        if len(stem) >= len(plural) and stem[-len(plural) :].lower() == plural:
+            head, tail = stem[: -len(plural)], stem[-len(plural) :]
+            replaced = singular[0].upper() + singular[1:] if tail[0].isupper() else singular
+            return head + replaced
+    # Arm 2. Byte-exact: an uppercase `S` is not a plural marker here.
+    if not stem.endswith("s"):
+        return stem
+    # Arm 3.
+    if stem.endswith("ss"):
+        return stem
+    # Arm 4. The length guard keeps `Ties` from becoming `Ty`.
+    if len(stem) > 4 and stem.endswith("ies"):
+        return stem[:-3] + "y"
+    # Arm 5.
+    if stem.endswith("sses"):
+        return stem[:-2]
+    # Arm 6.
+    if stem.endswith("es"):
+        prefix = stem[:-2]
+        if prefix.endswith(("x", "ch", "sh", "zz")):
+            return prefix
+    # Arm 7.
+    return stem[:-1]
+
+
+def occurrence_name(counter: dict[str, Any]) -> str:
+    """The name one repeating group's occurrence takes under `counter`."""
+    display = (counter.get("metadata") or {}).get("display")
+    derived = component_name(display) if display else None
+    return derived.lower() if derived else counter["name"]
+
+
 def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Fold every source into one definition per tag, lowest priority first."""
     latest = parsed["orchestra-latest"]
@@ -494,8 +558,8 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
             }
         )
 
-    # Groups become the nested tree: a List of a non-null `item` Struct whose
-    # own `fix:tag` is the counter's.
+    # Groups become the nested tree: a List of a non-null Struct named for the
+    # component the counter heads, whose own `fix:tag` is the counter's.
     #
     # One counter tag heads several groups - Orchestra declares `NoRelatedSym`
     # eleven times, once per message context - and a registry holds one
@@ -538,7 +602,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
                 "dtype": {
                     "type": "list",
                     "field": {
-                        "name": "item",
+                        "name": occurrence_name(counter),
                         "dtype": {"type": "struct", "fields": children},
                         "nullable": False,
                         "metadata": {},

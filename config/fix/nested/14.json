@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested4partysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -47,7 +47,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested4partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -234,7 +234,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "targetpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -297,7 +297,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "newsrefid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -340,7 +340,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -743,7 +743,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -786,7 +786,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventtime",
         "dtype": {
           "type": "struct",
           "fields": [

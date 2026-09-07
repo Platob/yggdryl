@@ -100,14 +100,16 @@ impl fmt::Display for FixAnomaly<'_> {
 /// Every disagreement one message holds, derived as it is walked.
 pub struct FixAnomalies<'msg> {
     message: &'msg FixMsg,
-    entries: std::slice::Iter<'msg, FixEntry>,
+    // A stack of levels rather than one slice: the walk is pre-order, so a
+    // nested anomaly is reported exactly as a flat one is.
+    entries: Vec<std::slice::Iter<'msg, FixEntry>>,
 }
 
 impl<'msg> FixAnomalies<'msg> {
     pub(super) fn new(message: &'msg FixMsg) -> Self {
         Self {
             message,
-            entries: message.entries().iter(),
+            entries: vec![message.entries().iter()],
         }
     }
 
@@ -177,7 +179,20 @@ impl<'msg> Iterator for FixAnomalies<'msg> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let entry = self.entries.next()?;
+            let entry = loop {
+                let level = self.entries.last_mut()?;
+                match level.next() {
+                    Some(held) => {
+                        if !held.children().is_empty() {
+                            self.entries.push(held.children().iter());
+                        }
+                        break held;
+                    }
+                    None => {
+                        self.entries.pop();
+                    }
+                }
+            };
             if let Some(anomaly) = self.anomaly(entry) {
                 return Some(anomaly);
             }

@@ -91,10 +91,24 @@ pub const BODY_TAGS: [i32; 49] = [
 pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 
 /// The column holding the arrival record.
-pub const ENTRIES_COLUMN: &str = "entries";
+///
+/// A counter-named list, exactly as the dictionary spells every repeating
+/// group: the crate publishes that contract for FIX groups and follows it for
+/// its own columns. It carries no `fix:tag` - it is in no field set, no
+/// registry and no dictionary shard, and exists only in the fixed row.
+pub const ENTRIES_COLUMN: &str = "nofixentries";
 
 /// The column holding what no dictionary explained.
-pub const UNMAPPED_COLUMN: &str = "unmapped";
+pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
+
+/// What one arrival record is called wherever it is materialized.
+///
+/// Both columns name their occurrence this. The generic rule would derive
+/// `UnmappedFixEntry` from the second counter, but the crate owns this
+/// component and one component must not answer to two names: an unexplained
+/// entry is the same kind of thing as an explained one, seen through a
+/// narrower window.
+const ENTRY_COMPONENT: &str = "fixentry";
 
 /// One row's columns, in order, as tags.
 ///
@@ -168,10 +182,12 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
     }
     fields.push(entries_field(
         ENTRIES_COLUMN,
+        "NoFixEntries",
         "Every pair the message carried, in arrival order and untranslated.",
     )?);
     fields.push(entries_field(
         UNMAPPED_COLUMN,
+        "NoUnmappedFixEntries",
         "The pairs no dictionary explained, a view over the arrival record.",
     )?);
     Ok(DataType::from_fields(fields)?.required_field(name))
@@ -183,18 +199,106 @@ pub fn rendered(tag: i32) -> String {
     tag.to_string()
 }
 
-/// A list-of-struct column holding arrival records.
-fn entries_field(name: &str, description: &str) -> Result<Field> {
-    let item = DataType::from_fields([
-        DataType::Int32.nullable_field("tag"),
-        DataType::Utf8.nullable_field("branch"),
-        DataType::Utf8.nullable_field("key"),
-        DataType::Utf8.nullable_field("value"),
-    ])?
-    .required_field("item");
-    let mut field = DataType::list(item).nullable_field(name);
+/// How many `fixentry` structs any root-to-leaf path materializes.
+///
+/// The column's List is level 0; the `fixentry` it contains is level 1; a
+/// child of that entry is level 2; a child of that entry is level 3; there is
+/// no level-4 struct. "Three levels deep" means three `fixentry` structs on
+/// any root-to-leaf path, and everything deeper folds into the binary leaf.
+///
+/// A materialization depth, never a semantic nesting limit: a message thirty
+/// levels deep is read whole and folds, and adding a fourth level is changing
+/// this constant, not rewriting shapes by hand.
+const ENTRY_DEPTH: usize = 3;
+
+/// A counter-named list of arrival records, typed once for both columns.
+///
+/// One function types both, so the two cannot drift: they are the same
+/// component seen through different windows. The unexplained column carries
+/// the same recursive type and is never populated below level 1, because it
+/// is a view of unexplained entries rather than a second copy of the tree.
+fn entries_field(name: &str, display: &str, description: &str) -> Result<Field> {
+    let mut field = DataType::list(entry_item(1)?).nullable_field(name);
+    field.set_display(display)?;
     field.set_description(description)?;
     Ok(field)
+}
+
+/// One `fixentry` struct at one materialization level.
+///
+/// The fifth member is `nofixentries` at every level and the meaning is
+/// invariant; the type alone says where materialization stops - a list of
+/// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
+/// occurrence, both inner lists and the leaf are non-null: an empty child
+/// list means no children, an empty leaf means nothing was truncated, and
+/// neither needs a validity bitmap to say so.
+fn entry_item(level: usize) -> Result<Field> {
+    let tail = if level < ENTRY_DEPTH {
+        DataType::list(entry_item(level + 1)?).required_field(ENTRIES_COLUMN)
+    } else {
+        DataType::Binary.required_field(ENTRIES_COLUMN)
+    };
+    Ok(DataType::from_fields([
+        DataType::Int32.nullable_field("tag"),
+        DataType::Int64.required_field("bid"),
+        DataType::Utf8.nullable_field("key"),
+        DataType::Utf8.nullable_field("value"),
+        tail,
+    ])?
+    .required_field(ENTRY_COMPONENT))
+}
+
+/// One entry as the row value its materialization level takes.
+///
+/// Descendants past [`ENTRY_DEPTH`] fold into the leaf here and only here:
+/// the builder never folds, and the Rust tree is never truncated. The leaf is
+/// the UTF-8 bytes of the crate's own JSON over the truncated subtree, so one
+/// serializer and one parser answer for it.
+fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> {
+    let tail = if level < ENTRY_DEPTH {
+        let children: Result<Vec<crate::Scalar>> = entry
+            .children()
+            .iter()
+            .map(|held| entry_scalar(held, level + 1))
+            .collect();
+        crate::Scalar::from_sequence(children?)
+    } else if entry.children().is_empty() {
+        crate::Scalar::from(&[] as &[u8])
+    } else {
+        let folded: Vec<crate::Scalar> = entry.children().iter().map(folded_scalar).collect();
+        let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
+        crate::Scalar::from(rendered.as_bytes())
+    };
+    Ok(crate::Scalar::from_sequence([
+        crate::Scalar::from(entry.tag()),
+        crate::Scalar::from(entry.bid()),
+        crate::Scalar::from(entry.key()),
+        crate::Scalar::from(entry.value()),
+        tail,
+    ]))
+}
+
+/// One truncated entry as the value the leaf's JSON stores.
+///
+/// The same five members in the same order, children as a plain array, so a
+/// reader walks the decoded value exactly as it walks the materialized
+/// levels. Untyped on the way back in, because no finite field describes an
+/// unbounded subtree - and every member is an integer or UTF-8, so an untyped
+/// decode loses nothing.
+fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
+    crate::Scalar::from_sequence([
+        crate::Scalar::from(entry.tag()),
+        crate::Scalar::from(entry.bid()),
+        crate::Scalar::from(entry.key()),
+        crate::Scalar::from(entry.value()),
+        crate::Scalar::from_sequence(
+            entry
+                .children()
+                .iter()
+                .map(folded_scalar)
+                .collect::<Vec<_>>(),
+        ),
+    ])
 }
 
 /// Where each schema tag sits, resolved once against one dictionary.
@@ -429,7 +533,7 @@ impl super::FixMsg {
     /// let reader = FixCodec::new(Arc::clone(&registry));
     /// let order = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
     ///
-    /// let row = order.to_row(&projection);
+    /// let row = order.to_row(&projection)?;
     /// let held = row.as_sequence().expect("a row");
     /// // The columns are the tags, so `35` is where the message type is.
     /// let at = projection.position_of(35).expect("the msgtype column");
@@ -440,8 +544,12 @@ impl super::FixMsg {
     /// # Ok(())
     /// # }
     /// ```
-    #[must_use]
-    pub fn to_row(&self, projection: &FixProjection) -> crate::Scalar {
+    /// # Errors
+    ///
+    /// Returns the JSON writer's failure rendering a truncated subtree into
+    /// the arrival column's leaf - the one fallible step, because every other
+    /// member is already a value.
+    pub fn to_row(&self, projection: &FixProjection) -> Result<crate::Scalar> {
         let tags = projection.tags();
         let carried = projection.value_columns();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(tags.len());
@@ -452,10 +560,10 @@ impl super::FixMsg {
                 None => held,
             });
         }
-        let (known, unknown) = self.divided();
+        let (known, unknown) = self.divided()?;
         values.push(known);
         values.push(unknown);
-        crate::Scalar::from_sequence(values)
+        Ok(crate::Scalar::from_sequence(values))
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -550,30 +658,46 @@ impl super::FixMsg {
     }
 
     /// The arrival record, and the part of it nothing explained.
-    fn divided(&self) -> (crate::Scalar, crate::Scalar) {
+    ///
+    /// The record carries the tree, folded past the materialization depth.
+    /// The unexplained view stays flat: every entry the dictionary does not
+    /// explain, found pre-order at any depth, appears once at level 1 with
+    /// empty children and nothing folded, because it is a view of unexplained
+    /// entries and not a second recursive copy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the JSON writer's failure rendering a truncated subtree.
+    fn divided(&self) -> Result<(crate::Scalar, crate::Scalar)> {
         let mut known = Vec::new();
         let mut unknown = Vec::new();
         for entry in self.entries() {
-            let held = crate::Scalar::from_sequence([
-                crate::Scalar::from(entry.tag()),
-                entry
-                    .branch()
-                    .map_or(crate::Scalar::Null, crate::Scalar::from),
-                crate::Scalar::from(entry.key()),
-                crate::Scalar::from(entry.value()),
-            ]);
+            known.push(entry_scalar(entry, 1)?);
+        }
+        self.unexplained(self.entries(), &mut unknown);
+        Ok((
+            crate::Scalar::from_sequence(known),
+            crate::Scalar::from_sequence(unknown),
+        ))
+    }
+
+    /// Collects every entry nothing explains, pre-order, flat.
+    fn unexplained(&self, entries: &[super::FixEntry], out: &mut Vec<crate::Scalar>) {
+        for entry in entries {
             // Explained means the dictionary has the field, not that the key
             // parsed: `9999=x` names a tag and still names nothing, and a
             // venue onboarding it wants to find it in exactly one column.
             if !self.explains(entry.tag()) {
-                unknown.push(held.clone());
+                out.push(crate::Scalar::from_sequence([
+                    crate::Scalar::from(entry.tag()),
+                    crate::Scalar::from(entry.bid()),
+                    crate::Scalar::from(entry.key()),
+                    crate::Scalar::from(entry.value()),
+                    crate::Scalar::from_sequence(Vec::new()),
+                ]));
             }
-            known.push(held);
+            self.unexplained(entry.children(), out);
         }
-        (
-            crate::Scalar::from_sequence(known),
-            crate::Scalar::from_sequence(unknown),
-        )
     }
 }
 

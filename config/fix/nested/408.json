@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nondeliverablefixingdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -599,7 +599,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentscheduleratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -651,7 +651,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstub",
         "dtype": {
           "type": "struct",
           "fields": [
