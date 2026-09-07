@@ -269,13 +269,15 @@ Seven fields carry six facts a capture states that no dictionary publishes: the 
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
-| `msghash` | `MsgHash` | 30001 | the xxh3-128 digest of what the message said, envelope tags excluded |
+| `msghash` | `MsgHash` | 30001 | the xxh3-128 digest of what the message said: the arrival record with the standard header and trailer left out, `MsgType` excepted |
 | `version` | `Version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
 | `symbolticker` | `SymbolTicker` | 30003 | one instrument symbol that is the same across venues |
 | `timestamp` | `Timestamp` | 30004 | the market clock a capture is ordered by |
 | `unixpartition` | `UnixPartition` | 30005 | the partition that clock falls in, as whole seconds |
 | `parentclordid` | `ParentClOrdID` | 30006 | the client order identifier this order descends from |
 | `parentorderid` | `ParentOrderID` | 30007 | the venue order identifier this order descends from |
+
+The envelope `msghash` drops is the standard header and the standard trailer whole, read from the same two tag lists the row shape is ordered by, so a tag either component gains leaves the digest without a second listing learning about it. `MsgType` is the one exception and stays in: a message type is what a message *is* rather than how it travelled, so an order and a report carrying the same tags are not one message. The consequence is the point - two identical orders sent a second apart hash equal, and so do the same order relayed through two sessions or replayed on a resend.
 
 Two of them declare more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for. `msghash` is a digest holder, so it says which algorithm filled it and what it read. `unixpartition` is a derived partition column, so it says which column it derives from and how.
 
