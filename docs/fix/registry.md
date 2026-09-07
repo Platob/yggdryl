@@ -475,7 +475,8 @@ A code's pedigree is stored as real numbers. Many codes are dated by extension p
 ### Edges
 
 - An unresolved spelling is never an error. `code_value` answers `None`, and the caller keeps its text.
-- Two codes may share a value; two codes may not share a name, folded. `set_codes` refuses the second, naming it, and leaves the field unchanged.
+- Two codes may share a value - that is an alias, and either spelling reaches it. Two codes may not share a name: `set_codes` refuses the second, naming it, and leaves the field unchanged. The comparison there is ASCII case.
+- A reader assembling a set goes further and keeps a *folded* spelling - `_`, `-` and spaces ignored too - from reaching two codes, dropping the later one. Rendering only has to keep a document readable; a set has to stay answerable, and two codes one spelling reaches resolve to nothing rather than to either.
 - A code stating an empty value or an empty name is refused.
 - An empty slice removes the property rather than storing an empty set.
 - A malformed document answers nothing rather than something wrong: `codes()` reports it with a byte position, while `code`, `code_by_name` and `code_value` answer `None`. Neither path allocates.
@@ -911,7 +912,8 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `FixField::from_cfb_file` on a file naming one field twice -> the same refusal `FixRegistry::from_cfb` gives, because the vocabulary door builds the dictionary too and drops it; a tag declared twice *identically* is the one difference, arriving twice there and once here.
 - A CBlock's `float` or `string` meeting a committed `float64` or `msgtype` -> the datatype refusal above; a CBlock says nothing about which tag is money or which is a MsgType.
 - A CBlock `map` becomes the code set of the tag it is named for, and that name alone orients its entries: named byte-exact as the field's display spelling - the `alt` its `vocabulary-tag` declared, or the tag itself where it declared none - `key` is the wire value and `value` the symbolic name; any other spelling, `ADVSIDE` against `AdvSide` included, is read the other way round. A map naming no tag is skipped rather than refused.
-- A CBlock `map` entry stating nothing on a side, with an empty attribute or with none, or repeating a symbolic name an earlier entry claimed -> dropped, never a refusal; two names for one wire value is an alias and both are kept. Two maps naming one tag -> the last one read is the field's code set, replacing rather than merging.
+- A CBlock `map` entry stating nothing on a side, with an empty attribute or with none -> dropped, never a refusal. A second name for a wire value the map already gave one -> kept as an alias on that code, because a name a source declared is a spelling the set has to answer to. Two maps naming one tag -> the last one read is the field's code set, replacing rather than merging.
+- A `map` entry whose name another code already answers to, folded -> dropped, and its wire value with it: two codes one spelling reaches resolve to nothing rather than to either, and the entry states no second name to arrive under.
 - `remove` with a path -> never a match; it takes a tag, an identifier or a name, and a bare one means the standard branch.
 - Primitive and nested fields share one identity space; a repeating group claiming a scalar's tag, name, alternate tag or alias -> the same conflict as between two scalars.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.

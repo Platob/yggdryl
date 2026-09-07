@@ -2681,6 +2681,34 @@ fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
 }
 
 #[test]
+fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it() {
+    // A source naming one wire value twice is declaring an alias, and a
+    // reader building the set meets the second name on its own. `is_spelled`
+    // is what it asks before adding: the fold, so the answer is the same one
+    // the stored set will give, and over the whole set, because whether a
+    // spelling is free is a question about the set and not about one code.
+    let mut buy = FixCode::new("Buy", "1");
+    assert!(buy.is_spelled("b_uy"));
+    assert!(!buy.is_spelled("Bought"));
+    buy.push_alias("Bought");
+    assert!(buy.is_spelled("bought"));
+    assert_eq!(buy.aliases(), ["Bought"]);
+
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[buy, FixCode::new("Sell", "2")])
+        .unwrap();
+    let view = field.as_fix();
+
+    // The grown code is one code with two spellings, not two codes.
+    assert_eq!(view.codes().count(), 2);
+    assert_eq!(view.code_value("Bought"), Some("1"));
+    assert_eq!(view.code_name("1"), Some("Buy"));
+}
+
+#[test]
 fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
     let mut field = DataType::Utf8.nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();

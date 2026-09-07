@@ -610,12 +610,20 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
     assert_eq!(view.codes().count(), 2);
 
     // Two names for one wire value is an alias rather than a contradiction,
-    // so both are kept.
+    // so the second is kept as one rather than dropped or made a second code.
     let advside = registry.field_by_tag(4).expect("AdvSide");
     let view = advside.as_fix();
     assert_eq!(view.code_value("buy"), Some("B"));
     assert_eq!(view.code_value("bid"), Some("B"));
-    assert_eq!(view.codes().count(), 2);
+    assert_eq!(view.codes().count(), 1);
+    assert_eq!(view.code_name("B"), Some("buy"));
+    assert_eq!(
+        view.code("B")
+            .expect("the code")
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["bid"],
+    );
 }
 
 #[test]

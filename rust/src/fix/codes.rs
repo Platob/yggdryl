@@ -129,6 +129,21 @@ impl FixCode {
         self
     }
 
+    /// Adds one more spelling that reaches this code.
+    ///
+    /// [`Self::with_aliases`] states the whole list at once, which is what a
+    /// generator holding a specification has. A reader meeting one spelling
+    /// at a time has this instead: a source that names one wire value twice
+    /// is stating an alias, and a set that drops the second name answers to
+    /// one spelling fewer than the source declared.
+    ///
+    /// Nothing is checked here. [`Self::is_spelled`] is what a caller asks
+    /// before adding, because whether a spelling is free is a question about
+    /// the whole set and not about one code.
+    pub fn push_alias(&mut self, alias: impl Into<SmolStr>) {
+        self.aliases.push(alias.into());
+    }
+
     /// Sets when the specification added this code.
     ///
     /// Many codes are dated by extension pack alone - `BasisPoints` is "Added
@@ -184,6 +199,20 @@ impl FixCode {
     #[must_use]
     pub fn aliases(&self) -> &[SmolStr] {
         &self.aliases
+    }
+
+    /// Whether `text` is this code's name or one of its aliases, folded.
+    ///
+    /// The same fold a stored set answers spellings by, so a set answers the
+    /// same ones before it is rendered as after. A
+    /// caller assembling one asks this to keep a spelling from reaching two
+    /// codes. It is deliberately stricter than rendering refuses - the whole
+    /// fold rather than ASCII case - because rendering only has to keep a
+    /// document readable, while two codes one spelling reaches resolve to
+    /// nothing rather than to whichever was met first.
+    #[must_use]
+    pub fn is_spelled(&self, text: &str) -> bool {
+        folds_equal(&self.name, text) || self.aliases.iter().any(|alias| folds_equal(alias, text))
     }
 
     /// Returns the version the specification added this code at.

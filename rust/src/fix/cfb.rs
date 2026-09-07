@@ -542,13 +542,19 @@ impl<'doc> Parse<'doc> {
     /// One `entry` as a code, oriented the way the map's name says.
     ///
     /// An empty attribute says what an absent one says, so both drop the
-    /// entry rather than refuse the file, and so does one repeating a
-    /// symbolic name an earlier entry claimed - compared the way
-    /// [`FixCodes::render`](super::codes::FixCodes) compares it, because a
-    /// name twice is the one thing a code set may not carry and a file that
-    /// forgives a map naming no field at all should not be refused whole over
-    /// one contradictory entry. A wire value twice is not contradictory: two
-    /// names for one value is an alias, which a code set states.
+    /// entry. Everything else is kept, because a CBlock names one wire value
+    /// twice routinely - `7` is both `accountiscarriedonnoncustomersmargined`
+    /// and `accountishousetraderandcrossmargined` - and a set that took the
+    /// first name and dropped the second would answer to one spelling fewer
+    /// than the file declared. A second name for a value already held is what
+    /// a code set calls an alias, so it is added as one.
+    ///
+    /// A spelling another code already answers to is the one thing that
+    /// cannot be kept: two codes one spelling reaches resolve to nothing
+    /// rather than to either, so the entry is dropped. That is a stricter
+    /// test than [`FixCodes::render`](super::codes::FixCodes) refuses on -
+    /// the whole fold rather than ASCII case - because render only has to
+    /// keep a document readable and this has to keep it answerable.
     fn push_entry(
         &self,
         element: &BytesStart<'_>,
@@ -564,11 +570,12 @@ impl<'doc> Parse<'doc> {
             return Ok(());
         };
         let (value, name) = if fix { (key, held) } else { (held, key) };
-        if !codes
-            .iter()
-            .any(|code| code.name().eq_ignore_ascii_case(&name))
-        {
-            codes.push(FixCode::new(name, value));
+        if codes.iter().any(|code| code.is_spelled(&name)) {
+            return Ok(());
+        }
+        match codes.iter_mut().find(|code| code.value() == value) {
+            Some(code) => code.push_alias(name),
+            None => codes.push(FixCode::new(name, value)),
         }
         Ok(())
     }
