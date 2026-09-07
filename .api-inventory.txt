@@ -543,6 +543,20 @@ impl FixRegistry
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
 
+### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
+pub const ULBRIDGE_BRANCH: &str = "ulbridge";
+pub const ULBRIDGE_TAG_MIN: i32 = 20_001;
+pub const MBEAN_TAG: i32 = 20_001;
+pub const OPERATION_TAG: i32 = 20_002;
+pub const STATUS_TAG: i32 = 20_003;
+pub const ERROR_TAG: i32 = 20_004;
+pub const SESSIONINTERFACES_TAG: i32 = 20_005;
+pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
+impl FixRegistry
+  pub fn with_ulbridge_fields(mut self) -> Result<Self>
+impl FixCodec
+  pub fn read_ulconfig_line(&self, body: &[u8]) -> Result<FixMsg>
+
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer
   pub fn new() -> Self

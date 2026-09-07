@@ -387,6 +387,190 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
     assert!(ANSWERED.as_ptr_range().contains(&read.as_ptr()));
 }
 
+/// One Jolokia read of one session interface, trimmed to what is read.
+const ULCONFIG_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"OutgoingMsgSeqNum":129,"NeedReload":false,"Name":"ULMSG_BROKER_TO_POSTTRADE","ExtendedActions":[{"name":"hot-reset","enabled":true}]},"status":200}"#;
+
+/// One wildcard read, answering for two MBeans of different types.
+const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"PICTET_BPAG"}},"status":200}"#;
+
+/// A codec over the shipped dictionary, pinned to ULBridge's own.
+fn ulbridge_codec() -> crate::FixCodec {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root).unwrap())
+        .unwrap()
+        .with_ulbridge_fields()
+        .unwrap();
+    let branch = FixBranch::from_str(crate::ULBRIDGE_BRANCH).unwrap();
+    crate::FixCodec::new(Arc::new(registry)).with_branch(&branch)
+}
+
+#[test]
+fn a_bridge_configuration_reads_as_the_envelope_and_one_occurrence_per_mbean() {
+    let codec = ulbridge_codec();
+    let msg = codec.read_line(ULCONFIG_SINGLE).unwrap();
+
+    // The envelope is what the exchange was, and it types: a status is a
+    // number rather than the text it arrived as.
+    assert_eq!(
+        msg.by_tag(crate::MBEAN_TAG).unwrap().as_str(),
+        Some(
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin"
+        ),
+    );
+    assert_eq!(
+        msg.by_tag(crate::OPERATION_TAG).unwrap(),
+        &Scalar::from("read")
+    );
+    assert_eq!(
+        msg.by_tag(crate::STATUS_TAG).unwrap(),
+        &Scalar::from(200_i64)
+    );
+
+    // A field the specification publishes keeps the specification's tag, and
+    // it resolves under a pinned venue branch because a name is looked for in
+    // the message's own dictionary first and in the standard one after.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.SenderCompID").unwrap(),
+        &Scalar::from("ULB_BKRBDG"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.TargetCompID").unwrap(),
+        &Scalar::from("ULB_PTBDG"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.BeginString").unwrap(),
+        &Scalar::from("FIX.4.2"),
+    );
+
+    // The ObjectName's own properties are read where the classifier reads
+    // them, so one spelling answers for the column and for the row.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.MBeanType").unwrap(),
+        &Scalar::from("Plugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.PluginType").unwrap(),
+        &Scalar::from("FIX"),
+    );
+
+    // Everything else types to what it is rather than to the text it was.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.CurrentPort").unwrap(),
+        &Scalar::from(7061_i64),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.BackupPort").unwrap(),
+        &Scalar::from(-1_i64),
+        "a sentinel is a number the bridge sent, not an absence",
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.NeedReload").unwrap(),
+        &Scalar::from(false),
+    );
+    // A stated null is an absence: no field, no entry.
+    assert!(msg.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+
+    // A group inside a group is one level deeper than a key addresses, so it
+    // is retained as the JSON it is rather than dropped.
+    let actions = msg
+        .by_path("SessionInterfaces.0.ExtendedActions")
+        .unwrap()
+        .as_str()
+        .expect("the array, as text");
+    assert!(actions.contains("hot-reset"), "{actions}");
+}
+
+#[test]
+fn a_wildcard_read_is_one_occurrence_per_mbean_it_answered_for() {
+    let codec = ulbridge_codec();
+    let msg = codec.read_line(ULCONFIG_WILDCARD).unwrap();
+
+    // One entry or fifty is one shape: the request's own MBean is a pattern
+    // and every MBean it matched is an occurrence, in canonical ObjectName
+    // order because a JSON object has no order of its own.
+    assert_eq!(
+        msg.by_tag(crate::MBEAN_TAG).unwrap(),
+        &Scalar::from("com.ullink.ulbridge.sessioninterfaces.plugins:*"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.Name").unwrap(),
+        &Scalar::from("A")
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.Name").unwrap(),
+        &Scalar::from("B")
+    );
+    // Each occurrence states its own type, whatever the document declared.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.MBeanType").unwrap(),
+        &Scalar::from("ConfigurationPlugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.MBeanType").unwrap(),
+        &Scalar::from("Plugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.SenderCompID").unwrap(),
+        &Scalar::from("PICTET_BPAG"),
+    );
+
+    // A dictionary without ULBridge's fields keeps every key rather than
+    // dropping it: a venue sends fields no dictionary has.
+    let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
+    let plain = bare.read_line(ULCONFIG_WILDCARD).unwrap();
+    assert!(
+        plain.get_by_name("mbean").is_some(),
+        "kept under its own folded spelling, untyped",
+    );
+    assert!(
+        plain.get_by_tag(crate::MBEAN_TAG).is_none(),
+        "and with no tag"
+    );
+}
+
+#[test]
+fn ulbridge_fields_are_a_dictionary_of_their_own() {
+    let held = crate::fix_ulbridge_fields().unwrap();
+    let branch = FixBranch::from_str(crate::ULBRIDGE_BRANCH).unwrap();
+    assert_eq!(held[0].name(), "MBean");
+    // The branch is what keeps a venue's own 20001 a different field.
+    assert_eq!(
+        held[0].as_fix().id().unwrap(),
+        Some(FixId::from_parts(&branch, crate::MBEAN_TAG).unwrap()),
+    );
+    assert_ne!(
+        held[0].as_fix().id().unwrap().unwrap(),
+        FixId::standard(crate::MBEAN_TAG),
+    );
+
+    // Every tag this dictionary claims is inside FIX's user-defined range,
+    // which is the one range a non-standard branch may claim at all.
+    for field in held {
+        let tag = field.as_fix().tag().unwrap().expect("a tag");
+        assert!(tag >= crate::ULBRIDGE_TAG_MIN, "{}: {tag}", field.name());
+        assert!(tag < FixId::USER_TAG_MAX, "{}: {tag}", field.name());
+        assert!(field.description().is_some(), "{}", field.name());
+    }
+
+    // The names FIX already publishes are not among them: a field the
+    // specification has is never given a second tag.
+    for published in ["SenderCompID", "TargetCompID", "BeginString"] {
+        assert!(
+            !held.iter().any(|field| field.name() == published),
+            "{published} is FIX's own",
+        );
+    }
+
+    // Registering is idempotent in the sense that matters: the same fields
+    // twice is a replacement, never a conflict.
+    let registry = FixRegistry::new()
+        .with_ulbridge_fields()
+        .unwrap()
+        .with_ulbridge_fields()
+        .unwrap();
+    assert_eq!(registry.len(), held.len());
+}
+
 #[test]
 fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
     assert_eq!(FixBranch::from_str("CME").unwrap().name(), "cme");

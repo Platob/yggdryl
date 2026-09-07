@@ -96,7 +96,9 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## A reader is the whole parse surface
 
-Five entry points, because a capture holds five shapes and guessing between them is what a reader exists to avoid. `text` and `bytes` take a captured line whatever it is wrapped in and read the verb in front of the frame; `fixtext` takes a numeric frame whose separator the caller states; `ultext` takes a bridge frame whose keys are names; `pairs` takes what a caller already split.
+Six entry points, because a capture holds six shapes and guessing between them is what a reader exists to avoid. `text` and `bytes` take a captured line whatever it is wrapped in and read the verb in front of the frame; `fixtext` takes a numeric frame whose separator the caller states; `ultext` takes a bridge frame whose keys are names; `ulconfig` takes a [bridge configuration document](registry.md#a-bridge-configuration-is-a-document-that-names-itself); `pairs` takes what a caller already split.
+
+Every one of them ends in the same builder, so a document is typed by the rules that type a frame — one nesting builder, one fold, one code translation, one value contract.
 
 Each is the core's own method under the same name in all three languages.
 
@@ -344,6 +346,66 @@ Two of them declare more than a type, in the protocols the crate already has rat
     assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
     ```
 
+## A bridge configuration is a dictionary of its own
+
+A [bridge configuration document](registry.md#a-bridge-configuration-is-a-document-that-names-itself) states what a session interface *is* — which venue it talks to, over which host and port, at which sequence numbers, in which state — and FIX publishes almost none of it. Four rules read it, and the first is the one the crate's own columns already keep.
+
+**A field the specification has is never given a second tag.** ULBridge spells `SenderCompID`, `TargetCompID` and `BeginString` under FIX's own names, so they resolve to tags 49, 56 and 8 with nothing added.
+
+**Everything else is ULBridge's own dictionary.** The `ulbridge` branch, tags from 20001. Not the standard branch, because the specification publishes no `PrimaryHost`; not [the crate's](#the-crates-own-columns), because the crate did not invent one. Being a branch is also what lets a venue keep its own 20001 without colliding.
+
+**A name resolves in the message's branch and then in the standard one.** That is the tier a built message is read by, so building it under one dictionary alone would drop tag 49 the moment a reader pinned the bridge's.
+
+**One entry or fifty is one shape.** Jolokia answers a single read with one attribute map and a wildcard read with a map keyed by ObjectName; both read as one repeating group, `SessionInterfaces`, whose occurrences are the MBeans the document answered for in canonical ObjectName order.
+
+| the document says | the row holds |
+| --- | --- |
+| the `request` it echoes, or the request itself | `MBean` 20001, `Operation` 20002 |
+| `status`, `error` | `Status` 20003, `Error` 20004 |
+| each MBean the `value` answers for | one `SessionInterfaces` 20005 occurrence |
+| that entry's ObjectName | `SessionInterface`, `MBeanType`, `PluginType` |
+| `SenderCompID`, `TargetCompID`, `BeginString` | FIX's 49, 56, 8 |
+| every other attribute | its own tag, typed — a port is a number, `NeedReload` is a boolean |
+| an attribute that is an object or an array | the JSON it is, under its own name |
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, ULBRIDGE_BRANCH};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_ulbridge_fields()?;
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&FixBranch::from_str(ULBRIDGE_BRANCH)?);
+
+    let document = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","CurrentPort":7061,"BackupHost":null,"NeedReload":false},"status":200}"#;
+    let held = reader.read_line(document)?;
+
+    // The envelope is what the exchange was, and it types.
+    assert_eq!(held.by_tag(yggdryl::OPERATION_TAG)?, &Scalar::from("read"));
+    assert_eq!(held.by_tag(yggdryl::STATUS_TAG)?, &Scalar::from(200_i64));
+
+    // The entry is one occurrence, and FIX's own names keep FIX's own tags.
+    assert_eq!(held.by_path("SessionInterfaces.0.SenderCompID")?, &Scalar::from("ULB_BKRBDG"));
+    assert_eq!(held.by_path("SessionInterfaces.0.MBeanType")?, &Scalar::from("Plugin"));
+    // A port is a number and a flag is a boolean, not the text they arrived as.
+    assert_eq!(held.by_path("SessionInterfaces.0.CurrentPort")?, &Scalar::from(7061_i64));
+    assert_eq!(held.by_path("SessionInterfaces.0.NeedReload")?, &Scalar::from(false));
+    // A stated null is an absence: no field, no entry.
+    assert!(held.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+    ```
+
+Rust only: neither binding registers ULBridge's fields today, and a dictionary that does not have them keeps every key under its own folded spelling rather than dropping it.
+
+### Edges
+
+- A group inside a group — `ExtendedActions[i].parameters[j]` — is one level deeper than a key addresses, so it is retained as the JSON it is. The four arrays a session interface always carries are declared, so each has a name and a tag; anything else keeps its own folded spelling.
+- A bulk answer is an array of these and reads as the first response in it: one line is one message, and a document declares one exchange.
+- A request document carries no `value`, so it is the envelope alone — which is also what says it went out rather than came back.
+- A sentinel is a number the bridge sent: `BackupPort: -1` and `LogLevel: -1` land as `-1`, never as an absence. A stated `null` is the absence.
+- Without `with_ulbridge_fields`, every attribute is still kept — as nullable text under its own folded spelling, with no tag.
+
 ## A projection resolves the columns once
 
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) is a hash, a verification and a branch walk. A projection resolves them once and turns the per-row cost into an indexed read, which is the whole reason a fixed schema is worth having.
@@ -455,6 +517,28 @@ A carried column whose name a FIX column already takes is dropped rather than re
 - `position_of` on a tag the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
 - Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
+
+## Performance
+
+`fix/read`, one line each against the tracked seed dictionary. Release build, one Linux x86_64 container; a capture is read line by line, so the per-line figure is the whole cost.
+
+| shape | bytes | median |
+| --- | --- | --- |
+| a framed tag stream with prose either side | 85 | 12.8 us |
+| a bare tag stream | 64 | 12.4 us |
+| a bridge row keyed by name | 78 | 15.2 us |
+| a bridge row with a packed repeating group | 147 | 21.8 us |
+| a bridge configuration document | 630 | 80.6 us |
+| the same, on a dictionary without ULBridge's fields | 630 | 74.0 us |
+| the emit that closes the round trip | | 144 ns |
+
+A document costs about six times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 9% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- fix/read
+```
 
 ## Commands
 

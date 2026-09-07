@@ -161,16 +161,47 @@ impl<'registry> Builder<'registry> {
     }
 
     /// The registry field one key names, and the tag it carries.
+    ///
+    /// A name is looked for in this message's branch and then in the standard
+    /// one, which is the tier [`FixMsg`](super::FixMsg) reads a built message
+    /// by: a row transcribed against a venue's dictionary names that venue's
+    /// fields by the venue's spellings while still carrying `MsgType`,
+    /// `SenderCompID` and every other specification field. Building it under
+    /// one branch alone would drop exactly those identities before a reader
+    /// could ask for them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.registry.get_primitive_field(tag)
         } else {
-            self.registry
-                .get_field_by_path(key, Some(&self.branch))
+            self.by_path(key, &self.branch)
+                .or_else(|| {
+                    (!self.branch.is_standard())
+                        .then(|| self.by_path(key, &super::FixBranch::STANDARD))
+                        .flatten()
+                })
                 .filter(|field| !super::registry::is_nested(field))
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
         Some((field, tag))
+    }
+
+    /// One name looked for in exactly one dictionary.
+    fn by_path(&self, key: &str, branch: &FixBranch) -> Option<&'registry Field> {
+        self.registry.get_field_by_path(key, Some(branch))
+    }
+
+    /// A group's own field, under the same tier a member resolves by.
+    fn by_group(&self, group: &str) -> Option<&'registry Field> {
+        self.registry
+            .get_field_by_name(group, Some(&self.branch))
+            .or_else(|| {
+                (!self.branch.is_standard())
+                    .then(|| {
+                        self.registry
+                            .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                    })
+                    .flatten()
+            })
     }
 
     /// The field a key builds under, cloned and projected to the version.
@@ -308,7 +339,7 @@ impl<'registry> Builder<'registry> {
         // carrying one tag.
         let (group_field, group_tag) = match self.counter(group) {
             Some(held) => held,
-            None => match self.registry.get_field_by_name(group, Some(&self.branch)) {
+            None => match self.by_group(group) {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
                     (self.project(known), tag)

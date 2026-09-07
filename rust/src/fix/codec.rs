@@ -215,6 +215,13 @@ impl FixCodec {
         if numeric_frame(body) {
             return self.read_fix_line(body);
         }
+        // A payload opening with `{` is a bridge configuration document, and
+        // nothing else is: the locator points at a key, which starts with a
+        // digit or a letter, and points at an object only where it found one.
+        // So the test costs one byte rather than a second classification.
+        if body.first() == Some(&b'{') {
+            return self.read_ulconfig_line(body);
+        }
         // A FIXML row states no `key=value` frame, so the locator finds none
         // and leaves nothing to read. The document is the payload, and it
         // opens at the first tag - which is also how a prefix is dropped from
@@ -480,6 +487,10 @@ impl FixCodec {
     }
 
     /// The one build every reader funnels into.
+    pub(super) fn build_pairs(&self, pairs: &[(&[u8], &[u8])]) -> Result<FixMsg> {
+        self.build(pairs)
+    }
+
     fn build(&self, pairs: &[(&[u8], &[u8])]) -> Result<FixMsg> {
         // A row states no dialect, so the caller's pin is the only source: a
         // capture is one session and the branch is a fact about the run.

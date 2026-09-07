@@ -174,6 +174,7 @@ mod schema;
 mod store;
 #[cfg(test)]
 mod tests;
+mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
 #[cfg(feature = "arrow")]
@@ -196,6 +197,11 @@ pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
 pub use registry::{FixFieldIter, FixRegistry};
+pub use ulbridge::{
+    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, SESSIONINTERFACES_TAG, STATUS_TAG, ULBRIDGE_BRANCH,
+    ULBRIDGE_TAG_MIN, fix_ulbridge_fields,
+};
+
 pub use schema::{
     BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
     UNMAPPED_COLUMN, fix_schema, fix_schema_tags,

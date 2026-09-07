@@ -9,7 +9,7 @@ Paste a captured line and read it: every tag named, every coded value translated
 | Input | A FIX frame in any separator a log writes it with — SOH, `\|`, `^A`, `;`, or one pair per line — with or without a direction verb in front |
 | Reads | Splits the pairs, names each key from `assets/fix.json`, translates each value through its code set, gathers occurrences under their counter, recomputes `BodyLength(9)` and `CheckSum(10)` |
 | States | Nothing the package did not answer: the names, types, wording, codes and layouts are the generated manifests, and the typed row, digest, facets and anomalies are shown only where the corpus holds the frame |
-| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; five entry points, one per shape a capture holds |
+| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; six entry points, one per shape a capture holds |
 | Pages | [Explorer](explorer.md) explores the dictionary, [Encode](encode.md) writes a frame |
 
 ## Use
@@ -101,7 +101,7 @@ The typed row, the message digest, the derived facets and the anomalies are the 
 
 ## Every shape a capture holds
 
-One line per shape, read by the real package at build time: a numeric frame, a bridge frame with name keys, a frame carrying both, an enriched line with no frame at all, and the lines that do not add up.
+One line per shape, read by the real package at build time: a numeric frame, a bridge frame with name keys, a frame carrying both, an enriched line with no frame at all, and the lines that do not add up. A [bridge configuration document](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) is the sixth, and is not in this corpus.
 
 <div class="ygg-fx" data-fix="frames" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.

@@ -29,11 +29,11 @@ const UDF_MSGTYPE: &[u8] = b"UDF";
 /// and not merely spelling a class, which is what [`object_names`] holds it to.
 const ULBRIDGE_NAMESPACE: &[u8] = b"com.ullink.ulbridge";
 
-/// The ObjectName segment naming what one MBean is.
+/// The ObjectName property naming what one MBean is.
 ///
-/// Read only where a delimiter opens it, because `plugin-type=` ends in the
-/// same five bytes and names something else.
-const OBJECT_NAME_TYPE: &[u8] = b"type=";
+/// Read only where a delimiter opens it, because `plugin-type` ends in the
+/// same four bytes and names something else.
+pub(crate) const OBJECT_NAME_TYPE: &[u8] = b"type";
 
 /// Jolokia's own key for the operation a document asked for.
 const JOLOKIA_TYPE_KEY: &[u8] = b"\"type\"";
@@ -567,7 +567,7 @@ fn ulconfig_at(line: &[u8]) -> Option<usize> {
 /// Each name is answered with the properties that follow it, bounded by the
 /// quote closing the JSON string it stands in, so what an ObjectName says is
 /// read out of that name rather than out of the document around it.
-fn object_names(line: &[u8]) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+pub(crate) fn object_names(line: &[u8]) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
     memchr::memmem::find_iter(line, ULBRIDGE_NAMESPACE).filter_map(move |start| {
         let mut at = start + ULBRIDGE_NAMESPACE.len();
         while line
@@ -616,22 +616,33 @@ fn ulconfig_msgtype(document: &[u8]) -> Option<&[u8]> {
 /// It counts only where a `,` or a `:` opens it, which is the one shape an
 /// ObjectName property has and is not the shape `plugin-type=` has.
 fn object_name_type(document: &[u8]) -> Option<&[u8]> {
-    object_names(document).find_map(|name| {
-        let held = &document[name.clone()];
-        memchr::memmem::find_iter(held, OBJECT_NAME_TYPE)
-            .filter(|at| {
-                at.checked_sub(1)
-                    .is_some_and(|before| matches!(held[before], b',' | b':'))
-            })
-            .find_map(|at| {
-                let start = at + OBJECT_NAME_TYPE.len();
-                let end = held[start..]
-                    .iter()
-                    .position(|byte| *byte == b',')
-                    .map_or(held.len(), |offset| start + offset);
-                (end > start).then(|| &held[start..end])
-            })
-    })
+    object_names(document).find_map(|name| object_name_property(&document[name], OBJECT_NAME_TYPE))
+}
+
+/// One property of one ObjectName, by the name it is keyed under.
+///
+/// An ObjectName is a domain, a `:`, and then `key=value` properties in any
+/// order separated by `,`. A property counts only where one of those two
+/// delimiters opens it, which is what keeps `plugin-type` from answering for
+/// `type`; its value runs to the next `,` or to the end of the name.
+pub(crate) fn object_name_property<'name>(
+    name: &'name [u8],
+    property: &[u8],
+) -> Option<&'name [u8]> {
+    memchr::memmem::find_iter(name, property)
+        .filter(|at| {
+            at.checked_sub(1)
+                .is_some_and(|before| matches!(name[before], b',' | b':'))
+                && name.get(at + property.len()) == Some(&b'=')
+        })
+        .find_map(|at| {
+            let start = at + property.len() + 1;
+            let end = name[start..]
+                .iter()
+                .position(|byte| *byte == b',')
+                .map_or(name.len(), |offset| start + offset);
+            (end > start).then(|| &name[start..end])
+        })
 }
 
 /// The operation the Jolokia request asked for.
