@@ -55,8 +55,8 @@ use super::{FixBranch, FixRegistry};
 /// The column a payload is read from when the options name none.
 ///
 /// Reading one record is not this surface, so the column it defaults to is
-/// [`super::record`]'s; the name is carried here because the options that set
-/// it are this page's.
+/// defined beside the record readers rather than here; the name is carried
+/// here because the options that set it are this page's.
 pub use super::record::DEFAULT_PAYLOAD_COLUMN;
 
 /// The separator FIX itself uses.
