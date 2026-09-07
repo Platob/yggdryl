@@ -118,6 +118,35 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A file whose maps are named both ways round, over entries a rule reading
+/// the shorter side as the wire value would orient backwards.
+const ORIENTATIONS: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="167" alt="SecurityType" type="string" />
+		<vocabulary-tag name="310" alt="UnderlyingSecurityType" type="string" />
+		<vocabulary-tag name="22830" type="string" />
+	</vocabulary>
+	<maps>
+		<map name="SecurityType" read-only="false">
+			<entries>
+				<entry key="FXSPOT" value="fx" />
+				<entry key="CS" value="equity" />
+			</entries>
+		</map>
+		<map name="UNDERLYINGSECURITYTYPE" read-only="false">
+			<entries>
+				<entry key="fx" value="FXSPOT" />
+				<entry key="equity" value="CS" />
+			</entries>
+		</map>
+		<map name="22830" read-only="false">
+			<entries><entry key="1" value="one" /></entries>
+		</map>
+	</maps>
+</cplugin-configuration>
+"#;
+
 /// A second counterparty's file: one tag both declare, one only this one does.
 const OVERLAY: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 <cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="OURDESK" sendercompid="MSFIX">
@@ -473,17 +502,17 @@ fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
 fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     let (registry, _) = parse(CBLOCK);
 
-    // A CBlock writes `key="buy" value="B"`, so the name keys and the value
-    // is the value - which is already the order a code set wants.
+    // `ADVSIDE` is not how the vocabulary displays `AdvSide`, so the map is
+    // written the UlMessage way: the name keys and the value is the value,
+    // which is already the order a code set wants.
     let advside = registry.field_by_tag(4).expect("AdvSide");
     let view = advside.as_fix();
     assert_eq!(view.code_value("buy"), Some("B"));
     assert_eq!(view.code_name("X"), Some("cross"));
     assert_eq!(view.codes().count(), 4);
 
-    // One written the other way round would put `B` in a name and `buy` on
-    // the wire, so the side that looks like a wire value decides: short and
-    // wordless is the value, whichever attribute carries it.
+    // `TimeInForce` is exactly how the vocabulary displays it, so that map is
+    // written the FIX way and the key is the wire value.
     let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
     let view = timeinforce.as_fix();
     assert_eq!(view.code_value("day"), Some("0"));
@@ -492,6 +521,32 @@ fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     // A map naming no field is skipped rather than refused: a CBlock maps
     // things that are not fields.
     assert_eq!(registry.get_field_by_name("notafield", None), None);
+}
+
+#[test]
+fn a_map_is_oriented_by_its_name_and_never_by_the_shape_of_an_entry() {
+    let (registry, _) = parse(ORIENTATIONS);
+
+    // Named exactly as the vocabulary displays the field, so the key is the
+    // wire value however long it runs. Reading the shorter side as the value
+    // would have put `fx` on the wire and `FXSPOT` in a name.
+    let security = registry.field_by_tag(167).expect("SecurityType");
+    let view = security.as_fix();
+    assert_eq!(view.code_value("fx"), Some("FXSPOT"));
+    assert_eq!(view.code_name("CS"), Some("equity"));
+
+    // The mirror of that map under a name the file does not display the field
+    // by lands identically, which is the whole rule: the name decides, and the
+    // entries are read whichever way it says.
+    let underlying = registry.field_by_tag(310).expect("UnderlyingSecurityType");
+    let view = underlying.as_fix();
+    assert_eq!(view.code_value("fx"), Some("FXSPOT"));
+    assert_eq!(view.code_name("CS"), Some("equity"));
+
+    // A tag declaring no `alt` is displayed as the tag itself, so a map named
+    // for it matches and is read the FIX way.
+    let extension = registry.field_by_tag(22830).expect("22830");
+    assert_eq!(extension.as_fix().code_value("one"), Some("1"));
 }
 
 #[test]
@@ -779,3 +834,4 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
     assert_eq!(seeded, before, "neither the branch nor a field arrived");
     assert!(seeded.branch_named("bloomberg").is_none());
 }
+

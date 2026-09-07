@@ -910,6 +910,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `FixField::from_cfb_file` with no branch, on a handle whose stem is not a branch -> refused, never folded into one; a `Buffer`'s URL is an identity rather than a location, so bytes in memory are named by the caller.
 - `FixField::from_cfb_file` on a file naming one field twice -> the same refusal `FixRegistry::from_cfb` gives, because the vocabulary door builds the dictionary too and drops it; a tag declared twice *identically* is the one difference, arriving twice there and once here.
 - A CBlock's `float` or `string` meeting a committed `float64` or `msgtype` -> the datatype refusal above; a CBlock says nothing about which tag is money or which is a MsgType.
+- A CBlock `map` becomes the code set of the tag it is named for, and that name alone orients its entries: named byte-exact as the field's display spelling - the `alt` its `vocabulary-tag` declared, or the tag itself where it declared none - `key` is the wire value and `value` the symbolic name; any other spelling, `ADVSIDE` against `AdvSide` included, is read the other way round. A map naming no tag is skipped rather than refused.
 - `remove` with a path -> never a match; it takes a tag, an identifier or a name, and a bare one means the standard branch.
 - Primitive and nested fields share one identity space; a repeating group claiming a scalar's tag, name, alternate tag or alias -> the same conflict as between two scalars.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.
@@ -936,6 +937,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
     cargo test -p yggdryl --test fix -- cfb::a_file_answers_its_vocabulary cfb::an_unnamed_file_takes_its_branch cfb::a_stem_that_is_not_a_branch cfb::a_cblock_vocabulary_folds cfb::folding_a_cblock_into_the_committed
+    cargo test -p yggdryl --test fix -- cfb::a_map_becomes_the_code_set cfb::a_map_is_oriented_by_its_name
     cargo test -p yggdryl --test fix -- cfb::a_cblock_reads_in_whole cfb::reading_a_cblock_in_whole_is_one_mutation
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```

@@ -466,6 +466,9 @@ impl<'doc> Parse<'doc> {
     /// `AdvSide` - so the name resolves through the vocabulary this file has
     /// already read, and a map naming no tag is skipped rather than refused:
     /// a CBlock maps things that are not fields.
+    ///
+    /// That name is also what orients the entries, so it is resolved before
+    /// the first one is read. [`Parse::decodes`] carries the rule.
     fn read_maps(&mut self) -> Result<()> {
         let mut buffer = Vec::new();
         let mut depth = 0_usize;
@@ -478,8 +481,13 @@ impl<'doc> Parse<'doc> {
                 Event::Eof => break,
                 Event::Start(element) if is_named(&element, b"map") => {
                     let named = self.attribute(&element, "name")?;
-                    let codes = self.read_map_entries()?;
-                    self.attach_codes(named.as_deref(), codes)?;
+                    let decodes = named.as_deref().and_then(|named| self.decodes(named));
+                    // A map naming no tag is still read to its end: skipping
+                    // the entries would leave the reader inside them.
+                    let codes = self.read_map_entries(decodes.is_some_and(|(_, fix)| fix))?;
+                    if let Some((at, _)) = decodes {
+                        self.attach_codes(at, &codes)?;
+                    }
                 }
                 Event::Start(_) => depth += 1,
                 Event::End(element) => {
@@ -495,8 +503,11 @@ impl<'doc> Parse<'doc> {
         Ok(())
     }
 
-    /// One map's entries, each oriented into a value and a name.
-    fn read_map_entries(&mut self) -> Result<Vec<FixCode>> {
+    /// One map's entries, each oriented the way the map's name says.
+    ///
+    /// `fix` is what [`Parse::decodes`] resolved: the FIX way round reads
+    /// `key` as the wire value, the UlMessage way reads `value` as it.
+    fn read_map_entries(&mut self, fix: bool) -> Result<Vec<FixCode>> {
         let mut codes: Vec<FixCode> = Vec::new();
         let mut buffer = Vec::new();
         let mut depth = 0_usize;
@@ -508,10 +519,10 @@ impl<'doc> Parse<'doc> {
             match event {
                 Event::Eof => break,
                 Event::Empty(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes)?;
                 }
                 Event::Start(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes)?;
                     depth += 1;
                 }
                 Event::Start(_) => depth += 1,
@@ -529,34 +540,62 @@ impl<'doc> Parse<'doc> {
     }
 
     /// One `entry` as a code, oriented and deduplicated by its wire value.
-    fn push_entry(&self, element: &BytesStart<'_>, codes: &mut Vec<FixCode>) -> Result<()> {
+    fn push_entry(
+        &self,
+        element: &BytesStart<'_>,
+        fix: bool,
+        codes: &mut Vec<FixCode>,
+    ) -> Result<()> {
         let (Some(key), Some(held)) = (
             self.attribute(element, "key")?,
             self.attribute(element, "value")?,
         ) else {
             return Ok(());
         };
-        let (value, name) = oriented(&key, &held);
+        let (value, name) = if fix { (key, held) } else { (held, key) };
         if !codes.iter().any(|code| code.value() == value) {
             codes.push(FixCode::new(name, value));
         }
         Ok(())
     }
 
-    /// Puts one code set on the vocabulary field its map is named for.
-    fn attach_codes(&mut self, named: Option<&str>, codes: Vec<FixCode>) -> Result<()> {
-        let (Some(named), false) = (named, codes.is_empty()) else {
-            return Ok(());
-        };
-        let Some(at) = self
+    /// The vocabulary position a map decodes, and whether it is written the
+    /// FIX way round.
+    ///
+    /// Resolution folds case and separators like every other name in this
+    /// crate, so `ADVSIDE` finds `AdvSide`. Orientation is the stricter
+    /// question and a separate one, because a CBlock writes its maps two ways:
+    /// `key="0" value="day"` under a map named for the field as the file
+    /// displays it, and `key="buy" value="B"` under one named the UlMessage
+    /// way. Nothing but the map's name separates them - both attributes are
+    /// free text, and a length or a word shape is a guess that puts `B` in a
+    /// name and `buy` on the wire as soon as a code set is spelled the other
+    /// way round.
+    ///
+    /// So the name is compared byte for byte against the field's own
+    /// spelling - the `alt` the vocabulary declared, or the tag itself where
+    /// it declared none. Exactly equal is the FIX way round and `key` is the
+    /// wire value; anything else, `ADVSIDE` against `AdvSide` included, is the
+    /// UlMessage way and `value` is.
+    fn decodes(&self, named: &str) -> Option<(usize, bool)> {
+        let at = self
             .vocabulary
             .iter()
-            .position(|(_, field)| crate::types::folds_equal(field.name(), named))
-        else {
+            .position(|(_, field)| crate::types::folds_equal(field.name(), named))?;
+        let field = &self.vocabulary[at].1;
+        Some((at, field.display().unwrap_or_else(|| field.name()) == named))
+    }
+
+    /// Puts one code set on the vocabulary field its map decodes.
+    ///
+    /// An empty set is dropped rather than written: `set_codes` reads an empty
+    /// slice as a removal, and a map declaring no entries is not the file
+    /// saying the field has no codes.
+    fn attach_codes(&mut self, at: usize, codes: &[FixCode]) -> Result<()> {
+        if codes.is_empty() {
             return Ok(());
-        };
-        self.vocabulary[at].1.as_fix_mut().set_codes(&codes)?;
-        Ok(())
+        }
+        self.vocabulary[at].1.as_fix_mut().set_codes(codes)
     }
 
     /// Reads one `grammar-binding` into one message root.
@@ -873,25 +912,5 @@ impl Named for BytesStart<'_> {
 impl Named for quick_xml::events::BytesEnd<'_> {
     fn local(&self) -> quick_xml::name::LocalName<'_> {
         self.local_name()
-    }
-}
-
-/// One map entry oriented into the wire value and the name for it.
-///
-/// A CBlock writes `key="buy" value="B"`, so the name keys and the value is
-/// the value - which is the order a code set wants. Not every map is written
-/// that way, and one written the other way round would put `B` in a name and
-/// `buy` on the wire.
-///
-/// The side that looks like a wire value decides. A FIX value is short and
-/// has no word shape: `1`, `B`, `99`, `FXSPOT`. A symbolic name is longer and
-/// reads as words. So the shorter side is the value, and where neither is
-/// clearly shorter the declared order stands, because the declared order is
-/// the documented one and a guess is worse than a convention.
-fn oriented<'entry>(key: &'entry str, value: &'entry str) -> (&'entry str, &'entry str) {
-    if value.len() <= key.len() {
-        (value, key)
-    } else {
-        (key, value)
     }
 }
