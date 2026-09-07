@@ -598,6 +598,62 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Adds every field, folding into one already stored under its identity.
+    ///
+    /// Add or update, in bulk: a field whose canonical identity the dictionary
+    /// does not hold is [inserted](Self::insert), and one it holds is
+    /// [merged](Self::update). That is what reading a second source over a
+    /// first wants - a definition the dictionary lacks arrives, and one it has
+    /// keeps every key only it declares - where a bare `insert` would replace
+    /// wholesale and a bare `update` would refuse everything new.
+    ///
+    /// The caller's order is the precedence, exactly as [`Self::update`]'s is:
+    /// merge the lowest-priority source first and the highest arrives last and
+    /// wins. Answers the count added and the count merged, in that order, and
+    /// records the same pair through `log` at debug level.
+    ///
+    /// The identity is the whole probe. A tag alone is not: the same tag in
+    /// two branches is two fields, and a merge keyed on the tag would fold a
+    /// venue's definition into the specification's.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::insert`] and [`Self::update`] return - absence for
+    /// a field carrying no `fix:tag`, a conflict for a key another field holds
+    /// in the same branch, and a typed refusal for a name or a datatype that
+    /// disagrees with the stored definition. A CBlock's generic `float` or
+    /// `string` meeting the committed dictionary's `float64` or `msgtype` is
+    /// that last one, and is the expected shape of a refusal here rather than
+    /// a defect: a CBlock says nothing about which tag is money.
+    ///
+    /// The whole fold is one mutation: it is staged and only then adopted, so
+    /// a refusal on the last field of a thousand leaves the dictionary exactly
+    /// as it was and what a caller fixes is the source. That costs one copy of
+    /// the dictionary per call, paid once rather than per field.
+    pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)>
+    where
+        I: IntoIterator<Item = Field>,
+    {
+        let mut staged = self.clone();
+        let mut added = 0_usize;
+        let mut merged = 0_usize;
+        for field in fields {
+            if staged
+                .canonical_position_by_id(canonical_id(&field)?)
+                .is_some()
+            {
+                staged.update(field)?;
+                merged += 1;
+            } else {
+                staged.insert(field)?;
+                added += 1;
+            }
+        }
+        *self = staged;
+        log::debug!("added {added} and merged {merged} fix field definitions");
+        Ok((added, merged))
+    }
+
     /// Removes the field a tag, identifier, canonical name, or alias reaches.
     pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field> {
         let position = match key.into() {

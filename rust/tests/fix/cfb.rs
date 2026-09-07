@@ -6,7 +6,8 @@ use std::sync::Arc;
 use yggdryl::holder::local::Folder;
 
 use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
-use yggdryl::{DataType, Field, FixBranch, FixRegistry, IOBase, Version};
+use yggdryl::holder::Buffer;
+use yggdryl::{DataType, Error, Field, FixBranch, FixField, FixRegistry, IOBase, Version};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -117,6 +118,16 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A second counterparty's file: one tag both declare, one only this one does.
+const OVERLAY: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="OURDESK" sendercompid="MSFIX">
+	<vocabulary>
+		<vocabulary-tag name="6" alt="AvgPx" type="float" />
+		<vocabulary-tag name="44" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>
+"#;
+
 /// The same file written by the other side of the session.
 const SELLSIDE: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 <cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="OURDESK" sendercompid="BLPFIX">
@@ -128,12 +139,18 @@ const SELLSIDE: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 
 /// One document behind a handle, the way the store cases build them.
 fn handle(body: &str) -> impl IOBase {
+    named_handle(body, "one.cfb")
+}
+
+/// The same, under a chosen file name, for the cases that read the stem.
+fn named_handle(body: &str, name: &str) -> impl IOBase {
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     // A memory filesystem starts empty, where a real bucket already exists.
     filesystem
         .create_dir("cblock", true)
         .expect("a container to write into");
-    let mut file = File::from_path(filesystem, "cblock/one.cfb", None).expect("a path under it");
+    let mut file =
+        File::from_path(filesystem, format!("cblock/{name}"), None).expect("a path under it");
     file.write_all_bytes(body.as_bytes()).expect("the document");
     file
 }
@@ -475,4 +492,206 @@ fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     // A map naming no field is skipped rather than refused: a CBlock maps
     // things that are not fields.
     assert_eq!(registry.get_field_by_name("notafield", None), None);
+}
+
+#[test]
+fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
+    let fields =
+        FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).expect("a readable CBlock");
+
+    // Declaration order, where a registry answers tag-major: the file's own
+    // order is what a reader folding two sources wants to see.
+    assert_eq!(
+        fields.iter().map(Field::name).collect::<Vec<_>>(),
+        [
+            "beginstring",
+            "bodylength",
+            "msgtype",
+            "avgpx",
+            "exludeddealers",
+            "dealerparquote",
+            "22830",
+            "nolegs",
+            "legcurrency",
+            "nolegsecurityaltid",
+            "legsecurityaltid",
+            "transacttime",
+            "mdentrytime",
+            "timeinforce",
+            "advside",
+        ],
+    );
+
+    // Every field is keyed, so it enters a dictionary as it stands. A dialect
+    // claims only the user-defined range, so the standard tags stay standard.
+    let avgpx = &fields[3];
+    assert_eq!(avgpx.as_fix().tag().unwrap(), Some(6));
+    assert_eq!(avgpx.as_fix().branch().unwrap(), FixBranch::STANDARD);
+    assert_eq!(fields[4].as_fix().branch().unwrap(), branch());
+
+    // The maps sit past the grammar bindings, so a code set proves the whole
+    // document was read and not just its first pass.
+    assert_eq!(fields[14].as_fix().code_value("buy"), Some("B"));
+
+    // The roots and the branch record are what a registry holds instead.
+    let (registry, roots) = FixRegistry::from_cfb(&handle(CBLOCK), Some(&branch())).unwrap();
+    assert_eq!(registry.len(), fields.len());
+    assert_eq!(roots.len(), 1);
+    assert_eq!(
+        registry.branch_named("bloomberg").unwrap().version(),
+        "4.4".parse::<Version>().unwrap(),
+    );
+}
+
+#[test]
+fn an_unnamed_file_takes_its_branch_from_its_own_stem() {
+    // A CBlock never names itself, so the file standing in for the caller is
+    // the stem and nothing else of the path.
+    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), None)
+        .expect("a readable CBlock");
+    let named = FixBranch::from_str("msfix44").unwrap();
+    assert_eq!(fields[4].as_fix().branch().unwrap(), named);
+    assert_eq!(fields[3].as_fix().branch().unwrap(), FixBranch::STANDARD);
+
+    // An explicit name still wins over the stem.
+    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some("bloomberg"))
+        .expect("a readable CBlock");
+    assert_eq!(fields[4].as_fix().branch().unwrap(), branch());
+
+    // A buffer's URL is an identity and not a location, so its stem names no
+    // dialect and is refused rather than guessed at: bytes held in memory are
+    // named by the caller or not at all.
+    let mut buffer = Buffer::new();
+    buffer.write_all_bytes(CBLOCK.as_bytes()).unwrap();
+    assert!(FixField::from_cfb_file(&buffer, None).is_err());
+    let fields = FixField::from_cfb_file(&buffer, Some("bloomberg")).expect("a readable CBlock");
+    assert_eq!(fields[4].as_fix().branch().unwrap(), branch());
+}
+
+#[test]
+fn a_stem_that_is_not_a_branch_is_refused_rather_than_folded_into_one() {
+    // A dictionary keyed on a guess is worse than a refusal, so neither the
+    // leading digit nor the over-long name is repaired.
+    let error = FixField::from_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), None).unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { target, .. } if *target == "fix branch"),
+        "{error}"
+    );
+    assert!(error.to_string().contains("ASCII letter"), "{error}");
+
+    let error =
+        FixField::from_cfb_file(&named_handle(CBLOCK, "a-name-well-past-the-inline-cap.cfb"), None)
+            .unwrap_err();
+    assert!(error.to_string().contains("at most 23 bytes"), "{error}");
+
+    // A supplied name is held to the same rule as a stem standing in for one.
+    let error = FixField::from_cfb_file(&handle(CBLOCK), Some("4bloomberg")).unwrap_err();
+    assert!(error.to_string().contains("ASCII letter"), "{error}");
+}
+
+#[test]
+fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
+    // A dialect claims only the user-defined range, so two counterparties'
+    // files meet in the standard branch rather than each shadowing FIX - which
+    // is the case the fold exists for.
+    let mut dictionary = FixRegistry::from_fields(
+        FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap(),
+    )
+    .expect("one file's vocabulary");
+    let before = dictionary.len();
+
+    let (added, merged) = dictionary
+        .add_fields(FixField::from_cfb_file(&handle(OVERLAY), Some("morgan")).unwrap())
+        .expect("the second file folds into the first");
+    assert_eq!((added, merged), (1, 1));
+    assert_eq!(dictionary.len(), before + added);
+
+    // The fold keeps what only the stored definition declared, where the
+    // wholesale replace an `insert` performs would drop it.
+    let avgpx = dictionary.field_by_tag(6).unwrap();
+    assert_eq!(avgpx.name(), "avgpx");
+    assert!(
+        avgpx
+            .description()
+            .is_some_and(|held| held.contains("average price")),
+        "the first file's description survived a file that carries none",
+    );
+    // And a tag only the second file declares arrives.
+    assert_eq!(dictionary.field_by_name("price", None).unwrap().name(), "price");
+
+    // The second file's own custom tags land in its own branch, so the two
+    // dialects never collide on the user range.
+    let (added, _) = dictionary
+        .add_fields(FixField::from_cfb_file(&named_handle(CBLOCK, "morgan.cfb"), None).unwrap())
+        .expect("the same vocabulary under a second dialect");
+    assert_eq!(added, 3, "one branch's user-range tags, and no other");
+}
+
+#[test]
+fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    let mut seeded =
+        FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
+    let before = seeded.clone();
+
+    // A CBlock says nothing about which tag is money or which is a MsgType, so
+    // its generic answers disagree with the committed dictionary's typed ones.
+    // The fold refuses rather than widening, which is the phase's principal
+    // known loss stated as a refusal instead of a silent replacement.
+    let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
+    let error = seeded.add_fields(fields).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    let message = error.to_string();
+    assert!(message.contains("msgtype") && message.contains("utf8"), "{message}");
+    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::MsgType);
+    assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
+
+    // The fold is one mutation, so the tags read before the refusal - 8 and 9,
+    // which agree and would have merged - are not in the dictionary either.
+    assert_eq!(seeded, before, "a refused fold writes nothing");
+}
+
+#[test]
+fn both_doors_refuse_a_file_that_names_one_field_twice() {
+    // Two tags whose `alt` folds to one name, both outside the user range and
+    // so both in the standard branch. The dictionary build is what catches it,
+    // which is why the vocabulary door builds one and throws it away.
+    let clashing = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="3044" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let refused = FixRegistry::from_cfb(&handle(clashing), Some(&branch())).unwrap_err();
+    assert!(refused.is_conflict(), "{refused}");
+    let also = FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).unwrap_err();
+    assert_eq!(also.to_string(), refused.to_string());
+
+    // Same tag twice under two spellings is the other half of that check.
+    let doubled = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="44" alt="LastPx" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    assert!(FixField::from_cfb_file(&handle(doubled), None).is_err());
+
+    // And the one difference that is not a loss: a dictionary keeps one entry
+    // per identity, so a tag declared twice identically arrives twice here.
+    let repeated = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="44" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let fields = FixField::from_cfb_file(&handle(repeated), None).expect("a readable CBlock");
+    assert_eq!(fields.len(), 2);
+    let (registry, _) = FixRegistry::from_cfb(&handle(repeated), None).unwrap();
+    assert_eq!(registry.len(), 1);
 }

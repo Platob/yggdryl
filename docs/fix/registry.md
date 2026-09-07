@@ -18,10 +18,12 @@
 | Order | `iter` and `next_field_after` walk ascending packed identifiers, tag-major then by branch digest |
 | Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
+| Fold | `add_fields` is add-or-update in bulk and one mutation: an absent canonical identity inserts, a present one merges, a refusal writes nothing; it answers the counts added and merged and records the pair through `log` |
+| CBlock | `FixRegistry::from_cfb` answers one Ullink CBlock's vocabulary and its message roots; `FixField::from_cfb_file` answers the vocabulary alone, named by the file's own stem when the caller names no branch |
 | Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
 | Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
-| Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
+| Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`, `fix_cfb_fields`, and `FixRegistry.add_fields`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
 
 ## Use
 
@@ -552,7 +554,144 @@ Both mutations build the result first and check every key it would claim, so a r
 | `update`, same identifier | merge: the incoming field wins the name spelling, nullability and every metadata key both declare; the stored field keeps keys only it declares; `tags` and `aliases` concatenate, incoming first, deduplicated, order kept |
 | `update`, branch disagrees | absence, because the branch is half of the identity |
 | `update`, datatype disagrees | typed error naming both, never a silent widening |
+| `add_fields`, absent identity | inserted, and counted as added |
+| `add_fields`, stored identity | merged through `update`, and counted as merged |
+| `add_fields`, a refusal partway | nothing is written: the whole fold is staged and only then adopted, so a refusal on the last field of a thousand leaves the dictionary as it was |
 | `remove` | takes a tag, an identifier or a name, never a path, and answers the field |
+
+## Folding a second source in
+
+Several sources describe one dictionary, and `add_fields` is how a later one enters an earlier one: a field whose canonical identity is absent is inserted, one already stored is merged, and the counts say which was which. A bare `insert` loop would replace the stored definition wholesale and drop what only it declared; a bare `update` loop would refuse everything new.
+
+`FixField::from_cfb_file` is the source that made the fold worth having. It answers one Ullink CBlock's vocabulary alone - keyed, in declaration order, code sets attached - where `FixRegistry::from_cfb` answers a whole registry plus the message roots its grammar bindings describe. Both build the dictionary, so both refuse the same files; the vocabulary door just drops the one it built. A CBlock never names itself, so with no branch supplied the handle's own stem does: `bloomberg.cfb` reads into the branch `bloomberg`. Rust and Python only.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::IOBase;
+    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::{DataType, FixField, FixRegistry};
+
+    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-fix-cfb-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let written = |name: &str, body: &str| -> yggdryl::Result<File> {
+        let mut file = File::new(root.join(name))?;
+        file.write_all_bytes(body.as_bytes())?;
+        Ok(file)
+    };
+
+    // One counterparty's file, named by the file it arrives as.
+    let bloomberg = written("bloomberg.cfb", r#"<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4" sendercompid="OURDESK" targetcompid="BLPFIX">
+        <vocabulary>
+            <vocabulary-tag name="55" alt="Symbol" type="string">
+                <description>Ticker symbol.</description>
+            </vocabulary-tag>
+            <vocabulary-tag name="10001" alt="ExcludedDealers" type="string" />
+        </vocabulary>
+    </cplugin-configuration>"#)?;
+
+    // No branch supplied, so the stem names the dialect. A dialect claims only
+    // the user-defined range, so tag 55 stays FIX's and 10001 is Bloomberg's.
+    let fields = FixField::from_cfb_file(&bloomberg, None)?;
+    assert_eq!(fields.iter().map(yggdryl::Field::name).collect::<Vec<_>>(), ["symbol", "excludeddealers"]);
+    assert!(fields[0].as_fix().branch()?.is_standard());
+    assert_eq!(fields[1].as_fix().branch()?.name(), "bloomberg");
+    let mut registry = FixRegistry::from_fields(fields)?;
+
+    // A second counterparty's file folds in: the tag both declare is merged,
+    // the one only this file declares is added.
+    let morgan = written("morgan.cfb", r#"<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4" sendercompid="OURDESK" targetcompid="MSFIX">
+        <vocabulary>
+            <vocabulary-tag name="55" alt="Symbol" type="string" />
+            <vocabulary-tag name="44" alt="Price" type="float" />
+        </vocabulary>
+    </cplugin-configuration>"#)?;
+    let (added, merged) = registry.add_fields(FixField::from_cfb_file(&morgan, None)?)?;
+    assert_eq!((added, merged), (1, 1));
+    // The fold kept the description only the first file declared.
+    assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol."));
+    assert_eq!(registry.field_by_tag(44)?.dtype(), &DataType::Float32);
+
+    // A datatype that disagrees with the stored definition is refused, never
+    // widened - which is what a CBlock's generic `integer` meets.
+    let retyped = written("retyped.cfb", r#"<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4">
+        <vocabulary><vocabulary-tag name="55" alt="Symbol" type="integer" /></vocabulary>
+    </cplugin-configuration>"#)?;
+    let before = registry.clone();
+    let error = registry.add_fields(FixField::from_cfb_file(&retyped, None)?).unwrap_err();
+    assert!(error.to_string().contains("utf8"), "{error}");
+    // The fold is one mutation, so a refusal leaves the dictionary as it was.
+    assert_eq!(registry, before);
+    assert_eq!(registry.len(), 3);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pytest
+
+    from yggdryl.fix import FixRegistry, fix_cfb_fields
+
+    workspace = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-fix-cfb-"))
+
+
+    def written(name: str, body: str) -> pathlib.Path:
+        path = workspace / name
+        path.write_text(body, encoding="utf-8")
+        return path
+
+
+    # One counterparty's file, named by the file it arrives as.
+    bloomberg = written("bloomberg.cfb", """<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4" sendercompid="OURDESK" targetcompid="BLPFIX">
+        <vocabulary>
+            <vocabulary-tag name="55" alt="Symbol" type="string">
+                <description>Ticker symbol.</description>
+            </vocabulary-tag>
+            <vocabulary-tag name="10001" alt="ExcludedDealers" type="string" />
+        </vocabulary>
+    </cplugin-configuration>""")
+
+    # No branch supplied, so the stem names the dialect. A dialect claims only
+    # the user-defined range, so tag 55 stays FIX's and 10001 is Bloomberg's.
+    fields = fix_cfb_fields(bloomberg)
+    assert [field.name for field in fields] == ["symbol", "excludeddealers"]
+    assert fields[0].fix.branch == ""
+    assert fields[1].fix.branch == "bloomberg"
+    registry = FixRegistry.from_fields(fields)
+
+    # A second counterparty's file folds in: the tag both declare is merged,
+    # the one only this file declares is added.
+    morgan = written("morgan.cfb", """<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4" sendercompid="OURDESK" targetcompid="MSFIX">
+        <vocabulary>
+            <vocabulary-tag name="55" alt="Symbol" type="string" />
+            <vocabulary-tag name="44" alt="Price" type="float" />
+        </vocabulary>
+    </cplugin-configuration>""")
+    assert registry.add_fields(fix_cfb_fields(morgan)) == (1, 1)
+    # The fold kept the description only the first file declared.
+    assert registry.field_by_tag(55).description == "Ticker symbol."
+    assert registry.field_by_tag(44).dtype.id == "float32"
+
+    # A datatype that disagrees with the stored definition is refused, never
+    # widened - which is what a CBlock's generic `integer` meets.
+    retyped = written("retyped.cfb", """<?xml version="1.0" encoding="US-ASCII"?>
+    <cplugin-configuration version="1.2" fix-version="4.4">
+        <vocabulary><vocabulary-tag name="55" alt="Symbol" type="integer" /></vocabulary>
+    </cplugin-configuration>""")
+    with pytest.raises(ValueError, match="utf8"):
+        registry.add_fields(fix_cfb_fields(retyped))
+    # The fold is one mutation, so a refusal leaves the dictionary as it was.
+    assert registry.field_by_tag(55).dtype.id == "utf8"
+    assert len(registry) == 3
+    ```
 
 ## One default registry per process
 
@@ -750,6 +889,12 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `insert` of a field whose key another field holds in the same branch -> conflict naming both fields and the branch; `len` unchanged.
 - `insert` of a field matching one stored field on both identity halves -> `Ok(Some(prior))`, a replacement, never a conflict.
 - `update` with a different datatype -> typed error; the stored datatype stays.
+- `add_fields` of a field with no `fix:tag` -> absence naming `fix:tag`; there is no identity to add or fold under.
+- `add_fields` of the same tag in another branch -> added, never folded; the identity is the whole probe, and a tag alone is not.
+- `add_fields` refusing on any field -> the dictionary is unchanged, `len` included; one copy of it is staged per call, not per field.
+- `FixField::from_cfb_file` with no branch, on a handle whose stem is not a branch -> refused, never folded into one; a `Buffer`'s URL is an identity rather than a location, so bytes in memory are named by the caller.
+- `FixField::from_cfb_file` on a file naming one field twice -> the same refusal `FixRegistry::from_cfb` gives, because the vocabulary door builds the dictionary too and drops it; a tag declared twice *identically* is the one difference, arriving twice there and once here.
+- A CBlock's `float` or `string` meeting a committed `float64` or `msgtype` -> the datatype refusal above; a CBlock says nothing about which tag is money or which is a MsgType.
 - `remove` with a path -> never a match; it takes a tag, an identifier or a name, and a bare one means the standard branch.
 - Primitive and nested fields share one identity space; a repeating group claiming a scalar's tag, name, alternate tag or alias -> the same conflict as between two scalars.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.
@@ -770,6 +915,8 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     cargo bench -p yggdryl --bench fix -- fix/resolve
     cargo bench -p yggdryl --bench fix -- fix/lineage
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
+    cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
+    cargo test -p yggdryl --test fix -- cfb::a_file_answers_its_vocabulary cfb::an_unnamed_file_takes_its_branch cfb::a_stem_that_is_not_a_branch cfb::a_cblock_vocabulary_folds cfb::folding_a_cblock_into_the_committed
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```
 
@@ -778,6 +925,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     ```bash
     python/.venv/bin/python -m pytest python/tests/fix
     python/.venv/bin/python -m pytest python/tests/fix -k "registry_resolves or explicit_branch or inference or registry_absence or registry_keys or registry_coerces or registry_iterates or seed_iterates or registry_insert or registry_mutation or install_global"
+    python/.venv/bin/python -m pytest python/tests/fix -k "add_fields or cblock"
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     ```
 

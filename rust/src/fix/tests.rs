@@ -1229,6 +1229,91 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
 }
 
 #[test]
+fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
+    let mut registry =
+        FixRegistry::from_fields([full("Symbol", 55, &[65], &["Ticker"]), tagged("Price", 44)])
+            .unwrap();
+
+    // Tag 55 is stored and folds; tag 44 is stored under another spelling of
+    // the same name and folds too; tag 60 is new. The venue's own 5055 shares
+    // the tag of nothing, and its branch is half of the identity.
+    let mut priced = tagged("PRICE", 44);
+    priced.as_fix_mut().set_aliases(["Px"]).unwrap();
+    let (added, merged) = registry
+        .add_fields([
+            full("Symbol", 55, &[66], &["Sym"]),
+            priced,
+            tagged("TransactTime", 60),
+            identified("Symbol", &cme(), 5_055),
+        ])
+        .unwrap();
+    assert_eq!((added, merged), (2, 2));
+    assert_eq!(registry.len(), 4);
+
+    // The merge kept what only the stored field declared and added the rest.
+    let symbol = registry.field_by_tag(55).unwrap();
+    assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65]);
+    assert_eq!(
+        symbol.as_fix().aliases().collect::<Vec<_>>(),
+        ["Sym", "Ticker"]
+    );
+    // The incoming spelling wins, which is what makes the caller's order the
+    // precedence.
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "PRICE");
+    assert_eq!(registry.field_by_tag(60).unwrap().name(), "TransactTime");
+    assert_eq!(
+        registry
+            .field_by_id(FixId::from_parts(&cme(), 5_055).unwrap())
+            .unwrap()
+            .as_fix()
+            .branch()
+            .unwrap(),
+        cme()
+    );
+
+    // The identity is the whole probe: the same tag in another branch is
+    // another field, added rather than folded into the specification's.
+    let (added, merged) = registry
+        .add_fields([identified("TransactTime", &cme(), 5_060)])
+        .unwrap();
+    assert_eq!((added, merged), (1, 0));
+    assert_eq!(registry.len(), 5);
+}
+
+#[test]
+fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
+    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
+
+    // No `fix:tag` is no identity, so there is nothing to add or fold under.
+    let error = registry
+        .add_fields([DataType::Utf8.nullable_field("Nameless")])
+        .unwrap_err();
+    assert!(error.is_absent(), "{error}");
+    assert!(error.to_string().contains("fix:tag"), "{error}");
+
+    // A datatype that disagrees with the stored definition is refused, never
+    // widened - the shape a CBlock's generic `float` takes against a stored
+    // `float64`.
+    let mut widened = tagged("Symbol", 55);
+    widened.set_dtype(DataType::LargeUtf8).unwrap();
+    let error = registry.add_fields([widened]).unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+
+    // The whole fold is one mutation, so a refusal in the middle of it leaves
+    // the dictionary exactly as it was - neither the field before nor the one
+    // after arrives.
+    let before = registry.clone();
+    let mut clash = tagged("Symbol", 55);
+    clash.set_dtype(DataType::LargeUtf8).unwrap();
+    let error = registry
+        .add_fields([tagged("Price", 44), clash, tagged("TransactTime", 60)])
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert_eq!(registry, before);
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
 fn removal_keeps_every_position_consistent() {
     let mut registry = FixRegistry::from_fields([
         full("Symbol", 55, &[65], &["Ticker"]),

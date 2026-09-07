@@ -7,6 +7,17 @@
 //! tree. Everything else in the file describes the file, the transcoding, or
 //! the plugin, and is skipped.
 //!
+//! # Two entry points, one parse
+//!
+//! [`FixRegistry::from_cfb`] answers the whole file: a dictionary of its
+//! vocabulary, the branch record its root element declares, and the message
+//! roots its grammar bindings describe. [`FixField::from_cfb_file`] answers
+//! the vocabulary alone, in declaration order, and takes the branch name from
+//! the file's own stem when the caller supplies none - which is what a reader
+//! folding one counterparty's file into a dictionary through
+//! [`FixRegistry::add_fields`] wants, and it loses the roots and the branch
+//! record to say so. Both drive the same read and refuse the same documents.
+//!
 //! # Two passes, and the second never invents a type
 //!
 //! `vocabulary` builds the dictionary; `grammar-binding` builds the message
@@ -35,7 +46,7 @@
 //! `merge-mode` (so a file patching a base configuration is read standalone),
 //! `message-types` and both mapping tables, `history`, `cvs-revision`, the
 //! root's `description`, `normalization-binding`, `reject-binding`,
-//! `flow-filter-binding`, `maps`, `options`, `noe-normalization-binding`, and
+//! `flow-filter-binding`, `options`, `noe-normalization-binding`, and
 //! the root's own `version`, `date` and `logs`.
 //!
 //! And one loss of a different kind. A CBlock's `float` and `integer` are the
@@ -43,10 +54,12 @@
 //! sequence numbers - the logical-name table already spells `price` and `qty`
 //! as `decimal64(18,8)` and `seqnum` as `int64`. But a `.cfb` says nothing
 //! about which tag is money, and this never promotes by tag or consults a
-//! seeded registry mid-parse. The consequence is worth stating plainly:
-//! merging a CBlock vocabulary into a dictionary seeded from the committed
-//! one **replaces** tag 6 `AvgPx` `decimal64(18,8)` with `float32`, because
-//! an insert on an identity match replaces wholesale.
+//! seeded registry mid-parse. What that costs a caller depends on the verb
+//! they fold with, and both outcomes are worth stating plainly: against a
+//! dictionary seeded from the committed one, where tag 6 `AvgPx` is stored
+//! `float64`, [`FixRegistry::add_fields`] **refuses** it, because a datatype
+//! is never widened silently, while [`FixRegistry::insert`] **replaces** it
+//! wholesale on an identity match.
 //!
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
@@ -56,7 +69,7 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, IOBase, Result, Version};
+use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
 use super::{FixBranch, FixCode, FixId, FixRegistry};
 
@@ -107,8 +120,10 @@ impl FixRegistry {
     /// a struct named by a MsgType, and inventing a synthetic tag to key one
     /// would put something in the dictionary that is not a field.
     ///
-    /// No seed is taken: this answers what one file says, and merging is the
-    /// caller's business.
+    /// No seed is taken: this answers what one file says. Folding it into a
+    /// dictionary that already exists is [`FixRegistry::add_fields`]'s job,
+    /// and [`FixField::from_cfb_file`] is the door to take when the roots are
+    /// not wanted.
     ///
     /// # Errors
     ///
@@ -119,6 +134,56 @@ impl FixRegistry {
     pub fn from_cfb(handle: &dyn IOBase, branch: Option<&FixBranch>) -> Result<(Self, Vec<Field>)> {
         let bytes = handle.read_all_bytes()?;
         Parse::new(&bytes, branch).run()
+    }
+}
+
+impl FixField<'_> {
+    /// Reads an Ullink CBlock configuration for the vocabulary it declares.
+    ///
+    /// The dictionary half of [`FixRegistry::from_cfb`], answered on its own
+    /// and in declaration order. Every field carries the `fix:tag` and
+    /// `fix:branch` that key it and whatever code set the file's maps decode
+    /// for it, which is what [`FixRegistry::add_fields`] needs to fold one
+    /// counterparty's file into a dictionary that already exists.
+    ///
+    /// **`branch` names the dialect, and the file names it when the caller
+    /// does not.** A CBlock states a version and a session but no name for the
+    /// pair, so with none supplied the handle's own stem stands in:
+    /// `s3://cblocks/MSFIX44.cfb` reads into the branch `msfix44`. A handle
+    /// answering no URL at all has no stem and reads into the standard branch.
+    ///
+    /// A stem that is not a branch is refused rather than folded into one,
+    /// because a dictionary keyed on a guess is worse than a refusal. That
+    /// includes the stem of a [`Buffer`](crate::holder::Buffer), whose URL is
+    /// an identity and not a location: bytes held in memory are named by the
+    /// caller or not at all.
+    ///
+    /// The grammar bindings are still read and still validated, exactly as
+    /// [`FixRegistry::from_cfb`] reads them, and their roots dropped: one
+    /// parse, one set of refusals, whichever entry point a caller takes.
+    ///
+    /// Two things a registry would hold are therefore not here - the message
+    /// roots, and the branch record. A field stores its branch's *name* and
+    /// never the version and session pair the root element declares, so a
+    /// dictionary built from these fields alone knows the dialect by name and
+    /// nothing else. Take [`FixRegistry::from_cfb`] when either matters.
+    ///
+    /// One difference is not a loss: a dictionary keeps one entry per
+    /// identity, so a tag a file declares twice identically arrives twice
+    /// here and once there.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`FixRegistry::from_cfb`] returns, and [`Error::Parse`]
+    /// naming `fix branch` when the supplied name - or the stem standing in
+    /// for it - is not one.
+    pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>> {
+        let dialect = branch
+            .or_else(|| handle.url().and_then(Url::stem))
+            .map(FixBranch::from_str)
+            .transpose()?;
+        let bytes = handle.read_all_bytes()?;
+        Parse::new(&bytes, dialect.as_ref()).fields()
     }
 }
 
@@ -150,8 +215,60 @@ impl<'doc> Parse<'doc> {
         }
     }
 
-    /// Reads the whole document, skipping everything but the two passes.
+    /// The vocabulary as a dictionary, and the roots the bindings describe.
     fn run(mut self) -> Result<(FixRegistry, Vec<Field>)> {
+        self.read()?;
+        let roots = std::mem::take(&mut self.roots);
+        Ok((self.dictionary()?, roots))
+    }
+
+    /// The vocabulary alone, in declaration order.
+    ///
+    /// Declaration order is what a caller folding one file into another wants
+    /// and what a dictionary does not keep, so it is taken first. The
+    /// dictionary is then built and dropped, because building it is the second
+    /// half of what reading this file means: it is where a name or an identity
+    /// the file declares twice is refused, and both doors have to refuse the
+    /// same documents.
+    ///
+    /// Two things a dictionary would hold are not here - the roots, and the
+    /// branch record, which no field can carry. A third is a difference rather
+    /// than a loss: a dictionary keeps one entry per identity, so a tag a file
+    /// declares twice identically arrives twice here and once there.
+    fn fields(mut self) -> Result<Vec<Field>> {
+        self.read()?;
+        let ordered: Vec<Field> = self
+            .vocabulary
+            .iter()
+            .map(|(_, field)| field.clone())
+            .collect();
+        self.dictionary()?;
+        Ok(ordered)
+    }
+
+    /// The vocabulary as a dictionary.
+    ///
+    /// Both terminals build it, because it is where the file's own entries are
+    /// checked against each other rather than only against the grammar.
+    fn dictionary(self) -> Result<FixRegistry> {
+        let mut registry = FixRegistry::new();
+        // The branch record first, and explicitly. A field's metadata carries
+        // only its branch's *name* - the version and the session pair are the
+        // dictionary's own record of the dialect - so inserting fields alone
+        // would register a nameless-versioned branch and lose what the root
+        // element was read for. The standard branch declares no dialect, so a
+        // file parsed without a name registers nothing.
+        if !self.branch.is_standard() {
+            registry.set_branch(self.branch.clone())?;
+        }
+        for (_, field) in self.vocabulary {
+            registry.insert(field)?;
+        }
+        Ok(registry)
+    }
+
+    /// Reads the whole document, skipping everything but the two passes.
+    fn read(&mut self) -> Result<()> {
         let mut buffer = Vec::new();
         loop {
             match self.reader.read_event_into(&mut buffer) {
@@ -182,21 +299,7 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
-
-        let mut registry = FixRegistry::new();
-        // The branch record first, and explicitly. A field's metadata carries
-        // only its branch's *name* - the version and the session pair are the
-        // dictionary's own record of the dialect - so inserting fields alone
-        // would register a nameless-versioned branch and lose what the root
-        // element was read for. The standard branch declares no dialect, so a
-        // file parsed without a name registers nothing.
-        if !self.branch.is_standard() {
-            registry.set_branch(self.branch.clone())?;
-        }
-        for (_, field) in self.vocabulary {
-            registry.insert(field)?;
-        }
-        Ok((registry, self.roots))
+        Ok(())
     }
 
     /// Reads the branch record the root element carries.
