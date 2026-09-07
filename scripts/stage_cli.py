@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import shutil
 import subprocess
@@ -35,6 +36,31 @@ def built(profile: str, target: str | None) -> pathlib.Path:
     if target:
         directory = directory / target
     return directory / profile / NAME
+
+
+def environment() -> dict[str, str]:
+    """The environment cargo builds under, minus a wrapper that is not installed.
+
+    `RUSTC_WRAPPER` names a program cargo runs in place of `rustc`, and the
+    release matrix sets it to sccache. The Linux wheels build inside the
+    manylinux and musllinux images, where the variable crosses into the
+    container but the program does not, so cargo refuses before it compiles
+    anything:
+
+        error: could not execute process `sccache .../rustc -vV`
+        Caused by: No such file or directory (os error 2)
+
+    A wrapper that cannot be resolved is dropped rather than obeyed. Where the
+    wrapper is real the cache is still used; where it is only a name, the build
+    is slower and not broken.
+    """
+    resolved = dict(os.environ)
+    for variable in ("RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"):
+        wrapper = resolved.get(variable)
+        if wrapper and shutil.which(wrapper) is None:
+            print(f"{variable}={wrapper} is not executable here; building without it")
+            del resolved[variable]
+    return resolved
 
 
 def main() -> int:
@@ -62,7 +88,7 @@ def main() -> int:
     if arguments.target:
         command += ["--target", arguments.target]
     print(" ".join(command))
-    result = subprocess.run(command, cwd=ROOT, check=False)
+    result = subprocess.run(command, cwd=ROOT, check=False, env=environment())
     if result.returncode != 0:
         return result.returncode
 
