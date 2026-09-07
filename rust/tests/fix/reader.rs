@@ -234,6 +234,10 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // bridge one answer the same message rather than two spellings of it.
     let message = reader.bytes(line).unwrap();
     assert_eq!(message, reader.ultext(line).unwrap());
+    let without_member_separators: &[u8] =
+        b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
+|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
+    assert_eq!(message, reader.bytes(without_member_separators).unwrap());
 
     // Names resolve to tags, and each value takes its field's own type: a
     // quantity and a price are numbers, and a side is the packed code.
@@ -531,30 +535,90 @@ fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
     }
 }
 
-/// A bridge packs one group occurrence's members behind the FIX separator.
+/// A bridge packs one group occurrence's members behind a control separator,
+/// or concatenates them without one.
 ///
 /// ULLINK writes EOT/ETX; a bridge relaying into a session writes SOH. Both
-/// split, because inside an occurrence neither can be part of a value.
+/// are authoritative when present. With neither, the addressed group's four
+/// declared names provide the boundaries, including the longer
+/// `PartyRoleQualifier` beside `PartyRole`.
 #[test]
-fn a_group_occurrence_splits_on_either_packed_spelling() {
+fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
     let reader = reader();
-    for separator in ["\u{4}\u{3}", "\u{1}"] {
+    let mut messages = Vec::new();
+    for separator in ["\u{4}\u{3}", "\u{1}", ""] {
         let line = format!(
-            "toBridge #SYMBOL=TTF|#NOPARTYIDS=2|\
-             #NOPARTYIDS[0]=PARTYID=BUYSIDE{separator}PARTYIDSOURCE=D{separator}PARTYROLE=1|\
-             #NOPARTYIDS[1]=PARTYID=XPAR{separator}PARTYIDSOURCE=G{separator}PARTYROLE=17"
+            "toBridge #SYMBOL=TTF|#NOPARTYIDS=1|\
+             #NOPARTYIDS[0]=PARTYID=BUYSIDE{separator}PARTYIDSOURCE=D{separator}\
+             PARTYROLE=1{separator}PARTYROLEQUALIFIER=0"
         );
         let held = reader.text(&line).expect("a bridge row");
         let parties = held
             .get_by_tag(453)
             .and_then(Scalar::as_sequence)
             .expect("the group");
-        assert_eq!(parties.len(), 2);
+        assert_eq!(parties.len(), 1);
         let first = parties[0].as_sequence().expect("one occurrence");
-        // Three members, not one run under the first member's name.
-        assert_eq!(first.len(), 3, "the packed members did not split");
+        assert_eq!(first.len(), 4, "the packed members did not split");
         assert_eq!(first[0].as_str(), Some("BUYSIDE"));
+        messages.push(held);
     }
+    assert_eq!(messages[0], messages[1]);
+    assert_eq!(messages[0], messages[2]);
+}
+
+/// Separator-less inference is local to the addressed group.
+///
+/// A globally known `Symbol` inside an unknown member's value is not a
+/// boundary. The later direct `PartyRole` member is, and the unknown residue
+/// remains an ordinary entry with its embedded `=` intact.
+#[test]
+fn separatorless_group_inference_uses_only_direct_members() {
+    let reader = reader();
+    let message = reader
+        .text(
+            "MSGTYPE=D|NOPARTYIDS=1|\
+             NOPARTYIDS[0]=VENUEFLAG=XSymbol=TTFPARTYROLE=1",
+        )
+        .expect("a bridge row");
+
+    let unknown = message
+        .entries()
+        .iter()
+        .find(|entry| entry.key() == "NOPARTYIDS[0].VENUEFLAG")
+        .expect("the unknown member residue");
+    assert_eq!(unknown.tag(), 0);
+    assert_eq!(unknown.value(), "XSymbol=TTF");
+    assert!(
+        message
+            .entries()
+            .iter()
+            .all(|entry| entry.key() != "NOPARTYIDS[0].Symbol")
+    );
+    let members = message
+        .get_by_tag(453)
+        .and_then(Scalar::as_sequence)
+        .and_then(|parties| parties[0].as_sequence())
+        .expect("one occurrence");
+    assert_eq!(members.len(), 2);
+
+    // A rendered group name made only of digits is still a name, not a tag.
+    // It therefore borrows no member declarations from tag 453.
+    let numeric_name = reader
+        .text("MSGTYPE=D|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
+        .expect("a bridge row");
+    let party = numeric_name
+        .entries()
+        .iter()
+        .find(|entry| entry.key() == "453[0].PARTYID")
+        .expect("the one unsplit member");
+    assert_eq!(party.value(), "BUYSIDEPARTYROLE=1");
+    assert!(
+        numeric_name
+            .entries()
+            .iter()
+            .all(|entry| entry.key() != "453[0].PARTYROLE")
+    );
 }
 
 /// A row's content can never fail the batch it arrives in.

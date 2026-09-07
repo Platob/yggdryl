@@ -23,7 +23,7 @@
 //! adds there is the *type* - the packed four bytes rather than a string -
 //! which the dictionary carries like any other coded field.
 //!
-//! One mechanism, five fields. A sixth would use it too.
+//! One mechanism, seven fields.
 
 use std::sync::LazyLock;
 
@@ -82,14 +82,20 @@ fn branch() -> Result<FixBranch> {
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| build().ok());
 
-/// One field on the crate's branch, with the wording that explains it.
+/// One field on the crate's branch, with its folded identity and FIX-style display.
 ///
-/// The description goes on the generic key rather than behind the `fix:`
-/// scheme, because it is a fact about the column and every catalog the crate
-/// writes to has a place for one.
-fn crated(name: &str, tag: i32, dtype: DataType, description: &str) -> Result<Field> {
+/// Display and description use generic field metadata rather than the `fix:`
+/// scheme because every catalog the crate writes to understands them.
+fn crated(
+    name: &str,
+    display: &str,
+    tag: i32,
+    dtype: DataType,
+    description: &str,
+) -> Result<Field> {
     let mut field = dtype.nullable_field(name);
     field.as_fix_mut().set_id(&branch()?, tag)?;
+    field.set_display(display)?;
     field.set_description(description)?;
     Ok(field)
 }
@@ -109,6 +115,7 @@ fn build() -> Result<Vec<Field>> {
     // differently than it compares, and someone eventually sorts it.
     let mut msghash = crated(
         "msghash",
+        "MsgHash",
         MSGHASH_TAG,
         DataType::fixed_size_binary(DIGEST_WIDTH)?,
         "The xxh128 digest of what the message said, over the arrival \
@@ -129,6 +136,7 @@ fn build() -> Result<Vec<Field>> {
     // compared and ranged over, and a string would sort lexically.
     let mut unixpartition = crated(
         "unixpartition",
+        "UnixPartition",
         UNIXPARTITION_TAG,
         DataType::Int64,
         "The partition the market timestamp falls in, as whole seconds \
@@ -169,6 +177,7 @@ fn build() -> Result<Vec<Field>> {
         // produces rows, and the column says which dictionary answered them.
         crated(
             "version",
+            "Version",
             VERSION_TAG,
             DataType::Utf8,
             "The FIX version the message was read at, which is not always \
@@ -177,6 +186,7 @@ fn build() -> Result<Vec<Field>> {
         // One symbol for one instrument, whatever the venue called it.
         crated(
             "symbolticker",
+            "SymbolTicker",
             SYMBOLTICKER_TAG,
             DataType::Utf8,
             "One instrument symbol that is the same across venues, qualified \
@@ -186,6 +196,7 @@ fn build() -> Result<Vec<Field>> {
         // spans venues and a local time cannot be compared across them.
         crated(
             "timestamp",
+            "Timestamp",
             TIMESTAMP_TAG,
             DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
@@ -203,6 +214,7 @@ fn build() -> Result<Vec<Field>> {
         // actually took.
         crated(
             "parentclordid",
+            "ParentClOrdID",
             PARENTCLORDID_TAG,
             DataType::Utf8,
             "The client order identifier this order descends from, which no \
@@ -210,6 +222,7 @@ fn build() -> Result<Vec<Field>> {
         )?,
         crated(
             "parentorderid",
+            "ParentOrderID",
             PARENTORDERID_TAG,
             DataType::Utf8,
             "The venue order identifier this order descends from, which no \
@@ -230,12 +243,13 @@ fn partition_transform() -> String {
 ///
 /// Registering them is a caller's choice rather than a load-time side effect:
 /// a dictionary read from a store is what that store held, and a reader that
-/// silently gained five fields would write them back out again.
+/// silently gained seven fields would write them back out again.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held[0].name(), "msghash");
+/// assert_eq!(held[0].display(), Some("MsgHash"));
 /// // Same tag as a venue's own 30001 would be, and a different identity.
 /// let mine = held[0].as_fix().id()?.expect("an identity");
 /// assert_ne!(mine, yggdryl::FixId::standard(30001));

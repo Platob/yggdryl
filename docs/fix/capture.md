@@ -176,11 +176,13 @@ A capture that cannot print `0x01` writes what it stands for: `^A`, `\x01`, `<SO
 
 One vocabulary serves both readings, because the spelling a frame is *located* with and the one it is *split* on are the same fact: a capture that escapes its separator is recognized once rather than in each place that reads a frame. A frame carrying a real `0x01` is never scanned for the escapes, so the ordinary path allocates nothing.
 
-### A packed occurrence splits on either separator
+### A packed occurrence uses explicit or declared boundaries
 
 ULLINK packs one group occurrence's members behind EOT and ETX (`\x04\x03`); a bridge relaying into a FIX session packs them behind the protocol's own SOH. Both split an occurrence, because inside one neither byte can be part of a value.
 
 The first spelling an occurrence actually carries is the one that splits it, and only that one: reading both at once would let a value that legitimately holds the other byte break into fields nobody wrote.
+
+When neither control spelling is present, the reader scans for the next direct member name declared by the addressed group. The longest declared name wins, so `PartyIDSource` is not shortened to `PartyID`; names from elsewhere in the registry never become nested boundaries. A run with no declared boundary stays whole.
 
 ### Edges
 
@@ -263,16 +265,17 @@ Two lists close every row.
 
 ## The crate's own columns
 
-Six facts a capture states that no dictionary publishes, each an ordinary field on this crate's own branch so it lifts, columns, serializes and resolves with no special case anywhere. `FixRegistry::with_crate_fields` registers them; nothing in *reading* a message needs them, because every one is a fact about the capture rather than about the wire.
+Seven fields carry six facts a capture states that no dictionary publishes: the last fact needs separate client and venue parent identifiers. Each is an ordinary field on this crate's own branch, so it lifts, columns, serializes and resolves with no special case anywhere. `FixRegistry::with_crate_fields` registers them; nothing in *reading* a message needs them, because every one is a fact about the capture rather than about the wire.
 
-| Column | Tag | Holds |
-| --- | --- | --- |
-| `msghash` | 30001 | the xxh3-128 digest of what the message said, envelope tags excluded |
-| `version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
-| `symbolticker` | 30003 | one instrument symbol that is the same across venues |
-| `timestamp` | 30004 | the market clock a capture is ordered by |
-| `unixpartition` | 30005 | the partition that clock falls in, as whole seconds |
-| `parentclordid`, `parentorderid` | 30006, 30007 | where an order came from, which no standard tag names |
+| Column | Display | Tag | Holds |
+| --- | --- | --- | --- |
+| `msghash` | `MsgHash` | 30001 | the xxh3-128 digest of what the message said, envelope tags excluded |
+| `version` | `Version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
+| `symbolticker` | `SymbolTicker` | 30003 | one instrument symbol that is the same across venues |
+| `timestamp` | `Timestamp` | 30004 | the market clock a capture is ordered by |
+| `unixpartition` | `UnixPartition` | 30005 | the partition that clock falls in, as whole seconds |
+| `parentclordid` | `ParentClOrdID` | 30006 | the client order identifier this order descends from |
+| `parentorderid` | `ParentOrderID` | 30007 | the venue order identifier this order descends from |
 
 Two of them declare more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for. `msghash` is a digest holder, so it says which algorithm filled it and what it read. `unixpartition` is a derived partition column, so it says which column it derives from and how.
 
@@ -284,11 +287,13 @@ Two of them declare more than a type, in the protocols the crate already has rat
     let fields = fix_crate_fields()?;
     let digest = &fields[0];
     assert_eq!(digest.name(), "msghash");
+    assert_eq!(digest.display(), Some("MsgHash"));
     assert!(digest.as_digest().is_holder());
     assert_eq!(digest.as_digest().sources()?, Some(vec!["entries".to_owned()]));
 
     let partition = &fields[4];
     assert_eq!(partition.name(), "unixpartition");
+    assert_eq!(partition.display(), Some("UnixPartition"));
     // Which column it derives from, and how: `truncate[3600]`, because the
     // value is seconds floored to a multiple of the width.
     assert_eq!(partition.as_partition().sources()?, Some(vec!["30004".to_owned()]));
@@ -301,13 +306,14 @@ Two of them declare more than a type, in the protocols the crate already has rat
     from yggdryl.fix import fix_crate_fields
 
     fields = {field.name: field for field in fix_crate_fields()}
-
     digest = fields["msghash"]
+    assert digest.metadata["display"] == "MsgHash"
     assert digest.metadata["digest:role"] == "holder"
     assert digest.metadata["digest:algorithm"] == "xxh3-128"
     assert digest.metadata["digest:sources"] == '["entries"]'
 
     partition = fields["unixpartition"]
+    assert partition.metadata["display"] == "UnixPartition"
     # Which column it derives from, and how: `truncate[3600]`, because the
     # value is seconds floored to a multiple of the width.
     assert partition.metadata["partition:sources"] == '["30004"]'
@@ -323,11 +329,13 @@ Two of them declare more than a type, in the protocols the crate already has rat
     const held = fix.crateFields()
     const digest = held[0]
     assert.equal(digest.name, 'msghash')
+    assert.equal(digest.display, 'MsgHash')
     assert.equal(digest.getProperty('digest', 'role'), 'holder')
     assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
 
     const partition = held[4]
     assert.equal(partition.name, 'unixpartition')
+    assert.equal(partition.display, 'UnixPartition')
     // Which column it derives from, and how: `truncate[3600]`, because the
     // value is seconds floored to a multiple of the width.
     assert.equal(partition.getProperty('partition', 'sources'), '["30004"]')

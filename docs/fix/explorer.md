@@ -30,7 +30,9 @@ The counts below are the dictionary this repository ships. The same numbers come
     // columns are ordinary fields on their own branch.
     let standard = yggdryl::FixBranch::STANDARD;
     assert_eq!(registry.field_by_path("nopartyids.partyid", Some(&standard))?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_id("30004:yggdryl".parse()?)?.name(), "timestamp");
+    let timestamp = registry.field_by_id("30004:yggdryl".parse()?)?;
+    assert_eq!(timestamp.name(), "timestamp");
+    assert_eq!(timestamp.display(), Some("Timestamp"));
     ```
 
 === "Python"
@@ -47,7 +49,9 @@ The counts below are the dictionary this repository ships. The same numbers come
     # A repeating group is reached through its counter, and the crate's own
     # columns are ordinary fields on their own branch.
     assert registry.field_by_path("nopartyids.partyid", STANDARD_BRANCH).fix.tag == 448
-    assert registry.field_by_id("30004:yggdryl").name == "timestamp"
+    timestamp = registry.field_by_id("30004:yggdryl")
+    assert timestamp.name == "timestamp"
+    assert timestamp.display == "Timestamp"
     ```
 
 === "JavaScript"
@@ -64,7 +68,9 @@ The counts below are the dictionary this repository ships. The same numbers come
     // A repeating group is reached through its counter, and the crate's own
     // columns are ordinary fields on their own branch.
     assert.equal(registry.fieldByPath('nopartyids.partyid', fix.STANDARD_BRANCH).fix.tag, 448)
-    assert.equal(registry.fieldById('30004:yggdryl').name, 'timestamp')
+    const timestamp = registry.fieldById('30004:yggdryl')
+    assert.equal(timestamp.name, 'timestamp')
+    assert.equal(timestamp.display, 'Timestamp')
     ```
 
 ## What the dictionary holds
