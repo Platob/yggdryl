@@ -475,12 +475,158 @@ whose entries never nest, and how many of the shipped 521 groups nest at all
 (the corpus has 0 lists inside lists, so the third level is reached only by a
 dialect or a live capture — say which fixture exercises it).
 
+## Phase G7 — a lineage states a resolved datatype
+
+`fix:lineage` records what a field was called and typed at each version. Its
+`type` key holds **the FIX datatype name** — `int`, `NumInGroup`, `char`,
+`String`, `XID` — while the field's own datatype in the same shard is already
+the crate's serialized `DataType`. One document, two vocabularies, and the
+lineage's half is the one nothing else uses.
+
+The cost is not cosmetic. FIX renames a datatype far more often than it changes
+one, and every rename is persisted as a version in a field's history:
+
+| across all 1,564 lineages | |
+| --- | --- |
+| entries | 1,926 |
+| type changes | 323 |
+| **…that resolve to the same `DataType`** | **208 (64.4%)** |
+| …that are genuine retypes | 115 |
+| entries removable outright | 206 (10.7% of all entries) |
+
+The top offenders: `char → String` ×62, `String → XID` ×34, `String → XIDREF`
+×29, `int → NumInGroup` ×21, `float → Price` ×12, `UTCDateOnly → LocalMktDate`
+×12. Not one is a retype. Every FIX datatype name in the shipped lineages
+resolves through the crate's table, with **0 unknowns**, so the harmonization is
+total rather than best-effort.
+
+**G7-R1.** Persist a lineage entry's type as the datatype **resolved through the
+crate's own `DataType`**, never as the FIX datatype name. One representation —
+the one the field's own datatype already uses.
+
+**G7-R2.** Two FIX spellings that resolve to one `DataType` are one value. An
+entry that would record only a spelling change is **not written**.
+
+**G7-R3.** The first entry establishes `since` and never collapses. A field
+whose lineage would collapse to nothing keeps that first entry: "a field with no
+lineage is defined at every version", so dropping a lineage entirely changes
+meaning rather than compacting it.
+
+**G7-R4.** An entry does not collapse when it differs from its predecessor in
+`name`, `deprecated`, `removed`, `doc` or `ep`. Only the type is harmonized; a
+per-version wording or a deprecation is history, not noise.
+
+**G7-R5.** Accept that the FIX datatype name per version is no longer
+recoverable — the mapping is many-to-one. It is a spelling of a type, not the
+type; the crate's `DataType` is what every reader of a lineage actually wants,
+and resolving the name to one is work the projection does on every version read
+today. **Removing that lookup from the version-read path is the second reason
+for this phase.**
+
+**G7-R6.** The collapse is a **write-side** normalization, in one place. A
+hand-authored dictionary and a `.cfb` dialect both build lineages without the
+generator, so the rule cannot live in the generator alone; a read-side skip
+would leave the document holding entries the contract calls impossible.
+
+## Phase G8 — one string, one instant
+
+Blocks on G7. Two families still duplicate after G7, and they are the two the
+specification is loosest about.
+
+**The temporal family carries two time widths and a time typed as text.**
+`LocalMktTime` resolves to `time32(second)` while `UTCTimeOnly` and `Time`
+resolve to `time64(nanosecond)`, and `TZTimeOnly` — a time of day — resolves to
+`fixed_ascii(16)`, text rather than a temporal type at all.
+
+**G8-R1.** Resolve every FIX time-of-day to `time64(nanosecond)`. That folds
+`time32(second)` (47 fields) into the one time type and moves `TZTimeOnly`
+(6 fields) out of `fixed_ascii(16)`. The cost is four bytes a value on those 47
+fields; the gain is that a time is a time everywhere.
+
+**G8-R2.** `TZTimeOnly` loses its zone offset, and that offset is why it was
+text. State it as an accepted loss with the reason: Arrow has no
+time-with-offset type, the alternative is a time nothing can compare or
+aggregate, and the untranslated wire text survives in the arrival record
+regardless.
+
+**G8-R3.** Correct the two values that claim a zone they do not have.
+`LocalMktDatetime` and `LocalMktTime` are *local market* values resolving to a
+UTC-tagged type; a local value tagged UTC is wrong in a way that silently shifts
+a timestamp.
+
+**Then the string family — the sharper rule.** A field FIX later types as a
+datetime was a datetime all along; the specification had simply not named it
+yet. `String → LocalMktTime` occurs 45 times, `String → UTCTimestamp` 7,
+`String → LocalMktDate` 3, `String → TZTimestamp` 1.
+
+**G8-R4.** When a lineage passes from a string type to a temporal one, **the
+earlier entry adopts the temporal type.** Back-typing, not forward-filling: the
+later, more specific type propagates backward over the string entries preceding
+it, which then collapse under `G7-R2`.
+
+**G8-R5.** This is sound because a `DataType` is how *this crate* represents a
+value, not what the specification called it. FIX has always sent the value as
+ASCII on the wire; the datatype is the crate's parse target, and the same wire
+spelling parses to the same instant at 4.2 as at 5.0. Back-typing states what
+the crate would always have done, not a claim about the specification.
+
+**G8-R6.** Back-type only from a string to a **temporal** type. Stop at every
+other type: `utf8 → boolean` (9), `utf8 → int32` (6), `utf8 → currency` (3),
+`utf8 → mic` (3), and `utf8 → country`/`msgtype`/`side`/`msgdirection` are
+genuine refinements where the earlier values really were free text, and a
+back-type would assert a constraint the older values do not meet.
+
+**G8-R7.** Verify the back-type rather than assuming it: for every field it
+touches, the earlier version's wire spelling must parse to the adopted type
+through the crate's own reader. A back-type that cannot parse is a refusal, not
+a silent retype.
+
+**What G7 and G8 achieve together**, measured on the shipped dictionary:
+
+| | today | after G7 | after G8 |
+| --- | --- | --- | --- |
+| adjacent typed pairs | 362 | 362 | 362 |
+| collapsing | 208 | 208 | **270** |
+| surviving retypes | 115 | 115 | **53** |
+| removable entries | 206 | 206 | **268** (13.9%) |
+| back-typed string entries | — | — | 62 |
+
+The 62 back-types are `String` adopting `time64(nanosecond)` ×51,
+`datetime64(nanosecond, UTC)` ×8 and `date32` ×3.
+
+**G8-R8.** The endpoint is checkable, so check it. After G8 the corpus holds
+**zero** temporal→temporal, string→string and string→temporal retypes, and all
+53 survivors are genuine cross-family changes: `int32 → float64` ×13,
+`utf8 → boolean` ×9, `int32 → utf8` ×8, `utf8 → int32` ×6, `int32 → int64` ×6,
+`float64 → utf8` ×1, and the ten refinements to a validated code type. A test
+asserts that census exactly.
+
+**Verify G7 and G8.** Regenerate the dictionary and report the table above,
+measured rather than restated. Assert the surviving-retype census exactly.
+Assert no field lost its first entry, and none that had a lineage now has none.
+Assert every back-typed field's earlier wire spelling parses to the adopted
+type. Report the `config/fix` byte delta and the provenance checksums changed.
+
+**Never, in G7 and G8.**
+
+- **NG16.** Keep the FIX datatype name anywhere in a lineage "for reference".
+- **NG17.** Collapse an entry differing in `name`, `deprecated`, `removed`,
+  `doc` or `ep`.
+- **NG18.** Drop a field's first entry, or leave with no lineage a field that
+  had one.
+- **NG19.** Back-type from a string to anything but a temporal type.
+- **NG20.** Back-type without proving the earlier wire spelling parses.
+- **NG21.** Collapse in the generator only. A dialect builds lineages too.
+
 ## Order
 
-`G1 → G3`; `G2 → G3`; `G3 → G4 → G6 → G5`. G1 and G2 block on nobody and may
-land in either order. G6 precedes G5 so the entry's member list settles before
-recursion appends to it, and the entry's Arrow shape and fixtures are rewritten
-once per phase rather than the same members twice.
+`G1 → G3`; `G2 → G3`; `G3 → G4 → G6 → G5`; `G7 → G8`. G1, G2 and G7 block on
+nobody. G6 precedes G5 so the entry's member list settles before recursion
+appends to it, and the entry's Arrow shape and fixtures are rewritten once per
+phase rather than the same members twice. G7 and G8 touch the lineage and the
+datatype table alone, so they may land alongside the component work in either
+order — but both regenerate the committed dictionary, so land them adjacent to
+each other and not interleaved with G3.
 
 ## Never, in this change
 
@@ -557,3 +703,6 @@ drop the promise.
 | leaf JSON round-trip | folded entries recovered, byte-for-byte re-emission |
 | entries column per-row delta | name string → fixed 8 bytes, no validity bitmap |
 | manifest `bid` vs derived digest | equal for every committed branch |
+| lineage entries removed | 268 of 1,926 (13.9%) |
+| surviving retypes | 115 → 53, census asserted exactly |
+| string entries back-typed | 62 |
