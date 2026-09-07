@@ -1,8 +1,8 @@
 'use strict'
 
 const { spawnSync } = require('node:child_process')
-const { existsSync, readdirSync } = require('node:fs')
-const { dirname, join } = require('node:path')
+const { existsSync, readFileSync, readdirSync } = require('node:fs')
+const { dirname, join, resolve, sep } = require('node:path')
 
 const root = join(__dirname, '..')
 const npmCli = process.env.npm_execpath ?? join(
@@ -50,11 +50,46 @@ for (const required of [
   'fields.js',
   'index.d.ts',
   'index.js',
+  'LICENSE',
   'records.js',
+  'ui/fix.d.mts',
+  'ui/fix.mjs',
+  'ui/index.d.mts',
+  'ui/index.mjs',
+  'ui/styles.css',
+  'ui/yggdryl.d.mts',
+  'ui/yggdryl.mjs',
   'values.js',
 ]) {
   if (!files.has(required)) {
     throw new Error(`npm package is missing required runtime file ${required}`)
+  }
+}
+
+const plainUiQueue = [
+  join(root, 'ui', 'fix.mjs'),
+  join(root, 'ui', 'index.mjs'),
+  join(root, 'ui', 'yggdryl.mjs'),
+]
+const plainUiSeen = new Set()
+while (plainUiQueue.length > 0) {
+  const file = resolve(plainUiQueue.pop())
+  if (plainUiSeen.has(file)) continue
+  plainUiSeen.add(file)
+  const source = readFileSync(file, 'utf8')
+  const imports = [
+    ...source.matchAll(/\b(?:import|export)\s+(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g),
+    ...source.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g),
+  ].map((match) => match[1])
+  for (const specifier of imports) {
+    if (!specifier.startsWith('.')) {
+      throw new Error(`plain UI module ${file} imports runtime package ${specifier}`)
+    }
+    const target = resolve(dirname(file), specifier)
+    if (!target.startsWith(`${resolve(root, 'ui')}${sep}`)) {
+      throw new Error(`plain UI module ${file} imports outside node/ui: ${specifier}`)
+    }
+    plainUiQueue.push(target)
   }
 }
 

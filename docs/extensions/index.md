@@ -56,6 +56,7 @@ Two native packages hand Python and JavaScript the same values the Rust core hol
 
 - `npm test --prefix node` -> `node --test "tests/**/*.test.js"`, then `tsc --noEmit`.
 - `scripts/check_docs_examples.py --lang` -> `rust`, `python`, `javascript`, or `all`; default `all`.
+- `scripts/check_docs_examples.py --jobs N` -> at most `N` isolated JavaScript processes; default `min(4, CPU count)` and other languages remain serial.
 - The checker's interpreter -> `python/.venv/Scripts/python.exe`, else `python/.venv/bin/python`.
 
 ## Commands

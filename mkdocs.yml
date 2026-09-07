@@ -60,11 +60,16 @@ theme:
     - toc.follow
 
 extra_css:
+  - assets/ui/styles.css
   - assets/yggdryl.css
 
 extra_javascript:
-  - assets/playground.js
-  - assets/fix-explorer.js
+  - path: assets/playground.js
+    type: module
+  - path: assets/fix-explorer.js
+    type: module
+  - path: assets/ui-demo.js
+    type: module
 
 extra:
   social:
@@ -223,6 +228,7 @@ nav:
     - extensions/index.md
     - Python: extensions/python.md
     - JavaScript: extensions/javascript.md
+    - Browser UI: extensions/ui.md
 
 validation:
   links:

@@ -1,399 +1,275 @@
-'use strict'
+/* Render the generated ASCII manifest; every answer came from the Node package. */
 
-/*
- * Render docs/assets/playground.json.
- *
- * The package is a native Node addon, so this file evaluates nothing: it fetches
- * the manifest that scripts/build_docs_playground.js wrote by running the real
- * package, and shows what the package answered. There is no encode, decode, or
- * vocabulary logic here, and there never will be - a value that is not in the
- * manifest is a value nobody has asked the package about.
- *
- * The script is loaded on every page and does nothing where no container asks
- * for it.
- */
+import {
+  assetLoader,
+  button,
+  callBlock,
+  choiceList,
+  code,
+  control,
+  facts,
+  grid,
+  make,
+  note,
+  onDocumentReady,
+  panel,
+  search,
+  select,
+} from './ui/index.js'
 
-;(() => {
-  const SOURCE = document.currentScript ? document.currentScript.src : ''
-  const COMMAND = 'node scripts/build_docs_playground.js'
+const COMMAND = 'node scripts/build_docs_playground.js'
+const loader = assetLoader({
+  baseURL: import.meta.url,
+  assets: { manifest: 'playground.json' },
+  regenerate: COMMAND,
+})
 
-  let pending = null
+const renderWidths = (root, data) => {
+  root.append(
+    grid({
+      className: 'ygg-pg__widths',
+      columns: [
+        { label: 'datatype', key: 'dtype', rowHeader: true },
+        { label: 'asciiWidth', key: 'asciiWidth' },
+        { label: 'kind', key: 'kind' },
+        { label: 'Arrow storage', key: 'arrow' },
+        { label: 'extension name', key: 'extensionName' },
+        { label: 'extension document', key: 'extensionDocument' },
+      ],
+      rows: data.widths.map((width) => ({
+        ...width,
+        extensionDocument: width.extensionDocument === '' ? '(empty)' : width.extensionDocument,
+      })),
+    }),
+    panel({
+      title: 'The calls that answered this',
+      render: () => callBlock({ code: data.widths.map((width) => width.call).join('\n') }),
+    }).element,
+  )
+}
 
-  /** Fetch the manifest once per page load, whatever asks for it first. */
-  const manifest = () => {
-    if (pending === null) {
-      const address = SOURCE
-        ? new URL('playground.json', SOURCE)
-        : new URL('../assets/playground.json', document.baseURI)
-      pending = fetch(address).then((answer) => {
-        if (!answer.ok) throw new Error(`${answer.status} ${answer.statusText}`)
-        return answer.json()
-      })
-    }
-    return pending
+const renderCases = (root, data, kind) => {
+  const entries = data[kind]
+  const widths = data.widths.map((width) => width.dtype)
+  const view = make('div')
+  let values = null
+
+  const show = (dtype, index) => {
+    const entry = entries.filter((item) => item.dtype === dtype)[index]
+    view.textContent = ''
+    if (entry === undefined) return
+    const rows =
+      kind === 'encode'
+        ? [
+            { label: 'input', value: entry.inputLiteral },
+            ...(entry.ok
+              ? [
+                  { label: 'storage', value: entry.storageHex },
+                  { label: 'storage as text', value: entry.storageEscaped },
+                  { label: 'read back', value: entry.readBack === '' ? '(empty)' : entry.readBack },
+                ]
+              : [{ label: 'refused', value: entry.error, format: (value) => value }]),
+          ]
+        : [
+            { label: 'storage', value: entry.storageHex },
+            { label: 'storage as text', value: entry.storageEscaped },
+            { label: 'text', value: entry.text === '' ? '(empty)' : entry.text },
+          ]
+    view.append(facts({ rows }), callBlock({ code: entry.call }))
   }
 
-  const make = (tag, className, text) => {
-    const node = document.createElement(tag)
-    if (className) node.className = className
-    if (text !== undefined) node.textContent = text
-    return node
-  }
-
-  /** One `<code>` holding text that must survive as it is, padding included. */
-  const code = (text) => make('code', 'ygg-pg__code', text)
-
-  /** A label-and-value table: the shape every case is shown in. */
-  const detail = (rows) => {
-    const table = make('table', 'ygg-pg__detail')
-    const body = make('tbody')
-    for (const [name, value, literal] of rows) {
-      const line = make('tr')
-      const key = make('th', null, name)
-      key.setAttribute('scope', 'row')
-      const cell = make('td')
-      cell.append(literal === false ? document.createTextNode(value) : code(value))
-      line.append(key, cell)
-      body.append(line)
-    }
-    table.append(body)
-    return table
-  }
-
-  /** The expression that produced a case, kept beside it so it can be rerun. */
-  const call = (text) => {
-    const block = make('pre', 'ygg-pg__call')
-    block.append(make('code', null, text))
-    return block
-  }
-
-  /** A `<select>` over the fixed ASCII types, labelled for a screen reader. */
-  const chooser = (id, widths, onChange) => {
-    const holder = make('div', 'ygg-pg__controls')
-    const label = make('label', null, 'Width')
-    label.setAttribute('for', id)
-    const select = make('select', 'ygg-pg__select')
-    select.id = id
-    for (const width of widths) select.append(new Option(width, width))
-    select.addEventListener('change', () => onChange(select.value))
-    holder.append(label, select)
-    return { holder, select }
-  }
-
-  /**
-   * The corpus of one width as a list of buttons: the whole corpus stays
-   * visible, and every case is one tab stop away.
-   */
-  const list = (entries, name, onPick) => {
-    const items = make('ul', 'ygg-pg__values')
-    items.setAttribute('role', 'list')
-    const buttons = entries.map((entry, index) => {
-      const item = make('li')
-      const button = make('button', 'ygg-pg__value')
-      button.type = 'button'
-      button.setAttribute('aria-pressed', 'false')
-      button.append(code(name(entry)), make('span', 'ygg-pg__tag', entry.label))
-      button.addEventListener('click', () => onPick(index))
-      item.append(button)
-      items.append(item)
-      return button
+  const swap = (dtype, index = 0) => {
+    const corpus = entries.filter((entry) => entry.dtype === dtype)
+    const choices = choiceList({
+      items: corpus,
+      selected: index,
+      render: (entry) => [
+        code({ text: kind === 'encode' ? entry.inputLiteral : entry.storageEscaped }),
+        make('span', 'ygg-pg__tag', entry.label),
+      ],
+      onSelect: (_, position) => show(dtype, position),
     })
-    const press = (index) => {
-      buttons.forEach((button, position) => {
-        button.setAttribute('aria-pressed', position === index ? 'true' : 'false')
-      })
-    }
-    return { items, press }
+    if (values === null) root.append(choices.element, view)
+    else values.replaceWith(choices.element)
+    values = choices.element
+    show(dtype, index)
   }
 
-  /** Each fixed ASCII type, what it stores, and the extension identity it carries. */
-  const renderWidths = (root, data) => {
-    const table = make('table', 'ygg-pg__widths')
-    const head = make('thead')
-    const heading = make('tr')
-    for (const name of [
-      'datatype',
-      'asciiWidth',
-      'kind',
-      'Arrow storage',
-      'extension name',
-      'extension document',
-    ]) {
-      const cell = make('th', null, name)
-      cell.setAttribute('scope', 'col')
-      heading.append(cell)
-    }
-    head.append(heading)
-    const body = make('tbody')
-    for (const width of data.widths) {
-      const line = make('tr')
-      const first = make('th')
-      first.setAttribute('scope', 'row')
-      first.append(code(width.dtype))
-      line.append(first)
-      for (const value of [
-        String(width.asciiWidth),
-        width.kind,
-        width.arrow,
-        width.extensionName,
-        width.extensionDocument === '' ? '(empty)' : width.extensionDocument,
-      ]) {
-        const cell = make('td')
-        cell.append(code(value))
-        line.append(cell)
-      }
-      body.append(line)
-    }
-    table.append(head, body)
+  const chooser = select({
+    options: widths.map((width) => ({ label: width, value: width })),
+    onChange: (event) => swap(event.currentTarget.value),
+  })
+  const controls = make('div', 'ygg-ui__controls')
+  controls.append(control({ id: 'ygg-' + kind + '-width', label: 'Width', node: chooser }))
+  root.append(controls)
+  swap(widths[0])
 
-    const calls = make('details', 'ygg-pg__calls')
-    calls.append(make('summary', null, 'The calls that answered this'))
-    calls.append(call(data.widths.map((width) => width.call).join('\n')))
-
-    root.append(table, calls)
+  return {
+    select(dtype, index) {
+      chooser.value = dtype
+      swap(dtype, index)
+    },
   }
+}
 
-  /** Both value views: a width, its corpus, and the selected case. */
-  const renderCases = (root, data, kind) => {
-    const entries = data[kind]
-    const widths = data.widths.map((width) => width.dtype)
-    const view = make('div', 'ygg-pg__view')
+const renderVocabulary = (root, data) => {
+  const group = data.vocabulary
+  const steps = group.steps
+  let at = 0
+  const back = button({ label: '← Previous' })
+  const forward = button({ label: 'Next →' })
+  const counter = make('span', 'ygg-ui__counter')
+  const controls = make('div', 'ygg-ui__controls')
+  const view = make('div')
+  counter.setAttribute('aria-live', 'polite')
+  controls.append(back, counter, forward)
 
-    const show = (dtype, index) => {
-      const corpus = entries.filter((entry) => entry.dtype === dtype)
-      const entry = corpus[index]
-      view.textContent = ''
-      if (entry === undefined) return
-      view.append(
-        detail(
-          kind === 'encode'
-            ? [
-                ['input', entry.inputLiteral],
-                ...(entry.ok
-                  ? [
-                      ['storage', entry.storageHex],
-                      ['storage as text', entry.storageEscaped],
-                      ['read back', entry.readBack === '' ? '(empty)' : entry.readBack],
-                    ]
-                  : [['refused', entry.error, false]]),
-              ]
-            : [
-                ['storage', entry.storageHex],
-                ['storage as text', entry.storageEscaped],
-                ['text', entry.text === '' ? '(empty)' : entry.text],
-              ],
-        ),
-        call(entry.call),
-      )
-    }
-
-    let values = null
-    const swap = (dtype, index = 0) => {
-      const corpus = entries.filter((entry) => entry.dtype === dtype)
-      const built = list(
-        corpus,
-        (entry) => (kind === 'encode' ? entry.inputLiteral : entry.storageEscaped),
-        (position) => {
-          built.press(position)
-          show(dtype, position)
-        },
-      )
-      if (values === null) root.append(built.items, view)
-      else values.replaceWith(built.items)
-      values = built.items
-      built.press(index)
-      show(dtype, index)
-    }
-
-    const { holder, select } = chooser(`ygg-${kind}-width`, widths, (dtype) => swap(dtype))
-    root.append(holder)
-    swap(widths[0])
-
-    // The free-text box drives these views, so it needs to reach a case.
-    return {
-      select: (dtype, index) => {
-        select.value = dtype
-        swap(dtype, index)
-      },
-    }
-  }
-
-  /** A declared vocabulary, one member at a time, then the declaration. */
-  const renderVocabulary = (root, data) => {
-    const group = data.vocabulary
-    const steps = group.steps
-    let at = 0
-
-    const controls = make('div', 'ygg-pg__controls')
-    const back = make('button', 'ygg-pg__step', '← Previous')
-    back.type = 'button'
-    const forward = make('button', 'ygg-pg__step', 'Next →')
-    forward.type = 'button'
-    const counter = make('span', 'ygg-pg__counter')
-    counter.setAttribute('aria-live', 'polite')
-    controls.append(back, counter, forward)
-
-    const view = make('div', 'ygg-pg__view')
-    const show = () => {
-      const step = steps[at]
-      counter.textContent = `Member ${at + 1} of ${steps.length}`
-      const first = at === 0
-      const last = at === steps.length - 1
-      // Disabling the focused control drops focus to <body>, so move it first.
-      if (first && document.activeElement === back) forward.focus()
-      if (last && document.activeElement === forward) back.focus()
-      back.disabled = first
-      forward.disabled = last
-      view.textContent = ''
-      view.append(
-        detail([
-          ['value', step.value],
-          ['member', step.member],
-          ['generated name', step.generated],
-          ['code', step.code],
-          ['storage', step.storageHex],
-          [
-            'in the prebuilt listing',
-            step.isPrebuilt ? 'yes' : 'no, this one is the declaration\u2019s own',
-            false,
-          ],
-        ]),
-        call(step.call),
-      )
-    }
-    back.addEventListener('click', () => {
-      at = Math.max(0, at - 1)
-      show()
-    })
-    forward.addEventListener('click', () => {
-      at = Math.min(steps.length - 1, at + 1)
-      show()
-    })
-    show()
-
-    const after = make('div', 'ygg-pg__after')
-    after.append(make('h3', null, 'The listing the package ships'))
-    const prebuilt = group.prebuilt
-    after.append(
-      detail([
-        ['datatype', group.dtype],
-        ['codes', String(prebuilt.size)],
-        ['first twelve', prebuilt.sample.join(', ')],
-      ]),
-      call(prebuilt.call),
-      make('h3', null, 'The declaration on the field'),
-      detail([
-        [`enum ${group.enum.name}`, group.enum.members.map(([n, v]) => `${n} = ${v}`).join(', ')],
-        ['ARROW:extension:name', group.declaration.extensionName],
-        ['field:enum', group.declaration.carried],
-      ]),
-      call(group.declaration.call),
+  const show = () => {
+    const step = steps[at]
+    const first = at === 0
+    const last = at === steps.length - 1
+    counter.textContent = 'Member ' + (at + 1) + ' of ' + steps.length
+    if (first && document.activeElement === back) forward.focus()
+    if (last && document.activeElement === forward) back.focus()
+    back.disabled = first
+    forward.disabled = last
+    view.textContent = ''
+    view.append(
+      facts({
+        rows: [
+          { label: 'value', value: step.value },
+          { label: 'member', value: step.member },
+          { label: 'generated name', value: step.generated },
+          { label: 'code', value: step.code },
+          { label: 'storage', value: step.storageHex },
+          {
+            label: 'in the prebuilt listing',
+            value: step.isPrebuilt ? 'yes' : 'no, this one is the declaration’s own',
+            format: (value) => value,
+          },
+        ],
+      }),
+      callBlock({ code: step.call }),
     )
-
-    root.append(controls, view, after)
   }
+  back.addEventListener('click', () => {
+    at = Math.max(0, at - 1)
+    show()
+  })
+  forward.addEventListener('click', () => {
+    at = Math.min(steps.length - 1, at + 1)
+    show()
+  })
+  show()
 
-  /** Look a typed value up in the corpus, and say plainly when it is not there. */
-  const renderLookup = (root, data, views) => {
-    const form = make('form', 'ygg-pg__lookup')
-    const label = make('label', null, 'Value')
-    label.setAttribute('for', 'ygg-lookup-value')
-    const box = make('input', 'ygg-pg__input')
-    box.id = 'ygg-lookup-value'
-    box.type = 'search'
-    box.placeholder = 'USD'
-    box.autocomplete = 'off'
-    const submit = make('button', 'ygg-pg__step', 'Look it up')
-    submit.type = 'submit'
-    form.append(label, box, submit)
+  const after = make('div', 'ygg-pg__after')
+  after.append(
+    make('h3', null, 'The listing the package ships'),
+    facts({
+      rows: [
+        { label: 'datatype', value: group.dtype },
+        { label: 'codes', value: String(group.prebuilt.size) },
+        { label: 'first twelve', value: group.prebuilt.sample.join(', ') },
+      ],
+    }),
+    callBlock({ code: group.prebuilt.call }),
+    make('h3', null, 'The declaration on the field'),
+    facts({
+      rows: [
+        {
+          label: 'enum ' + group.enum.name,
+          value: group.enum.members.map(([name, value]) => name + ' = ' + value).join(', '),
+        },
+        { label: 'ARROW:extension:name', value: group.declaration.extensionName },
+        { label: 'field:enum', value: group.declaration.carried },
+      ],
+    }),
+    callBlock({ code: group.declaration.call }),
+  )
+  root.append(controls, view, after)
+}
 
-    const answer = make('div', 'ygg-pg__answer')
-    answer.setAttribute('aria-live', 'polite')
+const renderLookup = (root, data, views) => {
+  const form = make('form', 'ygg-pg__lookup')
+  const box = search({ placeholder: 'USD', autocomplete: 'off' })
+  const submit = button({ label: 'Look it up', type: 'submit' })
+  const answer = make('div')
+  answer.setAttribute('aria-live', 'polite')
+  form.append(control({ id: 'ygg-lookup-value', label: 'Value', node: box }), submit)
 
-    form.addEventListener('submit', (event) => {
-      event.preventDefault()
-      const wanted = box.value
-      answer.textContent = ''
-      const encoded = data.encode.findIndex((entry) => entry.input === wanted)
-      const decoded = data.decode.findIndex((entry) => entry.text === wanted)
-      const kind = encoded !== -1 ? 'encode' : decoded !== -1 ? 'decode' : null
-      if (kind === null) {
-        const miss = make('p', 'ygg-pg__miss')
-        miss.append(
-          code(wanted),
-          document.createTextNode(
-            ' is not in the generated corpus, and this page evaluates nothing: every' +
-              ' output above was produced by the package at build time. Add the value to' +
-              ' the corpus in scripts/build_docs_playground.js and regenerate:',
-          ),
-        )
-        answer.append(miss, call(COMMAND))
-        return
-      }
-      const entry = data[kind][kind === 'encode' ? encoded : decoded]
-      const index = data[kind]
-        .filter((other) => other.dtype === entry.dtype)
-        .indexOf(entry)
-      if (views[kind]) views[kind].select(entry.dtype, index)
-      const hit = make('p', 'ygg-pg__hit')
-      hit.append(
-        document.createTextNode(`Found in ${kind}, under `),
-        code(entry.dtype),
-        document.createTextNode(` (${entry.label}); the ${kind} view above now shows it.`),
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const wanted = box.value
+    answer.textContent = ''
+    const encoded = data.encode.findIndex((entry) => entry.input === wanted)
+    const decoded = data.decode.findIndex((entry) => entry.text === wanted)
+    const kind = encoded !== -1 ? 'encode' : decoded !== -1 ? 'decode' : null
+    if (kind === null) {
+      answer.append(
+        note({
+          content: [
+            code({ text: wanted }),
+            ' is not in the generated corpus, and this page evaluates nothing: every output' +
+              ' above was produced by the package at build time. Add the value to the corpus' +
+              ' in scripts/build_docs_playground.js and regenerate:',
+          ],
+        }),
+        callBlock({ code: COMMAND }),
       )
-      answer.append(hit)
-    })
-
-    root.append(form, answer)
-  }
-
-  /** Say what failed and how to put it back, rather than showing nothing. */
-  const fail = (roots, reason) => {
-    for (const root of roots) {
-      root.textContent = ''
-      const note = make('p', 'ygg-pg__error')
-      note.append(
-        document.createTextNode(
-          `The generated manifest assets/playground.json could not be loaded (${reason}).` +
-            ' It is committed, and a local build writes it with:',
-        ),
-      )
-      root.append(note, call(COMMAND))
+      return
     }
-  }
+    const entry = data[kind][kind === 'encode' ? encoded : decoded]
+    const index = data[kind].filter((other) => other.dtype === entry.dtype).indexOf(entry)
+    views[kind]?.select(entry.dtype, index)
+    const hit = make('p', 'ygg-pg__hit')
+    hit.append(
+      document.createTextNode('Found in ' + kind + ', under '),
+      code({ text: entry.dtype }),
+      document.createTextNode(' (' + entry.label + '); the ' + kind + ' view above now shows it.'),
+    )
+    answer.append(hit)
+  })
+  root.append(form, answer)
+}
 
-  const start = () => {
+const RENDERERS = {
+  widths: renderWidths,
+  vocabulary: renderVocabulary,
+  encode: renderCases,
+  decode: renderCases,
+}
+
+onDocumentReady({
+  run: (document) => {
     const roots = [...document.querySelectorAll('[data-playground]')]
     if (roots.length === 0) return
-    manifest().then(
+    loader.json('manifest').then(
       (data) => {
         const views = {}
         for (const root of roots) {
+          root.textContent = ''
+          root.classList.add('ygg-ui')
           const role = root.dataset.playground
           if (role === 'lookup') continue
-          root.textContent = ''
-          if (role === 'widths') renderWidths(root, data)
-          else if (role === 'vocabulary') renderVocabulary(root, data)
-          else if (role === 'encode' || role === 'decode') {
-            views[role] = renderCases(root, data, role)
-          }
+          const renderer = RENDERERS[role]
+          if (renderer === undefined) continue
+          const result =
+            role === 'encode' || role === 'decode'
+              ? renderer(root, data, role)
+              : renderer(root, data)
+          if (result !== undefined) views[role] = result
         }
-        for (const root of roots.filter((node) => node.dataset.playground === 'lookup')) {
-          root.textContent = ''
+        for (const root of roots.filter((item) => item.dataset.playground === 'lookup')) {
           renderLookup(root, data, views)
         }
       },
-      (error) => fail(roots, error.message),
+      (error) => {
+        for (const root of roots) {
+          root.textContent = ''
+          root.classList.add('ygg-ui')
+          root.append(loader.failure({ asset: 'manifest', error }))
+        }
+      },
     )
-  }
-
-  // Material's instant navigation swaps the document without reloading this
-  // script, so the render is driven by its document observable where it exists.
-  if (typeof document$ !== 'undefined' && document$ && typeof document$.subscribe === 'function') {
-    document$.subscribe(start)
-  } else if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start)
-  } else {
-    start()
-  }
-})()
+  },
+})

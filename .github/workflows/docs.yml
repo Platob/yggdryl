@@ -14,9 +14,11 @@ on:
       - ".github/workflows/docs.yml"
       - "docs/**"
       - "mkdocs.yml"
+      - "node/package.json"
+      - "node/ui/**"
       - "README.md"
       - "requirements-docs.txt"
-      - "scripts/check_docs_examples.py"
+      - "scripts/build_docs_ui.js"
   workflow_dispatch:
 
 permissions:

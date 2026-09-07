@@ -18,12 +18,15 @@ instead of shipping as an unhighlighted paragraph.
 Usage:
     python scripts/check_docs_examples.py                 # every language
     python scripts/check_docs_examples.py --lang rust     # one language
+    python scripts/check_docs_examples.py --lang javascript --jobs 1
     python scripts/check_docs_examples.py --keep          # keep generated files
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import os
 import pathlib
 import re
 import subprocess
@@ -55,22 +58,33 @@ BLOCK = re.compile(
 INFO = re.compile(r"[a-z]+|\{ *\.[a-z]+[^}\n]*\}")
 HEADING = re.compile(r"^#{1,6} \S")
 LANGUAGES = ("rust", "python", "javascript")
+DEFAULT_JAVASCRIPT_JOBS = min(4, os.cpu_count() or 1)
 
 
 class Block(NamedTuple):
     """One fenced example, and where on its page it was written."""
 
-    index: int
+    number: int
     language: str
     flags: str
     code: str
     section: str
 
 
+class Script(NamedTuple):
+    """One isolated scripting-language example ready to execute."""
+
+    page: pathlib.Path
+    block: Block
+    command: tuple[str, ...]
+
+
 def slug(path: pathlib.Path) -> str:
     """Return a safe identifier for a documentation page."""
     relative = path.relative_to(DOCS).with_suffix("")
-    return re.sub(r"[^a-z0-9]+", "_", str(relative).replace("\\", "/").lower()).strip("_")
+    return re.sub(r"[^a-z0-9]+", "_", str(relative).replace("\\", "/").lower()).strip(
+        "_"
+    )
 
 
 def headings(text: str) -> list[tuple[int, str]]:
@@ -98,7 +112,9 @@ def blocks(page: pathlib.Path):
         language = match.group("braced") or match.group("lang")
         if language not in LANGUAGES:
             continue
-        flags = match.group("attributes") if match.group("braced") else match.group("flags")
+        flags = (
+            match.group("attributes") if match.group("braced") else match.group("flags")
+        )
         index = counters.get(language, 0)
         counters[language] = index + 1
         # A block inside a Material tab is indented four spaces; Python cares.
@@ -158,9 +174,11 @@ def rust_target(pages) -> tuple[int, list[str]]:
             if block.language != "rust":
                 continue
             code = block.code
-            label = f"{name}_{block.index}"
+            label = f"{name}_{block.number}"
             if not runnable("rust", block.flags):
-                skipped.append(f"{page.relative_to(ROOT)} rust block {block.index} ({block.flags})")
+                skipped.append(
+                    f"{page.relative_to(ROOT)} rust block {block.number} ({block.flags})"
+                )
                 continue
 
             if "fn main" in code:
@@ -195,24 +213,38 @@ def rust_target(pages) -> tuple[int, list[str]]:
 
 def run_rust() -> int:
     result = subprocess.run(
-        ["cargo", "test", "--features", "parquet iceberg s3", "--test", "docs_examples"],
+        [
+            "cargo",
+            "test",
+            "--features",
+            "parquet iceberg s3",
+            "--test",
+            "docs_examples",
+        ],
         cwd=ROOT,
         check=False,
     )
     return result.returncode
 
 
-def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
+def run_script(script: Script) -> subprocess.CompletedProcess[str]:
+    """Execute one example in its own process."""
+    return subprocess.run(
+        script.command, cwd=ROOT, check=False, capture_output=True, text=True
+    )
+
+
+def run_scripts(pages, language: str, jobs: int = 1) -> tuple[int, int, list[str]]:
     """Run every block of one scripting language, returning counts and failures."""
     if language == "python" and not PYTHON.exists():
         return 0, 0, [f"{language}: no interpreter at {PYTHON}"]
 
-    ran = 0
     skipped = 0
     failures: list[str] = []
 
     with tempfile.TemporaryDirectory() as directory:
         workspace = pathlib.Path(directory)
+        scripts: list[Script] = []
         for page in pages:
             for block in blocks(page):
                 if block.language != language:
@@ -221,13 +253,13 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
                     skipped += 1
                     continue
 
-                label = f"{slug(page)}_{block.index}"
+                label = f"{slug(page)}_{block.number}"
                 if language == "python":
-                    script = workspace / f"{label}.py"
-                    script.write_text(block.code, encoding="utf-8")
-                    command = [str(PYTHON), str(script)]
+                    script_path = workspace / f"{label}.py"
+                    script_path.write_text(block.code, encoding="utf-8")
+                    command = [str(PYTHON), str(script_path)]
                 else:
-                    script = workspace / f"{label}.js"
+                    script_path = workspace / f"{label}.js"
                     rewired = block.code
                     for name, target in (
                         ("yggdryl", NODE_BINDING),
@@ -236,29 +268,50 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
                         rewired = rewired.replace(f"'{name}'", f"'{target}'").replace(
                             f'"{name}"', f'"{target}"'
                         )
-                    script.write_text(rewired, encoding="utf-8")
-                    command = ["node", str(script)]
+                    script_path.write_text(rewired, encoding="utf-8")
+                    command = ["node", str(script_path)]
 
-                ran += 1
-                result = subprocess.run(
-                    command, cwd=ROOT, check=False, capture_output=True, text=True
+                scripts.append(Script(page, block, tuple(command)))
+
+        # A process per block is deliberate: examples exercise process-global
+        # native state. JavaScript processes may overlap because writable
+        # fixtures are PID-scoped or created with mkdtemp. executor.map retains
+        # source order, so failure output stays deterministic.
+        workers = min(jobs, len(scripts)) if language == "javascript" else 1
+        if workers > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(run_script, scripts))
+        else:
+            results = [run_script(script) for script in scripts]
+
+        for example, result in zip(scripts, results):
+            if result.returncode != 0:
+                tail = (result.stderr or result.stdout).strip().splitlines()
+                detail = "\n      ".join(tail[-6:])
+                failures.append(
+                    f"{example.page.relative_to(ROOT)} {language} block "
+                    f"{example.block.number}:\n      {detail}"
                 )
-                if result.returncode != 0:
-                    tail = (result.stderr or result.stdout).strip().splitlines()
-                    detail = "\n      ".join(tail[-6:])
-                    failures.append(
-                        f"{page.relative_to(ROOT)} {language} block {block.index}:\n      {detail}"
-                    )
 
-    return ran, skipped, failures
+    return len(scripts), skipped, failures
 
 
 def main() -> int:
     """Run every documentation example."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lang", choices=[*LANGUAGES, "all"], default="all")
-    parser.add_argument("--keep", action="store_true", help="keep the generated Rust target")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=DEFAULT_JAVASCRIPT_JOBS,
+        help="maximum isolated JavaScript processes (default: min(4, CPU count))",
+    )
+    parser.add_argument(
+        "--keep", action="store_true", help="keep the generated Rust target"
+    )
     arguments = parser.parse_args()
+    if arguments.jobs < 1:
+        parser.error("--jobs must be at least 1")
 
     pages = sorted(DOCS.rglob("*.md"))
     status = 0
@@ -271,9 +324,9 @@ def main() -> int:
         status |= 1
 
     if arguments.lang in ("rust", "all"):
-        count, skipped = rust_target(pages)
+        count, rust_skipped = rust_target(pages)
         print(f"rust: {count} example tests from {len(pages)} pages")
-        for entry in skipped:
+        for entry in rust_skipped:
             print(f"  skipped: {entry}")
         if count:
             status |= run_rust()
@@ -283,8 +336,15 @@ def main() -> int:
     for language in ("python", "javascript"):
         if arguments.lang not in (language, "all"):
             continue
-        ran, skipped, failures = run_scripts(pages, language)
-        print(f"{language}: {ran} examples run, {skipped} skipped, {len(failures)} failed")
+        jobs = arguments.jobs if language == "javascript" else 1
+        ran, script_skipped, failures = run_scripts(pages, language, jobs)
+        parallel = (
+            f", up to {jobs} isolated processes" if language == "javascript" else ""
+        )
+        print(
+            f"{language}: {ran} examples run, {script_skipped} skipped, "
+            f"{len(failures)} failed{parallel}"
+        )
         for failure in failures:
             print(f"  {failure}")
         if failures:

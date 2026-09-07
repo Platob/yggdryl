@@ -16,7 +16,23 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
-    }
+    },
+    "./ui": {
+      "types": "./ui/index.d.mts",
+      "import": "./ui/index.mjs",
+      "default": "./ui/index.mjs"
+    },
+    "./ui/yggdryl": {
+      "types": "./ui/yggdryl.d.mts",
+      "import": "./ui/yggdryl.mjs",
+      "default": "./ui/yggdryl.mjs"
+    },
+    "./ui/fix": {
+      "types": "./ui/fix.d.mts",
+      "import": "./ui/fix.mjs",
+      "default": "./ui/fix.mjs"
+    },
+    "./ui.css": "./ui/styles.css"
   },
   "files": [
     "index.js",
@@ -27,6 +43,13 @@
     "fields.js",
     "*.node",
     "records.js",
+    "ui/fix.d.mts",
+    "ui/fix.mjs",
+    "ui/index.d.mts",
+    "ui/index.mjs",
+    "ui/styles.css",
+    "ui/yggdryl.d.mts",
+    "ui/yggdryl.mjs",
     "values.js",
     "benchmarks"
   ],
