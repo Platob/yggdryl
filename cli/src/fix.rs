@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use clap::Subcommand;
 use yggdryl::holder::Holder;
 use yggdryl::holder::local::Folder;
-use yggdryl::{FixBranch, FixField, FixRegistry, IOKind, Result};
+use yggdryl::{FixBranch, FixRegistry, IOKind, Result};
 
 use crate::{diff, quality, registry, schema, shell, style};
 
@@ -200,26 +200,33 @@ pub fn run(root: &Path, annotate: bool, command: Option<&Command>) -> Result<Exi
 /// The location decides which reader answers it, and nothing else does: a
 /// folder is another dictionary, a `.cfb` is one counterparty's vocabulary,
 /// and anything else is refused rather than guessed at. Both sources arrive
-/// through the one fold, so a tag this dictionary lacks is added and one it
-/// holds keeps every key only it declares - and because that fold is one
-/// mutation, a source it refuses leaves the dictionary exactly as it was.
+/// through the one fold, so a tag this dictionary lacks is added, one it holds
+/// keeps every key only it declares, and every dialect either source declares
+/// is recorded beside them - and because that fold is one mutation, a source it
+/// refuses leaves the dictionary exactly as it was.
 fn sync(store: &mut registry::Store, source: &Path, branch: Option<&str>) -> Result<()> {
     let mut progress = style::Progress::start(format!("reading {}", source.display()));
     progress.tick();
     let held = Holder::local(registry::located(source)?)?;
-    let fields = match held.as_io().kind() {
+    let (added, folded) = match held.as_io().kind() {
         IOKind::Directory => {
             let other = FixRegistry::from_handle(held.as_io())?;
-            other.iter().cloned().collect()
+            progress.tick();
+            store.registry_mut().merge_with(&other)?
         }
         // A CBlock declares no media type of its own, so the name is the only
-        // thing that says what the bytes are before they are read.
+        // thing that says what the bytes are before they are read. Read whole
+        // rather than for its vocabulary alone, so the dialect the file
+        // declares - its version and its session pair - arrives with it.
         IOKind::File
             if source
                 .extension()
                 .is_some_and(|held| held.eq_ignore_ascii_case("cfb")) =>
         {
-            FixField::from_cfb_file(held.as_io(), branch)?
+            progress.tick();
+            store
+                .registry_mut()
+                .add_cfb_file(held.as_io(), branch, None)?
         }
         kind => {
             return Err(yggdryl::Error::InvalidRecord {
@@ -231,8 +238,6 @@ fn sync(store: &mut registry::Store, source: &Path, branch: Option<&str>) -> Res
             });
         }
     };
-    progress.tick();
-    let (added, folded) = store.registry_mut().add_fields(fields)?;
     progress.finish(&format!("{added} added, {folded} merged"));
     Ok(())
 }
