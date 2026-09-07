@@ -27,9 +27,20 @@ if (result.status !== 0) {
 
 let report
 try {
-  report = JSON.parse(result.stdout)[0]
+  // npm answers `pack --json` two ways, and the release job installs whatever
+  // `npm@latest` is on the day it runs: through npm 11 it is an array of
+  // reports, one per tarball packed; from npm 12 it is an object keyed by
+  // package name. The report inside is identical, so both spellings are read
+  // rather than one pinned - reading only the array left `report` undefined
+  // under npm 12 and the audit died on a TypeError three lines later.
+  const packed = JSON.parse(result.stdout)
+  report = Array.isArray(packed) ? packed[0] : Object.values(packed)[0]
 } catch (cause) {
   throw new Error('npm pack --dry-run did not return its JSON report', { cause })
+}
+
+if (!report || !Array.isArray(report.files)) {
+  throw new Error('npm pack --dry-run reported no packed files')
 }
 
 const files = new Set(report.files.map(({ path }) => path.replaceAll('\\', '/')))
