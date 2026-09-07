@@ -821,11 +821,27 @@ One shallow scan answers all three. It reads no message and allocates nothing, a
 | `#`-marked keys, or a `MSGTYPE=` key | `text/ullink` |
 | a numeric frame also carrying symbolic keys | `text/fixul` |
 | official `XmlData(213)` whose payload begins with XML | `text/fixml` |
+| a JSON object naming a `com.ullink.ulbridge` MBean | `text/ulconfig` |
 | no frame, but `key=value` throughout | `text/key-value` |
 | a document opening `<` or `{`/`[` | `application/xml`, `application/json` |
 | anything else | `application/octet-stream` |
 
 The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field. A frame beats a document, because an `XmlData` payload is part of a frame; a document beats the bare pair rules, because an attribute inside a tag is not a field.
+
+### A bridge configuration is a document that names itself
+
+`text/ulconfig` is the JSON a Jolokia read of a ULBridge answers with: the MBeans under `com.ullink.ulbridge` and the session interfaces they configure. Two facts decide it and neither is enough alone — the line has to be a JSON object, whole or behind a transport prefix, and that object has to name an **ObjectName** in the namespace: the domain, and the `:` an ObjectName always has after one. A bridge writes its own class names into these documents on every `$type`, `className` and init file, so a record merely quoting `com.ullink.ulbridge2.plugins.ULMsg` is an ordinary JSON record.
+
+The document declares a message type the same way a frame does, and the specific statement wins:
+
+| the document names | the type read |
+| --- | --- |
+| an ObjectName carrying `type=` | that segment — `Plugin`, `ConfigurationPlugin` |
+| no such segment | the Jolokia request's own `type` — the operation, `read` |
+
+`plugin-type=FIX` shares the segment's last five bytes and is never read as it, because the segment counts only where a `,` or a `:` opens it — and it is read *inside* the ObjectName that states it, bounded by the quote closing that JSON string, so a value elsewhere spelling `,type=` is that value's business. `ConfigurationPlugin` is wider than [`MsgType`](../types/ascii.md#a-reading-wider-than-the-type) holds, so a column takes `MsgType::coerce`'s stable synthesized value for it — the same mechanism `register_msgtype` uses for a bridge's composite keys.
+
+A bulk read answers an array of these documents rather than one, so a line closing with `]` is read exactly as one closing with `}` is.
 
 === "Rust"
 
@@ -850,6 +866,14 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     let (direction, body) = MsgDirection::split_bytes(line);
     assert_eq!(direction, Some(MsgDirection::SENT));
     assert_eq!(body, b">> 8=FIX.4.4|35=D|55=AAPL|10=001|");
+
+    // A bridge configuration names itself, says what the entry is, and says
+    // which half of the exchange it is - and the `send` its own payload
+    // spells is never the marker.
+    let config = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"ExtendedActions":[{"name":"send-test-request"}]},"status":200}"#;
+    assert_eq!(MimeType::infer_bytes(config), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(config), Some(&b"Plugin"[..]));
+    assert_eq!(MsgDirection::infer_bytes(config), Some(MsgDirection::RECV));
     ```
 
 === "Python"
@@ -861,6 +885,11 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     assert MimeType.infer_text(line) == MimeType.ULLINK
     assert MimeType.infer_text_msgtype(line) == "D"
     assert MimeType.infer_text_direction("recv " + line) == "RECV"
+
+    config = '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}'
+    assert MimeType.infer_text(config) == MimeType.ULCONFIG
+    assert MimeType.infer_text_msgtype(config) == "read"
+    assert MimeType.infer_text_direction(config) == "SENT"
     ```
 
 === "JavaScript"
@@ -872,6 +901,11 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     const line = '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|'
     assert.ok(MimeType.inferText(line).equals(MimeType.FIXUL))
     assert.equal(MimeType.inferTextMsgtype(line), 'D')
+
+    const config = '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}'
+    assert.ok(MimeType.inferText(config).equals(MimeType.ULCONFIG))
+    assert.equal(MimeType.inferTextMsgtype(config), 'read')
+    assert.equal(MimeType.inferTextDirection(config), 'SENT')
     ```
 
 A raw `MSGTYPE=` anywhere in the line wins over tag 35, because a bridge writes its own type in front of a frame it relays, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root.
@@ -887,7 +921,18 @@ The verb counts only where it stands before the message starts, so a `sent` insi
 
 The bare `in` and `out` forms are **chosen** only where a bracket opens them and a delimiter closes them, because that is the one shape a marker has and none of the shapes the same letters have otherwise: `direct:out` is a route endpoint and `MCFID-IN-XPAR` is a session name. They still count against an opposite verb, which is what makes `sending in session 3` and `received out of order` answer nothing rather than a wrong answer.
 
-A prefix carrying both verbs, and one carrying neither, both answer nothing.
+A prefix carrying both verbs, and one carrying neither, both answer nothing — unless the payload is a document that states its own half of an exchange. A `text/ulconfig` document does: Jolokia echoes the request back inside every answer it sends, error answers included, and a request carries no such key of its own.
+
+| the document carries | direction |
+| --- | --- |
+| a `request` it echoes | `RECV` |
+| no echo — it *is* the request | `SENT` |
+
+The echo is the whole of the reading, and the keys an answer also carries are not: a `write` request states a `value` of its own, and reading that as an answer would invert the direction.
+
+A verb the transport wrote still wins over what a document says about itself, and the default fills silence behind both. Nothing is taken off a line that carried no marker.
+
+This is also what keeps the reading right: these documents spell `send-test-request`, `The outgoing test request ID to send` and `logout-text` in their own payload, and every one of those would be read as a marker if the verb were not bounded at the document.
 
 ## Edges
 
@@ -896,6 +941,12 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - Two names whose seeded XXH64 digests collide -> a read rechecks the field behind the digest and misses; a mutation refuses loudly.
 - `MsgType::infer_bytes` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
 - A line the scan cannot place -> `application/octet-stream`; a checksum tag 10 stops the scan.
+- A JSON object naming no ULBridge ObjectName -> `application/json`; the namespace is the whole of what makes the reading, and a `java.lang:type=Memory` read is another product's document.
+- A ULBridge ObjectName standing in the prose *in front of* a document -> not read; the namespace has to be inside the object, or the prose is what named it.
+- A `MSGTYPE=` written in front of a bridge configuration document -> that type; a bridge writes its own type in front of what it relays, and a document is no different from a frame there.
+- A wildcard read answering many entries -> the first entry's `type=`; a document declares one type, exactly as a frame does with the first tag 35.
+- A `write` or `exec` request carrying its own `value` -> `SENT`; the echoed `request` is the reading, and a request has none.
+- A bridge configuration document read into a `msgtype` column -> coerced, so `ConfigurationPlugin` lands as a stable synthesized value rather than as a null the column would otherwise hold.
 - `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.
 - An alternate tag equal to another field's canonical tag, or an alias equal to another's canonical name -> legal, and it never wins.
@@ -930,13 +981,14 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 
     ```bash
     cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
+    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_bridge_configuration_states fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
     cargo test -p yggdryl --lib -- fix::tests::a_lineage fix::tests::a_version_filters fix::tests::a_removed_entry fix::tests::two_entries
     cargo test -p yggdryl --lib -- fix::tests::a_branch_answers_to_its_aliases fix::tests::a_branch_alias_is_held fix::tests::merge_with_folds_the_fields
     cargo test -p yggdryl --lib -- fix::tests::a_code_set fix::tests::an_alias_shares fix::tests::an_ambiguous_spelling fix::tests::tier_three fix::tests::a_version_hides fix::tests::two_codes_may
     cargo test -p yggdryl --test allocations a_fix_lineage_read a_fix_code_lookup
     cargo bench -p yggdryl --bench fix -- fix/resolve
+    cargo bench -p yggdryl --bench fix -- "fix/classify|fix/infer"
     cargo bench -p yggdryl --bench fix -- fix/lineage
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
@@ -971,7 +1023,7 @@ The timing runs report release builds on one Windows x86_64 host, so they are bo
 
 | assertion | scope |
 | --- | --- |
-| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration, every lineage read and every code lookup including a refused document |
+| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, direction inference — a bridge configuration document included — iteration, every lineage read and every code lookup including a refused document |
 
 ### A merge
 
@@ -1000,6 +1052,35 @@ Both are dominated by re-rendering the merged lineage and code documents, which 
 | `set_codes` | | | 917 us |
 
 Tier 1 addresses the record it wants rather than parsing every code it passes, which is why it barely moves with the set's size until the value it seeks is at the end. Tier 2 cannot: it must run the whole set, because two codes folding to one spelling have to answer nothing rather than the first. That is the cost the ambiguity rule buys, and it is still under building a map to answer one question.
+
+### Classifying a capture
+
+`fix/classify`, over a `.log` handle read as records — 4 000 lines cycling the five shapes, 899 KB in total, of which the bridge configuration documents are 75%. Release build, one Linux x86_64 container; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
+
+| case | median | per row | against the plain read |
+| --- | --- | --- | --- |
+| `read_arrow_reader`, no classification | 4.52 ms | 1.13 us | — |
+| the same with `mimetype`, `msgtype` and `direction` | 38.7 ms | 9.67 us | 8.6x |
+
+The three readings per line, one line each:
+
+| shape | bytes | `mimetype` | `msgtype` | `direction` |
+| --- | --- | --- | --- | --- |
+| framed FIX with prose either side | 85 | 832 ns | 842 ns | 436 ns |
+| a bare tag stream | 64 | 698 ns | 701 ns | 218 ns |
+| a bridge row keyed by name | 78 | 591 ns | 586 ns | 349 ns |
+| a sentence nothing matches | 52 | 754 ns | 748 ns | 1.52 us |
+| a bridge configuration document | 840 | 10.3 us | 10.1 us | 3.43 us |
+
+Every shape lands between 69 and 132 MB/s, the document included, because the scan is linear in the line and a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it — which is exactly what a document does *not* pay, because its bound is where the object opens.
+
+Classification is opt-in per column for that reason. A capture that only needs rows pays the 1.13 us; one that needs to know what each line is pays the reading over the bytes it has.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- "fix/classify|fix/infer"
+```
 
 ### A version-filtered read
 

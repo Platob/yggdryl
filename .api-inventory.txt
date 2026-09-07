@@ -1340,6 +1340,12 @@ pub struct MimeType(MimeTypeValue);
   pub const ORC: Self = Self(MimeTypeValue::Orc);
   pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
   pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
+  pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
+  pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
+  pub const ULCONFIG: Self = Self(MimeTypeValue::Ulconfig);
+  pub const FIX: Self = Self(MimeTypeValue::Fix);
+  pub const FIXUL: Self = Self(MimeTypeValue::Fixul);
+  pub const FIXML: Self = Self(MimeTypeValue::Fixml);
   pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
   pub const HTML: Self = Self(MimeTypeValue::Html);
   pub const CSS: Self = Self(MimeTypeValue::Css);
@@ -1385,6 +1391,8 @@ pub struct MimeType(MimeTypeValue);
   pub const TAR: Self = Self(MimeTypeValue::Tar);
   pub const DIRECTORY: Self = Self(MimeTypeValue::Directory);
   pub const FILE: Self = Self(MimeTypeValue::File);
+  pub fn infer_bytes(line: &[u8]) -> Self
+  pub fn infer_text(line: &str) -> Self
   pub fn from_local_path(path: impl AsRef<Path>) -> Self
   pub const fn is_filesystem(&self) -> bool
   pub const fn is_directory(&self) -> bool
@@ -1807,11 +1815,23 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Side, MsgType, MsgDirection
   pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> i32  // FixedAscii only
+  pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
+  pub fn coerce(spelling: &str) -> Self  // MsgType only
+  pub fn is_synthetic(&self) -> bool  // MsgType only
+  pub fn infer_bytes(line: &[u8]) -> Option<&[u8]>  // MsgType only
+  pub fn infer_text(line: &str) -> Option<&str>  // MsgType only
+  pub const SENT: &'static str = "SENT";  // MsgDirection only
+  pub const RECV: &'static str = "RECV";  // MsgDirection only
+  pub fn infer_bytes(line: &[u8]) -> Option<&'static str>  // MsgDirection only
+  pub fn infer_text(line: &str) -> Option<&'static str>  // MsgDirection only
+  pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8])  // MsgDirection only
+  pub fn split_text(line: &str) -> (Option<&'static str>, &str)  // MsgDirection only
+  pub fn at_payload(line: &[u8], payload_at: usize, default: Option<&'static str>) -> Option<&'static str>  // MsgDirection only
   pub enum AsciiFamily
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr

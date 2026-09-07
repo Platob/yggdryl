@@ -363,6 +363,12 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
             b"D",
         ),
         (b"level=INFO message=random", MimeType.KEYVALUE, None),
+        (
+            b'{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
+            b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+            MimeType.ULCONFIG,
+            b"Plugin",
+        ),
     )
     for line, protocol, msgtype in cases:
         assert MimeType.infer_bytes(line) == protocol
@@ -380,6 +386,18 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
     empty = FixRegistry()
     assert MimeType.infer_bytes_msgtype(b"35=AE|") == b"AE"
     assert MimeType.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+
+    # A bridge configuration states its own half of the exchange, and the
+    # `send` its own payload spells is never read as the marker.
+    answered = (
+        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
+        '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
+    )
+    assert MimeType.infer_text(answered) == MimeType.ULCONFIG
+    assert MimeType.infer_text_direction(answered) == "RECV"
+    assert MimeType.infer_text_msgtype(answered) == "read"
+    asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
+    assert MimeType.infer_text_direction(asked) == "SENT"
 
 
 def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:

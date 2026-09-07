@@ -13,7 +13,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
 | FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point es... |
 | FIX | [Message](fix/message.md) | Binding rows only; the Criterion target carries no `FixMsg` case |
-| FIX | [Registry](fix/registry.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
+| FIX | [Registry](fix/registry.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34...; the capture-classification rows are a separate Linux x86_64 container run |
 | FIX | [Store](fix/store.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |

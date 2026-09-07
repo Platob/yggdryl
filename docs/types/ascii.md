@@ -300,6 +300,34 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert.throws(() => DataType.ascii(0), /at least 1 byte, got 0/)
     ```
 
+## A reading wider than the type
+
+`msgtype` holds eight bytes, which covers every type FIX publishes and most a venue invents. It does not cover the composite keys a bridge writes — `P Report Ack` is twelve, and a ULBridge `ConfigurationPlugin` is nineteen — and such a value cannot simply be truncated, because two keys sharing a prefix would become one message type.
+
+`MsgType::coerce` is the one way a reading becomes a value: what fits is itself, unchanged; what does not is hashed into eight bytes that open with `~`, a byte outside the alphabet and outside every type FIX publishes. The mapping is stable across processes and versions, and one-way — the spelling it came from is kept by whoever registers it, never recovered from the value. `is_synthetic` says which kind a value is.
+
+This is what [`FixRegistry::register_msgtype`](../fix/registry.md) adds to a dictionary's code set, and what a [`msgtype` capture column](../media/text.md#classifying-each-record) takes, so a type the capture carried lands rather than falling to null.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::types::MsgType;
+
+    // What fits is itself.
+    assert_eq!(MsgType::coerce("D").as_str(), "D");
+    assert!(!MsgType::coerce("D").is_synthetic());
+
+    // What does not is stable, marked, and never two things at once.
+    let held = MsgType::coerce("ConfigurationPlugin");
+    assert_eq!(held, MsgType::coerce("ConfigurationPlugin"));
+    assert_ne!(held, MsgType::coerce("Plugin"));
+    assert!(held.is_synthetic());
+    assert_eq!(held.as_str().len(), 8);
+    assert!(held.as_str().starts_with('~'));
+    ```
+
+Rust only: neither binding exposes the coercion, which a reader reaches through the capture column instead.
+
 ## Declared vocabulary and generated enum
 
 `ascii_packed` is the storage bytes read big-endian: one integer everywhere, ordered as the text, never negative.
@@ -487,6 +515,7 @@ Python-only enum bases: [Python boundary](../extensions/python.md).
 - `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; declare `utf8` to read text.
+- `MsgType::coerce` on a spelling past eight bytes -> a `~`-marked synthesized value; `DataType::MsgType.scalar` on the same spelling -> refused, because a stored value is held to the width and only the coercion decides what a wide reading becomes.
 
 ## Commands
 

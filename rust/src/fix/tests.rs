@@ -198,6 +198,41 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
             None,
         ),
         (
+            // A bridge configuration document: JSON, and the namespace that
+            // says whose. The first ObjectName's `type=` is what the entry is,
+            // and `plugin-type=` shares its last five bytes without being it.
+            br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Category":"InterBridge"},"status":200}"#,
+            MimeType::ULCONFIG,
+            Some(b"Plugin"),
+        ),
+        (
+            // A wildcard read names no type in its own MBean, so the entry it
+            // answers with names the document's.
+            br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"X"}},"status":200}"#,
+            MimeType::ULCONFIG,
+            Some(b"ConfigurationPlugin"),
+        ),
+        (
+            // Neither MBean names a type, so the operation is what is left.
+            br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
+            MimeType::ULCONFIG,
+            Some(b"read"),
+        ),
+        (
+            // The namespace is the whole of what makes the reading: JSON
+            // without it is JSON.
+            br#"{"request":{"mbean":"java.lang:type=Memory","type":"read"},"status":200}"#,
+            MimeType::JSON,
+            None,
+        ),
+        (
+            // A raw `MSGTYPE=` in front of a document still outranks it, the
+            // same way it outranks a frame it is relaying.
+            br#"MSGTYPE=8 {"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
+            MimeType::ULLINK,
+            Some(b"8"),
+        ),
+        (
             b"MsgType=prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix",
             MimeType::FIXUL,
             Some(b"prefix"),
@@ -255,6 +290,101 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         assert_eq!(MsgType::infer_text(&line), Some("UDF"));
     }
     assert_eq!(MsgType::infer_text("35=U|"), Some("U"));
+}
+
+#[test]
+fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
+    use crate::types::MsgDirection;
+
+    const ANSWERED: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin":{"ExtendedActions":[{"name":"send-test-request","description":"Send a test request message.","parameters":[{"name":"test-request-id","description":"The outgoing test request ID to send"}]}]}},"status":200}"#;
+    const ASKED: &[u8] =
+        br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
+
+    // The document says which half it is, and the words inside it - `send`,
+    // `outgoing`, `in` - are its own payload rather than a transport marker.
+    // Without the bound they would answer, and answer wrongly.
+    assert_eq!(
+        MsgDirection::infer_bytes(ANSWERED),
+        Some(MsgDirection::RECV)
+    );
+    assert_eq!(MsgDirection::infer_bytes(ASKED), Some(MsgDirection::SENT));
+    // An error is an answer that came back, not a request that went out.
+    let failed =
+        br#"{"request":{"mbean":"com.ullink.ulbridge:*","type":"read"},"error":"no such MBean"}"#;
+    assert_eq!(MsgDirection::infer_bytes(failed), Some(MsgDirection::RECV));
+    // A write states a `value` of its own, and it is still what went out: the
+    // echoed request is the reading, not the keys an answer happens to share.
+    let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
+    assert_eq!(MsgDirection::infer_bytes(write), Some(MsgDirection::SENT));
+    assert_eq!(MimeType::infer_bytes(write), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(write), Some(&b"Bridge"[..]));
+
+    // A bulk read answers an array of these, and an array closes with `]`.
+    let bulk = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin","type":"read"},"status":200},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}]"#;
+    assert_eq!(MimeType::infer_bytes(bulk), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(bulk), Some(&b"Plugin"[..]));
+    assert_eq!(MsgDirection::infer_bytes(bulk), Some(MsgDirection::RECV));
+
+    // The `type=` is read inside the ObjectName that states it, so a value
+    // elsewhere spelling the same five bytes is that value's business.
+    let quoting = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"Comment":"routed by ,type=Decoy"},"status":200}"#;
+    assert_eq!(MsgType::infer_bytes(quoting), Some(&b"read"[..]));
+
+    // Nothing is stated, and nothing is taken off a line with no marker on it.
+    let (direction, body) = MsgDirection::split_bytes(ANSWERED);
+    assert_eq!(direction, Some(MsgDirection::RECV));
+    assert_eq!(body, ANSWERED);
+
+    // A verb the transport wrote outranks what the document says of itself,
+    // and reading it takes the marker off exactly as it does for a frame.
+    let marked = [b"sending >> ".as_slice(), ANSWERED].concat();
+    let (direction, body) = MsgDirection::split_bytes(&marked);
+    assert_eq!(direction, Some(MsgDirection::SENT));
+    assert_eq!(body, [b">> ".as_slice(), ANSWERED].concat());
+    // The bound is the whole prefix, so a `[jolokia]` in the prose is prose.
+    let stamped = [
+        b"2026-08-14 09:12:03 INFO [jolokia] recv << ".as_slice(),
+        ANSWERED,
+    ]
+    .concat();
+    assert_eq!(
+        MsgDirection::infer_bytes(&stamped),
+        Some(MsgDirection::RECV)
+    );
+    assert_eq!(MimeType::infer_bytes(&stamped), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(&stamped), Some(&b"Plugin"[..]));
+
+    // The default fills silence and never overrides the statement.
+    assert_eq!(
+        MsgDirection::at_payload(ANSWERED, 0, Some(MsgDirection::SENT)),
+        Some(MsgDirection::RECV),
+    );
+
+    // A reading wider than the type is a type the capture carried: it is
+    // coerced into the column rather than dropped, and stays put.
+    let held = MsgType::coerce("ConfigurationPlugin");
+    assert!(held.is_synthetic());
+    assert_eq!(held, MsgType::coerce("ConfigurationPlugin"));
+    assert_ne!(held, MsgType::coerce("Plugin"));
+    assert_eq!(MsgType::coerce("Plugin").as_str(), "Plugin");
+
+    // A class the bridge spells is not an MBean it names: every `$type`,
+    // `className` and init file in these documents carries one, and a record
+    // quoting one is an ordinary JSON record.
+    let quoted = br#"{"level":"INFO","message":"reloading com.ullink.ulbridge2.plugins.ULMsg"}"#;
+    assert_eq!(MimeType::infer_bytes(quoted), MimeType::JSON);
+    assert_eq!(MsgDirection::infer_bytes(quoted), None);
+    // The namespace also has to stand inside the document rather than in the
+    // prose in front of it, or the prose is what named it.
+    let prose = br#"reloading com.ullink.ulbridge.sessioninterfaces.plugins:* {"level":"INFO"}"#;
+    assert_eq!(MimeType::infer_bytes(prose), MimeType::OCTET_STREAM);
+    // An unterminated document is not one.
+    let truncated = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","#;
+    assert_eq!(MimeType::infer_bytes(truncated), MimeType::OCTET_STREAM);
+
+    // The whole reading is borrowed out of the caller's bytes.
+    let read = MsgType::infer_bytes(ANSWERED).unwrap();
+    assert!(ANSWERED.as_ptr_range().contains(&read.as_ptr()));
 }
 
 #[test]

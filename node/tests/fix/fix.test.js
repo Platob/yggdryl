@@ -298,6 +298,12 @@ test('protocol and MsgType inference stays native and shallow', () => {
       'D',
     ],
     ['level=INFO message=random', MimeType.KEYVALUE, null],
+    [
+      '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
+        'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+      MimeType.ULCONFIG,
+      'Plugin',
+    ],
   ]
   for (const [line, protocol, msgtype] of cases) {
     assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
@@ -310,6 +316,17 @@ test('protocol and MsgType inference stays native and shallow', () => {
   const empty = new fix.FixRegistry()
   assert.equal(MimeType.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
   assert.equal(MimeType.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+
+  // A bridge configuration states its own half of the exchange, and the
+  // `send` its own payload spells is never read as the marker.
+  const answered =
+    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
+    '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
+  assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
+  assert.equal(MimeType.inferTextDirection(answered), 'RECV')
+  assert.equal(MimeType.inferTextMsgtype(answered), 'read')
+  const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
+  assert.equal(MimeType.inferTextDirection(asked), 'SENT')
 })
 
 test('an explicit branch pins lookup and omission infers the best match', () => {

@@ -234,10 +234,17 @@ impl MsgType {
     /// a bridge writes its own type in front of a frame it relays. FIX's
     /// user-defined `U*` range routes through one dictionary root.
     ///
+    /// A [bridge configuration](crate::MimeType::ULCONFIG) document declares
+    /// its own, and only where the line wrote neither of those. The ObjectName
+    /// of the first MBean it names carries a `type=` segment - `Plugin` or
+    /// `ConfigurationPlugin` - which is what that entry *is*; failing one, the
+    /// Jolokia request's own `type` is the operation the document came from.
+    ///
     /// The answer is a slice of the caller's bytes: no message is parsed and
     /// nothing is allocated. It is deliberately not validated to this type's
     /// width, because a line may carry anything and a classifier must not
-    /// refuse what it was asked to read.
+    /// refuse what it was asked to read - [`Self::coerce`] is what makes a
+    /// reading fit a column.
     ///
     /// ```
     /// use yggdryl::types::MsgType;
@@ -247,6 +254,14 @@ impl MsgType {
     /// // The user-defined range routes through one root.
     /// assert_eq!(MsgType::infer_bytes(b"35=U7|"), Some(&b"UDF"[..]));
     /// assert_eq!(MsgType::infer_bytes(b"no pairs here"), None);
+    ///
+    /// // A bridge configuration answers what the entry is, and `plugin-type=`
+    /// // is not that segment however alike its last five bytes look.
+    /// let entry = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"status":200}"#;
+    /// assert_eq!(MsgType::infer_bytes(entry), Some(&b"Plugin"[..]));
+    /// // A wildcard read names no type of its own, so the operation answers.
+    /// let wildcard = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":200}"#;
+    /// assert_eq!(MsgType::infer_bytes(wildcard), Some(&b"read"[..]));
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Option<&[u8]> {
@@ -283,7 +298,12 @@ impl MsgDirection {
     ///
     /// A prefix carrying both verbs, and one carrying neither, both answer
     /// nothing: there is no verb the reading can prefer, and inventing one
-    /// would be a guess.
+    /// would be a guess. Except where the payload is a document that states
+    /// its own half of an exchange - a
+    /// [bridge configuration](crate::MimeType::ULCONFIG) echoing back the
+    /// request it answers came back, and one that is a bare request went out.
+    /// A verb the transport wrote still wins over what the document says
+    /// about itself.
     ///
     /// ```
     /// use yggdryl::types::MsgDirection;
@@ -304,6 +324,13 @@ impl MsgDirection {
     /// // English that merely contains the letters is not a marker.
     /// assert_eq!(MsgDirection::infer_bytes(b"sending in session 3"), None);
     /// assert_eq!(MsgDirection::infer_bytes(b"received out of order"), None);
+    ///
+    /// // A document answered by a status came back, and the words its own
+    /// // payload spells - `send-test-request` here - are never the marker.
+    /// let answered = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"name":"send-test-request"},"status":200}"#;
+    /// assert_eq!(MsgDirection::infer_bytes(answered), Some(MsgDirection::RECV));
+    /// let asked = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
+    /// assert_eq!(MsgDirection::infer_bytes(asked), Some(MsgDirection::SENT));
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Option<&'static str> {
@@ -337,8 +364,23 @@ impl MsgDirection {
     /// ```
     #[must_use]
     pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8]) {
-        let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-        Self::split_within(line, bound)
+        let (bound, stated) = crate::mime_type::line::payload(line);
+        let (marked, rest) = Self::split_within(line, bound.unwrap_or(line.len()));
+        // A document states its own half of an exchange, and states it with no
+        // marker to take off: what is read there leaves the line whole.
+        (marked.or_else(|| Self::stated(stated)), rest)
+    }
+
+    /// The direction a payload that states its own half of an exchange took.
+    ///
+    /// The reading is the document's, so the vocabulary stays here: the scan
+    /// answers which half it is and this names the half.
+    const fn stated(answered: Option<bool>) -> Option<&'static str> {
+        match answered {
+            Some(true) => Some(Self::RECV),
+            Some(false) => Some(Self::SENT),
+            None => None,
+        }
     }
 
     /// Reads which way a line moved, given where its payload starts.
@@ -348,9 +390,10 @@ impl MsgDirection {
     /// locating it twice is the only cost the bounded reading has.
     ///
     /// The default fills silence and never overrides a statement: a line
-    /// carrying a verb answers that verb, and only a line carrying none - or
-    /// carrying both, which is a line no reading can prefer one of - takes
-    /// the default. FIX parsing passes [`MsgDirection::SENT`], because a
+    /// carrying a verb answers that verb, a payload that states its own half
+    /// of an exchange answers that, and only a line stating neither - or
+    /// carrying both verbs, which is a line no reading can prefer one of -
+    /// takes the default. FIX parsing passes [`MsgDirection::SENT`], because a
     /// session's own log is written by the side doing the sending and its
     /// unmarked lines are the ones it sent.
     ///
@@ -379,6 +422,7 @@ impl MsgDirection {
     ) -> Option<&'static str> {
         Self::split_within(line, payload_at.min(line.len()))
             .0
+            .or_else(|| Self::stated(crate::mime_type::line::payload(line).1))
             .or(default)
     }
 

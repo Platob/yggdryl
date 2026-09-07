@@ -548,8 +548,7 @@ fn payload_lines(column: &ArrayRef) -> Result<Vec<&[u8]>> {
 
 /// The direction a whole captured line moved.
 fn direction_of(line: &[u8], default: Option<&'static str>) -> Option<&'static str> {
-    let at = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-    MsgDirection::at_payload(line, at, default)
+    MsgDirection::infer_bytes(line).or(default)
 }
 
 /// One row's values beside the names its schema gave them.

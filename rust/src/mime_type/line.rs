@@ -21,6 +21,31 @@ const XML_DATA_TAG: i32 = 213;
 /// The one routing name for FIX user-defined MsgTypes (`U` plus a suffix).
 const UDF_MSGTYPE: &[u8] = b"UDF";
 
+/// The namespace every ULBridge MBean is named under.
+///
+/// One vendor string carries the whole reading: it is what makes a JSON
+/// document a bridge's configuration rather than any other object, so a
+/// document not naming it stays ordinary JSON. It has to be naming an MBean
+/// and not merely spelling a class, which is what [`object_names`] holds it to.
+const ULBRIDGE_NAMESPACE: &[u8] = b"com.ullink.ulbridge";
+
+/// The ObjectName segment naming what one MBean is.
+///
+/// Read only where a delimiter opens it, because `plugin-type=` ends in the
+/// same five bytes and names something else.
+const OBJECT_NAME_TYPE: &[u8] = b"type=";
+
+/// Jolokia's own key for the operation a document asked for.
+const JOLOKIA_TYPE_KEY: &[u8] = b"\"type\"";
+
+/// The key Jolokia answers with, echoing back what was asked.
+///
+/// A request never carries it and every answer does, error answers included,
+/// which is what makes it the whole of the reading. The keys an answer also
+/// carries - `value`, `status` - are not: a write request states a `value` of
+/// its own, and reading that as an answer would invert the direction.
+const JOLOKIA_REQUEST_KEY: &[u8] = b"\"request\"";
+
 #[derive(Clone, Copy)]
 enum LineKey<'line> {
     Tag(i32),
@@ -61,8 +86,10 @@ pub(crate) struct LineInference<'line> {
     has_pairs: bool,
     has_symbolic: bool,
     has_xml: bool,
+    has_ulconfig: bool,
     tag_msgtype: Option<&'line [u8]>,
     name_msgtype: Option<&'line [u8]>,
+    ulconfig_msgtype: Option<&'line [u8]>,
 }
 
 impl<'line> LineInference<'line> {
@@ -71,9 +98,10 @@ impl<'line> LineInference<'line> {
     /// A FIX frame is numeric tags; a bridge row is `#`-marked keys or a
     /// `MSGTYPE=` key; both together are the mixed form. An `XmlData(213)`
     /// payload that opens with a tag makes the frame FIXML. Failing every
-    /// frame rule, a line that is still `key=value` throughout is the generic
-    /// key/value shape rather than nothing, and a document that opens as XML
-    /// or JSON is that document.
+    /// frame rule, a JSON document naming the ULBridge namespace is that
+    /// bridge's configuration, a line that is still `key=value` throughout is
+    /// the generic key/value shape rather than nothing, and a document that
+    /// opens as XML or JSON is that document.
     pub(crate) const fn mime_type(&self) -> MimeType {
         if self.has_xml {
             return MimeType::FIXML;
@@ -82,6 +110,10 @@ impl<'line> LineInference<'line> {
             (true, true) => MimeType::FIXUL,
             (true, false) => MimeType::FIX,
             (false, true) => MimeType::ULLINK,
+            // A document wins over the bare pair rules, exactly as the XML and
+            // JSON readings do: what a bridge wrote inside its own
+            // configuration is that document's content, never a field.
+            (false, false) if self.has_ulconfig => MimeType::ULCONFIG,
             (false, false) if self.has_pairs => MimeType::KEYVALUE,
             (false, false) => MimeType::OCTET_STREAM,
         }
@@ -92,9 +124,32 @@ impl<'line> LineInference<'line> {
     ///
     /// A raw `MSGTYPE=` is checked across the whole line before numeric tag
     /// 35 and therefore wins when both are present: a bridge writes its own
-    /// type in front of a frame it is relaying.
+    /// type in front of a frame it is relaying. A bridge configuration
+    /// document declares its own, and only where neither of those was
+    /// written, because the frame a line carries outranks the document
+    /// carrying it.
     pub(crate) fn msgtype(&self) -> Option<&'line [u8]> {
-        self.name_msgtype.or(self.tag_msgtype).map(route_msgtype)
+        self.name_msgtype
+            .or(self.tag_msgtype)
+            .map(route_msgtype)
+            .or(self.ulconfig_msgtype)
+    }
+
+    /// Reads the bridge configuration document the line carries, if it does.
+    ///
+    /// Run only where every frame rule has already declined, which is the one
+    /// place the answer could change a thing: a line holding a frame is that
+    /// frame whatever document quoted it, and the namespace scan a document
+    /// costs is one a frame never pays.
+    fn read_ulconfig(&mut self, line: &'line [u8]) {
+        if self.has_tag || self.has_symbolic || self.has_xml {
+            return;
+        }
+        let Some(at) = ulconfig_at(line) else {
+            return;
+        };
+        self.has_ulconfig = true;
+        self.ulconfig_msgtype = ulconfig_msgtype(&line[at..]);
     }
 }
 
@@ -366,6 +421,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
         // No frame at all: the line is a document, a sentence, or a bare run
         // of pairs. The first two are decided by their opening byte.
         inferred.has_pairs |= has_any_pair(line);
+        inferred.read_ulconfig(line);
         return inferred;
     };
     let mut offset = frame.start;
@@ -410,6 +466,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
             break;
         }
     }
+    inferred.read_ulconfig(line);
     inferred
 }
 
@@ -457,5 +514,152 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 /// Everything before it is the transport's own prose, which is what a
 /// direction is read from and what a body strips.
 pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
-    locate_frame(line).map(|frame| frame.start)
+    payload(line).0
+}
+
+/// Where one line's payload starts, and what a document there states about
+/// which way it moved.
+///
+/// One reading rather than two, because a caller that bounds the prose needs
+/// the statement in the same pass. A frame states nothing - which way it moved
+/// is the transport's to say - while a bridge configuration document states
+/// its own half of a Jolokia exchange, and `true` is the half that came back.
+pub(crate) fn payload(line: &[u8]) -> (Option<usize>, Option<bool>) {
+    if let Some(frame) = locate_frame(line) {
+        return (Some(frame.start), None);
+    }
+    match ulconfig_at(line) {
+        Some(at) => (Some(at), Some(ulconfig_answered(&line[at..]))),
+        None => (None, None),
+    }
+}
+
+/// Where the ULBridge configuration document one line carries opens.
+///
+/// Two facts hold together and neither is enough alone: the line has to be a
+/// JSON object - the whole line, or the tail of one a transport put prose in
+/// front of - and that object has to name the ULBridge namespace. The
+/// namespace is what makes the reading unambiguous, so a document not carrying
+/// it is ordinary JSON and stays that way.
+///
+/// The object is the outermost one, found by the `{` a member opens behind, so
+/// a `[jolokia]` in the prose is not mistaken for the document and the bound a
+/// direction is read against is the whole prefix rather than part of it.
+fn ulconfig_at(line: &[u8]) -> Option<usize> {
+    // The cheap half first: the namespace is absent from every line that is
+    // not one of these, and finding it is one prefiltered pass.
+    let named = object_names(line).next()?.start;
+    // A bulk read answers an array of these, so either closer ends one.
+    if !matches!(trim_ascii(line).last(), Some(b'}' | b']')) {
+        return None;
+    }
+    memchr::memchr_iter(b'{', &line[..named]).find(|at| opens_member(line, at + 1))
+}
+
+/// Every ULBridge MBean the line names, rather than every class it spells.
+///
+/// An ObjectName is a domain and then a `:`, so the namespace has to be
+/// followed by the rest of a domain and that colon. A bridge writes its own
+/// class names into these documents - `com.ullink.ulbridge2.plugins.ULMsg` on
+/// every `$type`, `className` and init file - and a log record quoting one is
+/// not a configuration document however clearly it names the product.
+///
+/// Each name is answered with the properties that follow it, bounded by the
+/// quote closing the JSON string it stands in, so what an ObjectName says is
+/// read out of that name rather than out of the document around it.
+fn object_names(line: &[u8]) -> impl Iterator<Item = std::ops::Range<usize>> + '_ {
+    memchr::memmem::find_iter(line, ULBRIDGE_NAMESPACE).filter_map(move |start| {
+        let mut at = start + ULBRIDGE_NAMESPACE.len();
+        while line
+            .get(at)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+        {
+            at += 1;
+        }
+        if line.get(at) != Some(&b':') {
+            return None;
+        }
+        let end = memchr::memchr(b'"', &line[at..]).map_or(line.len(), |offset| at + offset);
+        Some(start..end)
+    })
+}
+
+/// Whether a `{` at this position opens an object rather than stands in prose.
+///
+/// A JSON object's first member is a quoted name, so the next thing that is
+/// not whitespace is a quote. Nothing else is read: this decides where a
+/// document starts, and a classifier that parsed to answer that would be
+/// parsing every line of a capture.
+fn opens_member(line: &[u8], mut at: usize) -> bool {
+    while line.get(at).is_some_and(u8::is_ascii_whitespace) {
+        at += 1;
+    }
+    line.get(at) == Some(&b'"')
+}
+
+/// The message type one ULBridge configuration document declares.
+///
+/// A Jolokia document says two things about its type and the specific one
+/// wins. An MBean's ObjectName carries a `type=` segment - `Plugin` or
+/// `ConfigurationPlugin` - which is what that entry *is*; the request carries
+/// the operation - `read`, `write`, `exec` - which is only how the document
+/// was obtained. A wildcard read names no type in its own MBean and every
+/// entry it answers with names one, so the first entry's is the document's.
+fn ulconfig_msgtype(document: &[u8]) -> Option<&[u8]> {
+    object_name_type(document).or_else(|| jolokia_operation(document))
+}
+
+/// The `type=` property of the first ObjectName that states one.
+///
+/// The property is read inside the name rather than across the document, so a
+/// value elsewhere that happens to spell `,type=` is that value's business.
+/// It counts only where a `,` or a `:` opens it, which is the one shape an
+/// ObjectName property has and is not the shape `plugin-type=` has.
+fn object_name_type(document: &[u8]) -> Option<&[u8]> {
+    object_names(document).find_map(|name| {
+        let held = &document[name.clone()];
+        memchr::memmem::find_iter(held, OBJECT_NAME_TYPE)
+            .filter(|at| {
+                at.checked_sub(1)
+                    .is_some_and(|before| matches!(held[before], b',' | b':'))
+            })
+            .find_map(|at| {
+                let start = at + OBJECT_NAME_TYPE.len();
+                let end = held[start..]
+                    .iter()
+                    .position(|byte| *byte == b',')
+                    .map_or(held.len(), |offset| start + offset);
+                (end > start).then(|| &held[start..end])
+            })
+    })
+}
+
+/// The operation the Jolokia request asked for.
+///
+/// The key is matched with its opening quote, so the `$type` discriminator
+/// every nested object carries is never read as this one.
+fn jolokia_operation(document: &[u8]) -> Option<&[u8]> {
+    let at = memchr::memmem::find(document, JOLOKIA_TYPE_KEY)? + JOLOKIA_TYPE_KEY.len();
+    let at = skip_to(document, at, b':')? + 1;
+    let start = skip_to(document, at, b'"')? + 1;
+    let end = start + memchr::memchr(b'"', document.get(start..)?)?;
+    (end > start).then(|| &document[start..end])
+}
+
+/// The position of `wanted`, when it is the next byte that is not whitespace.
+fn skip_to(document: &[u8], mut at: usize, wanted: u8) -> Option<usize> {
+    while document.get(at).is_some_and(u8::is_ascii_whitespace) {
+        at += 1;
+    }
+    (document.get(at) == Some(&wanted)).then_some(at)
+}
+
+/// Whether one ULBridge configuration document is an answer, not a request.
+///
+/// Jolokia echoes the request back inside every answer it sends, and a request
+/// carries no such key of its own - so the echo is the whole of the reading. A
+/// failed read echoes it too, which is right: an error is a read that came
+/// back rather than one that went out.
+fn ulconfig_answered(document: &[u8]) -> bool {
+    memchr::memmem::find(document, JOLOKIA_REQUEST_KEY).is_some()
 }

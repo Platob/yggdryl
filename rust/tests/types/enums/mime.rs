@@ -19,6 +19,7 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
             "application/vnd.apache.puffin",
         ),
         ("TEXT/ULLINK", MimeType::ULLINK, "text/ullink"),
+        ("TEXT/ULCONFIG", MimeType::ULCONFIG, "text/ulconfig"),
         ("TEXT/FIX", MimeType::FIX, "text/fix"),
         ("TEXT/FIXUL", MimeType::FIXUL, "text/fixul"),
         ("TEXT/FIXML", MimeType::FIXML, "text/fixml"),
@@ -164,6 +165,7 @@ fn content_type_parameters_are_validated_without_becoming_mime_state() {
 fn category_helpers_cover_known_and_structured_suffix_values() {
     for mime in [
         MimeType::ULLINK,
+        MimeType::ULCONFIG,
         MimeType::FIX,
         MimeType::FIXUL,
         MimeType::FIXML,
@@ -171,8 +173,16 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
         assert!(mime.is_known());
         assert!(mime.is_textual());
         assert!(!mime.is_binary());
+        // Each classifies a line rather than naming a file format, so none
+        // answers a preferred extension.
         assert_eq!(mime.extension(), None);
     }
+    // A bridge configuration is JSON and reads as JSON; a FIX frame carrying
+    // XML in a tag is not a document and does not.
+    assert_eq!(MimeType::ULCONFIG.format(), Some(Format::Json));
+    assert!(MimeType::ULCONFIG.is_structured());
+    assert_eq!(MimeType::FIXML.format(), None);
+    assert!(!MimeType::FIXML.is_structured());
     assert!(MimeType::CSV.is_tabular());
     assert!(MimeType::XLSX.is_tabular());
     assert!(MimeType::PARQUET.is_binary());

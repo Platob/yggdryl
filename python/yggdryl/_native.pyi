@@ -88,6 +88,7 @@ class MimeType:
     PUFFIN: ClassVar[MimeType]
     PLAIN_TEXT: ClassVar[MimeType]
     ULLINK: ClassVar[MimeType]
+    ULCONFIG: ClassVar[MimeType]
     FIX: ClassVar[MimeType]
     FIXUL: ClassVar[MimeType]
     KEYVALUE: ClassVar[MimeType]

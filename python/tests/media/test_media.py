@@ -25,6 +25,7 @@ KNOWN_MIME_TYPES = {
     "PUFFIN": "application/vnd.apache.puffin",
     "PLAIN_TEXT": "text/plain",
     "ULLINK": "text/ullink",
+    "ULCONFIG": "text/ulconfig",
     "FIX": "text/fix",
     "FIXUL": "text/fixul",
     "FIXML": "text/fixml",
@@ -75,7 +76,7 @@ KNOWN_MIME_TYPES = {
 
 
 def test_mime_type_complete_known_constants_and_default() -> None:
-    assert len(KNOWN_MIME_TYPES) == 61
+    assert len(KNOWN_MIME_TYPES) == 62
     assert MimeType() == MimeType.OCTET_STREAM
     values = []
     for name, canonical in KNOWN_MIME_TYPES.items():
