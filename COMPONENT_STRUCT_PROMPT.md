@@ -8,8 +8,8 @@ a notion this crate can name. Give that Struct the component's own name —
 it by one rule, so a group's contents are categorizable, a component is a thing
 with a name, and messages and components are described by one vocabulary. Then
 make the crate's own arrival record follow the same pattern: a `NoFixEntries`
-list of a `FixEntry` component, recursive, materialized two Arrow levels deep
-with a binary leaf below.
+list of a `FixEntry` component, recursive, materialized three Arrow levels deep
+with a binary leaf below holding the rest as the crate's own JSON.
 
 ## How to run
 
@@ -295,80 +295,110 @@ constructor taking children.
 
 **G5-R3.** State the depth convention once, in these words: **the column's List
 is level 0; the `fixentry` it holds is level 1; the `fixentry` a level-1 entry
-holds is level 2; there is no level-3 struct.** "Two levels deep" means two
-`fixentry` structs on any root-to-leaf path — five Arrow nodes:
+holds is level 2; the `fixentry` a level-2 entry holds is level 3; there is no
+level-4 struct.** "Three levels deep" means three `fixentry` structs on any
+root-to-leaf path — seven Arrow nodes:
 
 ```text
 nofixentries : list<fixentry: struct<
     tag int32, branch utf8, key utf8, value utf8,
     nofixentries: list<fixentry: struct<
         tag int32, branch utf8, key utf8, value utf8,
-        nofixentries: binary>>>>
+        nofixentries: list<fixentry: struct<
+            tag int32, branch utf8, key utf8, value utf8,
+            nofixentries: binary>>>>>>
 ```
 
-**G5-R4.** The fifth member keeps the same name at both levels. The meaning is
-identical — the entries this entry holds — and the *type*, not a second name,
-is what says the subtree was not materialized.
+Three is the materialized depth, not a natural limit. It is stated in exactly
+one place — the function that types both arrival columns — so a fourth level is
+one constant, not a shape rewrite.
+
+**G5-R4.** The fifth member keeps the same name at **every** level, and so does
+the item struct. The meaning is identical at each — the entries this entry
+holds — and the *type*, not a second name, is what says the subtree stopped
+being materialized. A reader that walks one level walks them all.
 
 **G5-R5.** Keep the four existing members exactly as they are, all nullable, and
-append the fifth. Declare the inner list and both items non-null and the binary
-leaf non-null; the outer list stays nullable as today. An empty child list means
-no children and an empty leaf means nothing was truncated, so neither pays a
-validity bitmap.
+append the fifth. Declare all three `fixentry` items non-null, the two inner
+lists non-null, and the binary leaf non-null; the outer list stays nullable as
+today. An empty child list means no children and an empty leaf means nothing was
+truncated, so no level pays a validity bitmap.
 
-**G5-R6.** The leaf holds the **wire bytes** of everything at level 3 and below:
-`key=value` pairs framed with `0x01`, in arrival order, verbatim. Not a
-serialized document, not a re-typed rendering. Frame with `0x01` whatever
-separator arrived — the leaf is a fragment with no frame to infer a dialect
-from, and the reader already normalizes an escaped frame to `0x01`.
+**G5-R6.** The leaf holds everything at level 4 and below as **the crate's own
+JSON**, serialized by `into_json_scalar` over the truncated subtree rendered as
+a `Scalar`, and read back by `from_json_scalar`. Write no emitter and no parser:
+the FIX message type already states this contract — *serialization is inherited,
+not written* — and a second renderer for the arrival record is exactly the
+second path `N3` forbids.
 
-**G5-R7.** Produce the leaf with the same emitter the message uses and read it
-back with the same parser. One emitter, one parser, both altitudes. A second of
-either is forbidden.
+**G5-R7.** Read the leaf back **untyped**, with `from_json_scalar`, and rebuild
+the entries by a walk. The subtree below the materialized depth has unbounded
+depth, so no `Field` describes it and `from_json_scalar_with_field` cannot be
+used; every member of an entry is an `int32` or a `utf8`, so an untyped read
+loses nothing.
 
-**G5-R8.** Fold level 3 and below into the leaf in exactly one place — the
+*Rejected:* typing the read against the level-3 `fixentry` field. It types only
+one more level and then refuses the message, which is `G5-R14` inverted.
+
+**G5-R8.** Type the leaf `binary`, holding the UTF-8 bytes of that JSON. It is
+opaque to the row's readers by construction: a `utf8` leaf would invite querying
+the arrival record as text and give the truncated tail a second, half-typed read
+path that the materialized levels do not have.
+
+*Noted:* `fix:lineage` and `fix:codes` do store canonical JSON as text — but
+they are metadata on a field, not a column of a row, and nothing queries them
+as strings.
+
+**G5-R9.** Fold level 4 and below into the leaf in exactly one place — the
 function that writes the Arrow arrival value. The builder never folds and the
 Rust tree is never truncated: `children` is the whole arrival record, and the
 Arrow column is a materialization of it.
 
-**G5-R9.** Attach a member's entry under the counter's entry only when a counter
+**G5-R10.** Attach a member's entry under the counter's entry only when a counter
 pair actually arrived; otherwise record it flat at level 1 as today. **Never
 synthesize a parent nobody sent** — the entries are the arrival record.
 
-**G5-R10.** The digest walks the tree pre-order and writes each entry's child
+**G5-R11.** The digest walks the tree pre-order and writes each entry's child
 count as four big-endian bytes after the value's length-prefixed bytes, then
 each child. Write the count for **every** entry, including zero. Without it two
 messages differing only below the materialized depth hash alike, which is a
 correctness bug, not an optimization. Skip an envelope tag's whole subtree, not
 just its entry. Recurse over the slice directly: no intermediate allocation.
 
-**G5-R11.** The wire emitters go pre-order — the entry, then its children — and
+**G5-R12.** The wire emitters go pre-order — the entry, then its children — and
 apply the control-byte refusal at every level. The anomaly walk goes pre-order
 too, so an anomaly below level 1 is still reported; the miscount comparison is
 unchanged.
 
-**G5-R12.** The unmapped list stays **flat**: every entry no dictionary
+**G5-R13.** The unmapped list stays **flat**: every entry no dictionary
 explained, found pre-order at any depth, enters it as a level-1 entry with an
 empty child list and an empty leaf. It is a view over what was not explained,
 not a second copy of the tree's shape.
 
-**G5-R13.** Refuse nothing on depth alone. An entry thirty levels down folds
+**G5-R14.** Refuse nothing on depth alone. An entry thirty levels down folds
 into the leaf. A depth refusal would make a legal nested-group message
 unreadable, and the arrival record does not do that.
 
-**G5-R14.** Two refusals, in the register of the landed ones:
+**G5-R15.** **Invent no refusal.** Both failure modes already belong to the JSON
+pair: a value it cannot render refuses on the way in, and a leaf that is not a
+JSON document refuses on the way out, each in its own landed register. Adding a
+third is a second contract for one failure. The one rule to state is that a leaf
+that does not read back is **refused, never skipped** — a re-emitted line must
+be one that was actually sent.
 
-- folding a key or value below the materialized depth that carries the frame
-  byte — `expected a value the frame byte can separate, got one carrying it`;
-- reading back a non-empty leaf that yields no pair — `expected a frame of
-  key=value pairs, got bytes that split into none`. Refuse rather than skip: a
-  re-emitted line must be one that was actually sent.
+Note what `G5-R6` buys: the frame byte needs no refusal at all, because JSON
+escapes a control byte instead of colliding with it. That was the only refusal a
+hand-rolled wire leaf would have had to invent.
 
-**Verify G5.** A message with a group inside a group inside a group: assert two
-materialized levels, a non-empty leaf, and that the re-emitted wire equals the
-input byte for byte. Assert two messages differing only at level 3 produce
-different digests. Report: `size_of::<FixEntry>()` before and after, and the
-per-row Arrow cost on a capture whose entries never nest.
+**Verify G5.** A message nested four groups deep: assert three materialized
+levels, a non-empty leaf, that the leaf parses back through `from_json_scalar`
+to the entries that were folded, and that the re-emitted wire equals the input
+byte for byte. Assert two messages differing only at level 4 — below the
+materialized depth, inside the leaf — produce different digests. Report:
+`size_of::<FixEntry>()` before and after, the per-row Arrow cost on a capture
+whose entries never nest, and how many of the shipped 521 groups nest at all
+(the corpus has 0 lists inside lists, so the third level is reached only by a
+dialect or a live capture — say which fixture exercises it).
 
 ## Order
 
@@ -400,7 +430,10 @@ Beyond `N1`–`N7` in the repository contract.
   this brief: it is only buildable once components have names, which is what
   this work delivers.)*
 - **NG10.** Synthesize a parent entry for a group whose counter never arrived.
-- **NG11.** Refuse a message for nesting deeper than two levels.
+- **NG11.** Refuse a message for nesting deeper than the materialized depth.
+- **NG12.** Write a second serializer, parser or refusal for the leaf. The
+  crate's JSON pair renders and reads it; serialization is inherited, not
+  written.
 
 ## Done when
 
@@ -438,3 +471,4 @@ drop the promise.
 | arrival-column assertion sites moved | 11 |
 | `size_of::<FixEntry>()` | before and after |
 | per-row Arrow cost on a never-nesting capture | measured, not estimated |
+| leaf JSON round-trip | folded entries recovered, byte-for-byte re-emission |
