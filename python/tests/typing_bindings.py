@@ -1106,6 +1106,9 @@ fix_description: str | None = fix_field.fix.description
 fix_branch: str = fix_field.fix.branch
 fix_id: str | None = fix_field.fix.id
 fix_standard_branch: str = fix.STANDARD_BRANCH
+fix_declared_branch: fix.FixBranch = fix.FixBranch("bloomberg", aliases=["blp"])
+fix_branch_aliases: list[str] = fix_declared_branch.aliases
+fix_branch_has_alias: bool = fix_declared_branch.has_alias("blp")
 fix_user_tag_min: int = fix.USER_TAG_MIN
 fix_user_tag_max: int = fix.USER_TAG_MAX
 
@@ -1223,6 +1226,15 @@ fix_read_pairs: fix.FixMsg = fix_reader.pairs([("55", "AAPL")])
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
+fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
+fix_cblock_named: list[Field] = fix.fix_cfb_fields(
+    Path("cblocks") / "bloomberg.cfb", "bloomberg"
+)
+fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
+fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry_loaded)
+fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
+    Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
+)
 fix_projection: fix.FixProjection = fix.FixProjection(
     fix_registry_from_fields, "FixMessage"
 )

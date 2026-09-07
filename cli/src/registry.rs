@@ -13,6 +13,24 @@ use yggdryl::{DataType, Field, FixBranch, FixCodeValue, FixRegistry, Result};
 use crate::style;
 
 /// Where a dictionary lives, and what it holds.
+/// One path as a handle can address it.
+///
+/// Absolute, because a handle is addressed by URL and a relative path is not
+/// one. Resolved against the working directory the way every other tool
+/// resolves a path argument, so every location this tool is given passes
+/// through here before it becomes a URL.
+///
+/// # Errors
+///
+/// Returns the failure reading the working directory raises.
+pub fn located(path: &Path) -> Result<PathBuf> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()?.join(path))
+    }
+}
+
 pub struct Store {
     root: PathBuf,
     registry: FixRegistry,
@@ -28,14 +46,7 @@ impl Store {
     /// Returns the store's own refusal when the folder exists and does not
     /// hold a dictionary.
     pub fn open(root: &Path) -> Result<Self> {
-        // Absolute, because a handle is addressed by URL and a relative path
-        // is not one. Resolved against the working directory the way every
-        // other tool resolves a path argument.
-        let root = if root.is_absolute() {
-            root.to_path_buf()
-        } else {
-            std::env::current_dir()?.join(root)
-        };
+        let root = located(root)?;
         let registry = if root.join("primitive").exists() || root.join("nested").exists() {
             FixRegistry::from_handle(&Folder::new(root.clone())?)?
         } else {

@@ -22,6 +22,7 @@ import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
+    FixBranch,
     FixMsg,
     FixProjection,
     FixReader,
@@ -29,6 +30,7 @@ from yggdryl.fix import (
     STANDARD_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
+    fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_tags,
@@ -39,6 +41,25 @@ from yggdryl.fix import (
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
+
+# One Ullink CBlock in the shape a production file has: a vocabulary of a
+# specification tag and a venue one, and a grammar binding whose root the
+# registry form answers and the vocabulary form drops.
+CBLOCK = """<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="55" alt="Symbol" type="string">
+			<description>Ticker symbol.</description>
+		</vocabulary-tag>
+		<vocabulary-tag name="10001" alt="ExcludedDealers" type="string" />
+	</vocabulary>
+	<grammar-binding type="7">
+		<grammar>
+			<tag-constraint name="55" part="body" required="true" />
+		</grammar>
+	</grammar-binding>
+</cplugin-configuration>
+"""
 
 
 def _field(
@@ -150,6 +171,37 @@ def test_tag_rejects_bool_and_refuses_to_narrow() -> None:
         field.fix.tags = [55, 55]
     with pytest.raises(ValueError, match="fix:aliases"):
         field.fix.aliases = ["Sym", "sym"]
+
+
+def test_a_branch_declaration_answers_to_its_aliases() -> None:
+    bloomberg = FixBranch("bloomberg", aliases=["BLP", "blpfix"])
+    # Folded exactly as a name is, and the canonical name is not one of them.
+    assert bloomberg.aliases == ["blp", "blpfix"]
+    assert bloomberg.has_alias("BLP") and bloomberg.has_alias("blpfix")
+    assert not bloomberg.has_alias("bloomberg")
+    # An alias changes no identity, so nothing a digest keys moves.
+    assert bloomberg.digest() == FixBranch("BLOOMBERG").digest()
+    assert FixBranch("cme").aliases == []
+
+    venue = Field("VenueSym", "utf8")
+    venue.fix.id = "5055:bloomberg"
+    registry = FixRegistry.from_fields([venue])
+    registry.set_branch(bloomberg)
+
+    # Every spelling reaches the one dictionary, canonically answered.
+    for spelling in ("bloomberg", "BLOOMBERG", "blp", "BLPFIX"):
+        held = registry.branch_named(spelling)
+        assert held is not None and held.name == "bloomberg", spelling
+    assert registry.branch_named("nowhere") is None
+
+    # A spelling that already reaches a dictionary is not a second way to.
+    with pytest.raises(ValueError, match="twice"):
+        FixBranch("bloomberg", aliases=["BLOOMBERG"])
+    with pytest.raises(ValueError, match="twice"):
+        FixBranch("bloomberg", aliases=["blp", "BLP"])
+    # An alias is held to the grammar a name is.
+    with pytest.raises(ValueError, match="ASCII letter"):
+        FixBranch("bloomberg", aliases=["2blp"])
 
 
 def test_branch_and_id_round_trip_as_text() -> None:
@@ -624,6 +676,159 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     with pytest.raises(ValueError, match="fix:tag"):
         registry.insert(Field("Untagged", "utf8"))
     assert seed.get_field_by_name("Untagged", "") is None
+
+
+def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() -> None:
+    registry = FixRegistry.from_fields(
+        [
+            _field("symbol", "utf8", 55, aliases=["Ticker"]),
+            _field("Price", "utf8", 44),
+        ]
+    )
+
+    # Tag 55 is stored and folds; 60 is new; the venue's 5055 shares the tag of
+    # nothing, and its branch is half of the identity.
+    added, merged = registry.add_fields(
+        [
+            _field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]),
+            _field("TransactTime", "utf8", 60),
+            _field("VenueSym", "utf8", 5055, branch="cme"),
+        ]
+    )
+    assert (added, merged) == (2, 1)
+    assert len(registry) == 4
+
+    # The fold kept what only the stored field declared and added the rest.
+    folded = registry.field_by_tag(65)
+    assert folded.name == "SYMBOL"
+    assert folded.fix.aliases == ["Sym", "Ticker"]
+
+    # One mutation: a refusal partway leaves the dictionary as it was, so
+    # neither the field before it nor the one after arrives.
+    with pytest.raises(ValueError):
+        registry.add_fields(
+            [
+                _field("Side", "utf8", 54),
+                _field("symbol", "large_utf8", 55),
+                _field("Account", "utf8", 1),
+            ]
+        )
+    assert len(registry) == 4
+    assert registry.get_field_by_tag(54) is None
+    assert registry.field_by_tag(55).dtype == DataType("utf8")
+
+    # No ``fix:tag`` is no identity, so there is nothing to add or fold under.
+    with pytest.raises(ValueError, match="fix:tag"):
+        registry.add_fields([Field("Untagged", "utf8")])
+    assert len(registry) == 4
+
+
+def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
+    cme = FixBranch("cme", aliases=["globex"])
+    dictionary = FixRegistry.from_fields(
+        [_field("symbol", "utf8", 55), _field("VenueSym", "utf8", 5055, branch="cme")]
+    )
+    dictionary.set_branch(cme)
+
+    incoming = FixBranch(
+        "cme", version="4.4", sender_comp_id="BANKX", target_comp_id="CME", aliases=["cmegroup"]
+    )
+    other = FixRegistry.from_fields(
+        [_field("SYMBOL", "utf8", 55), _field("VenueTime", "utf8", 5060, branch="cme")]
+    )
+    other.set_branch(incoming)
+
+    assert dictionary.merge_with(other) == (1, 1)
+    assert len(dictionary) == 3
+    assert dictionary.field_by_tag(55).name == "SYMBOL"
+
+    # The dialect arrives beside the fields, and every spelling either side
+    # answered to is kept.
+    held = dictionary.branch_named("cme")
+    assert held is not None
+    assert held.version == "4.4"
+    assert held.sender_comp_id == "BANKX"
+    assert held.aliases == ["globex", "cmegroup"]
+    for spelling in ("globex", "CMEGROUP", "cme"):
+        found = dictionary.branch_named(spelling)
+        assert found is not None and found.name == "cme", spelling
+
+
+def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "MSFIX44.cfb"
+    path.write_text(CBLOCK, encoding="utf-8")
+
+    registry = FixRegistry()
+    assert registry.add_cfb_file(path, "morgan", ["mstanley"]) == (2, 0)
+    assert len(registry) == 2
+
+    # The dialect the root element declared, which reading the fields alone
+    # would have lost: a field carries its branch's name and nothing else.
+    branch = registry.branch_named("morgan")
+    assert branch is not None
+    assert branch.version == "4.4"
+    assert branch.sender_comp_id == "OURDESK"
+    assert branch.target_comp_id == "BLPFIX"
+
+    # The file a definition arrived as is a spelling people use for it.
+    assert branch.aliases == ["mstanley", "msfix44"]
+    for spelling in ("morgan", "MSTANLEY", "MSFIX44"):
+        held = registry.branch_named(spelling)
+        assert held is not None and held.name == "morgan", spelling
+
+    # One mutation: a refusal leaves the dictionary exactly as it was.
+    retyped = tmp_path / "retyped.cfb"
+    retyped.write_text(CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="integer"'), encoding="utf-8")
+    with pytest.raises(ValueError):
+        registry.add_cfb_file(retyped, "morgan")
+    assert len(registry) == 2
+    assert registry.branch_named("retyped") is None
+
+
+def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bloomberg.cfb"
+    path.write_text(CBLOCK, encoding="utf-8")
+
+    # A CBlock never names itself, so with no branch the file's own stem does.
+    # A dialect claims only the user-defined range, so tag 55 stays FIX's.
+    fields = fix_cfb_fields(path)
+    assert [field.name for field in fields] == ["symbol", "excludeddealers"]
+    assert fields[0].fix.branch == STANDARD_BRANCH
+    assert fields[1].fix.branch == "bloomberg"
+    # The file's own spelling is kept beside the folded name, and the
+    # description travels on the key every catalog reads.
+    assert fields[0].display == "Symbol"
+    assert fields[0].description == "Ticker symbol."
+
+    # Every location the registry takes, the vocabulary takes - and a CBlock is
+    # a file, so a location held as a container would read no bytes at all.
+    for location in (path, str(path), path.as_uri(), Url(path), IOBase(path)):
+        assert [field.name for field in fix_cfb_fields(location, "bloomberg")] == [
+            "symbol",
+            "excludeddealers",
+        ]
+
+    # The registry form is the same file read whole: the same vocabulary, plus
+    # the message roots its grammar bindings describe.
+    registry, roots = FixRegistry.from_cfb(path, "bloomberg")
+    assert len(registry) == len(fields)
+    assert [root.name for root in roots] == ["7"]
+
+    # The vocabulary folds into a dictionary that already exists.
+    dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
+    assert dictionary.add_fields(fix_cfb_fields(path, "bloomberg")) == (1, 1)
+    assert dictionary.field_by_tag(55).description == "Ticker symbol."
+    assert dictionary.field_by_name("excludeddealers", "bloomberg").fix.tag == 10001
+
+    # A stem that is not a branch is refused rather than folded into one.
+    unnamed = tmp_path / "4.4-ms.cfb"
+    unnamed.write_text(CBLOCK, encoding="utf-8")
+    with pytest.raises(ValueError, match="ASCII letter"):
+        fix_cfb_fields(unnamed)
 
 
 def test_registry_mutation_refuses_while_something_shares_it(

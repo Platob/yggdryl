@@ -75,6 +75,14 @@ fn the_envelope_is_not_the_message() {
         .unwrap();
     assert_eq!(relayed.digest(), original.digest());
 
+    // The whole standard header is the envelope rather than a curated part of
+    // it: the application version, the encoding and the last sequence number
+    // processed all describe how to read this delivery, not what it says.
+    let annotated = reader
+        .text("8=FIX.4.4|35=D|1128=9|1129=X|1156=1|347=UTF-8|369=6|11=A|55=AAPL|10=0|")
+        .unwrap();
+    assert_eq!(original.digest(), annotated.digest());
+
     // What the message says still separates it, and so does what it is.
     let other = reader.text("8=FIX.4.4|35=D|11=A|55=MSFT|10=0|").unwrap();
     assert_ne!(original.digest(), other.digest());

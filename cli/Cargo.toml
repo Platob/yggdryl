@@ -1,8 +1,10 @@
-# The FIX dictionary tool: everything a desk does to a registry, from a shell.
+# `ygg`: the yggdryl command line, one namespace per subcommand.
 #
-# Its own member rather than a binary inside the core, so a library consumer
-# carries none of what a terminal needs - argument parsing, raw mode, colour -
-# and the core's dependency set stays exactly what a schema needs.
+# `ygg fix` is the whole tool today - everything a desk does to a FIX
+# dictionary, from a shell. Its own member rather than a binary inside the
+# core, so a library consumer carries none of what a terminal needs - argument
+# parsing, raw mode, colour - and the core's dependency set stays exactly what
+# a schema needs.
 [package]
 name = "yggdryl-cli"
 version.workspace = true
@@ -10,7 +12,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Manage a yggdryl FIX dictionary from a terminal."
+description = "The yggdryl command line: manage a FIX dictionary from a terminal."
 
 [[bin]]
 name = "ygg"

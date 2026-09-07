@@ -11,6 +11,13 @@ branch-qualified dotted path and persists them as JSON shards through any
 was resolved against. Resolution, folding, merging, sharding and validation are
 native; this module only names them.
 
+:func:`fix_cfb_fields` reads one Ullink ``CBlock`` for the vocabulary it
+declares, in declaration order and keyed, which is what
+:meth:`FixRegistry.add_fields` folds into a dictionary that already exists -
+adding what is absent, merging what is stored, and writing nothing at all when
+it refuses. :meth:`FixRegistry.from_cfb` is the same file read whole, answering
+a dictionary and the message roots its grammar bindings describe.
+
 :class:`FixReader` turns a captured line into one of those messages,
 :func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
 the capture's own columns first, the dictionary's fixed columns after, one
@@ -43,6 +50,7 @@ from ._native import (
     FixProjection,
     FixReader,
     FixRegistry,
+    fix_cfb_fields,
     fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
     fix_parse_arrow_reader as parse_arrow_reader,
@@ -62,6 +70,7 @@ __all__ = [
     "FixReader",
     "FixRegistry",
     "classify_arrow_array",
+    "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_tags",

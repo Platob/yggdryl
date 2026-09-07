@@ -18,7 +18,7 @@ use smol_str::format_smolstr;
 
 use super::{FixBranch, FixId, FixKey, FixPedigree};
 use crate::xxhash::Xxh64;
-use crate::{Error, Field, Result, Version};
+use crate::{Error, Field, IOBase, Result, Url, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
 const ALIAS_SEED: u64 = 0x414c_4941_535f_4649;
@@ -468,12 +468,25 @@ impl FixRegistry {
         self.branches.get(&id.branch_digest())
     }
 
-    /// Returns the branch whose canonical spelling is `name`.
+    /// Returns the branch `name` reaches, canonically or by an alias.
+    ///
+    /// A canonical name is answered by the digest it hashes to, which costs
+    /// nothing; an alias is answered by a scan, which a dictionary can afford
+    /// because it holds a handful of branches where it holds thousands of
+    /// fields. A canonical name never loses to an alias: the exact spelling
+    /// is tried first and answered whole, so a dialect cannot be shadowed by
+    /// another dialect's second spelling of it.
     pub fn branch_named(&self, name: &str) -> Option<&FixBranch> {
         let branch = FixBranch::from_str(name).ok()?;
-        self.branches
+        if let Some(held) = self
+            .branches
             .get(&branch.digest())
             .filter(|held| held.has_identity(&branch))
+        {
+            return Some(held);
+        }
+        self.branch_values()
+            .find(|held| held.has_alias(branch.name()))
     }
 
     /// Returns the branch declaring one exact session pair, ASCII-folded.
@@ -596,6 +609,200 @@ impl FixRegistry {
         self.index(position);
         self.settle();
         Ok(())
+    }
+
+    /// Adds every field, folding into one already stored under its identity.
+    ///
+    /// Add or update, in bulk: a field whose canonical identity the dictionary
+    /// does not hold is [inserted](Self::insert), and one it holds is
+    /// [merged](Self::update). That is what reading a second source over a
+    /// first wants - a definition the dictionary lacks arrives, and one it has
+    /// keeps every key only it declares - where a bare `insert` would replace
+    /// wholesale and a bare `update` would refuse everything new.
+    ///
+    /// The caller's order is the precedence, exactly as [`Self::update`]'s is:
+    /// merge the lowest-priority source first and the highest arrives last and
+    /// wins. Answers the count added and the count merged, in that order, and
+    /// records the same pair through `log` at debug level.
+    ///
+    /// The identity is the whole probe. A tag alone is not: the same tag in
+    /// two branches is two fields, and a merge keyed on the tag would fold a
+    /// venue's definition into the specification's.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::insert`] and [`Self::update`] return - absence for
+    /// a field carrying no `fix:tag`, a conflict for a key another field holds
+    /// in the same branch, and a typed refusal for a name or a datatype that
+    /// disagrees with the stored definition. A CBlock's generic `float` or
+    /// `string` meeting the committed dictionary's `float64` or `msgtype` is
+    /// that last one, and is the expected shape of a refusal here rather than
+    /// a defect: a CBlock says nothing about which tag is money.
+    ///
+    /// The whole fold is one mutation: it is staged and only then adopted, so
+    /// a refusal on the last field of a thousand leaves the dictionary exactly
+    /// as it was and what a caller fixes is the source. That costs one copy of
+    /// the dictionary per call, paid once rather than per field.
+    pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)>
+    where
+        I: IntoIterator<Item = Field>,
+    {
+        let mut staged = self.clone();
+        let counts = staged.fold(fields)?;
+        *self = staged;
+        Ok(counts)
+    }
+
+    /// Folds another dictionary into this one.
+    ///
+    /// The one place two dictionaries combine. Every field folds exactly as
+    /// [`Self::add_fields`] folds one - absent identity inserts, stored
+    /// identity merges - and every dialect folds beside them: one this
+    /// dictionary does not hold arrives whole, and one it holds takes the
+    /// incoming record while keeping every spelling it already answered to.
+    ///
+    /// Aliases accumulate rather than replace, because reading a second
+    /// source is not a statement that the first one's names were wrong. The
+    /// rest of a branch record is the incoming declaration's, whole, so the
+    /// caller's order is the precedence here as it is everywhere else.
+    ///
+    /// Answers the count added and the count merged, over the fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set_branch`], [`Self::insert`] and
+    /// [`Self::update`] return. One mutation: the branches and the fields are
+    /// staged together and adopted together, so a refusal anywhere leaves
+    /// this dictionary exactly as it was.
+    pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
+        let mut staged = self.clone();
+        staged.absorb_branches(other.branch_values(), None)?;
+        let counts = staged.fold(other.fields.iter().cloned())?;
+        *self = staged;
+        Ok(counts)
+    }
+
+    /// Reads one Ullink `CBlock` into this dictionary, whole.
+    ///
+    /// The one call an ingest takes, and a parse in front of
+    /// [`Self::merge_with`]: the file's vocabulary folds the way any source
+    /// folds, and the dialect the root element declares - its FIX version and
+    /// its session `CompID` pair - is recorded beside it, which reading the
+    /// fields alone would lose.
+    ///
+    /// `branch` names the dialect, and the file names it when the caller does
+    /// not: with none supplied the handle's own stem stands in. **The stem
+    /// also becomes an alias whenever it is not already the name**, so a
+    /// dictionary read from `MSFIX44.cfb` under the branch `morgan` still
+    /// answers to `msfix44` - the file a definition arrived as is a spelling
+    /// people use for it. `aliases` names any others.
+    ///
+    /// Answers the count added and the count merged. The message roots are
+    /// dropped; take [`Self::from_cfb`] when they matter.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::from_cfb`] and [`Self::merge_with`] return, and
+    /// [`Error::Parse`] when the supplied name, the stem standing in for it,
+    /// or an alias is not a branch.
+    pub fn add_cfb_file(
+        &mut self,
+        handle: &dyn IOBase,
+        branch: Option<&str>,
+        aliases: Option<&[&str]>,
+    ) -> Result<(usize, usize)> {
+        let stem = handle.url().and_then(Url::stem);
+        let dialect = branch
+            .or(stem)
+            .map(FixBranch::from_str)
+            .transpose()?
+            .filter(|held| !held.is_standard());
+        let (parsed, _) = Self::from_cfb(handle, dialect.as_ref())?;
+
+        let mut staged = self.clone();
+        // The names this file answers to are the caller's, then the file's
+        // own; what the dictionary already answered to is added by the fold.
+        let named: Vec<&str> = aliases
+            .unwrap_or_default()
+            .iter()
+            .copied()
+            .chain(stem)
+            .collect();
+        staged.absorb_branches(parsed.branch_values(), Some(&named))?;
+        let counts = staged.fold(parsed.fields)?;
+        *self = staged;
+        Ok(counts)
+    }
+
+    /// Declares every incoming branch, keeping the spellings already answered.
+    fn absorb_branches<'branch>(
+        &mut self,
+        incoming: impl IntoIterator<Item = &'branch FixBranch>,
+        extra: Option<&[&str]>,
+    ) -> Result<()> {
+        for branch in incoming {
+            if branch.is_standard() {
+                continue;
+            }
+            let spellings = self.spellings_for(branch, extra.unwrap_or_default())?;
+            self.set_branch(branch.clone().with_aliases(spellings)?)?;
+        }
+        Ok(())
+    }
+
+    /// Every spelling `incoming` should answer to once it is folded in.
+    ///
+    /// What this dictionary already answered to, then what the incoming
+    /// declaration names, then anything else the caller added - each kept only
+    /// where it says something the canonical name and the spellings before it
+    /// do not.
+    fn spellings_for(&self, incoming: &FixBranch, extra: &[&str]) -> Result<Vec<String>> {
+        let stored = self.branches.get(&incoming.digest());
+        let mut held: Vec<String> = Vec::new();
+        for candidate in stored
+            .into_iter()
+            .flat_map(FixBranch::aliases)
+            .chain(incoming.aliases())
+            .map(smol_str::SmolStr::as_str)
+            .chain(extra.iter().copied())
+        {
+            // Folded through the branch grammar rather than compared raw, so
+            // one rule decides here and inside `with_aliases` alike.
+            let folded = FixBranch::from_str(candidate)?;
+            if folded.digest() == incoming.digest() || held.iter().any(|seen| seen == folded.name())
+            {
+                continue;
+            }
+            held.push(folded.name().to_owned());
+        }
+        Ok(held)
+    }
+
+    /// Adds every field, folding one already stored under its identity.
+    ///
+    /// The fold itself, without the staging: [`Self::add_fields`] is this plus
+    /// the copy that makes it one mutation, and a caller already holding a
+    /// staged dictionary calls this so the copy is paid once.
+    fn fold<I>(&mut self, fields: I) -> Result<(usize, usize)>
+    where
+        I: IntoIterator<Item = Field>,
+    {
+        let mut added = 0_usize;
+        let mut merged = 0_usize;
+        for field in fields {
+            if self
+                .canonical_position_by_id(canonical_id(&field)?)
+                .is_some()
+            {
+                self.update(field)?;
+                merged += 1;
+            } else {
+                self.insert(field)?;
+                added += 1;
+            }
+        }
+        log::debug!("added {added} and merged {merged} fix field definitions");
+        Ok((added, merged))
     }
 
     /// Removes the field a tag, identifier, canonical name, or alias reaches.

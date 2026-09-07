@@ -23,18 +23,39 @@ use pyo3::types::{PyBool, PyBytes, PyInt};
 use yggdryl::types::MsgDirection;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
-    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixProjection as CoreFixProjection,
-    FixReader as CoreFixReader, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
-    from_json_scalar_with_field, into_json_scalar,
+    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixField as CoreFixField,
+    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixOptions as CoreFixOptions,
+    FixProjection as CoreFixProjection, FixReader as CoreFixReader, FixRegistry as CoreFixRegistry,
+    IOBase as CoreIOBase, Scalar, Version as CoreVersion, from_json_scalar_with_field,
+    into_json_scalar,
 };
 
+use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
 use crate::types::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
+use crate::uri::core_url_from_value;
 use crate::value_error;
+
+/// Read one Ullink `CBlock` through whatever Python named it with.
+///
+/// A `CBlock` is a file, so the location is held as whichever role it actually
+/// is rather than as a container: a folder handle reads no bytes, and a reader
+/// handed one answers an empty vocabulary instead of a refusal. A handle
+/// crosses as itself rather than being rebuilt, so bytes held in memory are
+/// readable and no second mapping is opened.
+fn read_cfb<T>(
+    location: &Bound<'_, PyAny>,
+    read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T>,
+) -> PyResult<T> {
+    if let Ok(handle) = location.extract::<PyRef<'_, PyIOBase>>() {
+        return read(handle.inner()?.as_io()).map_err(value_error);
+    }
+    let url = core_url_from_value(location)?;
+    read(located_holder(&url)?.as_io()).map_err(value_error)
+}
 
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
 ///
@@ -222,14 +243,81 @@ impl PyFixRegistry {
         location: &Bound<'_, PyAny>,
         branch: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
-        let holder = folder_holder_from_value(location)?;
         let dialect = branch.map(branch_from_py).transpose()?;
-        let (registry, roots) =
-            CoreFixRegistry::from_cfb(&holder, dialect.as_ref()).map_err(value_error)?;
+        let (registry, roots) = read_cfb(location, |handle| {
+            CoreFixRegistry::from_cfb(handle, dialect.as_ref())
+        })?;
         Ok((
             Self::from_arc(Arc::new(registry)),
             roots.into_iter().map(PyField::from_inner).collect(),
         ))
+    }
+
+    /// Fold `fields` in, adding what is absent and merging what is stored.
+    ///
+    /// Each entry is anything `Field` accepts. A field whose canonical
+    /// identity the dictionary does not hold is inserted, one it holds is
+    /// merged, and the answer is the count added and the count merged, in
+    /// that order.
+    ///
+    /// One mutation: the whole fold is staged and only then adopted, so a
+    /// refusal - a field with no `fix:tag`, a key another field holds in the
+    /// same branch, a name or datatype disagreeing with the stored
+    /// definition - leaves the dictionary exactly as it was.
+    fn add_fields(&mut self, fields: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
+        // Coerced whole before anything is written, so a value Python cannot
+        // read as a field refuses the fold rather than half of it.
+        let mut held = Vec::new();
+        for value in fields.try_iter()? {
+            held.push(core_field_from_value(&value?)?);
+        }
+        self.inner_mut()?.add_fields(held).map_err(value_error)
+    }
+
+    /// Fold another dictionary into this one.
+    ///
+    /// The one place two dictionaries combine: every field folds the way
+    /// `add_fields` folds one, and every dialect folds beside them - one this
+    /// dictionary does not hold arrives whole, one it holds takes the incoming
+    /// record while keeping every spelling it already answered to.
+    ///
+    /// Answers the count added and the count merged, over the fields. One
+    /// mutation: a refusal anywhere leaves the dictionary exactly as it was.
+    fn merge_with(&mut self, other: &Self) -> PyResult<(usize, usize)> {
+        let incoming = Arc::clone(&other.inner);
+        self.inner_mut()?.merge_with(&incoming).map_err(value_error)
+    }
+
+    /// Read one Ullink `CBlock` into this dictionary, whole.
+    ///
+    /// The one call an ingest takes: the file's vocabulary folds in the way
+    /// `add_fields` folds any source, and the dialect the root element
+    /// declares - its FIX version and its session `CompID` pair - is recorded
+    /// beside it, which reading the fields alone would lose.
+    ///
+    /// `branch` names the dialect, and the file names it when the caller does
+    /// not. The location's own stem also becomes an alias whenever it is not
+    /// already the name, and `aliases` names any others; a branch this
+    /// dictionary already holds keeps the spellings it already answered to.
+    ///
+    /// Answers the count added and the count merged. One mutation: the branch
+    /// record and the fields are adopted together, so a refusal leaves the
+    /// dictionary exactly as it was.
+    #[pyo3(signature = (location, branch=None, aliases=None))]
+    fn add_cfb_file(
+        &mut self,
+        location: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+        aliases: Option<Vec<String>>,
+    ) -> PyResult<(usize, usize)> {
+        // Naming none and naming an empty list are the same statement, so
+        // both arrive as the empty slice rather than as two shapes.
+        let owned = aliases.unwrap_or_default();
+        let held: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let registry = self.inner_mut()?;
+        read_cfb(location, |handle| {
+            registry.add_cfb_file(handle, branch, Some(&held))
+        })
     }
 
     /// Add this crate's own fields, so they resolve by tag and by name.
@@ -1402,6 +1490,31 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
         .map_err(value_error)
 }
 
+/// The vocabulary one Ullink `CBlock` declares, in declaration order.
+///
+/// The dictionary half of `FixRegistry.from_cfb`, answered on its own: every
+/// field carries the `fix:tag` and `fix:branch` that key it and whatever code
+/// set the file's maps decode for it, which is what `FixRegistry.add_fields`
+/// needs to fold one counterparty's file into a dictionary that exists. The
+/// message roots and the branch record are what the registry form answers
+/// instead.
+///
+/// `branch` names the dialect, and the file names it when the caller does
+/// not: a `CBlock` states a version and a session but no name for the pair, so
+/// with none supplied the location's own stem stands in. A stem that is not a
+/// branch is a `ValueError` rather than a guess.
+#[pyfunction]
+#[pyo3(name = "fix_cfb_fields", signature = (location, branch=None))]
+pub(crate) fn fix_cfb_fields(
+    location: &Bound<'_, PyAny>,
+    branch: Option<&str>,
+) -> PyResult<Vec<PyField>> {
+    read_cfb(location, |handle| {
+        CoreFixField::from_cfb_file(handle, branch)
+    })
+    .map(|held| held.into_iter().map(PyField::from_inner).collect())
+}
+
 /// The `(name, value)` pairs of one message's root, in declared order.
 #[pyclass(name = "FixMsgIterator", module = "yggdryl._native")]
 pub(crate) struct PyFixMsgIterator {
@@ -1493,20 +1606,32 @@ impl PyFixBranch {
     /// session; the version is the dialect's own default, spelled the way the
     /// specification spells it.
     #[new]
-    #[pyo3(signature = (name = "", *, version = None, sender_comp_id = "", target_comp_id = ""))]
+    #[pyo3(signature = (
+        name = "",
+        *,
+        version = None,
+        sender_comp_id = "",
+        target_comp_id = "",
+        aliases = None,
+    ))]
     fn new(
         name: &str,
         version: Option<&str>,
         sender_comp_id: &str,
         target_comp_id: &str,
+        aliases: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let version = match version {
             Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
             None => yggdryl::Version::default(),
         };
-        CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
-            .map(Self::from_core)
-            .map_err(value_error)
+        let branch = CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
+            .map_err(value_error)?;
+        match aliases {
+            Some(aliases) => branch.with_aliases(aliases).map(Self::from_core),
+            None => Ok(Self::from_core(branch)),
+        }
+        .map_err(value_error)
     }
 
     /// Parse a branch name, with no dialect and no session.
@@ -1555,6 +1680,23 @@ impl PyFixBranch {
     #[getter]
     fn target_comp_id(&self) -> &str {
         self.inner.target_comp_id()
+    }
+
+    /// The other spellings this dictionary answers to, folded, as declared.
+    ///
+    /// A lookup spelling and nothing more: the canonical name is what a field
+    /// stores and what every identifier packs, so an alias moves no field.
+    #[getter]
+    fn aliases(&self) -> Vec<&str> {
+        self.inner.aliases().iter().map(AsRef::as_ref).collect()
+    }
+
+    /// Whether `name` is one of this dictionary's aliases, ASCII case folded.
+    ///
+    /// The canonical name is not an alias of itself, so this answers `False`
+    /// for it.
+    fn has_alias(&self, name: &str) -> bool {
+        self.inner.has_alias(name)
     }
 
     /// Whether this is the FIX specification's own dictionary.
@@ -1640,7 +1782,7 @@ impl PyFixBranch {
         sender_comp_id: &str,
         target_comp_id: &str,
     ) -> PyResult<Self> {
-        Self::new(name, Some(version), sender_comp_id, target_comp_id)
+        Self::new(name, Some(version), sender_comp_id, target_comp_id, None)
     }
 
     fn __copy__(&self) -> Self {

@@ -12,7 +12,7 @@ A registry persists through one [`IOBase`](../holder/index.md) folder handle as 
 | Shard | `shard = tag / 100`, inside each tree; an alternate tag fans nothing |
 | Tree | `field.dtype().is_nested()`, after unwrapping a dictionary and a run-end encoding; the in-memory indexes still cover both trees together |
 | Shard body | JSON array of `Field::into_value`, identifier-ordered, indented; no envelope, no version marker |
-| Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; absent is valid |
+| Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; `aliases` is written only where a branch declares one, and absent is valid for the key and for the file |
 | Load | every shard of both trees on open; both trees optional; other leaves ignored; a missing folder loads empty |
 | Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
 | Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |

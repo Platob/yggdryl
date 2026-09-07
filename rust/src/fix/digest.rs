@@ -19,18 +19,27 @@
 //! messages equal. `("1", "23")` and `("12", "3")` are the shortest case and
 //! the test that pins it.
 //!
-//! # The envelope is excluded, and only the envelope
+//! # The standard header and trailer are excluded, and only those
 //!
-//! This is a digest of what a message *says*, not of the frame it said it in.
-//! Everything the session layer writes around the message is left out:
-//! `BeginString`, `BodyLength` and `CheckSum` describe how it was written
-//! down; `SenderCompID`, `TargetCompID` and their sub- and location- variants
-//! describe who wrote it; `MsgSeqNum`, `SendingTime`, `OrigSendingTime`,
-//! `PossDupFlag` and `PossResend` describe *this* delivery of it. None of
-//! them is the message.
+//! This is a digest of what a message *says*, not of the frame it said it in,
+//! so the two components FIX wraps every message in are left out and the body
+//! is what remains. Read from [`STANDARD_HEADER_TAGS`] and
+//! [`STANDARD_TRAILER_TAGS`] rather than from a list of this module's own, so
+//! a tag either component gains is excluded here without a second listing
+//! learning about it - and so the rule is nameable in one sentence instead of
+//! being three groups a reader has to check.
 //!
-//! `MsgType` stays in, because a message type is what a message is rather
-//! than how it travelled.
+//! What that covers, by the roles the header and trailer play: `BeginString`,
+//! `BodyLength`, `CheckSum`, `Signature` and `SignatureLength` describe how it
+//! was written down; `SenderCompID`, `TargetCompID` and their sub- and
+//! location- variants describe who wrote it; `MsgSeqNum`, `SendingTime`,
+//! `OrigSendingTime`, `PossDupFlag` and `PossResend` describe *this* delivery
+//! of it; `ApplVerID`, `CstmApplVerID` and `MessageEncoding` describe how to
+//! read it. None of them is the message.
+//!
+//! `MsgType` is the header's one exception and stays in, because a message
+//! type is what a message *is* rather than how it travelled: an order and a
+//! report that happen to carry the same tags are not one message.
 //!
 //! The consequence is the point and is worth stating: two identical orders
 //! sent a second apart hash equal, and so do the same order relayed through
@@ -47,30 +56,18 @@
 use crate::digest::DigestAlgorithm;
 
 use super::msg::FixMsg;
-
-/// The tags the session layer writes around a message.
-///
-/// Written out rather than derived from the standard header, because the
-/// header also carries `MsgType`, which is the message. Three groups: how it
-/// was written down, who wrote it, and which delivery this was.
-const ENVELOPE_TAGS: [i32; 21] = [
-    // How it was written down.
-    8, 9, 10, 93, 89, 212, 213, //
-    // Who wrote it, and who relayed it.
-    49, 50, 142, 56, 57, 143, 115, 116, 144, 128, 129, 145, //
-    // Which delivery this was.
-    34, 52,
-];
-
-/// The delivery facts that are not addresses and not framing.
-///
-/// Separate from [`ENVELOPE_TAGS`] only so each listing reads as one idea.
-const DELIVERY_TAGS: [i32; 3] = [122, 43, 97];
+use super::{MSGTYPE_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 
 /// Whether one tag belongs to the envelope rather than the message.
+///
+/// The envelope is the standard header and the standard trailer, whole, less
+/// the one tag in them that says what the message is.
 fn is_envelope(tag: i32) -> bool {
-    ENVELOPE_TAGS.contains(&tag)
-        || DELIVERY_TAGS.contains(&tag)
+    if tag == MSGTYPE_TAG {
+        return false;
+    }
+    STANDARD_HEADER_TAGS.contains(&tag)
+        || STANDARD_TRAILER_TAGS.contains(&tag)
         // A value cannot cover itself, and every derived field is computed
         // from this one or beside it.
         || super::fix_crate_fields()

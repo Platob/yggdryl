@@ -22,6 +22,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
 | `xxhash` | [xxHash](../xxhash/index.md) |
 | `refresh_logging` | this page |
+| the `ygg` command, installed on PATH by the wheel | [CLI](../fix/cli.md) |
 
 ## Use
 
