@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contrabroker",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -79,7 +79,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "msgtype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -162,7 +162,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradingsession",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -417,7 +417,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "biddescriptor",
         "dtype": {
           "type": "struct",
           "fields": [

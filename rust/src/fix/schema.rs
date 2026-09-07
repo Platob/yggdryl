@@ -91,10 +91,28 @@ pub const BODY_TAGS: [i32; 49] = [
 pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 
 /// The column holding the arrival record.
-pub const ENTRIES_COLUMN: &str = "entries";
+///
+/// Named as this crate names every other repeating group: a counter over the
+/// component it heads. It carries no `fix:tag`, because no dictionary,
+/// registry or shard has it: it is not a FIX field and exists only in this
+/// fixed row.
+pub const ENTRIES_COLUMN: &str = "nofixentries";
 
 /// The column holding what no dictionary explained.
-pub const UNMAPPED_COLUMN: &str = "unmapped";
+///
+/// A second counter over the same component, which is why its item is still a
+/// `FixEntry`: the generic rule would derive `UnmappedFixEntry` from this
+/// counter, and one component with two names is one component too many.
+pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
+
+/// The display the arrival column carries.
+const ENTRIES_DISPLAY: &str = "NoFixEntries";
+
+/// The display the unexplained-entry column carries.
+const UNMAPPED_DISPLAY: &str = "NoUnmappedFixEntries";
+
+/// The component both arrival columns hold one occurrence of.
+const ENTRY_ITEM: &str = "fixentry";
 
 /// One row's columns, in order, as tags.
 ///
@@ -168,10 +186,12 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
     }
     fields.push(entries_field(
         ENTRIES_COLUMN,
+        ENTRIES_DISPLAY,
         "Every pair the message carried, in arrival order and untranslated.",
     )?);
     fields.push(entries_field(
         UNMAPPED_COLUMN,
+        UNMAPPED_DISPLAY,
         "The pairs no dictionary explained, a view over the arrival record.",
     )?);
     Ok(DataType::from_fields(fields)?.required_field(name))
@@ -184,15 +204,22 @@ pub fn rendered(tag: i32) -> String {
 }
 
 /// A list-of-struct column holding arrival records.
-fn entries_field(name: &str, description: &str) -> Result<Field> {
+///
+/// Both arrival columns are built here, so the two cannot drift: one shape,
+/// one item name, one set of members.
+fn entries_field(name: &str, display: &str, description: &str) -> Result<Field> {
     let item = DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
-        DataType::Utf8.nullable_field("branch"),
+        // Non-null, because the standard branch is `0` rather than absent: a
+        // fixed-width column gains nothing from a validity bitmap it never
+        // sets, and a reader gains nothing from having to test one.
+        DataType::Int64.required_field("bid"),
         DataType::Utf8.nullable_field("key"),
         DataType::Utf8.nullable_field("value"),
     ])?
-    .required_field("item");
+    .required_field(ENTRY_ITEM);
     let mut field = DataType::list(item).nullable_field(name);
+    field.set_display(display)?;
     field.set_description(description)?;
     Ok(field)
 }
@@ -556,9 +583,7 @@ impl super::FixMsg {
         for entry in self.entries() {
             let held = crate::Scalar::from_sequence([
                 crate::Scalar::from(entry.tag()),
-                entry
-                    .branch()
-                    .map_or(crate::Scalar::Null, crate::Scalar::from),
+                crate::Scalar::from(entry.bid()),
                 crate::Scalar::from(entry.key()),
                 crate::Scalar::from(entry.value()),
             ]);

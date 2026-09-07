@@ -88,7 +88,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("path_3_segments", |bencher| {
         bencher.iter(|| {
             black_box(&registry)
-                .get_field_by_path(black_box("NoPartyIDs.item.PartyRole"), Some(&standard))
+                .get_field_by_path(black_box("NoPartyIDs.PartyRole"), Some(&standard))
         });
     });
 

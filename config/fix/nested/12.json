@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "strikerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -77,7 +77,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tickrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -170,7 +170,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativesecurityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -213,7 +213,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "execinstrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -246,7 +246,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "lottyperule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -289,7 +289,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "matchrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -352,7 +352,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "maturityrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -437,7 +437,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ordtyperule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -470,7 +470,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "timeinforcerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -503,7 +503,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -578,7 +578,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeinstrumentparty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -641,7 +641,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeinstrumentpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [

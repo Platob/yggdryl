@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstubstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingratespreadstep",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnratedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -310,7 +310,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnratefxconversion",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -362,7 +362,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnrate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -636,7 +636,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnrateinformationsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -688,7 +688,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnrateprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -750,7 +750,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnratevaluationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -782,7 +782,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingreturnratevaluationdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -824,7 +824,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingsettlmethodelectiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

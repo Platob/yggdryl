@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -47,7 +47,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -90,7 +90,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nestedpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -133,7 +133,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested2partysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -176,7 +176,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "username",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -209,7 +209,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "altmdsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -242,7 +242,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "capacity",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -295,7 +295,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "event",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -421,7 +421,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "instrattrib",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -464,7 +464,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstip",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -507,7 +507,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "trade",
         "dtype": {
           "type": "struct",
           "fields": [

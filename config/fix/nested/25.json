@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relativevalue",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -68,7 +68,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relatedmarketsegment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "auctiontyperule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -152,7 +152,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "pricerangerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -234,7 +234,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quotesizerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -286,7 +286,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "flexproducteligibility",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -328,7 +328,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "clearingpriceparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -510,7 +510,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "orderattribute",
         "dtype": {
           "type": "struct",
           "fields": [

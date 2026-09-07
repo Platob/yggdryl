@@ -699,7 +699,8 @@ impl FixMsg {
 ///
 /// # Errors
 ///
-/// Returns [`Error::InvalidRecord`] when the source has no `entries` column,
+/// Returns [`Error::InvalidRecord`] when the source has no arrival-record
+/// column - [`ENTRIES_COLUMN`](super::ENTRIES_COLUMN) -
 /// the source reader's own failure, or the sink's write failure.
 pub fn write_fix(
     source: BatchReader,
@@ -717,9 +718,9 @@ pub fn write_fix(
                 .collect()
         })
         .unwrap_or_default();
-    if !names.iter().any(|held| held == "entries") {
+    if !names.iter().any(|held| held == super::ENTRIES_COLUMN) {
         return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("entries"),
+            path: SmolStr::new_static(super::ENTRIES_COLUMN),
             reason: crate::text::expected_got(
                 "a batch carrying its arrival record",
                 "one holding only lifted columns",
@@ -732,7 +733,8 @@ pub fn write_fix(
         let rows = crate::arrow::batch_to_value(&batch)?;
         for row in rows.as_sequence().unwrap_or_default() {
             let record = named(&names, row);
-            let Some(held) = column(&record, "entries").and_then(Scalar::as_sequence) else {
+            let Some(held) = column(&record, super::ENTRIES_COLUMN).and_then(Scalar::as_sequence)
+            else {
                 continue;
             };
             let mut line = Vec::new();

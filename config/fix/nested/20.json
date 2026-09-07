@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -406,7 +406,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -448,7 +448,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventtime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -492,7 +492,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -617,7 +617,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsecondaryassetclass",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -679,7 +679,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingsecondaryassetclass",
         "dtype": {
           "type": "struct",
           "fields": [

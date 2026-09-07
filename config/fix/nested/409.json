@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsettlratefallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -88,7 +88,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentschedulefixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -120,7 +120,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentscheduleinterimexchangedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -152,7 +152,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreamnondeliverablefixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -184,7 +184,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreampaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -216,7 +216,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreamresetdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -248,7 +248,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreaminitialfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -280,7 +280,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreamfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -312,7 +312,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisioncashsettlpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -344,7 +344,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisioncashsettlvaluedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -376,7 +376,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisionoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -408,7 +408,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisionoptionexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -440,7 +440,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisionoptionrelevantunderlyingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -472,7 +472,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -504,7 +504,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcalculationperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -536,7 +536,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamfirstperiodstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -568,7 +568,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreameffectivedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -600,7 +600,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamterminationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -632,7 +632,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -664,7 +664,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentscheduleinterimexchangedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -696,7 +696,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamnondeliverablefixingdatesbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -728,7 +728,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreampaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -760,7 +760,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamresetdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -792,7 +792,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreaminitialfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -824,7 +824,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreamfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -856,7 +856,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "protectiontermeventnewssource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -888,7 +888,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisioncashsettlpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -920,7 +920,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisioncashsettlvaluedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -952,7 +952,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -984,7 +984,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionoptionexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1016,7 +1016,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionoptionrelevantunderlyingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1048,7 +1048,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1080,7 +1080,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcalculationperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1112,7 +1112,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamfirstperiodstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1144,7 +1144,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streameffectivedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1176,7 +1176,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamterminationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1208,7 +1208,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1240,7 +1240,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentschedulefixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1272,7 +1272,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentscheduleinterimexchangedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1304,7 +1304,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstreamnondeliverablefixingdatesbizcenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1336,7 +1336,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstreampaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1368,7 +1368,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstreamresetdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1400,7 +1400,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstreaminitialfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1432,7 +1432,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstreamfixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1464,7 +1464,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreamcalculationperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1496,7 +1496,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreamfirstperiodstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1528,7 +1528,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreameffectivedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1560,7 +1560,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreamterminationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1592,7 +1592,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentschedulefixingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1624,7 +1624,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventaveragingobservation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1666,7 +1666,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventcreditevent",
         "dtype": {
           "type": "struct",
           "fields": [

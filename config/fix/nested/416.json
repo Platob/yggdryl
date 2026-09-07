@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legphysicalsettldeliverableobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpricingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprotectiontermeventnewssource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprotectionterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -212,7 +212,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprotectiontermevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -304,7 +304,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprotectiontermeventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -336,7 +336,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprotectiontermobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -378,7 +378,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcalculationperioddate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -420,7 +420,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommoditysettlbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -452,7 +452,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommodityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -494,7 +494,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommoditydatasource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -536,7 +536,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommoditysettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -578,7 +578,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommoditysettltime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -630,7 +630,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamcommoditysettlperiod",
         "dtype": {
           "type": "struct",
           "fields": [

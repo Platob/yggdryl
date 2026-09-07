@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -76,7 +76,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -228,7 +228,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedulesettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -270,7 +270,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedulesettltime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -322,7 +322,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -374,7 +374,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliverystreamcycle",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -426,7 +426,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliverystreamcommoditysource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -458,7 +458,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -500,7 +500,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionfallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -542,7 +542,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionfallbackreferenceprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -654,7 +654,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

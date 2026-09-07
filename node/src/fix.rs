@@ -831,15 +831,16 @@ impl JsFixMsg {
     }
 
     /// What arrived, in arrival order, untranslated.
-    #[napi(ts_return_type = "Array<[number, string | null, string, string]>")]
-    pub fn arrivals(&self) -> Vec<(f64, Option<String>, String, String)> {
+    #[napi(ts_return_type = "Array<[number, number, string, string]>")]
+    pub fn arrivals(&self) -> Vec<(f64, f64, String, String)> {
         self.inner
             .entries()
             .iter()
             .map(|entry| {
                 (
                     f64::from(entry.tag()),
-                    entry.branch().map(ToOwned::to_owned),
+                    // The digest is a `u32`, so a JS number holds it exactly.
+                    f64::from(u32::try_from(entry.bid()).unwrap_or_default()),
                     entry.key().to_owned(),
                     entry.value().to_owned(),
                 )

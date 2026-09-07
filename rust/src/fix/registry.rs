@@ -42,8 +42,15 @@ impl Mix {
 /// a caller wrote and wrong for a dictionary: the head already folded, so
 /// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
 /// one function disagreeing with itself. The exact walk is still tried first,
-/// because it is the cheap answer and the common one.
+/// because it is the cheap answer and the common one - but only *below* a
+/// list, because a group's item is named after the component it holds and
+/// nobody spelling a path names an occurrence. `NoPartyIDs.PartyID` means tag
+/// 448, and the exact walk reaching the `PartyID` item struct instead would
+/// shadow it on 269 of the 521 shipped groups.
 fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        return descend(item, path);
+    }
     if let Some(held) = field.get_field_by_path(path) {
         return Some(held);
     }
@@ -60,13 +67,12 @@ fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
 
 /// One child by folded name, reaching through a group's item where it has one.
 ///
-/// A repeating group is a List of one `item` Struct, so a member is the item's
-/// child and not the list's - and nobody spelling a path says `item`.
+/// A repeating group is a List of one Struct item, so a member is the item's
+/// child and not the list's. The item's own name is never matched: it names
+/// the component the group holds, so `NoPartyIDs.PartyID` would otherwise
+/// resolve to the occurrence rather than to the member tag 448 names.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
     if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
-        if crate::types::folds_equal(item.name(), name) {
-            return Some(item);
-        }
         return folded_child(item, name);
     }
     field
@@ -466,6 +472,31 @@ impl FixRegistry {
     /// Returns the branch for `id`.
     pub fn branch_of(&self, id: FixId) -> Option<&FixBranch> {
         self.branches.get(&id.branch_digest())
+    }
+
+    /// Returns the branch one arrival record's `bid` names.
+    ///
+    /// The reverse of [`FixEntry::bid`](crate::FixEntry::bid): a capture
+    /// holds the digest on every row and this is what turns it back into the
+    /// dialect, so nothing has to carry a dialect name per row to stay
+    /// readable. The stored value is `i64` and the table is keyed by the
+    /// `u32` the digest is, so a value outside that range names no branch
+    /// rather than truncating into one.
+    pub fn get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch> {
+        u32::try_from(bid)
+            .ok()
+            .and_then(|digest| self.branches.get(&digest))
+    }
+
+    /// Returns the branch a `bid` names, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the absence every other accessor raises when no branch in this
+    /// dictionary carries that digest, including when the value is not one.
+    pub fn branch_by_bid(&self, bid: i64) -> Result<&FixBranch> {
+        self.get_branch_by_bid(bid)
+            .ok_or_else(|| absent(format_args!("branch #{bid:08x}")))
     }
 
     /// Returns the branch `name` reaches, canonically or by an alias.

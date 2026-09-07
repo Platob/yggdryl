@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "bidcomponent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -187,7 +187,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "strike",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -310,7 +310,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -373,7 +373,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "securityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -426,7 +426,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingsecurityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -479,7 +479,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "registdtl",
         "dtype": {
           "type": "struct",
           "fields": [

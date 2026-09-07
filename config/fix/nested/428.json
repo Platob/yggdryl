@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendfxtriggerdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendpayment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -98,7 +98,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -310,7 +310,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -342,7 +342,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingextraordinaryevent",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -25,7 +25,7 @@ use super::{FixBranch, FixId};
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FixEntry {
     tag: i32,
-    branch: Option<SmolStr>,
+    bid: i64,
     key: SmolStr,
     value: SmolStr,
 }
@@ -35,7 +35,7 @@ impl FixEntry {
     pub fn new(tag: i32, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self {
         Self {
             tag,
-            branch: None,
+            bid: i64::from(FixBranch::STANDARD.digest()),
             key: key.into(),
             value: value.into(),
         }
@@ -43,17 +43,18 @@ impl FixEntry {
 
     /// Records the dialect this pair resolved in.
     ///
-    /// The branch is its *name*, not its digest, because an entry is the
-    /// arrival record: a branch held as an integer would be the one part a
-    /// reader cannot read - unprintable in a debug line, unjoinable in a
-    /// column, and resolvable only by someone holding the registry that
-    /// produced it. `SmolStr` inlines a name of 23 bytes, which every dialect
-    /// name is, so the common entry still allocates nothing.
+    /// The digest, not the name. It is the same value
+    /// [`FixId`] packs into its low 32 bits, so an entry and a field identity
+    /// say "which dictionary" the same way, and a capture's `bid` column
+    /// joins the dialect manifest that publishes it beside each branch name.
+    /// The objection this replaces - that an integer is the one part a reader
+    /// cannot read - is answered by that manifest and by
+    /// [`FixRegistry::branch_by_bid`](crate::FixRegistry::branch_by_bid):
+    /// the capture is self-describing without carrying a string on every row
+    /// that resolved in a dialect.
     #[must_use]
     pub fn with_branch(mut self, branch: &FixBranch) -> Self {
-        if !branch.is_standard() {
-            self.branch = Some(SmolStr::new(branch.name()));
-        }
+        self.bid = i64::from(branch.digest());
         self
     }
 
@@ -63,16 +64,20 @@ impl FixEntry {
         self.tag
     }
 
-    /// Returns the dialect this pair resolved in.
+    /// Returns the digest of the dialect this pair resolved in.
     ///
-    /// `None` means the standard branch *and* "not resolved yet". The two are
-    /// one state on purpose: both say no dialect claimed this pair, and
-    /// separating them would put a resolution state into a record of what
-    /// arrived. A standard tag therefore never spells its branch, which is
-    /// also what keeps the overwhelming majority of entries free of a string.
+    /// `0` is the standard branch and is written on every standard entry
+    /// rather than left absent: the column is fixed width either way, so
+    /// omitting it would buy nothing and make every reader branch.
+    ///
+    /// `i64` rather than the `u32` the digest is. The digest uses its whole
+    /// range, so half of it does not fit `int32` without going negative, and
+    /// Avro has no unsigned integer at all - signed 64-bit is the narrowest
+    /// type that round-trips the value exactly through Arrow IPC, Parquet and
+    /// Avro alike.
     #[must_use]
-    pub fn branch(&self) -> Option<&str> {
-        self.branch.as_deref()
+    pub const fn bid(&self) -> i64 {
+        self.bid
     }
 
     /// Returns the key exactly as it arrived.
@@ -93,20 +98,14 @@ impl FixEntry {
 
     /// Builds the identity this entry names, absent when its key named none.
     ///
-    /// The branch digest is computed here rather than stored, because it is
-    /// `FixId`'s packing detail and an entry carries the name. Hashing a
-    /// short name is a few nanoseconds and this is not on the parse path, so
-    /// nothing is paid for the readability.
+    /// The branch digest is what the entry stores, so this is a pack rather
+    /// than a hash: the admissibility rule that decides whether a dictionary
+    /// may claim a tag is still the identifier's own.
     #[must_use]
     pub fn id(&self) -> Option<FixId> {
         if self.tag == 0 {
             return None;
         }
-        match &self.branch {
-            None => Some(FixId::standard(self.tag)),
-            Some(name) => FixBranch::from_str(name)
-                .ok()
-                .and_then(|branch| FixId::from_parts(&branch, self.tag).ok()),
-        }
+        FixId::from_digest(self.bid, self.tag)
     }
 }

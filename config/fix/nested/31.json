@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -117,7 +117,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testsuiteparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -169,7 +169,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testscenarioparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -221,7 +221,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradingservice",
         "dtype": {
           "type": "struct",
           "fields": [

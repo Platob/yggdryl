@@ -378,6 +378,63 @@ def quickfix_type(name: str) -> str:
     return replacements.get(folded_name, "String")
 
 
+# The Latin plurals FIX spells, longest first, matched case-insensitively.
+LATIN_PLURALS: tuple[tuple[str, str], ...] = (
+    ("appendices", "appendix"),
+    ("matrices", "matrix"),
+    ("vertices", "vertex"),
+    ("indices", "index"),
+)
+
+
+def component_name(counter_display: str) -> str | None:
+    """The component name headed by a repeating-group counter.
+
+    The crate's own rule, mirrored here because the generator writes the
+    shards the crate reads and the two must agree on all 521 groups. A
+    cross-host test asserts exactly that, so this is a second *host* and never
+    a second source of truth.
+    """
+    if not counter_display.startswith("No"):
+        return None
+    stem = counter_display[2:]
+    if not stem[:1].isascii() or not stem[:1].isupper():
+        return None
+    return singular(stem)
+
+
+def singular(stem: str) -> str:
+    """One stripped counter stem as the singular component it names."""
+    lowered = stem.lower()
+    for plural, replacement in LATIN_PLURALS:
+        if not lowered.endswith(plural):
+            continue
+        head = stem[: len(stem) - len(plural)]
+        tail = stem[len(stem) - len(plural) :]
+        # The case of the first replaced character.
+        first = replacement[0].upper() if tail[0].isupper() else replacement[0]
+        return head + first + replacement[1:]
+    # Byte-exact, so `NoSideTrdRegTS` is already singular.
+    if not stem.endswith("s") or stem.endswith("ss"):
+        return stem
+    if len(stem) > 4 and stem.endswith("ies"):
+        return stem[:-3] + "y"
+    if stem.endswith("sses"):
+        return stem[:-2]
+    if stem.endswith("es"):
+        head = stem[:-2]
+        if head.endswith(("x", "ch", "sh", "zz")):
+            return head
+    return stem[:-1]
+
+
+def component_item_name(counter: dict[str, Any]) -> str:
+    """The name one repeating group's item takes, folded as a name is."""
+    display = counter["metadata"].get("display") or counter["name"]
+    derived = component_name(display)
+    return folded(derived) if derived else counter["name"]
+
+
 def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     """The crate datatype spelling one FIX datatype name resolves through.
 
@@ -538,7 +595,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
                 "dtype": {
                     "type": "list",
                     "field": {
-                        "name": "item",
+                        "name": component_item_name(counter),
                         "dtype": {"type": "struct", "fields": children},
                         "nullable": False,
                         "metadata": {},

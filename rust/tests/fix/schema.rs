@@ -43,7 +43,10 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
     // `32` in both.
     assert_eq!(&names[..3], ["8", "9", "35"]);
     assert_eq!(projection.position_of(35), Some(2));
-    assert_eq!(&names[names.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(
+        &names[names.len() - 2..],
+        [yggdryl::fix::ENTRIES_COLUMN, yggdryl::fix::UNMAPPED_COLUMN]
+    );
 
     // The dictionary's own typing reaches the column, so a currency column is
     // the packed currency and a side is the packed side.
@@ -264,4 +267,51 @@ fn a_datatype_is_named_the_same_by_both_documents() {
             .unwrap_or_else(|error| panic!("{} does not read back: {error}", id.as_str()));
         assert_eq!(read.dtype().id(), id, "{} changed identity", id.as_str());
     }
+}
+
+#[test]
+fn both_arrival_columns_are_counters_over_one_component() {
+    let (registry, _) = reader();
+    let projection = FixProjection::new(&registry, "fix").unwrap();
+    let fields = projection
+        .field()
+        .dtype()
+        .as_fields()
+        .expect("a struct root");
+    let column = |name: &str| {
+        fields
+            .iter()
+            .find(|held| held.name() == name)
+            .unwrap_or_else(|| panic!("a {name} column"))
+    };
+
+    for (name, display) in [
+        (yggdryl::fix::ENTRIES_COLUMN, "NoFixEntries"),
+        (yggdryl::fix::UNMAPPED_COLUMN, "NoUnmappedFixEntries"),
+    ] {
+        let held = column(name);
+        assert_eq!(held.display(), Some(display));
+        // Not a FIX field: no dictionary, registry or shard has it, so it
+        // carries no tag to be resolved by.
+        assert_eq!(held.as_fix().tag().unwrap(), None, "{name} carries a tag");
+        assert!(held.is_nullable(), "{name} is not nullable");
+        let DataType::List(item) = held.dtype() else {
+            panic!("a list, got {}", held.dtype());
+        };
+        // One component, two counters: the second column is a view over the
+        // first and holds the same occurrences, so it names them the same.
+        assert_eq!(item.name(), "fixentry", "{name} names its item");
+        assert!(!item.is_nullable(), "{name} made its item nullable");
+    }
+    // The crate's own counters follow the rule it publishes for FIX groups.
+    assert!(
+        registry
+            .get_field_by_name(yggdryl::fix::ENTRIES_COLUMN, None)
+            .is_none()
+    );
+    assert!(
+        registry
+            .get_field_by_name(yggdryl::fix::UNMAPPED_COLUMN, None)
+            .is_none()
+    );
 }

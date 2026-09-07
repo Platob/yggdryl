@@ -361,7 +361,9 @@ fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
     let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
-    assert_eq!(item.name(), "item");
+    // The item is one occurrence of the component the counter heads, named
+    // from the counter's declared spelling rather than after the list.
+    assert_eq!(item.name(), "leg");
     assert!(!item.is_nullable());
 
     // Everything after the counter, in document order, by the same rules.
@@ -377,6 +379,7 @@ fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
         panic!("a nested list, got {}", members[1].dtype());
     };
     assert_eq!(members[1].as_fix().tag().unwrap(), Some(604));
+    assert_eq!(inner.name(), "legsecurityaltid");
     assert_eq!(
         inner
             .dtype()

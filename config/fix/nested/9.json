@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "compid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -87,7 +87,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "collinquiryqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -120,7 +120,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested3partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -183,7 +183,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested3partysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -226,7 +226,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "strategyparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -279,7 +279,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "expiration",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -322,7 +322,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingamount",
         "dtype": {
           "type": "struct",
           "fields": [

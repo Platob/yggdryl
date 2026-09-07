@@ -1623,7 +1623,7 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     );
     assert_eq!(
         registry
-            .field_by_path("nopartyids.item.PartyRole", Some(&FixBranch::STANDARD))
+            .field_by_path("nopartyids.PartyRole", Some(&FixBranch::STANDARD))
             .unwrap()
             .name(),
         "PartyRole"
@@ -3094,4 +3094,269 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     bare.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
     assert_eq!(field, before);
+}
+
+/// The seed dictionary every corpus assertion is measured against.
+fn seed_registry() -> FixRegistry {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap()
+}
+
+/// Every shipped repeating group, as its counter display and its item.
+fn shipped_groups(registry: &FixRegistry) -> Vec<(String, Field)> {
+    fn walk(field: &Field, held: &mut Vec<(String, Field)>) {
+        match field.dtype() {
+            DataType::List(item) | DataType::LargeList(item) => {
+                let display = field.display().unwrap_or_else(|| field.name()).to_owned();
+                held.push((display, item.as_ref().clone()));
+                walk(item, held);
+            }
+            dtype => {
+                for child in dtype.as_fields().unwrap_or_default() {
+                    walk(child, held);
+                }
+            }
+        }
+    }
+    let mut held = Vec::new();
+    for field in registry.iter() {
+        walk(field, &mut held);
+    }
+    held
+}
+
+#[test]
+fn the_component_rule_singularizes_by_the_first_arm_that_matches() {
+    use super::field::component_name;
+
+    // Arm 1, the Latin plurals, longest first and case-insensitive, keeping
+    // the case of the first character it replaces.
+    assert_eq!(
+        component_name("NoContractualMatrices").as_deref(),
+        Some("ContractualMatrix")
+    );
+    assert_eq!(component_name("NoIndices").as_deref(), Some("Index"));
+    assert_eq!(component_name("NoAppendices").as_deref(), Some("Appendix"));
+    assert_eq!(component_name("NoVertices").as_deref(), Some("Vertex"));
+    assert_eq!(component_name("NoXmatrices").as_deref(), Some("Xmatrix"));
+
+    // Arm 2, already singular: the test is a byte-exact lowercase `s`, so the
+    // one counter ending in an uppercase one is left alone.
+    assert_eq!(
+        component_name("NoSideTrdRegTS").as_deref(),
+        Some("SideTrdRegTS")
+    );
+    assert_eq!(
+        component_name("NoRelatedSym").as_deref(),
+        Some("RelatedSym")
+    );
+
+    // Arm 3, `ss`, which no shipped counter reaches.
+    assert_eq!(component_name("NoAddress").as_deref(), Some("Address"));
+
+    // Arm 4, `ies` beyond four bytes, as `y`.
+    assert_eq!(component_name("NoMDEntries").as_deref(), Some("MDEntry"));
+    assert_eq!(component_name("NoTies").as_deref(), Some("Tie"));
+
+    // Arm 5, `sses`, less its `es`.
+    assert_eq!(
+        component_name("NoSecondaryAssetClasses").as_deref(),
+        Some("SecondaryAssetClass")
+    );
+
+    // Arm 6, a sibilant before `es`, which no shipped counter reaches either.
+    assert_eq!(component_name("NoBoxes").as_deref(), Some("Box"));
+    assert_eq!(component_name("NoMatches").as_deref(), Some("Match"));
+    assert_eq!(component_name("NoBrushes").as_deref(), Some("Brush"));
+    assert_eq!(component_name("NoBuzzes").as_deref(), Some("Buzz"));
+
+    // Arm 7, the final `s` alone - which is what keeps a trailing uppercase
+    // run intact.
+    assert_eq!(component_name("NoPartyIDs").as_deref(), Some("PartyID"));
+    assert_eq!(
+        component_name("NoTrdRegTimestamps").as_deref(),
+        Some("TrdRegTimestamp")
+    );
+
+    // The two decided oddities, left odd on purpose.
+    assert_eq!(
+        component_name("NoLinesOfText").as_deref(),
+        Some("LinesOfText")
+    );
+    assert_eq!(component_name("NoOfSecSizes").as_deref(), Some("OfSecSize"));
+
+    // Not a counter: `No` followed by anything but an ASCII uppercase letter.
+    assert_eq!(component_name("NotifyBrokerOfCredit"), None);
+    assert_eq!(component_name("NonCashDividendTreatment"), None);
+    assert_eq!(component_name("No"), None);
+    assert_eq!(component_name("Symbol"), None);
+}
+
+#[test]
+fn every_shipped_counter_derives_one_distinct_component_name() {
+    use super::field::component_name;
+
+    let registry = seed_registry();
+    let groups = shipped_groups(&registry);
+    assert_eq!(groups.len(), 521, "the shipped group census");
+
+    let mut arms = [0_usize; 7];
+    let mut derived: HashSet<SmolStr> = HashSet::new();
+    for (display, _) in &groups {
+        let name =
+            component_name(display).unwrap_or_else(|| panic!("{display} heads no component"));
+        let stem = &display[2..];
+        let lowered = stem.to_ascii_lowercase();
+        let arm = if ["matrices", "indices", "appendices", "vertices"]
+            .iter()
+            .any(|plural| lowered.ends_with(plural))
+        {
+            0
+        } else if !stem.ends_with('s') {
+            1
+        } else if stem.ends_with("ss") {
+            2
+        } else if stem.len() > 4 && stem.ends_with("ies") {
+            3
+        } else if stem.ends_with("sses") {
+            4
+        } else if stem.strip_suffix("es").is_some_and(|head| {
+            ["x", "ch", "sh", "zz"]
+                .iter()
+                .any(|end| head.ends_with(end))
+        }) {
+            5
+        } else {
+            6
+        };
+        arms[arm] += 1;
+        assert!(derived.insert(name), "{display} derives a name twice");
+    }
+    assert_eq!(arms, [2, 29, 0, 9, 3, 0, 478], "the arm census");
+    assert_eq!(arms.iter().sum::<usize>(), 521);
+    assert_eq!(derived.len(), 521, "one distinct name per counter");
+}
+
+#[test]
+fn a_group_member_resolves_under_the_component_name_the_counter_derives() {
+    use super::field::component_name;
+
+    let registry = seed_registry();
+    let mut shadowed = 0_usize;
+    for field in registry.iter() {
+        let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
+            continue;
+        };
+        let display = field.display().unwrap_or_else(|| field.name());
+        let derived = component_name(display).expect("a counter heads a component");
+        let folded = derived.to_ascii_lowercase();
+        let Some(member) = item
+            .dtype()
+            .as_fields()
+            .unwrap_or_default()
+            .iter()
+            .find(|held| held.name() == folded)
+        else {
+            continue;
+        };
+        shadowed += 1;
+        let path = format!("{}.{folded}", field.name());
+        let reached = registry
+            .field_by_path(&path, Some(&FixBranch::STANDARD))
+            .unwrap_or_else(|error| panic!("{path}: {error}"));
+        // The member, never the item struct that now carries the same name.
+        assert_eq!(
+            reached, member,
+            "{path} reached the item rather than {folded}"
+        );
+        assert!(!reached.dtype().is_nested(), "{path} reached a subtree");
+        assert!(
+            reached.as_fix().tag().unwrap().is_some(),
+            "{path} reached a field with no tag"
+        );
+    }
+    assert_eq!(shadowed, 269, "the shadow-prone group census");
+}
+
+#[test]
+fn the_walk_reaches_a_group_member_whatever_the_item_is_called() {
+    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    party_id.as_fix_mut().set_tag(448).unwrap();
+    let role = tagged("partyrole", 452);
+    for item_name in ["item", "partyid"] {
+        let mut group = DataType::list(
+            DataType::from_fields([party_id.clone(), role.clone()])
+                .unwrap()
+                .required_field(item_name),
+        )
+        .nullable_field("nopartyids");
+        group.as_fix_mut().set_tag(453).unwrap();
+        let registry = FixRegistry::from_fields([group]).unwrap();
+        assert_eq!(
+            registry
+                .field_by_path("nopartyids.partyid", Some(&FixBranch::STANDARD))
+                .unwrap()
+                .as_fix()
+                .tag()
+                .unwrap(),
+            Some(448),
+            "item named {item_name:?}"
+        );
+        assert_eq!(
+            registry
+                .field_by_path("NoPartyIDs.PartyRole", Some(&FixBranch::STANDARD))
+                .unwrap()
+                .name(),
+            "partyrole",
+            "item named {item_name:?}"
+        );
+        // The item is not a segment any path spells, whatever it is called.
+        assert!(
+            registry
+                .get_field_by_path("nopartyids.item", Some(&FixBranch::STANDARD))
+                .is_none(),
+            "item named {item_name:?}"
+        );
+    }
+}
+
+#[test]
+fn the_generated_dictionary_names_every_item_as_the_crate_derives_it() {
+    use super::field::component_item_name;
+
+    let registry = seed_registry();
+    let mut groups = 0_usize;
+    for field in registry.iter() {
+        let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
+            continue;
+        };
+        groups += 1;
+        // The generator is a second host, never a second rule: the shard it
+        // wrote must spell what this crate derives from the same counter.
+        assert_eq!(
+            item.name(),
+            component_item_name(field).as_str(),
+            "{} names its item {:?}",
+            field.name(),
+            item.name()
+        );
+        assert_ne!(item.name(), "item", "{} still names its item", field.name());
+        // Descriptive, never identity: the item carries the name and nothing
+        // else, because its display and its tag are the counter's to state.
+        assert_eq!(
+            item.as_metadata().len(),
+            0,
+            "{} typed its item",
+            field.name()
+        );
+        assert!(
+            !item.is_nullable(),
+            "{} made its item nullable",
+            field.name()
+        );
+    }
+    assert_eq!(groups, 521, "the shipped group census");
 }

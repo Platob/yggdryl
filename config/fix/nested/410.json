@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventcrediteventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventperioddatetime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -79,7 +79,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -121,7 +121,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -183,7 +183,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -215,7 +215,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventcrediteventsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -247,7 +247,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "complexeventschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -319,7 +319,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "deliveryschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -471,7 +471,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "deliveryschedulesettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -513,7 +513,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "deliveryschedulesettltime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -565,7 +565,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "deliverystreamcycle",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -617,7 +617,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "deliverystreamcommoditysource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -649,7 +649,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "marketdisruptionevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -691,7 +691,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "marketdisruptionfallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -733,7 +733,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "marketdisruptionfallbackreferenceprice",
         "dtype": {
           "type": "struct",
           "fields": [

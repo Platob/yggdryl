@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "rootpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -67,7 +67,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "rootpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mdfeedtype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -243,7 +243,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settldetail",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -306,7 +306,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settloblig",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -485,7 +485,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "statsindicator",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -518,7 +518,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ofsecsize",
         "dtype": {
           "type": "struct",
           "fields": [

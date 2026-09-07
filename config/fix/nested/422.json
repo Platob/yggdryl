@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legfinancingtermsupplement",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcontractualmatrix",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -98,7 +98,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "cashsettldatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -130,7 +130,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dividendaccrualpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -162,7 +162,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dividendfxtriggerdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -194,7 +194,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dividendperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -406,7 +406,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dividendperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -438,7 +438,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "extraordinaryevent",
         "dtype": {
           "type": "struct",
           "fields": [

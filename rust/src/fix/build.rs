@@ -28,6 +28,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
+use super::field::component_item_name;
 use super::project::{Projections, is_binary};
 use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 use crate::{DataType, Field, Result, Scalar, Version};
@@ -349,14 +350,13 @@ impl<'registry> Builder<'registry> {
     }
 
     /// Records what arrived, whatever the row made of it.
+    ///
+    /// The dialect is written on every entry, including a pair whose key
+    /// named no field: the digest is fixed width, so an entry that omitted it
+    /// would cost the same and say less about where the pair came from.
     fn record(&mut self, key: &str, value: &str, tag: i32) {
-        let entry = FixEntry::new(tag, key, value);
-        let entry = if tag == 0 {
-            entry
-        } else {
-            entry.with_branch(&self.branch)
-        };
-        self.entries.push(entry);
+        self.entries
+            .push(FixEntry::new(tag, key, value).with_branch(&self.branch));
     }
 
     /// Closes the build into a root field, its value, and the entries.
@@ -421,9 +421,11 @@ impl Slot {
             // `NOPARTYIDS[0]=ONE` where it has nothing to name, and dropping
             // those would lose what arrived to say the group held nothing.
             // They have no field of their own, so they are what `field_for`
-            // typed them as - text.
+            // typed them as - text - under the component name the counter
+            // heads, because one group has one item name whatever the item
+            // turned out to be.
             let absent = self.values.iter().any(Scalar::is_null);
-            let item = DataType::Utf8.named_field("item", absent);
+            let item = DataType::Utf8.named_field(component_item_name(&self.field), absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
             let _ = list.set_metadata(self.field.as_metadata().iter());
@@ -445,7 +447,10 @@ impl Slot {
             // A tag appearing twice stays two occurrences in input order: a
             // map keyed by tag would lose a repeating group. Indices may be
             // gapped, and a gap is null, so the item takes that nullability.
-            let mut item = self.field.clone().with_name("item");
+            // It keeps the repeated field's own name: there is no counter
+            // here and so no component, and naming it as one would spell a
+            // group this shape deliberately is not.
+            let mut item = self.field.clone();
             item.set_nullable(absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
@@ -453,8 +458,9 @@ impl Slot {
             return Ok((list, values));
         }
 
-        // A group is a List of a non-null `item` Struct, and the occurrences
-        // are built by index, so a gap is an empty one rather than a shift.
+        // A group is a List of a non-null Struct named after the component its
+        // counter heads, and the occurrences are built by index, so a gap is
+        // an empty one rather than a shift.
         // In first-seen order across every occurrence, so a member only the
         // second occurrence carries is still a column and still in its
         // arrival place. Nullable, because an occurrence need not state one.
@@ -469,7 +475,8 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from_fields(member_fields.clone())?.required_field("item");
+        let mut item = DataType::from_fields(member_fields.clone())?
+            .required_field(component_item_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if self.occurrences.iter().any(Vec::is_empty) {
             item.set_nullable(true);

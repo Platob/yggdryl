@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionoptionexercisefixeddate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisioncashsettlpaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -88,7 +88,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -150,7 +150,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provisionpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -192,7 +192,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "protectionterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -294,7 +294,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "protectiontermevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -386,7 +386,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "protectiontermeventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [

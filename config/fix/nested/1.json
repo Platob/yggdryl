@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "exec",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -139,7 +139,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "miscfee",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -242,7 +242,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relatedsym",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -889,7 +889,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ioiqualifier",
         "dtype": {
           "type": "struct",
           "fields": [

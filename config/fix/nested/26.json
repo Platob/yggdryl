@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "miscfeesubtype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -76,7 +76,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "commission",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -258,7 +258,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "alloccommission",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -440,7 +440,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "trdregpublication",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -482,7 +482,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "sidecollateralamount",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -84,7 +84,10 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     // Columns are named by tag, because a tag is the one name a field has in
     // every version and every dialect.
     assert_eq!(&names[..5], ["8", "9", "35", "49", "56"], "{names:?}");
-    assert_eq!(&names[names.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(
+        &names[names.len() - 2..],
+        [yggdryl::fix::ENTRIES_COLUMN, yggdryl::fix::UNMAPPED_COLUMN]
+    );
     // The standard header, the body a consumer queries, the groups worth
     // keeping whole, the trailer, and this crate's own derived facts.
     for tag in [
@@ -186,7 +189,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch
     // lossless rather than one reader's summary.
-    let entries = column(&batch, "entries");
+    let entries = column(&batch, yggdryl::fix::ENTRIES_COLUMN);
     assert!(entries.is_valid(0));
     assert_eq!(entries.len(), 1);
 }
@@ -349,7 +352,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
             [Ok(first)],
             std::sync::Arc::clone(&schema),
         )),
-        "entries",
+        yggdryl::fix::ENTRIES_COLUMN,
         FixOptions::new(),
     )
     .unwrap();
@@ -369,7 +372,7 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         DataType::Binary.required_field("body"),
         // A name a FIX column already takes, which yields to it: one column
         // per name, and the FIX one is what a reader spelling it means.
-        DataType::Utf8.nullable_field("entries"),
+        DataType::Utf8.nullable_field(yggdryl::fix::ENTRIES_COLUMN),
     ])
     .expect("a capture root")
     .required_field("line");
@@ -399,7 +402,10 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         "the capture leads the row"
     );
     assert_eq!(
-        columns.iter().filter(|held| *held == "entries").count(),
+        columns
+            .iter()
+            .filter(|held| *held == yggdryl::fix::ENTRIES_COLUMN)
+            .count(),
         1,
         "the clashing capture column yielded to the FIX one"
     );

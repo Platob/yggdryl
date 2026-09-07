@@ -1029,14 +1029,14 @@ impl PyFixMsg {
     }
 
     /// What arrived, in arrival order, untranslated.
-    fn entries(&self) -> Vec<(i32, Option<String>, String, String)> {
+    fn entries(&self) -> Vec<(i32, i64, String, String)> {
         self.inner
             .entries()
             .iter()
             .map(|entry| {
                 (
                     entry.tag(),
-                    entry.branch().map(ToOwned::to_owned),
+                    entry.bid(),
                     entry.key().to_owned(),
                     entry.value().to_owned(),
                 )

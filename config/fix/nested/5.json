@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "distribinst",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -107,7 +107,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -160,7 +160,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "affectedorder",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -213,7 +213,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nestedpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -276,7 +276,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "side",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1464,7 +1464,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "leg",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1877,7 +1877,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "securitytype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1962,7 +1962,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "clearinginstruction",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1995,7 +1995,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "date",
         "dtype": {
           "type": "struct",
           "fields": [

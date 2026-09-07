@@ -222,7 +222,8 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
         "{members:?}"
     );
 
-    // The group field is a List of a non-null `item` Struct.
+    // The group field is a List of a non-null Struct named after the
+    // component its counter heads.
     let field = message
         .as_field()
         .get_field_by_path("nopartyids")
@@ -230,7 +231,7 @@ fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     let DataType::List(item) = field.dtype() else {
         panic!("a list, got {}", field.dtype());
     };
-    assert_eq!(item.name(), "item");
+    assert_eq!(item.name(), "partyid");
     assert!(!item.is_nullable());
 }
 

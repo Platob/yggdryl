@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "attachment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -106,7 +106,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "attachmentkeyword",
         "dtype": {
           "type": "struct",
           "fields": [

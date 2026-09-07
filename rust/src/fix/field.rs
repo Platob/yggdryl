@@ -16,7 +16,7 @@ use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::lineage::{FixLineage, FixLineageEntry};
 use super::{FixBranch, FixId};
 use crate::types::folds_equal;
-use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
+use crate::{DataType, Error, Field, FixField, FixFieldMut, Result, Version};
 
 /// The dictionary a field belongs to; absent means the standard one.
 const BRANCH: &str = "branch";
@@ -61,6 +61,135 @@ pub(super) fn parse_tag(text: &str) -> Option<i32> {
         return None;
     }
     text.parse().ok()
+}
+
+/// The Latin plurals FIX spells, longest first, matched case-insensitively.
+///
+/// The only arm that rewrites inside the stem rather than at its end, which
+/// is why it is also the only one that has to carry the case of what it
+/// replaces.
+const LATIN_PLURALS: [(&str, &str); 4] = [
+    ("appendices", "appendix"),
+    ("matrices", "matrix"),
+    ("vertices", "vertex"),
+    ("indices", "index"),
+];
+
+/// Returns the component name headed by a repeating-group counter.
+///
+/// A FIX repeating group is a List field carrying its counter's name, and its
+/// item is one *occurrence* of the component that counter heads. That
+/// component's name is derivable and is derived here: `NoPartyIDs` heads a
+/// `PartyID`, `NoTrdRegTimestamps` a `TrdRegTimestamp`. Nothing is stored,
+/// looked up or overridden - a table of 521 names beside 521 counters would
+/// be a second source of truth for a fact the counter already states.
+///
+/// The counter's *display* spelling is read, never its folded name: both the
+/// `No` test and the Latin arm need the uppercase run that folding destroys.
+/// `None` says the display does not head a component - the caller then keeps
+/// the counter's own name - and only a `List` datatype asks at all, because a
+/// name beginning `No` is not a counter test: `NotifyBrokerOfCredit` and
+/// `NonCashDividendTreatment` begin that way and count nothing.
+///
+/// The stem is singularized by the first arm that matches, in this order:
+/// the Latin plurals above; a stem not ending in a byte-exact lowercase `s`,
+/// unchanged; a stem ending `ss`, unchanged; `ies` beyond four bytes, as `y`;
+/// `sses`, less its `es`; `es` after a sibilant `x`, `ch`, `sh` or `zz`, less
+/// its `es`; and otherwise the final `s` alone. No arm removes more than that
+/// final `s` unless its whole suffix matched, which is what keeps a trailing
+/// uppercase run intact: `IDs` matches no multi-letter arm, so `NoPartyIDs`
+/// answers `PartyID` and the 44 counters ending that way need no acronym pass.
+///
+/// Two results are odd and are left odd, because a hand-written exception
+/// would be exactly the second source of truth this avoids:
+///
+/// - `NoLinesOfText` answers `LinesOfText`, the one derived name that stays
+///   plural: the head noun is not at the end, and no rule that singularizes
+///   inside a phrase would be safe on the other 520.
+/// - `NoOfSecSizes` answers `OfSecSize`, the one that is not a noun phrase,
+///   because removing `No` exposes the preposition the counter was built on.
+///
+/// ```ignore
+/// assert_eq!(component_name("NoPartyIDs").as_deref(), Some("PartyID"));
+/// assert_eq!(component_name("NoContractualMatrices").as_deref(), Some("ContractualMatrix"));
+/// assert_eq!(component_name("NoSideTrdRegTS").as_deref(), Some("SideTrdRegTS"));
+/// assert_eq!(component_name("NotifyBrokerOfCredit"), None);
+/// ```
+pub(crate) fn component_name(counter_display: &str) -> Option<SmolStr> {
+    let stem = counter_display
+        .strip_prefix("No")
+        .filter(|rest| rest.starts_with(|first: char| first.is_ascii_uppercase()))?;
+    Some(singular(stem))
+}
+
+/// The name one repeating group's item takes, folded as a stored name is.
+///
+/// Descriptive and never identity: no digest, deduplication key, equality or
+/// drift check reads it, because it is derivable from the counter beside it.
+/// The Avro record surface is the proof and the caveat - its writer derives a
+/// record name from this name while its reader rebuilds every list child as
+/// `item`, so the name does not survive an Avro round trip and nothing may
+/// depend on it doing so. Fixing that asymmetry is separate work.
+///
+/// The counter's display leads and its stored name is the fallback, because
+/// the rule needs the uppercase run only a display has. A counter carrying no
+/// display - a dialect file states none - therefore keeps its own name, which
+/// is exactly what an underivable component name should answer.
+pub(super) fn component_item_name(counter: &Field) -> SmolStr {
+    let display = counter.display().unwrap_or_else(|| counter.name());
+    component_name(display).map_or_else(
+        || SmolStr::new(counter.name()),
+        |held| SmolStr::new(held.to_ascii_lowercase()),
+    )
+}
+
+/// One stripped counter stem as the singular component it names.
+fn singular(stem: &str) -> SmolStr {
+    for (plural, replacement) in LATIN_PLURALS {
+        let Some(at) = stem.len().checked_sub(plural.len()) else {
+            continue;
+        };
+        if !stem.is_char_boundary(at) || !stem[at..].eq_ignore_ascii_case(plural) {
+            continue;
+        }
+        let mut held = String::with_capacity(at + replacement.len());
+        held.push_str(&stem[..at]);
+        let mut characters = replacement.chars();
+        let first = characters.next().expect("a non-empty replacement");
+        // The case of the first replaced character, so `NoContractualMatrices`
+        // stays `ContractualMatrix` rather than becoming `Contractualmatrix`.
+        held.push(
+            if stem[at..].starts_with(|byte: char| byte.is_ascii_uppercase()) {
+                first.to_ascii_uppercase()
+            } else {
+                first
+            },
+        );
+        held.push_str(characters.as_str());
+        return SmolStr::new(held);
+    }
+    // Byte-exact, so the one counter ending in an uppercase `S` -
+    // `NoSideTrdRegTS` - is already singular rather than becoming
+    // `SideTrdRegT`.
+    if !stem.ends_with('s') || stem.ends_with("ss") {
+        return SmolStr::new(stem);
+    }
+    if stem.len() > 4 && stem.ends_with("ies") {
+        return format_smolstr!("{}y", &stem[..stem.len() - 3]);
+    }
+    if stem.ends_with("sses") {
+        return SmolStr::new(&stem[..stem.len() - 2]);
+    }
+    if let Some(head) = stem.strip_suffix("es") {
+        if head.ends_with('x')
+            || head.ends_with("ch")
+            || head.ends_with("sh")
+            || head.ends_with("zz")
+        {
+            return SmolStr::new(head);
+        }
+    }
+    SmolStr::new(&stem[..stem.len() - 1])
 }
 
 impl<'field> FixField<'field> {

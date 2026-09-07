@@ -226,7 +226,7 @@ fn a_component_and_a_repeating_group_survive_a_store_round_trip() {
     for (path, tag) in [
         ("NoPartyIDs.PartyID", 448),
         ("NoPartyIDs.PartyIDSource", 447),
-        ("NoPartyIDs.item.PartyRole", 452),
+        ("NoPartyIDs.PartyRole", 452),
         ("Instrument.Symbol", 55),
         ("Instrument.SecurityID", 48),
     ] {

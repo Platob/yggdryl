@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "additionaltermbondref",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -206,7 +206,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "additionalterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -248,7 +248,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "cashsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -471,7 +471,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contractualdefinition",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -503,7 +503,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contractualmatrix",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -555,7 +555,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "financingtermsupplement",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -597,7 +597,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "stream",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -829,7 +829,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlratefallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -881,7 +881,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provision",
         "dtype": {
           "type": "struct",
           "fields": [

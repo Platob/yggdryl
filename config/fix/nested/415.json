@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legoptionexercisedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legoptionexerciseexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legoptionexerciseexpirationdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -120,7 +120,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentschedulefixingday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -162,7 +162,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreampricingbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -194,7 +194,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreampaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -236,7 +236,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreampricingdate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -278,7 +278,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstreampricingday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -320,7 +320,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legphysicalsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -732,7 +732,8 @@ impl<'doc> Parse<'doc> {
                 "one opening with another grammar",
             ));
         }
-        let item = DataType::from_fields(children)?.required_field("item");
+        let item = DataType::from_fields(children)?
+            .required_field(super::field::component_item_name(&counter));
         let mut group = DataType::list(item).nullable_field(counter.name());
         group.set_nullable(counter.is_nullable());
         group.set_metadata(counter.as_metadata().iter())?;

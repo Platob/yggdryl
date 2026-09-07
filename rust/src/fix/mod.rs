@@ -574,7 +574,30 @@ impl FixId {
 
     /// The branch/tag admissibility rule without constructing its refusal.
     pub(super) fn is_admissible(branch: &FixBranch, tag: i32) -> bool {
-        branch.is_standard() || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
+        Self::is_admissible_digest(branch.digest(), tag)
+    }
+
+    /// The same rule over a stored branch digest.
+    ///
+    /// [`Self::from_parts`] refuses a non-standard branch whose digest
+    /// collides with the standard value, so over any pair that ever became an
+    /// identifier a zero digest *is* the standard branch. That is what lets
+    /// an arrival record hold the digest alone and still be held to one rule.
+    pub(super) const fn is_admissible_digest(branch_digest: u32, tag: i32) -> bool {
+        branch_digest == STANDARD_BRANCH_DIGEST
+            || (Self::USER_TAG_MIN <= tag && tag < Self::USER_TAG_MAX)
+    }
+
+    /// The identifier one stored branch digest and tag name, when they make
+    /// one.
+    ///
+    /// The reading half of a capture's `bid` column: the digest is already
+    /// what [`Self::from_parts`] would pack, so nothing is rehashed, and the
+    /// admissibility rule above is the only thing that can refuse.
+    pub(super) fn from_digest(branch_digest: i64, tag: i32) -> Option<Self> {
+        let branch_digest = u32::try_from(branch_digest).ok()?;
+        (tag >= 0 && Self::is_admissible_digest(branch_digest, tag))
+            .then(|| Self::pack(branch_digest, tag))
     }
 
     const fn pack(branch_digest: u32, tag: i32) -> Self {
