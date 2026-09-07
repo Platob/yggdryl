@@ -102,7 +102,7 @@ impl FixCodec {
             branch: None,
             version: None,
             separator: None,
-            payload_column: SmolStr::new_static(super::batch::DEFAULT_PAYLOAD_COLUMN),
+            payload_column: SmolStr::new_static(super::record::DEFAULT_PAYLOAD_COLUMN),
             null_values: DEFAULT_NULL_VALUES
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
@@ -391,7 +391,7 @@ impl FixCodec {
     ///
     /// Returns [`Error::Parse`] when the value is not a record at all.
     pub fn read_record(&self, record: &Scalar) -> Result<FixMsg> {
-        super::batch::read_record_with(self, record, &self.payload_column)
+        super::record::read_record_with(self, record, &self.payload_column)
     }
 
     /// Reads a stream of generic records, one message per record, lazily.
@@ -429,6 +429,7 @@ impl FixCodec {
     ///
     /// Returns the schema grammar's refusal when the options do not make a
     /// root field, and the Arrow layer's own failure.
+    #[cfg(feature = "arrow")]
     pub fn read_arrow_batch(
         &self,
         batch: &arrow_array::RecordBatch,
@@ -458,6 +459,7 @@ impl FixCodec {
     ///
     /// Returns the schema grammar's refusal when the options do not make a
     /// root field, or the source reader's own failure.
+    #[cfg(feature = "arrow")]
     pub fn read_arrow_reader(
         &self,
         source: crate::arrow::BatchReader,

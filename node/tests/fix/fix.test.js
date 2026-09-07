@@ -956,8 +956,12 @@ test('a reader takes the pins the core takes', () => {
 
   // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
   // pinned version is what decides which name the row answers to.
-  const dated = new fix.FixCodec(registry, { sourceVersion: '4.2' })
-  assert.ok(dated.readLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).getByName('lastshares') !== null)
+  const dated = new fix.FixCodec(registry, { version: '4.2' })
+  const named = dated.readLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'))
+  assert.ok(named.getByName('lastshares') !== null)
+  // Unpinned, tag 32 answers to both spellings, so the name it keeps proves
+  // nothing on its own - the name it loses is what says the pin was read.
+  assert.equal(named.getByName('lastqty'), null)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
