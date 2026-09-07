@@ -82,7 +82,7 @@ cargo run -p yggdryl-cli -- fix sync ../desk/config/fix
 cargo run -p yggdryl-cli -- fix sync cblocks/bloomberg.cfb
 ```
 
-Both arrive through the same fold, so a tag this dictionary lacks is added and one it holds keeps every key only it declares - and because that fold is one mutation, a source it refuses leaves the dictionary exactly as it was. The counts printed are what was added and what was folded. A `.cfb` goes through [`add_cfb_file`](registry.md#folding-a-second-source-in) rather than the plain fold, so the dialect it declares - its FIX version and its session pair - is written to the [manifest](store.md) beside the fields, and the file's own name answers as a branch alias.
+Both arrive through the same fold, so a tag this dictionary lacks is added and one it holds keeps every key only it declares - and because that fold is one mutation, a source it refuses leaves the dictionary exactly as it was. The counts printed are what was added and what was folded. A `.cfb` goes through [`add_cfb_file`](registry.md#folding-a-second-source-in) rather than the plain fold, so the dialect it declares - its FIX version - is written to the [manifest](store.md) beside the fields, and the file's own name answers as a branch alias.
 
 With no `--branch`, a `CBlock`'s stem names the dialect its user-range tags belong to: `bloomberg.cfb` reads into the branch `bloomberg`. A folder says nothing to `--branch`; the fields it holds carry the branch they were written with.
 

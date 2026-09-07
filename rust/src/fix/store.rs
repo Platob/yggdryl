@@ -445,8 +445,6 @@ fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
         ("name", Scalar::from(branch.name())),
         ("digest", Scalar::from(branch.digest())),
         ("version", Scalar::from(branch.version())),
-        ("targetcompid", Scalar::from(branch.target_comp_id())),
-        ("sendercompid", Scalar::from(branch.sender_comp_id())),
     ];
     // Written only when there are any, so a dictionary that declares no
     // second spelling writes the record it always wrote.
@@ -472,14 +470,7 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
             reason: crate::text::expected_got("a FIX branch record", value.kind()),
         });
     };
-    const KEYS: [&str; 6] = [
-        "name",
-        "digest",
-        "version",
-        "targetcompid",
-        "sendercompid",
-        "aliases",
-    ];
+    const KEYS: [&str; 4] = ["name", "digest", "version", "aliases"];
     if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
         return Err(Error::InvalidRecord {
             path: key.clone(),
@@ -506,23 +497,7 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
         })
         .transpose()?
         .unwrap_or_default();
-    let text = |key: &'static str| -> Result<SmolStr> {
-        record
-            .get(key)
-            .map(|value| {
-                value
-                    .as_str()
-                    .map(SmolStr::new)
-                    .ok_or_else(|| Error::InvalidRecord {
-                        path: key.into(),
-                        reason: "a component id must be text".into(),
-                    })
-            })
-            .transpose()
-            .map(|value| value.unwrap_or_default())
-    };
-    let mut branch =
-        FixBranch::from_parts(name, version, text("targetcompid")?, text("sendercompid")?)?;
+    let mut branch = FixBranch::from_parts(name, version)?;
     // Absent is no aliases rather than a defect: a manifest written before a
     // dictionary named a second spelling declares none, which is the truth.
     if let Some(aliases) = record.get("aliases") {

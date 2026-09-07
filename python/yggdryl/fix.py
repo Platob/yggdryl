@@ -32,7 +32,7 @@ clock, the partition it falls in, and the two parent order identifiers.
 
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX
-version and the session ``CompID`` pair that selects it.
+version and the other spellings it answers to.
 
 ``STANDARD_BRANCH`` is what an absent ``fix:branch`` means, and
 ``USER_TAG_MIN`` and ``USER_TAG_MAX`` bound the half-open range a

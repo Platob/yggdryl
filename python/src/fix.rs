@@ -500,17 +500,6 @@ impl PyFixRegistry {
             .map(PyFixBranch::from_core)
     }
 
-    /// The branch declaring one exact session pair, or `None`.
-    ///
-    /// The comparison folds ASCII case, and a branch declaring only one half
-    /// of the pair never matches: a session is both `CompID`s or neither.
-    fn branch_for_session(&self, sender: &str, target: &str) -> Option<PyFixBranch> {
-        self.inner
-            .branch_for_session(sender, target)
-            .cloned()
-            .map(PyFixBranch::from_core)
-    }
-
     /// Every branch this registry declares.
     fn branches(&self) -> Vec<PyFixBranch> {
         self.inner
@@ -1602,31 +1591,17 @@ impl PyFixBranch {
 impl PyFixBranch {
     /// Declare a branch, validating and folding its name once.
     ///
-    /// An empty name is the standard branch, which declares no dialect and no
-    /// session; the version is the dialect's own default, spelled the way the
+    /// An empty name is the standard branch, which declares no dialect; the
+    /// version is the dialect's own default, spelled the way the
     /// specification spells it.
     #[new]
-    #[pyo3(signature = (
-        name = "",
-        *,
-        version = None,
-        sender_comp_id = "",
-        target_comp_id = "",
-        aliases = None,
-    ))]
-    fn new(
-        name: &str,
-        version: Option<&str>,
-        sender_comp_id: &str,
-        target_comp_id: &str,
-        aliases: Option<Vec<String>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (name = "", *, version = None, aliases = None))]
+    fn new(name: &str, version: Option<&str>, aliases: Option<Vec<String>>) -> PyResult<Self> {
         let version = match version {
             Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
             None => yggdryl::Version::default(),
         };
-        let branch = CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
-            .map_err(value_error)?;
+        let branch = CoreFixBranch::from_parts(name, version).map_err(value_error)?;
         match aliases {
             Some(aliases) => branch.with_aliases(aliases).map(Self::from_core),
             None => Ok(Self::from_core(branch)),
@@ -1634,7 +1609,7 @@ impl PyFixBranch {
         .map_err(value_error)
     }
 
-    /// Parse a branch name, with no dialect and no session.
+    /// Parse a branch name, with no dialect.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         branch_from_py(value).map(Self::from_core)
@@ -1668,18 +1643,6 @@ impl PyFixBranch {
     #[getter]
     fn version(&self) -> String {
         self.inner.version().to_string()
-    }
-
-    /// The session sender as declared.
-    #[getter]
-    fn sender_comp_id(&self) -> &str {
-        self.inner.sender_comp_id()
-    }
-
-    /// The session target as declared.
-    #[getter]
-    fn target_comp_id(&self) -> &str {
-        self.inner.target_comp_id()
     }
 
     /// The other spellings this dictionary answers to, folded, as declared.
@@ -1717,8 +1680,6 @@ impl PyFixBranch {
         Scalar::from_sequence([
             Scalar::from(self.inner.name()),
             Scalar::from(self.inner.version().to_string()),
-            Scalar::from(self.inner.sender_comp_id()),
-            Scalar::from(self.inner.target_comp_id()),
         ])
         .stable_hash()
     }
@@ -1729,11 +1690,9 @@ impl PyFixBranch {
 
     fn __repr__(&self) -> String {
         format!(
-            "FixBranch({:?}, version={:?}, sender_comp_id={:?}, target_comp_id={:?})",
+            "FixBranch({:?}, version={:?})",
             self.inner.name(),
             self.inner.version().to_string(),
-            self.inner.sender_comp_id(),
-            self.inner.target_comp_id(),
         )
     }
 
@@ -1757,7 +1716,7 @@ impl PyFixBranch {
             .unbind())
     }
 
-    fn __reduce__(&self) -> (Py<PyAny>, (String, String, String, String)) {
+    fn __reduce__(&self) -> (Py<PyAny>, (String, String)) {
         Python::attach(|py| {
             (
                 py.get_type::<Self>()
@@ -1767,8 +1726,6 @@ impl PyFixBranch {
                 (
                     self.inner.name().to_owned(),
                     self.inner.version().to_string(),
-                    self.inner.sender_comp_id().to_owned(),
-                    self.inner.target_comp_id().to_owned(),
                 ),
             )
         })
@@ -1776,13 +1733,8 @@ impl PyFixBranch {
 
     /// Rebuild the exact declaration pickle and repr carry.
     #[staticmethod]
-    fn _from_parts(
-        name: &str,
-        version: &str,
-        sender_comp_id: &str,
-        target_comp_id: &str,
-    ) -> PyResult<Self> {
-        Self::new(name, Some(version), sender_comp_id, target_comp_id, None)
+    fn _from_parts(name: &str, version: &str) -> PyResult<Self> {
+        Self::new(name, Some(version), None)
     }
 
     fn __copy__(&self) -> Self {

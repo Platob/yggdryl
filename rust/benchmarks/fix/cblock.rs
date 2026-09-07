@@ -17,7 +17,7 @@ fn document() -> String {
     body.push_str(
         "<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\n\
          <cplugin-configuration type=\"BuySideFIXCPluginCBlock\" version=\"1.2\" \
-         fix-version=\"4.4\" targetcompid=\"THEM\" sendercompid=\"US\">\n\
+         fix-version=\"4.4\">\n\
          \t<history><version date=\"2006-09-06\" owner=\"ullink\">First version</version></history>\n\
          \t<message-types>\n",
     );

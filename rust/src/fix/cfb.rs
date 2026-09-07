@@ -1,11 +1,10 @@
 //! An Ullink CBlock configuration, read for the FIX definitions it declares.
 //!
-//! A `.cfb` is one counterparty's dictionary. It states at the top exactly
-//! what a dialect declares - the FIX version it speaks and the session pair
-//! it speaks it over - and then two things worth reading: a `vocabulary` of
-//! tags, and a `grammar-binding` per message type describing that message's
-//! tree. Everything else in the file describes the file, the transcoding, or
-//! the plugin, and is skipped.
+//! A `.cfb` is one counterparty's dictionary. It states at the top the FIX
+//! version a dialect speaks, and then two things worth reading: a
+//! `vocabulary` of tags, and a `grammar-binding` per message type describing
+//! that message's tree. Everything else in the file describes the file, the
+//! transcoding, or the plugin, and is skipped.
 //!
 //! # Two entry points, one parse
 //!
@@ -164,9 +163,9 @@ impl FixField<'_> {
     ///
     /// Two things a registry would hold are therefore not here - the message
     /// roots, and the branch record. A field stores its branch's *name* and
-    /// never the version and session pair the root element declares, so a
-    /// dictionary built from these fields alone knows the dialect by name and
-    /// nothing else. Take [`FixRegistry::from_cfb`] when either matters.
+    /// never the version the root element declares, so a dictionary built
+    /// from these fields alone knows the dialect by name and nothing else.
+    /// Take [`FixRegistry::from_cfb`] when either matters.
     ///
     /// One difference is not a loss: a dictionary keeps one entry per
     /// identity, so a tag a file declares twice identically arrives twice
@@ -253,8 +252,8 @@ impl<'doc> Parse<'doc> {
     fn dictionary(self) -> Result<FixRegistry> {
         let mut registry = FixRegistry::new();
         // The branch record first, and explicitly. A field's metadata carries
-        // only its branch's *name* - the version and the session pair are the
-        // dictionary's own record of the dialect - so inserting fields alone
+        // only its branch's *name* - the version is the dictionary's own
+        // record of the dialect - so inserting fields alone
         // would register a nameless-versioned branch and lose what the root
         // element was read for. The standard branch declares no dialect, so a
         // file parsed without a name registers nothing.
@@ -304,29 +303,22 @@ impl<'doc> Parse<'doc> {
 
     /// Reads the branch record the root element carries.
     ///
-    /// A CBlock is one counterparty's dictionary, and this is what it declares
-    /// about the session it is for. `fix-version` becomes the branch's version
-    /// and never its name: a branch name must start with an ASCII letter, so
-    /// `4.4` could not be one, which is what carrying both on one record ends
-    /// the confusion about.
+    /// A CBlock is one counterparty's dictionary, and `fix-version` is what it
+    /// declares about the dialect. It becomes the branch's version and never
+    /// its name: a branch name must start with an ASCII letter, so `4.4` could
+    /// not be one, which is what carrying both on one record ends the
+    /// confusion about.
     ///
-    /// The session pair is stored exactly as declared. The `type` attribute's
-    /// `BuySide`/`SellSide` portion says which side wrote the file, so the
-    /// counterparty sees the same pair reversed - which is why a reader
-    /// matching a session tries both orders, and why nothing here reverses
-    /// anything.
+    /// `sendercompid` and `targetcompid` are read past. A branch is a
+    /// dictionary, and which two parties spoke it is a fact about a run rather
+    /// than about a vocabulary - the same file written from the other side
+    /// declares the pair reversed and describes the same dialect.
     fn read_root(&mut self, element: &BytesStart<'_>) -> Result<()> {
         let version = self
             .attribute(element, "fix-version")?
             .and_then(|held| held.parse::<Version>().ok())
             .unwrap_or(self.branch.version());
-        let sender = self
-            .attribute(element, "sendercompid")?
-            .unwrap_or_else(|| self.branch.sender_comp_id().to_owned());
-        let target = self
-            .attribute(element, "targetcompid")?
-            .unwrap_or_else(|| self.branch.target_comp_id().to_owned());
-        self.branch = FixBranch::from_parts(self.branch.name(), version, target, sender)?;
+        self.branch = FixBranch::from_parts(self.branch.name(), version)?;
         Ok(())
     }
 

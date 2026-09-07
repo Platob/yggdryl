@@ -234,8 +234,6 @@ pub struct FixBranch {
     name: SmolStr,
     digest: u32,
     version: Version,
-    target_comp_id: SmolStr,
-    sender_comp_id: SmolStr,
     // The other spellings this dictionary answers to. Empty for every branch
     // a field's metadata is parsed into, which is the probe path, so the
     // common case allocates nothing here either.
@@ -249,8 +247,6 @@ impl FixBranch {
         name: SmolStr::new_static(""),
         digest: STANDARD_BRANCH_DIGEST,
         version: Version::MIN,
-        target_comp_id: SmolStr::new_static(""),
-        sender_comp_id: SmolStr::new_static(""),
         aliases: Vec::new(),
     };
 
@@ -273,17 +269,10 @@ impl FixBranch {
         <Self as FromStr>::from_str(value)
     }
 
-    /// Builds a complete branch, validating and folding `name` once.
-    pub fn from_parts(
-        name: &str,
-        version: Version,
-        target_comp_id: impl Into<SmolStr>,
-        sender_comp_id: impl Into<SmolStr>,
-    ) -> Result<Self> {
+    /// Builds a versioned branch, validating and folding `name` once.
+    pub fn from_parts(name: &str, version: Version) -> Result<Self> {
         let mut branch = Self::from_str(name)?;
         branch.version = version;
-        branch.target_comp_id = target_comp_id.into();
-        branch.sender_comp_id = sender_comp_id.into();
         Ok(branch)
     }
 
@@ -371,16 +360,6 @@ impl FixBranch {
         self.version
     }
 
-    /// Returns the session target as declared.
-    pub fn target_comp_id(&self) -> &str {
-        self.target_comp_id.as_str()
-    }
-
-    /// Returns the session sender as declared.
-    pub fn sender_comp_id(&self) -> &str {
-        self.sender_comp_id.as_str()
-    }
-
     /// Returns whether this is the FIX specification's own dictionary.
     pub fn is_standard(&self) -> bool {
         self.name.is_empty()
@@ -445,8 +424,6 @@ impl FromStr for FixBranch {
             name,
             digest,
             version: Version::default(),
-            target_comp_id: SmolStr::default(),
-            sender_comp_id: SmolStr::default(),
             aliases: Vec::new(),
         })
     }

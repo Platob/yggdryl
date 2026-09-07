@@ -264,10 +264,9 @@ impl FixReader {
 
     /// The one build every reader funnels into.
     fn build(&self, pairs: &[(&[u8], &[u8])]) -> Result<FixMsg> {
-        let branch = self
-            .branch
-            .clone()
-            .unwrap_or_else(|| self.infer_branch(pairs));
+        // A row states no dialect, so the caller's pin is the only source: a
+        // capture is one session and the branch is a fact about the run.
+        let branch = self.branch.clone().unwrap_or_default();
         let version = self
             .source_version
             .or_else(|| self.infer_version(pairs, &branch));
@@ -310,30 +309,6 @@ impl FixReader {
             _ => return &[],
         };
         item.fields()
-    }
-
-    /// The dialect a row is written in, when the caller pinned none.
-    ///
-    /// The first step is identity rather than inference: `SenderCompID(49)`
-    /// and `TargetCompID(56)` are in every header and a branch declares that
-    /// pair, so one lookup answers exactly. Both orders are tried, because a
-    /// dictionary declares the session from its own side and an inbound
-    /// message carries the pair reversed.
-    fn infer_branch(&self, pairs: &[(&[u8], &[u8])]) -> FixBranch {
-        let sender = value_of(pairs, b"49");
-        let target = value_of(pairs, b"56");
-        if let (Some(sender), Some(target)) = (sender, target) {
-            let sender = String::from_utf8_lossy(sender);
-            let target = String::from_utf8_lossy(target);
-            if let Some(branch) = self
-                .registry
-                .branch_for_session(&sender, &target)
-                .or_else(|| self.registry.branch_for_session(&target, &sender))
-            {
-                return branch.clone();
-            }
-        }
-        FixBranch::STANDARD
     }
 
     /// The version an arriving row is written in, when the caller pinned none.

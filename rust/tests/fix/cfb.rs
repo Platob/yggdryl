@@ -396,17 +396,14 @@ fn the_root_element_is_the_branch_record() {
         .branch_named("bloomberg")
         .expect("the named branch");
     assert_eq!(held.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(held.sender_comp_id(), "OURDESK");
-    assert_eq!(held.target_comp_id(), "BLPFIX");
 
-    // The same session written from the other side declares the pair
-    // reversed, and both are matched because a reader tries both orders.
+    // The session pair the root declares is read past rather than recorded:
+    // a branch is a dictionary, and which two parties spoke it is a fact
+    // about a run rather than about the vocabulary. The same file written
+    // from the other side therefore lands identically.
     let (other, _) = FixRegistry::from_cfb(&handle(SELLSIDE), Some(&branch())).unwrap();
     let reversed = other.branch_named("bloomberg").expect("the named branch");
-    assert_eq!(reversed.sender_comp_id(), "BLPFIX");
-    assert_eq!(reversed.target_comp_id(), "OURDESK");
-    assert!(registry.branch_for_session("OURDESK", "BLPFIX").is_some());
-    assert!(other.branch_for_session("BLPFIX", "OURDESK").is_some());
+    assert_eq!(reversed, held);
 
     // A file parsed with no branch lands in the standard branch, which is
     // right for one read only for its vocabulary.
@@ -853,8 +850,6 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // would have lost: a field carries its branch's name and nothing else.
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(branch.sender_comp_id(), "OURDESK");
-    assert_eq!(branch.target_comp_id(), "BLPFIX");
 
     // The file a definition arrived as is a spelling people use for it, so the
     // stem answers beside the name and beside what the caller asked for.
@@ -879,8 +874,8 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     assert_eq!((added, merged), (0, 1), "SELLSIDE declares only tag 35");
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);
-    // And the record is the second file's, whole: it points the other way.
-    assert_eq!(branch.sender_comp_id(), "BLPFIX");
+    // And the record is the second file's, whole.
+    assert_eq!(branch.version(), "4.4".parse::<Version>().unwrap());
 
     // With no branch named, the stem is the name - and a name is not an alias
     // of itself, so nothing is invented.

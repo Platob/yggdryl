@@ -730,9 +730,7 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     )
     dictionary.set_branch(cme)
 
-    incoming = FixBranch(
-        "cme", version="4.4", sender_comp_id="BANKX", target_comp_id="CME", aliases=["cmegroup"]
-    )
+    incoming = FixBranch("cme", version="4.4", aliases=["cmegroup"])
     other = FixRegistry.from_fields(
         [_field("SYMBOL", "utf8", 55), _field("VenueTime", "utf8", 5060, branch="cme")]
     )
@@ -747,7 +745,6 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     held = dictionary.branch_named("cme")
     assert held is not None
     assert held.version == "4.4"
-    assert held.sender_comp_id == "BANKX"
     assert held.aliases == ["globex", "cmegroup"]
     for spelling in ("globex", "CMEGROUP", "cme"):
         found = dictionary.branch_named(spelling)
@@ -769,8 +766,6 @@ def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
     branch = registry.branch_named("morgan")
     assert branch is not None
     assert branch.version == "4.4"
-    assert branch.sender_comp_id == "OURDESK"
-    assert branch.target_comp_id == "BLPFIX"
 
     # The file a definition arrived as is a spelling people use for it.
     assert branch.aliases == ["mstanley", "msfix44"]
@@ -1267,27 +1262,25 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert held.metadata["partition:sources"] == '["30004"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
-def test_a_branch_declaration_carries_its_dialect_and_its_session() -> None:
+def test_a_branch_declaration_carries_its_dialect() -> None:
     import copy
     import pickle
 
     from yggdryl.fix import FixBranch
 
-    branch = FixBranch("CME", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    branch = FixBranch("CME", version="4.4")
 
     # The name is folded once and is the identity; the rest describes it.
     assert branch.name == "cme"
     assert str(branch) == "cme"
     assert branch.version == "4.4"
-    assert branch.sender_comp_id == "ME"
-    assert branch.target_comp_id == "CLIENT"
     assert not branch.is_standard()
     assert branch.digest() == FixBranch("cme").digest()
 
     # Equality is the whole declaration, not the name it is keyed by: two
-    # branches naming the same dictionary can still declare different sessions.
+    # branches naming the same dictionary can still declare different versions.
     assert branch != FixBranch.from_value("cme")
-    assert branch == FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    assert branch == FixBranch("cme", version="4.4")
     assert hash(branch) == hash(copy.copy(branch))
     assert copy.copy(branch) == branch
     assert pickle.loads(pickle.dumps(branch)) == branch
@@ -1311,18 +1304,13 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     registry = FixRegistry()
     assert registry.branches() == []
 
-    branch = FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    branch = FixBranch("cme", version="4.4")
     registry.set_branch(branch)
 
     assert [held.name for held in registry.branches()] == ["cme"]
     assert registry.branch_named("cme") == branch
     assert registry.branch_named("CME").version == "4.4"
     assert registry.branch_named("absent") is None
-
-    # A session is both CompIDs, folded, or it is no session.
-    assert registry.branch_for_session("me", "client") == branch
-    assert registry.branch_for_session("me", "other") is None
-    assert registry.branch_for_session("", "") is None
 
     # An identifier carries the branch's identity, so it resolves to the
     # declaration without a second lookup. A non-standard branch claims a tag
