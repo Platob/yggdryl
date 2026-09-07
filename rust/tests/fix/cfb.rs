@@ -147,6 +147,40 @@ const ORIENTATIONS: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A file that stresses what a map's name reaches and what one `entry` may
+/// say: a spelling an earlier field folds onto, whitespace an editor left
+/// behind, an entry stating nothing, and one repeating what another claimed.
+const AWKWARD: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="100" alt="Ex_Destination" type="string" />
+		<vocabulary-tag name="20000" alt="ExDestination" type="string" />
+		<vocabulary-tag name="59" alt="TimeInForce" type="char" />
+		<vocabulary-tag name="4" alt="AdvSide" type="char" />
+	</vocabulary>
+	<maps>
+		<map name="ExDestination" read-only="false">
+			<entries><entry key="XPAR" value="paris" /></entries>
+		</map>
+		<map name=" TimeInForce " read-only="false">
+			<entries>
+				<entry key="0" value="day" />
+				<entry key="1" value="day" />
+				<entry key="2" value="" />
+				<entry value="atthecrossing" />
+				<entry key="6" value="goodtilldate" />
+			</entries>
+		</map>
+		<map name="ADVSIDE" read-only="false">
+			<entries>
+				<entry key="buy" value="B" />
+				<entry key="bid" value="B" />
+			</entries>
+		</map>
+	</maps>
+</cplugin-configuration>
+"#;
+
 /// A second counterparty's file: one tag both declare, one only this one does.
 const OVERLAY: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 <cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="OURDESK" sendercompid="MSFIX">
@@ -550,6 +584,41 @@ fn a_map_is_oriented_by_its_name_and_never_by_the_shape_of_an_entry() {
 }
 
 #[test]
+fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
+    let (registry, _) = parse(AWKWARD);
+
+    // `Ex_Destination` folds onto `ExDestination` and is declared first, so
+    // resolving by the fold alone would put the set on the wrong tag and,
+    // failing the strict compare there, read it backwards as well.
+    let destination = registry.field_by_tag(20000).expect("ExDestination");
+    assert_eq!(destination.as_fix().code_value("paris"), Some("XPAR"));
+    assert_eq!(
+        registry.field_by_tag(100).unwrap().as_fix().codes().count(),
+        0,
+    );
+
+    // Whitespace around a name is not a spelling, so it neither breaks the
+    // match nor flips the orientation. An entry stating nothing on a side is
+    // dropped whether it says so with an empty attribute or with none, and so
+    // is one repeating a name an earlier entry claimed: a code set may not
+    // name one member twice, and one contradictory entry is not a reason to
+    // refuse the file.
+    let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
+    let view = timeinforce.as_fix();
+    assert_eq!(view.code_value("day"), Some("0"));
+    assert_eq!(view.code_value("goodtilldate"), Some("6"));
+    assert_eq!(view.codes().count(), 2);
+
+    // Two names for one wire value is an alias rather than a contradiction,
+    // so both are kept.
+    let advside = registry.field_by_tag(4).expect("AdvSide");
+    let view = advside.as_fix();
+    assert_eq!(view.code_value("buy"), Some("B"));
+    assert_eq!(view.code_value("bid"), Some("B"));
+    assert_eq!(view.codes().count(), 2);
+}
+
+#[test]
 fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
     let fields =
         FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).expect("a readable CBlock");
@@ -834,4 +903,3 @@ fn reading_a_cblock_in_whole_is_one_mutation() {
     assert_eq!(seeded, before, "neither the branch nor a field arrived");
     assert!(seeded.branch_named("bloomberg").is_none());
 }
-

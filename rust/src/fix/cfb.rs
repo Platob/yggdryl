@@ -539,7 +539,16 @@ impl<'doc> Parse<'doc> {
         Ok(codes)
     }
 
-    /// One `entry` as a code, oriented and deduplicated by its wire value.
+    /// One `entry` as a code, oriented the way the map's name says.
+    ///
+    /// An empty attribute says what an absent one says, so both drop the
+    /// entry rather than refuse the file, and so does one repeating a
+    /// symbolic name an earlier entry claimed - compared the way
+    /// [`FixCodes::render`](super::codes::FixCodes) compares it, because a
+    /// name twice is the one thing a code set may not carry and a file that
+    /// forgives a map naming no field at all should not be refused whole over
+    /// one contradictory entry. A wire value twice is not contradictory: two
+    /// names for one value is an alias, which a code set states.
     fn push_entry(
         &self,
         element: &BytesStart<'_>,
@@ -547,13 +556,18 @@ impl<'doc> Parse<'doc> {
         codes: &mut Vec<FixCode>,
     ) -> Result<()> {
         let (Some(key), Some(held)) = (
-            self.attribute(element, "key")?,
-            self.attribute(element, "value")?,
+            self.attribute(element, "key")?
+                .filter(|held| !held.is_empty()),
+            self.attribute(element, "value")?
+                .filter(|held| !held.is_empty()),
         ) else {
             return Ok(());
         };
         let (value, name) = if fix { (key, held) } else { (held, key) };
-        if !codes.iter().any(|code| code.value() == value) {
+        if !codes
+            .iter()
+            .any(|code| code.name().eq_ignore_ascii_case(&name))
+        {
             codes.push(FixCode::new(name, value));
         }
         Ok(())
@@ -562,28 +576,44 @@ impl<'doc> Parse<'doc> {
     /// The vocabulary position a map decodes, and whether it is written the
     /// FIX way round.
     ///
-    /// Resolution folds case and separators like every other name in this
-    /// crate, so `ADVSIDE` finds `AdvSide`. Orientation is the stricter
-    /// question and a separate one, because a CBlock writes its maps two ways:
-    /// `key="0" value="day"` under a map named for the field as the file
-    /// displays it, and `key="buy" value="B"` under one named the UlMessage
-    /// way. Nothing but the map's name separates them - both attributes are
-    /// free text, and a length or a word shape is a guess that puts `B` in a
-    /// name and `buy` on the wire as soon as a code set is spelled the other
-    /// way round.
+    /// A CBlock writes its maps two ways: `key="0" value="day"` under a map
+    /// named for the field as the file spells it, and `key="buy" value="B"`
+    /// under one named the UlMessage way. Nothing in an entry separates
+    /// them: both attributes are free text, and a length or a word shape is
+    /// a guess that puts `B` in a name and `buy` on the wire as soon as a
+    /// code set is spelled the other way round. The map's name is what does,
+    /// so it decides once for the whole map.
     ///
-    /// So the name is compared byte for byte against the field's own
-    /// spelling - the `alt` the vocabulary declared, or the tag itself where
-    /// it declared none. Exactly equal is the FIX way round and `key` is the
-    /// wire value; anything else, `ADVSIDE` against `AdvSide` included, is the
-    /// UlMessage way and `value` is.
+    /// A name equal to [`spelled`] *byte for byte* is the FIX way and `key`
+    /// is the wire value. Anything else is the UlMessage way and `value` is:
+    /// `ADVSIDE`, `advside` and `Adv_Side` alike, because none of them is how
+    /// the file spells `AdvSide`. Only resolution is forgiving - it folds
+    /// case and separators like every other name in this crate, so all four
+    /// reach the field.
+    ///
+    /// The spelling is tried before the fold, and both from the end. Two tags
+    /// can fold to one name across branches, and the one a map *spells* is
+    /// the one it decodes; and where a file declares one tag twice, the last
+    /// declaration is the entry the dictionary keeps.
+    ///
+    /// The rule reads `alt` as the FIX spelling, which is what the corpus
+    /// writes. A file spelling it the UlMessage way instead - `alt="SIDE"`
+    /// under `<map name="SIDE">` - is read the FIX way and inverted, and
+    /// nothing in the document separates that from a map that means it.
     fn decodes(&self, named: &str) -> Option<(usize, bool)> {
+        let named = named.trim();
+        if let Some(at) = self
+            .vocabulary
+            .iter()
+            .rposition(|(_, field)| spelled(field) == named)
+        {
+            return Some((at, true));
+        }
         let at = self
             .vocabulary
             .iter()
-            .position(|(_, field)| crate::types::folds_equal(field.name(), named))?;
-        let field = &self.vocabulary[at].1;
-        Some((at, field.display().unwrap_or_else(|| field.name()) == named))
+            .rposition(|(_, field)| crate::types::folds_equal(field.name(), named))?;
+        Some((at, false))
     }
 
     /// Puts one code set on the vocabulary field its map decodes.
@@ -913,4 +943,17 @@ impl Named for quick_xml::events::BytesEnd<'_> {
     fn local(&self) -> quick_xml::name::LocalName<'_> {
         self.local_name()
     }
+}
+
+/// How a CBlock spells one field: the `alt` its `vocabulary-tag` declared, or
+/// the tag itself where it declared none.
+///
+/// The fallback is an identity rather than a guess, and [`Parse::push_tag`]
+/// is what makes it one: it stores `display` exactly when the `alt` differs
+/// from its own lower-case form, and names the field that same lower-case
+/// form - so no `display` means the name already *is* the declared spelling.
+/// That coupling is load-bearing, because [`Parse::decodes`] orients a map by
+/// comparing its name against this.
+fn spelled(field: &Field) -> &str {
+    field.display().unwrap_or_else(|| field.name()).trim()
 }
