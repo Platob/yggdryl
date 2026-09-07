@@ -933,6 +933,14 @@ test('a reader parses every frame shape the core reads', () => {
       'binary',
     ),
   )
+  const inferred = reader.bytes(
+    Buffer.from(
+      '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
+        '|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|',
+      'binary',
+    ),
+  )
+  assert.ok(inferred.equals(bridge))
   assert.equal(bridge.byTag(55).toJSON(), 'TTF')
   assert.equal(bridge.byTag(38).toJSON(), 1200)
   assert.equal(bridge.byTag(44).toJSON(), 41.25)

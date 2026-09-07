@@ -54,6 +54,19 @@ fn column<'batch>(
     batch.column(index).as_ref()
 }
 
+/// One projected scalar in the first row of a batch.
+fn first_value(batch: &RecordBatch, name: &str) -> Scalar {
+    let index = batch
+        .schema()
+        .index_of(name)
+        .unwrap_or_else(|_| panic!("a {name} column"));
+    let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
+    rows.as_sequence().expect("rows")[0]
+        .as_sequence()
+        .expect("columns")[index]
+        .clone()
+}
+
 #[test]
 fn the_schema_is_decided_before_the_first_row_is_read() {
     let registry = registry();
@@ -110,6 +123,41 @@ fn a_row_in_is_a_row_out() {
     let first = &batches[0];
     let msgtype = column(first, "35");
     assert!(msgtype.is_valid(0), "a framed row states its type");
+}
+
+#[test]
+fn both_batch_sources_use_separatorless_group_inference() {
+    const BRIDGE: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
+|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
+
+    let registry = registry();
+    let rows = FixBatchReader::from_rows(
+        Arc::clone(&registry),
+        [Ok(BRIDGE.to_vec())],
+        FixOptions::new(),
+    )
+    .expect("a byte-row reader");
+    let row_batch = rows.into_iter().next().unwrap().unwrap();
+
+    let capture = DataType::from_fields([DataType::Binary.required_field("body")])
+        .unwrap()
+        .required_field("capture");
+    let values = Scalar::from_sequence([Scalar::from_sequence([Scalar::from(BRIDGE.to_vec())])]);
+    let source = yggdryl::arrow::batch_from_value(&capture, &values).unwrap();
+    let source = yggdryl::arrow::batch_reader(source.schema(), [source]);
+    let columns = FixBatchReader::from_column(registry, source, "body", FixOptions::new())
+        .expect("a payload-column reader");
+    let column_batch = columns.into_iter().next().unwrap().unwrap();
+
+    for batch in [&row_batch, &column_batch] {
+        let group = first_value(batch, "453");
+        let parties = group.as_sequence().expect("the party group");
+        assert_eq!(parties.len(), 1);
+        let members = parties[0].as_sequence().expect("one occurrence");
+        assert_eq!(members[0].as_str(), Some("BUYSIDE"));
+        assert_eq!(members[1].as_str(), Some("D"));
+        assert_eq!(members[2].as_i64(), Some(1));
+    }
 }
 
 #[test]
