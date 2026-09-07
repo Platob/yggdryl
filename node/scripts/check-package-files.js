@@ -27,9 +27,19 @@ if (result.status !== 0) {
 
 let report
 try {
-  report = JSON.parse(result.stdout)[0]
+  const packed = JSON.parse(result.stdout)
+  // npm answers with a list of packed packages up to npm 11 and with an object
+  // keyed by package name from npm 12. The release job installs the newest npm
+  // to reach trusted publishing while a checkout uses the one Node bundles, so
+  // both shapes are read rather than the one this machine happens to have.
+  report = Array.isArray(packed) ? packed[0] : Object.values(packed)[0]
 } catch (cause) {
   throw new Error('npm pack --dry-run did not return its JSON report', { cause })
+}
+if (report?.files === undefined) {
+  throw new Error(
+    `npm pack --dry-run reported no files: ${result.stdout.slice(0, 200)}`,
+  )
 }
 
 const files = new Set(report.files.map(({ path }) => path.replaceAll('\\', '/')))

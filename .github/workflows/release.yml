@@ -300,7 +300,7 @@ jobs:
           import pyarrow as pa
 
           from yggdryl import IOBase
-          from yggdryl.iceberg import Table
+          from yggdryl.media.iceberg import Table
 
           columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
           root = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-release-")) / "smoke"

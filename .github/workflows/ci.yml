@@ -148,15 +148,21 @@ jobs:
         run: |
           python - <<'EOF'
           import glob
+          import tomllib
           import zipfile
 
+          # The name maturin gives the data directory carries the version, so
+          # the expectation is read from the manifest rather than spelled here
+          # - a release bump changes the wheel, not this assertion.
+          with open("python/pyproject.toml", "rb") as manifest:
+              version = tomllib.load(manifest)["project"]["version"]
           wheel, = glob.glob("python/dist/*.whl")
           scripts = [
               name
               for name in zipfile.ZipFile(wheel).namelist()
               if name.endswith(".data/scripts/ygg")
           ]
-          assert scripts == ["yggdryl-0.1.1.data/scripts/ygg"], scripts
+          assert scripts == [f"yggdryl-{version}.data/scripts/ygg"], scripts
           print(f"{wheel} carries {scripts[0]}")
           EOF
       - uses: actions/upload-artifact@v4
