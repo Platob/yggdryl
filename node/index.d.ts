@@ -1084,6 +1084,46 @@ export declare class Field {
 export type JsField = Field
 
 /**
+ * One dictionary, reading captured lines into messages.
+ *
+ * The reader is the whole parse surface: a captured line with a verb in front
+ * of it, a bare frame, a numeric frame with a stated separator, a bridge's
+ * name/value text, or pairs a caller already has. Each redirects to the core
+ * method of the same name, so nothing here decides a dialect, a version or a
+ * separator - it only carries what JavaScript said across.
+ *
+ * A reader caches the projection of whichever version it was last asked for,
+ * so a capture read at one version pays the resolution once rather than once
+ * per row. Cloning one gives it a cache of its own, exactly as the core does.
+ */
+export declare class FixCodec {
+  /** Open a reader over one dictionary, or over the process default. */
+  constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
+  /** The dictionary this reader resolves against, sharing it. */
+  get registry(): FixRegistry
+  /** One captured line, whatever it is wrapped in. */
+  readLine(row: Buffer): FixMsg
+  /** One numeric frame, split on the separator stated or inferred. */
+  readFixLine(body: Buffer, separator?: number | undefined | null): FixMsg
+  /** One bridge frame, whose keys are names rather than tags. */
+  readUllinkLine(body: Buffer): FixMsg
+  /** One FIXML row, whose fields are XML attributes. */
+  readFixmlLine(body: Buffer): FixMsg
+  /** Pairs a caller already holds, in the order they arrived. */
+  readPairs(pairs: Array<[string, string]>): FixMsg
+  /**
+   * A cheap clone, with a projection cache of its own.
+   *
+   * Two readers differing in version would otherwise clear each other's
+   * cache every row, which is exactly when a reader is usually cloned.
+   */
+  clone(): FixCodec
+  /** How this reader renders: the dictionary it reads against. */
+  toString(): string
+}
+export type JsFixCodec = FixCodec
+
+/**
  * The fields of a registry, in ascending canonical-identifier order.
  *
  * Answered by `keys()`. It advances with the core's own cursor - the registry
@@ -1296,46 +1336,6 @@ export declare class FixProjection {
   toString(): string
 }
 export type JsFixProjection = FixProjection
-
-/**
- * One dictionary, reading captured lines into messages.
- *
- * The reader is the whole parse surface: a captured line with a verb in front
- * of it, a bare frame, a numeric frame with a stated separator, a bridge's
- * name/value text, or pairs a caller already has. Each redirects to the core
- * method of the same name, so nothing here decides a dialect, a version or a
- * separator - it only carries what JavaScript said across.
- *
- * A reader caches the projection of whichever version it was last asked for,
- * so a capture read at one version pays the resolution once rather than once
- * per row. Cloning one gives it a cache of its own, exactly as the core does.
- */
-export declare class FixReader {
-  /** Open a reader over one dictionary, or over the process default. */
-  constructor(registry?: FixRegistry | undefined | null, options?: FixReaderOptions | undefined | null)
-  /** The dictionary this reader resolves against, sharing it. */
-  get registry(): FixRegistry
-  /** One captured line, whatever it is wrapped in. */
-  text(row: string): FixMsg
-  /** One captured line as bytes, whatever it is wrapped in. */
-  bytes(row: Buffer): FixMsg
-  /** One numeric frame with the separator stated rather than inferred. */
-  fixtext(body: Buffer, separator?: number | undefined | null): FixMsg
-  /** One bridge frame, whose keys are names rather than tags. */
-  ultext(body: Buffer): FixMsg
-  /** Pairs a caller already holds, in the order they arrived. */
-  pairs(pairs: Array<[string, string]>): FixMsg
-  /**
-   * A cheap clone, with a projection cache of its own.
-   *
-   * Two readers differing in version would otherwise clear each other's
-   * cache every row, which is exactly when a reader is usually cloned.
-   */
-  clone(): FixReader
-  /** How this reader renders: the dictionary it reads against. */
-  toString(): string
-}
-export type JsFixReader = FixReader
 
 /**
  * FIX field definitions resolved by identifier, by tag, by name, or by dotted
@@ -4224,20 +4224,18 @@ export interface FileSelector {
   allowNotFound: boolean
 }
 
-/** The fields this crate defines on its own branch, in tag order. */
-export declare function fixCrateFields(): Array<JsField>
-
 /** How a reader is pinned, where a caller pins it at all. */
-export interface FixReaderOptions {
+export interface FixCodecOptions {
   /** The dialect every row is read in, rather than the one each row implies. */
   branch?: string
-  /** The version arriving rows are written in. */
-  sourceVersion?: string
   /** The version built messages are expressed in. */
-  targetVersion?: string
+  version?: string
   /** The spellings that mean "nothing was sent". */
   nullValues?: Array<string>
 }
+
+/** The fields this crate defines on its own branch, in tag order. */
+export declare function fixCrateFields(): Array<JsField>
 
 /**
  * The fixed root every message answers as, built from one dictionary.

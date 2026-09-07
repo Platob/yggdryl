@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::Criterion;
-use yggdryl::FixReader;
+use yggdryl::FixCodec;
 
 use super::seed;
 
@@ -13,9 +13,13 @@ const ORDER: &str = "8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|52=20240102-1
 const PARTIED: &str = "MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=SYNTH-01\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=CLEARER-9\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=4";
 
 pub fn benchmarks(criterion: &mut Criterion) {
-    let reader = FixReader::new(Arc::new(seed()));
-    let order = reader.text(ORDER).expect("a readable order");
-    let partied = reader.text(PARTIED).expect("a readable bridge row");
+    let reader = FixCodec::new(Arc::new(seed()));
+    let order = reader
+        .read_line(ORDER.as_bytes())
+        .expect("a readable order");
+    let partied = reader
+        .read_line(PARTIED.as_bytes())
+        .expect("a readable bridge row");
     let mut group = criterion.benchmark_group("fix/lift");
 
     // One facet, which is what a monitor asks for per row.

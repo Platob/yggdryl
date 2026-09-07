@@ -352,11 +352,11 @@ impl FixMsg {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixReader, FixRegistry};
+    /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    /// let reader = FixReader::new(Arc::new(registry));
-    /// let order = reader.text("8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|")?;
+    /// let reader = FixCodec::new(Arc::new(registry));
+    /// let order = reader.read_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|")?;
     ///
     /// assert_eq!(order.lifted("id").and_then(yggdryl::Scalar::as_str), Some("ORDER-1"));
     /// assert_eq!(order.lifted("symbol").and_then(yggdryl::Scalar::as_str), Some("AAPL"));

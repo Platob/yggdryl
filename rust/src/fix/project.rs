@@ -7,7 +7,7 @@
 //! it ten million times for an answer that changed on none of them.
 //!
 //! It is a pure function of a field and a version, so it is cached on the
-//! [reader](super::FixReader) that spans the rows rather than recomputed
+//! [reader](super::FixCodec) that spans the rows rather than recomputed
 //! inside each one. A capture is one session at one version, which is why the
 //! cache is one generation deep: a version it was not built for replaces it
 //! rather than growing a second, so a reader whose version genuinely varies

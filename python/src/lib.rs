@@ -423,7 +423,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixFieldIterator>()?;
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
-    module.add_class::<fix::PyFixReader>()?;
+    module.add_class::<fix::PyFixCodec>()?;
     module.add_class::<fix::PyFixProjection>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;

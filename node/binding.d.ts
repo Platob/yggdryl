@@ -70,7 +70,7 @@ import {
   DataFile,
   FixMsg,
   FixProjection,
-  FixReader,
+  FixCodec,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -95,7 +95,7 @@ export type {
   DataFile,
   FixMsg,
   FixProjection,
-  FixReader,
+  FixCodec,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -2717,7 +2717,7 @@ export interface Fix {
   /** A FIX message: a value plus the registry that types it. */
   readonly FixMsg: FixMsgConstructor
   /** One dictionary, reading captured lines into messages. */
-  readonly FixReader: typeof FixReader
+  readonly FixCodec: typeof FixCodec
   /** Where each fixed column sits, resolved once against one dictionary. */
   readonly FixProjection: typeof FixProjection
   /**

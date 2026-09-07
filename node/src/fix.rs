@@ -20,8 +20,8 @@ use napi::JsValue as _;
 use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unknown, ValueType};
 use napi_derive::napi;
 use yggdryl::{
-    Field as CoreField, FixBranch as CoreFixBranch, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixProjection as CoreFixProjection, FixReader as CoreFixReader,
+    Field as CoreField, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec, FixId as CoreFixId,
+    FixKey, FixMsg as CoreFixMsg, FixProjection as CoreFixProjection,
     FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
@@ -961,37 +961,34 @@ fn answered(value: &Scalar) -> Option<JsScalar> {
 /// A reader caches the projection of whichever version it was last asked for,
 /// so a capture read at one version pays the resolution once rather than once
 /// per row. Cloning one gives it a cache of its own, exactly as the core does.
-#[napi(js_name = "FixReader")]
-pub struct JsFixReader {
-    inner: CoreFixReader,
+#[napi(js_name = "FixCodec")]
+pub struct JsFixCodec {
+    inner: CoreFixCodec,
     registry: Arc<CoreFixRegistry>,
 }
 
 #[napi]
-impl JsFixReader {
+impl JsFixCodec {
     /// Open a reader over one dictionary, or over the process default.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
-        options: Option<FixReaderOptions>,
+        options: Option<FixCodecOptions>,
     ) -> Result<Self> {
         let registry = match registry {
             Some(held) => Arc::clone(&held.inner),
             None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
         };
         let options = options.unwrap_or_default();
-        let mut inner = CoreFixReader::new(Arc::clone(&registry));
+        let mut inner = CoreFixCodec::new(Arc::clone(&registry));
         if let Some(held) = &options.branch {
-            inner = inner.branch(&branch_from_js(held)?);
+            inner = inner.with_branch(&branch_from_js(held)?);
         }
-        if let Some(held) = &options.source_version {
-            inner = inner.source_version(version_from_js(held)?);
-        }
-        if let Some(held) = &options.target_version {
-            inner = inner.target_version(version_from_js(held)?);
+        if let Some(held) = &options.version {
+            inner = inner.with_version(version_from_js(held)?);
         }
         if let Some(held) = options.null_values {
-            inner = inner.null_values(held);
+            inner = inner.with_null_values(held);
         }
         Ok(Self { inner, registry })
     }
@@ -1004,50 +1001,56 @@ impl JsFixReader {
 
     /// One captured line, whatever it is wrapped in.
     #[napi]
-    pub fn text(&self, row: String) -> Result<JsFixMsg> {
+    pub fn read_line(&self, row: Buffer) -> Result<JsFixMsg> {
         self.inner
-            .text(&row)
+            .read_line(&row)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
-    /// One captured line as bytes, whatever it is wrapped in.
+    /// One numeric frame, split on the separator stated or inferred.
     #[napi]
-    pub fn bytes(&self, row: Buffer) -> Result<JsFixMsg> {
-        self.inner
-            .bytes(&row)
-            .map(JsFixMsg::from_core)
-            .map_err(napi_error)
-    }
-
-    /// One numeric frame with the separator stated rather than inferred.
-    #[napi]
-    pub fn fixtext(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
-        let separator = separator_byte(separator)?;
-        self.inner
-            .fixtext(&body, separator)
+    pub fn read_fix_line(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
+        let codec = match separator {
+            Some(held) => self
+                .inner
+                .clone()
+                .with_separator(separator_byte(Some(held))?),
+            None => self.inner.clone(),
+        };
+        codec
+            .read_fix_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
     #[napi]
-    pub fn ultext(&self, body: Buffer) -> Result<JsFixMsg> {
+    pub fn read_ullink_line(&self, body: Buffer) -> Result<JsFixMsg> {
         self.inner
-            .ultext(&body)
+            .read_ullink_line(&body)
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// One FIXML row, whose fields are XML attributes.
+    #[napi]
+    pub fn read_fixml_line(&self, body: Buffer) -> Result<JsFixMsg> {
+        self.inner
+            .read_fixml_line(&body)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// Pairs a caller already holds, in the order they arrived.
     #[napi(ts_args_type = "pairs: Array<[string, string]>")]
-    pub fn pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
+    pub fn read_pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .pairs(borrowed)
+            .read_pairs(borrowed)
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
@@ -1067,20 +1070,18 @@ impl JsFixReader {
     /// How this reader renders: the dictionary it reads against.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
-        format!("FixReader({} fields)", self.registry.len())
+        format!("FixCodec({} fields)", self.registry.len())
     }
 }
 
 /// How a reader is pinned, where a caller pins it at all.
 #[napi(object)]
 #[derive(Default)]
-pub struct FixReaderOptions {
+pub struct FixCodecOptions {
     /// The dialect every row is read in, rather than the one each row implies.
     pub branch: Option<String>,
-    /// The version arriving rows are written in.
-    pub source_version: Option<String>,
     /// The version built messages are expressed in.
-    pub target_version: Option<String>,
+    pub version: Option<String>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Option<Vec<String>>,
 }

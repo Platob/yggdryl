@@ -9,7 +9,7 @@ Paste a captured line and read it: every tag named, every coded value translated
 | Input | A FIX frame in any separator a log writes it with — SOH, `\|`, `^A`, `;`, or one pair per line — with or without a direction verb in front |
 | Reads | Splits the pairs, names each key from `assets/fix.json`, translates each value through its code set, gathers occurrences under their counter, recomputes `BodyLength(9)` and `CheckSum(10)` |
 | States | Nothing the package did not answer: the names, types, wording, codes and layouts are the generated manifests, and the typed row, digest, facets and anomalies are shown only where the corpus holds the frame |
-| Package | [`FixReader`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; five entry points, one per shape a capture holds |
+| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; five entry points, one per shape a capture holds |
 | Pages | [Explorer](explorer.md) explores the dictionary, [Encode](encode.md) writes a frame |
 
 ## Use
@@ -22,11 +22,11 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     use std::sync::Arc;
 
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixReader, FixRegistry};
+    use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixReader::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let message = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")?;
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let message = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")?;
 
     assert_eq!(message.as_field().name(), "D");
     assert_eq!(message.by_tag(55)?.as_str(), Some("AAPL"));
@@ -44,10 +44,10 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     ```python
     from pathlib import Path
 
-    from yggdryl.fix import FixReader, FixRegistry
+    from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixReader(FixRegistry.from_handle(Path("config/fix").resolve()))
-    message = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")
+    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+    message = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")
 
     assert message.field.name == "D"
     assert message.by_tag(55).as_py() == "AAPL"
@@ -62,8 +62,8 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixReader(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-    const message = reader.text('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|')
+    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+    const message = reader.readLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|'))
 
     assert.equal(message.field.name, 'D')
     assert.equal(message.byTag(55).toJSON(), 'AAPL')

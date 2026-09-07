@@ -18,7 +18,7 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`FixReader` turns a captured line into one of those messages,
+:class:`FixCodec` turns a captured line into one of those messages,
 :func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
 the capture's own columns first, the dictionary's fixed columns after, one
 input row per output row -- and
@@ -48,7 +48,7 @@ from ._native import (
     FixBranch,
     FixMsg,
     FixProjection,
-    FixReader,
+    FixCodec,
     FixRegistry,
     fix_cfb_fields,
     fix_classify_arrow_array as classify_arrow_array,
@@ -67,7 +67,7 @@ __all__ = [
     "FixBranch",
     "FixMsg",
     "FixProjection",
-    "FixReader",
+    "FixCodec",
     "FixRegistry",
     "classify_arrow_array",
     "fix_cfb_fields",

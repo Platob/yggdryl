@@ -25,7 +25,7 @@ from yggdryl.fix import (
     FixBranch,
     FixMsg,
     FixProjection,
-    FixReader,
+    FixCodec,
     FixRegistry,
     STANDARD_BRANCH,
     USER_TAG_MAX,
@@ -1109,23 +1109,23 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
 
 def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
     """One reader, five entry points, and each is the core's own."""
-    reader = FixReader(seed)
+    reader = FixCodec(seed)
 
-    framed = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    framed = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
     assert framed.by_tag(55).as_py() == "AAPL"
-    assert reader.bytes(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
-    assert reader.fixtext(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert reader.read_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
         55
     ).as_py() == "AAPL"
-    assert reader.pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+    assert reader.read_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
 
     # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
     # whose value packs its members behind the two control bytes ULLINK uses.
-    bridge = reader.ultext(
+    bridge = reader.read_ullink_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
-    inferred = reader.bytes(
+    inferred = reader.read_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     )
@@ -1163,19 +1163,19 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     """A branch, a version and the spellings that mean nothing was sent."""
-    assert FixReader(seed).registry == seed
+    assert FixCodec(seed).registry == seed
 
     # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
     # pinned version is what decides which name the row answers to.
-    dated = FixReader(seed, source_version="4.2")
-    assert dated.text("8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+    dated = FixCodec(seed, version="4.2")
+    assert dated.read_line(b"8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
 
     # A stated absence produces no field at all.
-    silent = FixReader(seed, null_values=["<none>"])
-    assert silent.text("8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+    silent = FixCodec(seed, null_values=["<none>"])
+    assert silent.read_line(b"8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
 
     with pytest.raises(ValueError):
-        FixReader(seed, branch="not a branch")
+        FixCodec(seed, branch="not a branch")
 
 
 def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
@@ -1193,8 +1193,8 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     assert projection.carried == 0
     assert projection.field.name == "FixMessage"
 
-    reader = FixReader(seed)
-    row = reader.text("8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    reader = FixCodec(seed)
+    row = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
     assert len(row) == len(columns)
     assert row[projection.position_of(35)] == "D"
     assert row[projection.position_of(55)] == "AAPL"
@@ -1225,7 +1225,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A carried column carries no tag, so a row answers null there: the capture
     # fills it, and nothing in the message says what it held.
-    row = FixReader(seed).text("8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    row = FixCodec(seed).read_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
     assert row[0] is None
     assert row[carried.position_of(35)] == "D"
 

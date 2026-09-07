@@ -128883,7 +128883,7 @@
       "clock": "2024-02-01T12:34:56.123000000Z",
       "partition": null,
       "emitted": "8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))"
     },
     {
       "key": "execution",
@@ -129134,7 +129134,7 @@
       "clock": "2024-02-01T12:34:57.900000000Z",
       "partition": null,
       "emitted": "8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))"
     },
     {
       "key": "parties",
@@ -129360,7 +129360,7 @@
       "clock": "2024-02-01T12:35:02.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))"
     },
     {
       "key": "marketdata",
@@ -129496,7 +129496,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))"
     },
     {
       "key": "quote",
@@ -129631,7 +129631,7 @@
       "clock": "2024-02-01T12:35:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))"
     },
     {
       "key": "logon",
@@ -129765,7 +129765,7 @@
       "clock": "2024-02-01T12:00:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))"
     },
     {
       "key": "heartbeat",
@@ -129879,7 +129879,7 @@
       "clock": "2024-02-01T12:35:01.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))"
     },
     {
       "key": "reject",
@@ -130013,7 +130013,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))"
     },
     {
       "key": "cancelreplace",
@@ -130222,7 +130222,7 @@
       "clock": "2024-02-01T12:36:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))"
     },
     {
       "key": "isin",
@@ -130385,7 +130385,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))"
     },
     {
       "key": "securitydefinition",
@@ -130552,7 +130552,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))"
     },
     {
       "key": "bridge",
@@ -130663,7 +130663,7 @@
       "clock": null,
       "partition": null,
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0].PARTYID=BUYSIDE|NOPARTYIDS[0].PARTYIDSOURCE=D|NOPARTYIDS[0].PARTYROLE=1|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))"
     },
     {
       "key": "fixul",
@@ -130777,7 +130777,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))"
     },
     {
       "key": "unknown-tag",
@@ -130888,7 +130888,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))"
     },
     {
       "key": "untyped",
@@ -130984,7 +130984,7 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))"
     },
     {
       "key": "keyvalue",
@@ -131025,7 +131025,7 @@
       "clock": null,
       "partition": null,
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))"
     },
     {
       "key": "unframed",
@@ -131047,7 +131047,7 @@
       "clock": null,
       "partition": null,
       "emitted": "",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"no level printed by this plugin\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"no level printed by this plugin\", 'binary'))"
     },
     {
       "key": "unsealed",
@@ -131178,11 +131178,11 @@
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
-      "call": "new fix.FixReader(registry).bytes(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))"
     }
   ],
   "calls": {
     "registry": "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()",
-    "reader": "const reader = new fix.FixReader(registry)"
+    "reader": "const reader = new fix.FixCodec(registry)"
   }
 }

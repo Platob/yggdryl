@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::{FixReader, Version};
+use yggdryl::{FixCodec, Version};
 
 use super::seed;
 
@@ -19,7 +19,7 @@ const NAMED: &str =
 const GROUPED: &str = "MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=SYNTH-01\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=SYNTH-02\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=3";
 
 pub fn benchmarks(criterion: &mut Criterion) {
-    let reader = FixReader::new(Arc::new(seed()));
+    let reader = FixCodec::new(Arc::new(seed()));
     let mut group = criterion.benchmark_group("fix/read");
 
     for (label, row) in [
@@ -32,7 +32,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         group.bench_function(label, |bencher| {
             bencher.iter(|| {
                 black_box(&reader)
-                    .text(black_box(row))
+                    .read_line(black_box(row).as_bytes())
                     .expect("a readable row")
             });
         });
@@ -42,17 +42,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // which is the reason a version is resolved once and cached per field.
     let dated = reader
         .clone()
-        .source_version("4.2".parse::<Version>().expect("a version"));
+        .with_version("4.2".parse::<Version>().expect("a version"));
     group.bench_function("tagged_at_version", |bencher| {
         bencher.iter(|| {
             black_box(&dated)
-                .text(black_box(BARE))
+                .read_line(black_box(BARE).as_bytes())
                 .expect("a readable row")
         });
     });
 
     // The emit that closes the round trip, from the entries rather than the row.
-    let message = reader.text(BARE).expect("a readable row");
+    let message = reader.read_line(BARE.as_bytes()).expect("a readable row");
     group.bench_function("emit", |bencher| {
         bencher.iter(|| black_box(&message).into_bytes(black_box(b'|')));
     });

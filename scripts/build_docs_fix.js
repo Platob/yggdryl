@@ -451,7 +451,7 @@ function projected(registry) {
 /** One captured line, and everything the package answered about it. */
 function frameCase(registry, reader, projection, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
-  const held = reader.bytes(bytes)
+  const held = reader.readLine(bytes)
   const row = held.toRow(projection).toJSON()
 
   const columns = SHOWN.map((tag) => {
@@ -502,14 +502,14 @@ function frameCase(registry, reader, projection, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `new fix.FixReader(registry).bytes(Buffer.from(${JSON.stringify(line)}, 'binary'))`,
+    call: `new fix.FixCodec(registry).readLine(Buffer.from(${JSON.stringify(line)}, 'binary'))`,
   }
 }
 
 /** Build the index manifest and the detail manifest, in the order written. */
 function manifests() {
   const registry = dictionary()
-  const reader = new fix.FixReader(registry)
+  const reader = new fix.FixCodec(registry)
   const projection = new fix.FixProjection(registry, 'FixMessage')
   const layouts = JSON.parse(fs.readFileSync(path.join(CONFIG, 'layouts.json'), 'utf8'))
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
@@ -562,7 +562,7 @@ function manifests() {
     calls: {
       registry:
         "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()",
-      reader: 'const reader = new fix.FixReader(registry)',
+      reader: 'const reader = new fix.FixCodec(registry)',
     },
   }
   return { index, details }

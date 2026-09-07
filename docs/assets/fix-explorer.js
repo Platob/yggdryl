@@ -1333,7 +1333,7 @@
               ' package to see them.',
           ),
         )
-        view.append(call(`new fix.FixReader(registry).text(${JSON.stringify(text.trim())})`))
+        view.append(call(`new fix.FixCodec(registry).text(${JSON.stringify(text.trim())})`))
       }
     }
 
@@ -1684,8 +1684,8 @@
       out.append(
         actions,
         call(
-          `const reader = new fix.FixReader(registry)\n` +
-            `reader.bytes(Buffer.from(${JSON.stringify(full)}, 'binary')).toBytes(0x01)`,
+          `const reader = new fix.FixCodec(registry)\n` +
+            `reader.readLine(Buffer.from(${JSON.stringify(full)}, 'binary')).toBytes(0x01)`,
         ),
       )
     }

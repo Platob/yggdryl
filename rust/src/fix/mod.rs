@@ -156,6 +156,7 @@ mod anomaly;
 mod batch;
 mod build;
 mod cfb;
+mod codec;
 mod codes;
 mod constants;
 mod crated;
@@ -168,7 +169,6 @@ mod lift;
 mod lineage;
 mod msg;
 mod project;
-mod reader;
 mod registry;
 mod schema;
 mod store;
@@ -180,6 +180,7 @@ pub use anomaly::{FixAnomalies, FixAnomaly};
 pub use batch::{
     DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
 };
+pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
@@ -194,7 +195,6 @@ pub use field::FixAliases;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
-pub use reader::{DEFAULT_NULL_VALUES, FixReader};
 pub use registry::{FixFieldIter, FixRegistry};
 pub use schema::{
     BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
