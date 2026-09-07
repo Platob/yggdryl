@@ -28,14 +28,18 @@
 use std::sync::Arc;
 
 use crate::mime_type::line;
-use crate::{Error, Result, Version};
+use crate::{DataType, Error, Field, Result, Version};
 
 use super::build::{Builder, root_name};
 use super::project::Projections;
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
-const MEMBER_SEPARATOR: &[u8] = b"\x04\x03";
+///
+/// ULLINK writes EOT then ETX. A bridge relaying into a FIX session writes the
+/// protocol's own SOH instead, which is unambiguous inside an occurrence
+/// because no FIX value may contain one.
+const MEMBER_SEPARATORS: [&[u8]; 2] = [b"\x04\x03", b"\x01"];
 
 /// The spellings that mean "nothing was sent", by default.
 ///
@@ -166,10 +170,12 @@ impl FixReader {
         }
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
-        if numeric_frame(body) {
-            self.fixtext(body, separator_of(body))
-        } else {
-            self.ultext(body)
+        if !numeric_frame(body) {
+            return self.ultext(body);
+        }
+        match unescaped(body) {
+            Some(held) => self.fixtext(&held, 0x01),
+            None => self.fixtext(body, separator_of(body)),
         }
     }
 
@@ -222,7 +228,8 @@ impl FixReader {
             let bare = key.strip_prefix(b"#").unwrap_or(key);
             match group_index(bare) {
                 Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
-                    for (member, held) in members(value) {
+                    let declared = self.group_members(group);
+                    for (member, held) in members(value, declared) {
                         let mut rendered = Vec::with_capacity(group.len() + member.len() + 8);
                         rendered.extend_from_slice(group);
                         rendered.extend_from_slice(b"[");
@@ -284,6 +291,25 @@ impl FixReader {
         }
         let (field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
         FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)
+    }
+
+    /// The direct members the addressed repeating group declares.
+    ///
+    /// Bridge keys are rendered names even when their bytes are digits. Only
+    /// a nested field reached by that name can declare boundaries; an
+    /// unresolved group leaves its value whole.
+    fn group_members(&self, group: &[u8]) -> &[Field] {
+        let Ok(group) = std::str::from_utf8(group) else {
+            return &[];
+        };
+        let Some(field) = self.registry.get_field_by_name(group, self.branch.as_ref()) else {
+            return &[];
+        };
+        let item = match field.dtype() {
+            DataType::List(item) | DataType::LargeList(item) => item,
+            _ => return &[],
+        };
+        item.fields()
     }
 
     /// The dialect a row is written in, when the caller pinned none.
@@ -389,6 +415,33 @@ fn numeric_frame(body: &[u8]) -> bool {
     end > 0 && body[..end].iter().all(u8::is_ascii_digit)
 }
 
+/// One body with a printed SOH spelling rewritten to the byte it stands for.
+///
+/// A capture that cannot print `0x01` writes `^A`, `\x01`, `<SOH>` or `{SOH}`
+/// instead. It is the same frame; only the separator was escaped on the way
+/// into the log, so it is unescaped once here rather than taught to every
+/// splitter. `None` where nothing was escaped, so the ordinary path allocates
+/// nothing.
+fn unescaped(body: &[u8]) -> Option<Vec<u8>> {
+    if memchr::memchr(0x01, body).is_some() {
+        return None;
+    }
+    let marker = line::SOH_MARKERS
+        .into_iter()
+        .filter_map(|held| memchr::memmem::find(body, held).map(|at| (at, held)))
+        .min_by_key(|(at, _)| *at)
+        .map(|(_, held)| held)?;
+    let mut held = Vec::with_capacity(body.len());
+    let mut start = 0;
+    while let Some(at) = memchr::memmem::find(&body[start..], marker) {
+        held.extend_from_slice(&body[start..start + at]);
+        held.push(0x01);
+        start += at + marker.len();
+    }
+    held.extend_from_slice(&body[start..]);
+    Some(held)
+}
+
 /// The separator a numeric frame uses: SOH when the body holds one, else `|`.
 fn separator_of(body: &[u8]) -> u8 {
     if memchr::memchr(0x01, body).is_some() {
@@ -425,26 +478,100 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 
 /// The member pairs packed inside one occurrence's value.
 ///
-/// ULLINK separates them with EOT then ETX, and sometimes omits the separator
-/// after the first member while keeping the index. Where the separator is
-/// there it is used; where it is not, the run is handed back whole under one
-/// key rather than guessed at, because splitting it needs the group's own
-/// declared members and a wrong split invents a field.
-fn members(value: &[u8]) -> Vec<(&[u8], &[u8])> {
-    split_members(value)
+/// ULLINK separates them with EOT then ETX, and sometimes omits the separator.
+/// An explicit spelling is authoritative. With neither spelling present, only
+/// direct members declared by the addressed group can begin another pair.
+fn members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<(&'value [u8], &'value [u8])> {
+    split_members(value, declared)
         .into_iter()
         .filter_map(split_pair)
         .collect()
 }
 
 /// One occurrence's value split on the bridge's member separator.
-fn split_members(value: &[u8]) -> Vec<&[u8]> {
+///
+/// The first explicit spelling the run actually carries wins, and only that
+/// one splits it. With neither present, declared member names are boundaries;
+/// an unresolved run remains one segment.
+fn split_members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<&'value [u8]> {
+    let Some(separator) = MEMBER_SEPARATORS
+        .into_iter()
+        .find(|held| memchr::memmem::find(value, held).is_some())
+    else {
+        return split_on_declared_members(value, declared);
+    };
     let mut parts = Vec::new();
     let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&value[start..], MEMBER_SEPARATOR) {
+    while let Some(at) = memchr::memmem::find(&value[start..], separator) {
         parts.push(&value[start..start + at]);
-        start += at + MEMBER_SEPARATOR.len();
+        start += at + separator.len();
     }
     parts.push(&value[start..]);
     parts
+}
+
+/// Splits a separator-less run at names declared directly by its group.
+///
+/// The first `KEY=` starts the run. After that, the earliest declared member
+/// spelling followed by `=` starts the next pair. Matching uses the FIX name
+/// fold, and the longest declared match at one byte wins. Bytes that match no
+/// declared member remain verbatim in the surrounding pair.
+fn split_on_declared_members<'value>(value: &'value [u8], declared: &[Field]) -> Vec<&'value [u8]> {
+    let Some(first_equals) = memchr::memchr(b'=', value) else {
+        return vec![value];
+    };
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut at = first_equals + 1;
+    while at < value.len() {
+        let Some(prefix_len) = declared_member_prefix(&value[at..], declared) else {
+            at += 1;
+            continue;
+        };
+        parts.push(&value[start..at]);
+        start = at;
+        at += prefix_len;
+    }
+    parts.push(&value[start..]);
+    parts
+}
+
+/// The length through `=` of the longest declared member at this byte.
+fn declared_member_prefix(value: &[u8], declared: &[Field]) -> Option<usize> {
+    declared
+        .iter()
+        .filter_map(|field| {
+            let name = field.name();
+            let prefix = folded_name_prefix(value, name)?;
+            let length = name.bytes().filter(|byte| !name_separator(*byte)).count();
+            Some((length, prefix))
+        })
+        .max_by_key(|(length, _)| *length)
+        .map(|(_, prefix)| prefix)
+}
+
+/// The byte length through `=` when `value` opens with one folded FIX name.
+fn folded_name_prefix(value: &[u8], name: &str) -> Option<usize> {
+    if !name.is_ascii() {
+        return None;
+    }
+    let mut at = 0;
+    let mut matched = false;
+    for expected in name.bytes().filter(|byte| !name_separator(*byte)) {
+        let actual = *value.get(at)?;
+        if !actual.eq_ignore_ascii_case(&expected) {
+            return None;
+        }
+        matched = true;
+        at += 1;
+        while value.get(at).is_some_and(|byte| name_separator(*byte)) {
+            at += 1;
+        }
+    }
+    (matched && value.get(at) == Some(&b'=')).then_some(at + 1)
+}
+
+/// One ASCII separator ignored by the FIX name fold.
+const fn name_separator(byte: u8) -> bool {
+    matches!(byte, b'_' | b'-' | b' ')
 }

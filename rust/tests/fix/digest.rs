@@ -221,6 +221,19 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             "parentorderid",
         ],
     );
+    let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
+    assert_eq!(
+        displays,
+        [
+            Some("MsgHash"),
+            Some("Version"),
+            Some("SymbolTicker"),
+            Some("Timestamp"),
+            Some("UnixPartition"),
+            Some("ParentClOrdID"),
+            Some("ParentOrderID"),
+        ],
+    );
 
     // Sixteen bytes, big-endian, because a digest is compared and ordered as
     // bytes and must not become a string.

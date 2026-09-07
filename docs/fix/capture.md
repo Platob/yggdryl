@@ -84,18 +84,14 @@ One line in, one row out, with the columns named by tag.
 
 ## Try it
 
-Every frame below was read by the real package, and every value is what it answered. Pick one.
-
-<div class="ygg-pg" data-playground="fix" markdown="1">
-This section renders `assets/playground.json` and needs JavaScript.
-</div>
+Every shape a capture holds, read by the real package, is on the [Decode](decode.md) page — beside a reader that takes a frame of your own.
 
 ## Find a column
 
 Eighty-nine columns is more than anyone scrolls, and the question a reader actually has is *which column holds this*. The filter matches the tag, the field name and the wording alike.
 
-<div class="ygg-pg" data-playground="fixSchema" markdown="1">
-This section renders `assets/playground.json` and needs JavaScript.
+<div class="ygg-fx" data-fix="projection" markdown="1">
+This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
 ## A reader is the whole parse surface
@@ -173,6 +169,20 @@ Each is the core's own method under the same name in all three languages.
     // The packed members became three real fields under one nesting.
     assert.equal(held.party('1')[0].toJSON(), 'BUYSIDE')
     ```
+
+### A printed separator is still the separator
+
+A capture that cannot print `0x01` writes what it stands for: `^A`, `\x01`, `<SOH>` or `{SOH}`. The escape happened on the way into the log rather than on the wire, so a numeric frame spelling its separator that way is unescaped once, before it is split, and reaches the same columns the byte itself reaches.
+
+One vocabulary serves both readings, because the spelling a frame is *located* with and the one it is *split* on are the same fact: a capture that escapes its separator is recognized once rather than in each place that reads a frame. A frame carrying a real `0x01` is never scanned for the escapes, so the ordinary path allocates nothing.
+
+### A packed occurrence uses explicit or declared boundaries
+
+ULLINK packs one group occurrence's members behind EOT and ETX (`\x04\x03`); a bridge relaying into a FIX session packs them behind the protocol's own SOH. Both split an occurrence, because inside one neither byte can be part of a value.
+
+The first spelling an occurrence actually carries is the one that splits it, and only that one: reading both at once would let a value that legitimately holds the other byte break into fields nobody wrote.
+
+When neither control spelling is present, the reader scans for the next direct member name declared by the addressed group. The longest declared name wins, so `PartyIDSource` is not shortened to `PartyID`; names from elsewhere in the registry never become nested boundaries. A run with no declared boundary stays whole.
 
 ### Edges
 
@@ -255,16 +265,17 @@ Two lists close every row.
 
 ## The crate's own columns
 
-Six facts a capture states that no dictionary publishes, each an ordinary field on this crate's own branch so it lifts, columns, serializes and resolves with no special case anywhere. `FixRegistry::with_crate_fields` registers them; nothing in *reading* a message needs them, because every one is a fact about the capture rather than about the wire.
+Seven fields carry six facts a capture states that no dictionary publishes: the last fact needs separate client and venue parent identifiers. Each is an ordinary field on this crate's own branch, so it lifts, columns, serializes and resolves with no special case anywhere. `FixRegistry::with_crate_fields` registers them; nothing in *reading* a message needs them, because every one is a fact about the capture rather than about the wire.
 
-| Column | Tag | Holds |
-| --- | --- | --- |
-| `msghash` | 30001 | the xxh3-128 digest of what the message said, envelope tags excluded |
-| `version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
-| `symbolticker` | 30003 | one instrument symbol that is the same across venues |
-| `timestamp` | 30004 | the market clock a capture is ordered by |
-| `unixpartition` | 30005 | the partition that clock falls in, as whole seconds |
-| `parentclordid`, `parentorderid` | 30006, 30007 | where an order came from, which no standard tag names |
+| Column | Display | Tag | Holds |
+| --- | --- | --- | --- |
+| `msghash` | `MsgHash` | 30001 | the xxh3-128 digest of what the message said, envelope tags excluded |
+| `version` | `Version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
+| `symbolticker` | `SymbolTicker` | 30003 | one instrument symbol that is the same across venues |
+| `timestamp` | `Timestamp` | 30004 | the market clock a capture is ordered by |
+| `unixpartition` | `UnixPartition` | 30005 | the partition that clock falls in, as whole seconds |
+| `parentclordid` | `ParentClOrdID` | 30006 | the client order identifier this order descends from |
+| `parentorderid` | `ParentOrderID` | 30007 | the venue order identifier this order descends from |
 
 Two of them declare more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for. `msghash` is a digest holder, so it says which algorithm filled it and what it read. `unixpartition` is a derived partition column, so it says which column it derives from and how.
 
@@ -276,11 +287,13 @@ Two of them declare more than a type, in the protocols the crate already has rat
     let fields = fix_crate_fields()?;
     let digest = &fields[0];
     assert_eq!(digest.name(), "msghash");
+    assert_eq!(digest.display(), Some("MsgHash"));
     assert!(digest.as_digest().is_holder());
     assert_eq!(digest.as_digest().sources()?, Some(vec!["entries".to_owned()]));
 
     let partition = &fields[4];
     assert_eq!(partition.name(), "unixpartition");
+    assert_eq!(partition.display(), Some("UnixPartition"));
     // Which column it derives from, and how: `truncate[3600]`, because the
     // value is seconds floored to a multiple of the width.
     assert_eq!(partition.as_partition().sources()?, Some(vec!["30004".to_owned()]));
@@ -293,13 +306,14 @@ Two of them declare more than a type, in the protocols the crate already has rat
     from yggdryl.fix import fix_crate_fields
 
     fields = {field.name: field for field in fix_crate_fields()}
-
     digest = fields["msghash"]
+    assert digest.metadata["display"] == "MsgHash"
     assert digest.metadata["digest:role"] == "holder"
     assert digest.metadata["digest:algorithm"] == "xxh3-128"
     assert digest.metadata["digest:sources"] == '["entries"]'
 
     partition = fields["unixpartition"]
+    assert partition.metadata["display"] == "UnixPartition"
     # Which column it derives from, and how: `truncate[3600]`, because the
     # value is seconds floored to a multiple of the width.
     assert partition.metadata["partition:sources"] == '["30004"]'
@@ -315,11 +329,13 @@ Two of them declare more than a type, in the protocols the crate already has rat
     const held = fix.crateFields()
     const digest = held[0]
     assert.equal(digest.name, 'msghash')
+    assert.equal(digest.display, 'MsgHash')
     assert.equal(digest.getProperty('digest', 'role'), 'holder')
     assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
 
     const partition = held[4]
     assert.equal(partition.name, 'unixpartition')
+    assert.equal(partition.display, 'UnixPartition')
     // Which column it derives from, and how: `truncate[3600]`, because the
     // value is seconds floored to a multiple of the width.
     assert.equal(partition.getProperty('partition', 'sources'), '["30004"]')
@@ -331,6 +347,12 @@ Two of them declare more than a type, in the protocols the crate already has rat
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) is a hash, a verification and a branch walk. A projection resolves them once and turns the per-row cost into an indexed read, which is the whole reason a fixed schema is worth having.
 
 It is held beside a dictionary rather than inside one: a projection is a reader's concern, and a dictionary carrying one would have to invalidate it on every edit.
+
+### A group is laid out the way the column declares it
+
+A message's group holds the members that occurrence stated, in the order it stated them; the fixed column declares the dictionary's. `to_row` places them by name and leaves the rest null, so an occurrence a bridge packed into one member lands in the same columns as one that spelled every member out - and an occurrence shorter than the dictionary declares is a row rather than a refusal.
+
+That is the rule the whole row keeps: what a message said can never fail the batch it arrives in.
 
 ## A capture's own columns lead the row
 
@@ -427,9 +449,10 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
 - A tag the dictionary does not have is skipped rather than invented: a column with no field behind it could not be typed.
 - A carried column carries no tag, so `to_row` answers null there; whoever read the capture fills it.
+- A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a timestamp is null rather than a refusal.
 - `position_of` on a tag the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
-- Switching deduplication on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
+- Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
 
 ## Commands
 
@@ -452,5 +475,5 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
     ```bash
     node --test "node/tests/fix/*.test.js"
-    node scripts/build_docs_playground.js --check
+    node scripts/build_docs_fix.js --check
     ```

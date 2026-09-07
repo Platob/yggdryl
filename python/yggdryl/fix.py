@@ -18,7 +18,10 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`FixReader` turns a captured line into one of those messages, and
+:class:`FixReader` turns a captured line into one of those messages,
+:func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
+the capture's own columns first, the dictionary's fixed columns after, one
+input row per output row -- and
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns named
 by tag, because a tag is the one name a field has in every version and every
 dialect. :class:`FixProjection` resolves those columns once so a row is an
@@ -48,7 +51,9 @@ from ._native import (
     FixReader,
     FixRegistry,
     fix_cfb_fields,
+    fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
+    fix_parse_arrow_reader as parse_arrow_reader,
     fix_schema,
     fix_schema_tags,
     global_registry,
@@ -64,10 +69,12 @@ __all__ = [
     "FixProjection",
     "FixReader",
     "FixRegistry",
+    "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_tags",
     "global_registry",
     "install_global_registry",
+    "parse_arrow_reader",
 ]

@@ -115,7 +115,6 @@ pub enum Command {
     },
 }
 
-
 /// Runs one dictionary command, answering what the process should exit with.
 ///
 /// No command is the interactive shell rather than a usage error: every

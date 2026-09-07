@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use yggdryl::holder::local::Folder;
 
-use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::holder::Buffer;
+use yggdryl::holder::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::{DataType, Error, Field, FixBranch, FixField, FixRegistry, IOBase, Version};
 
 /// A CBlock in the exact shape a production file has: the same element order,
@@ -579,9 +579,11 @@ fn a_stem_that_is_not_a_branch_is_refused_rather_than_folded_into_one() {
     );
     assert!(error.to_string().contains("ASCII letter"), "{error}");
 
-    let error =
-        FixField::from_cfb_file(&named_handle(CBLOCK, "a-name-well-past-the-inline-cap.cfb"), None)
-            .unwrap_err();
+    let error = FixField::from_cfb_file(
+        &named_handle(CBLOCK, "a-name-well-past-the-inline-cap.cfb"),
+        None,
+    )
+    .unwrap_err();
     assert!(error.to_string().contains("at most 23 bytes"), "{error}");
 
     // A supplied name is held to the same rule as a stem standing in for one.
@@ -617,7 +619,10 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
         "the first file's description survived a file that carries none",
     );
     // And a tag only the second file declares arrives.
-    assert_eq!(dictionary.field_by_name("price", None).unwrap().name(), "price");
+    assert_eq!(
+        dictionary.field_by_name("price", None).unwrap().name(),
+        "price"
+    );
 
     // The second file's own custom tags land in its own branch, so the two
     // dialects never collide on the user range.
@@ -645,7 +650,10 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
     let error = seeded.add_fields(fields).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     let message = error.to_string();
-    assert!(message.contains("msgtype") && message.contains("utf8"), "{message}");
+    assert!(
+        message.contains("msgtype") && message.contains("utf8"),
+        "{message}"
+    );
     assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::MsgType);
     assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
 

@@ -1157,6 +1157,17 @@ fix_has: bool = 38 in fix_registry_from_fields
 fix_names: list[str] = [entry.name for entry in fix_registry_from_fields]
 fix_registry_from_fields.write_into(Path("build") / "fix")
 
+fix_classified: tuple[pa.Array, pa.Array, pa.Array] = fix.classify_arrow_array(
+    pa.array([b"35=D|55=TTF|"], pa.binary()), "sent"
+)
+fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
+    pa.RecordBatchReader.from_batches(pa.schema([pa.field("body", pa.binary())]), []),
+    fix_registry_from_fields,
+    "body",
+    target_version="FIX.4.4",
+    dedup=True,
+)
+
 fix_root: Field = Field(
     "NewOrderSingle", DataType.from_fields([fix_field]), nullable=False
 )

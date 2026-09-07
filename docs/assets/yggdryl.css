@@ -321,21 +321,6 @@
   color: var(--md-default-fg-color--light);
 }
 
-/* A decoded frame is several tables one under another, so each says what it is
- * without stealing a heading level from the page's own outline. */
-.ygg-pg__section {
-  margin-top: 1em;
-}
-
-.md-typeset .ygg-pg__heading {
-  margin: 0 0 0.4em;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--md-default-fg-color--light);
-}
-
 /* The tables carry a class, so Material's own table rules do not reach them. */
 .ygg-pg table {
   border-collapse: collapse;
@@ -411,4 +396,606 @@
   border-left: 3px solid var(--md-accent-fg-color);
   background-color: var(--md-accent-fg-color--transparent);
   border-radius: 0.3rem;
+}
+
+/* The FIX explorer: docs/assets/fix-explorer.js renders the generated FIX
+ * manifests into these containers. Three surfaces and four accents, all
+ * defined here and redefined once for the dark scheme, so a card, a panel and
+ * a pill read the same on either ground and Material's own tokens carry the
+ * rest.
+ */
+:root {
+  --ygg-fx-surface: #ffffff;
+  --ygg-fx-raised: #f7f8fa;
+  --ygg-fx-line: rgba(0, 0, 0, 0.1);
+  --ygg-fx-ok: #1a7f47;
+  --ygg-fx-ok-soft: rgba(26, 127, 71, 0.1);
+  --ygg-fx-warn: #9a6200;
+  --ygg-fx-warn-soft: rgba(154, 98, 0, 0.12);
+  --ygg-fx-info: #1b5fb4;
+  --ygg-fx-info-soft: rgba(27, 95, 180, 0.1);
+}
+
+[data-md-color-scheme="slate"] {
+  --ygg-fx-surface: #14171c;
+  --ygg-fx-raised: #1a1e25;
+  --ygg-fx-line: rgba(255, 255, 255, 0.11);
+  --ygg-fx-ok: #57d98a;
+  --ygg-fx-ok-soft: rgba(87, 217, 138, 0.13);
+  --ygg-fx-warn: #f0b132;
+  --ygg-fx-warn-soft: rgba(240, 177, 50, 0.14);
+  --ygg-fx-info: #6aa9ff;
+  --ygg-fx-info-soft: rgba(106, 169, 255, 0.14);
+}
+
+.ygg-fx {
+  margin: 1em 0 1.6em;
+}
+
+/* The counts. A card is one number and what it counts, and the row wraps
+ * rather than scrolling, because a KPI a reader has to swipe to is not one. */
+.ygg-fx__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+}
+
+.ygg-fx__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--ygg-fx-raised);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.5rem;
+  border-top: 2px solid var(--md-accent-fg-color);
+}
+
+.ygg-fx__card-value {
+  font-size: 1.32rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.ygg-fx__card-label {
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+
+.ygg-fx__card-note {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--lighter);
+}
+
+/* Everything that opens is a `<details>`, so one rule set shapes the field
+ * rows, the layout blocks and the sections of a decoded frame alike. */
+.md-typeset .ygg-fx__panel {
+  margin: 0.4rem 0;
+  padding: 0;
+  background: var(--ygg-fx-surface);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.5rem;
+  box-shadow: none;
+  font-size: inherit;
+  overflow: visible;
+}
+
+.md-typeset .ygg-fx__panel > .ygg-fx__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 2rem 0.5rem 0.8rem;
+  background: transparent;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 0.5rem;
+  transition: background-color 120ms ease;
+}
+
+.md-typeset .ygg-fx__panel > .ygg-fx__summary:hover {
+  background: var(--md-accent-fg-color--transparent);
+}
+
+/* Material's admonition marker is the wrong affordance here - these panels
+ * are not notes - so the fold is said once, by the chevron it already draws
+ * on the right. */
+.md-typeset .ygg-fx__panel > .ygg-fx__summary::before {
+  display: none;
+}
+
+.md-typeset .ygg-fx__panel > .ygg-fx__summary::after {
+  top: 50%;
+  right: 0.6rem;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.5rem;
+  background-color: var(--md-default-fg-color--light);
+}
+
+.ygg-fx__summary-title {
+  font-family: var(--md-code-font-family, monospace);
+  font-weight: 650;
+  font-size: 0.78rem;
+}
+
+.ygg-fx__summary-aside {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.75rem;
+}
+
+.ygg-fx__panel-body {
+  padding: 0.2rem 0.8rem 0.8rem;
+  border-top: 1px solid var(--ygg-fx-line);
+}
+
+/* A field row keeps its tag first and its marks last, so a scan down the
+ * column reads as a list of tags however long the names are. */
+.md-typeset .ygg-fx__entry > .ygg-fx__entry-summary {
+  gap: 0.65rem;
+}
+
+.ygg-fx__marks {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.ygg-fx__pill {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.63rem;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--md-default-fg-color--light);
+  background: var(--ygg-fx-raised);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.ygg-fx__pill--required {
+  color: var(--md-accent-fg-color);
+  background: var(--md-accent-fg-color--transparent);
+  border-color: transparent;
+}
+
+.ygg-fx__pill--group {
+  color: var(--ygg-fx-info);
+  background: var(--ygg-fx-info-soft);
+  border-color: transparent;
+}
+
+.ygg-fx__pill--unknown {
+  color: var(--ygg-fx-warn);
+  background: var(--ygg-fx-warn-soft);
+  border-color: transparent;
+}
+
+.ygg-fx__pill--codes,
+.ygg-fx__pill--branch {
+  color: var(--ygg-fx-ok);
+  background: var(--ygg-fx-ok-soft);
+  border-color: transparent;
+}
+
+.ygg-fx__pill--quiet {
+  color: var(--md-default-fg-color--lighter);
+}
+
+/* Controls. One row, wrapping, each labelled above its input. */
+.ygg-fx__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.7rem;
+  margin: 0 0 0.8rem;
+}
+
+.ygg-fx__control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 0 1 auto;
+}
+
+.ygg-fx__label {
+  font-size: 0.64rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+
+.ygg-fx__input,
+.ygg-fx__select,
+.ygg-fx__textarea,
+.ygg-fx__button {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color);
+  background-color: var(--ygg-fx-surface);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.4rem;
+  padding: 0.38em 0.6em;
+}
+
+.ygg-fx__input--wide,
+.ygg-fx__select--wide {
+  min-width: 18rem;
+}
+
+.ygg-fx__textarea {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--md-code-font-family, monospace);
+  line-height: 1.6;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.ygg-fx__editor .ygg-fx__control {
+  width: 100%;
+}
+
+.ygg-fx__button {
+  cursor: pointer;
+  font-weight: 600;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.ygg-fx__button:hover {
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-fg-color);
+}
+
+.ygg-fx__input:disabled,
+.ygg-fx__select:disabled {
+  color: var(--md-default-fg-color--light);
+  background: var(--ygg-fx-raised);
+  cursor: not-allowed;
+}
+
+.ygg-fx__button--primary {
+  color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+}
+
+.ygg-fx__button--chip {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.ygg-fx__button[aria-pressed="true"] {
+  color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+  background: var(--md-accent-fg-color--transparent);
+}
+
+.ygg-fx__input:focus-visible,
+.ygg-fx__select:focus-visible,
+.ygg-fx__textarea:focus-visible,
+.ygg-fx__button:focus-visible,
+.md-typeset .ygg-fx__panel > .ygg-fx__summary:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 1px;
+}
+
+.ygg-fx__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.9rem;
+}
+
+.ygg-fx__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+
+/* Tables. A wide one scrolls inside its own box rather than widening the
+ * page, and its head stays put while the body moves under it. */
+.ygg-fx__scroll {
+  overflow-x: auto;
+  margin: 0 0 0.7rem;
+}
+
+.md-typeset .ygg-fx__grid,
+.md-typeset .ygg-fx__facts {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.73rem;
+  box-shadow: none;
+}
+
+.md-typeset .ygg-fx__grid th,
+.md-typeset .ygg-fx__grid td,
+.md-typeset .ygg-fx__facts th,
+.md-typeset .ygg-fx__facts td {
+  padding: 0.34em 0.9em 0.34em 0;
+  text-align: left;
+  vertical-align: top;
+  border: 0;
+  border-bottom: 1px solid var(--ygg-fx-line);
+  white-space: normal;
+}
+
+.md-typeset .ygg-fx__grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ygg-fx-surface);
+  border-bottom: 2px solid var(--md-accent-fg-color);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .ygg-fx__grid tbody tr:hover {
+  background: var(--md-accent-fg-color--transparent);
+}
+
+.md-typeset .ygg-fx__facts th {
+  width: 10rem;
+  font-weight: 500;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The tag leads every decoded row, so it never wraps and never moves: a
+ * three-digit tag broken over two lines is a column nobody can scan. */
+.md-typeset .ygg-fx__grid--decode td:first-child,
+.md-typeset .ygg-fx__grid--decode th:first-child {
+  width: 3.5rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.md-typeset .ygg-fx__grid--decode td:nth-child(4) {
+  white-space: nowrap;
+}
+
+/* A value column wide enough for a timestamp, which has nowhere to break. */
+.md-typeset .ygg-fx__grid--decode td:nth-child(3) {
+  min-width: 10rem;
+}
+
+.md-typeset .ygg-fx__grid--decode td:nth-child(3) .ygg-fx__code {
+  overflow-wrap: break-word;
+}
+
+/* A group's members sit inside their occurrence, and the rule says so down
+ * the whole run rather than once at the top. */
+.ygg-fx__nested {
+  display: inline-block;
+  border-left: 2px solid var(--ygg-fx-info);
+  padding-left: 0.55em;
+}
+
+.ygg-fx__code {
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.94em;
+  overflow-wrap: anywhere;
+}
+
+.ygg-fx__tree-name {
+  font-weight: 600;
+}
+
+.ygg-fx__prose {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.95em;
+}
+
+.ygg-fx__meaning {
+  display: inline-block;
+  max-width: 34rem;
+}
+
+/* A layout tree. The indent is the nesting, and each block opens on demand
+ * because a message reaches two hundred fields through its components. */
+.md-typeset ul.ygg-fx__tree {
+  margin: 0;
+  padding: 0 0 0 0.6rem;
+  list-style: none;
+  border-left: 1px solid var(--ygg-fx-line);
+}
+
+.md-typeset ul.ygg-fx__tree > li.ygg-fx__tree-item {
+  margin: 0;
+}
+
+.ygg-fx__tree-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.2rem 0;
+  font-size: 0.75rem;
+}
+
+.md-typeset .ygg-fx__block {
+  border-left: 2px solid var(--ygg-fx-line);
+  border-radius: 0.4rem;
+}
+
+.md-typeset .ygg-fx__block--group {
+  border-left-color: var(--ygg-fx-info);
+}
+
+.md-typeset .ygg-fx__package {
+  border-left: 2px solid var(--md-accent-fg-color);
+}
+
+/* The two self-describing tags, checked against the bytes. */
+.ygg-fx__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+}
+
+.ygg-fx__check {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  border-radius: 0.4rem;
+  border: 1px solid transparent;
+}
+
+.ygg-fx__check-name {
+  font-weight: 650;
+}
+
+.ygg-fx__check--ok {
+  color: var(--ygg-fx-ok);
+  background: var(--ygg-fx-ok-soft);
+}
+
+.ygg-fx__check--bad {
+  color: var(--md-accent-fg-color);
+  background: var(--md-accent-fg-color--transparent);
+}
+
+/* A frame, shown as bytes with the copy that a reader actually wants. */
+.ygg-fx__wire {
+  position: relative;
+  margin: 0 0 0.8rem;
+}
+
+.md-typeset .ygg-fx__wire-text {
+  margin: 0;
+  padding: 0.7rem 4.6rem 0.7rem 0.8rem;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.73rem;
+  line-height: 1.7;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.45rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ygg-fx__wire--out .ygg-fx__wire-text {
+  border-left: 2px solid var(--md-accent-fg-color);
+}
+
+.ygg-fx__copy {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  font-size: 0.66rem;
+  padding: 0.2em 0.55em;
+}
+
+/* The composer's form: label over control, one per row, wrapping into
+ * columns where the page is wide enough to hold them. */
+.ygg-fx__form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 0.7rem;
+  margin: 0.8rem 0;
+}
+
+.ygg-fx__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--ygg-fx-raised);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.45rem;
+}
+
+.ygg-fx__field-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+}
+
+.md-typeset .ygg-fx__field-note {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.ygg-fx__field .ygg-fx__input,
+.ygg-fx__field .ygg-fx__select {
+  min-width: 0;
+  width: 100%;
+}
+
+.ygg-fx__list {
+  margin: 0 0 0.8rem;
+}
+
+.ygg-fx__counter {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .ygg-fx__note {
+  padding: 0.5rem 0.8rem;
+  font-size: 0.73rem;
+  line-height: 1.6;
+  border-left: 3px solid var(--md-accent-fg-color);
+  background: var(--md-accent-fg-color--transparent);
+  border-radius: 0.3rem;
+}
+
+.ygg-fx__call {
+  margin: 0.4rem 0 0.8rem;
+  padding: 0.55rem 0.75rem;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--md-code-fg-color);
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--ygg-fx-line);
+  border-radius: 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ygg-fx__codes .ygg-fx__input {
+  margin-bottom: 0.5rem;
+  min-width: 14rem;
+}
+
+@media screen and (max-width: 44.98em) {
+  .ygg-fx__cards {
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  }
+
+  .ygg-fx__input--wide,
+  .ygg-fx__select--wide {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ygg-fx__control {
+    flex: 1 1 100%;
+  }
 }

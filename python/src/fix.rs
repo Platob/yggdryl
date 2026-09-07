@@ -20,16 +20,20 @@ use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyInt};
 
+use yggdryl::types::MsgDirection;
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixBranch as CoreFixBranch,
-    FixField as CoreFixField, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixProjection as CoreFixProjection, FixReader as CoreFixReader,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar, Version as CoreVersion,
-    from_json_scalar_with_field, into_json_scalar,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField,
+    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixField as CoreFixField,
+    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixOptions as CoreFixOptions,
+    FixProjection as CoreFixProjection, FixReader as CoreFixReader, FixRegistry as CoreFixRegistry,
+    IOBase as CoreIOBase, Scalar, Version as CoreVersion, from_json_scalar_with_field,
+    into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
+use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
 use crate::media::iceberg::folder_holder_from_value;
+use crate::types::datatype::{arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
@@ -240,8 +244,9 @@ impl PyFixRegistry {
         branch: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
         let dialect = branch.map(branch_from_py).transpose()?;
-        let (registry, roots) =
-            read_cfb(location, |handle| CoreFixRegistry::from_cfb(handle, dialect.as_ref()))?;
+        let (registry, roots) = read_cfb(location, |handle| {
+            CoreFixRegistry::from_cfb(handle, dialect.as_ref())
+        })?;
         Ok((
             Self::from_arc(Arc::new(registry)),
             roots.into_iter().map(PyField::from_inner).collect(),
@@ -1299,6 +1304,123 @@ pub(crate) fn fix_schema(
     yggdryl::fix_schema(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
+}
+
+/// Stream one Arrow source's payload column through a dictionary.
+///
+/// The thin redirect to `FixBatchReader::from_column`: the capture's own
+/// columns lead the row, the dictionary's fixed columns follow, and one input
+/// row stays one output row unless `dedup` says otherwise. The reader stays
+/// lazy across the boundary -- `PyArrow` pulls one batch at a time.
+///
+/// Every keyword is the per-stream form of an argument `FixReader` already
+/// takes per call, so a stream parses exactly as a line does.
+#[pyfunction]
+#[pyo3(
+    name = "fix_parse_arrow_reader",
+    signature = (
+        source,
+        registry = None,
+        column = "body",
+        *,
+        name = "fix",
+        branch = None,
+        source_version = None,
+        target_version = None,
+        separator = None,
+        direction = None,
+        null_values = None,
+        dedup = false,
+        batch_row_size = None,
+        batch_byte_size = None,
+    )
+)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fix_parse_arrow_reader<'py>(
+    py: Python<'py>,
+    source: &Bound<'_, PyAny>,
+    registry: Option<PyRef<'_, PyFixRegistry>>,
+    column: &str,
+    name: &str,
+    branch: Option<&str>,
+    source_version: Option<&str>,
+    target_version: Option<&str>,
+    separator: Option<u8>,
+    direction: Option<&str>,
+    null_values: Option<Vec<String>>,
+    dedup: bool,
+    batch_row_size: Option<usize>,
+    batch_byte_size: Option<u64>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let registry = match registry {
+        Some(held) => Arc::clone(&held.inner),
+        None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+    };
+    let mut options = CoreFixOptions::new().with_dedup(dedup);
+    options.name = name.into();
+    if let Some(branch) = branch {
+        options = options.with_branch(branch_from_py(branch)?);
+    }
+    if let Some(version) = source_version {
+        options = options.with_source_version(version_from_py(version)?);
+    }
+    if let Some(version) = target_version {
+        options = options.with_target_version(version_from_py(version)?);
+    }
+    if let Some(separator) = separator {
+        options = options.with_separator(separator);
+    }
+    if let Some(direction) = direction {
+        options = options.with_direction(direction_from_py(direction)?);
+    }
+    if let Some(spellings) = null_values {
+        options = options.with_null_values(spellings);
+    }
+    options.batch_row_size = batch_row_size;
+    options.batch_byte_size = batch_byte_size;
+    let source = batch_reader_from_value(source)?;
+    let parsed =
+        CoreFixBatchReader::from_column(registry, source, column, options).map_err(value_error)?;
+    batch_reader_to_pyarrow(py, parsed)
+}
+
+/// What a whole payload column says about itself, without building a message.
+///
+/// Three `pyarrow` `utf8` arrays the length of the input, in one shallow pass:
+/// the media type each record infers, the raw `MsgType` its frame spells, and
+/// the direction it moved. `direction` names what an unmarked line took --
+/// `"sent"`, `"recv"`, or `"unknown"`.
+#[pyfunction]
+#[pyo3(name = "fix_classify_arrow_array", signature = (column, direction = "sent"))]
+pub(crate) fn fix_classify_arrow_array<'py>(
+    py: Python<'py>,
+    column: &Bound<'py, PyAny>,
+    direction: &str,
+) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+    let values = arrow_array_from_pyarrow(column)?;
+    let (protocol, msgtype, moved) =
+        yggdryl::classify_arrow_array(&values, direction_from_py(direction)?)
+            .map_err(value_error)?;
+    Ok((
+        arrow_array_to_pyarrow(py, &protocol, None)?,
+        arrow_array_to_pyarrow(py, &msgtype, None)?,
+        arrow_array_to_pyarrow(py, &moved, None)?,
+    ))
+}
+
+/// Read the direction an unmarked line takes, as the core spells it.
+///
+/// `"unknown"` is the third answer: a capture whose silence really means
+/// nothing, rather than the side that wrote it.
+fn direction_from_py(text: &str) -> PyResult<Option<&'static str>> {
+    match text.to_ascii_uppercase().as_str() {
+        "SENT" | "S" | "SEND" => Ok(Some(MsgDirection::SENT)),
+        "RECV" | "R" | "RECEIVE" => Ok(Some(MsgDirection::RECV)),
+        "UNKNOWN" | "" => Ok(None),
+        other => Err(PyValueError::new_err(format!(
+            "expected one of sent, recv, unknown, got {other:?}"
+        ))),
+    }
 }
 
 /// One row's columns, in order, as tags.

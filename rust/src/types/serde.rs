@@ -119,6 +119,9 @@ enum DataTypeRef<'a> {
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
+    // Both spellings are one word on the wire, so neither takes the
+    // snake_case the rest of this enum derives.
+    #[serde(rename = "msgdirection")]
     MsgDirection {},
     Uuid {},
     Version {},
@@ -368,6 +371,9 @@ enum DataTypeValue {
     Side {},
     #[serde(rename = "msgtype")]
     MsgType {},
+    // Both spellings are one word on the wire, so neither takes the
+    // snake_case the rest of this enum derives.
+    #[serde(rename = "msgdirection")]
     MsgDirection {},
     Uuid {},
     Version {},

@@ -234,6 +234,10 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
     // bridge one answer the same message rather than two spellings of it.
     let message = reader.bytes(line).unwrap();
     assert_eq!(message, reader.ultext(line).unwrap());
+    let without_member_separators: &[u8] =
+        b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
+|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
+    assert_eq!(message, reader.bytes(without_member_separators).unwrap());
 
     // Names resolve to tags, and each value takes its field's own type: a
     // quantity and a price are numbers, and a side is the packed code.
@@ -355,4 +359,289 @@ fn a_version_names_and_types_a_field_as_that_version_did() {
     assert!(at_42.get_by_name("lastshares").is_some());
     assert!(at_new.get_by_name("lastqty").is_some());
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
+}
+
+#[test]
+fn a_numeric_frame_carrying_a_repeating_group_reads_and_only_its_counter_counts() {
+    let reader = reader();
+    // A numeric frame states its group members flat, so the occurrences the
+    // bridge's indexed keys build are not there to build: the counter keeps
+    // the group's own shape and holds nothing, and each member is as many
+    // values as arrived. Retyping the counter to the `NumInGroup` its lineage
+    // dates would collapse that shape and refuse the whole frame.
+    let row = "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|10=000|";
+    let message = reader.text(row).unwrap();
+
+    let field = message
+        .as_field()
+        .get_field_by_path("nopartyids")
+        .expect("the counter's column");
+    let DataType::List(item) = field.dtype() else {
+        panic!("the group's own shape, got {}", field.dtype());
+    };
+    assert!(item.dtype().is_nested(), "a List of `item` Structs");
+    assert!(
+        message
+            .by_tag(453)
+            .unwrap()
+            .as_sequence()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        message.by_tag(452).unwrap().as_sequence().unwrap().len(),
+        2,
+        "a member arrived twice, so it is two values"
+    );
+
+    // One anomaly, and it is the counter's: a member that merely arrived
+    // twice states no count, so `PartyRole=1` is a role and not a group of
+    // one.
+    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
+    assert_eq!(
+        anomalies,
+        ["nopartyids (453) states 2 occurrences and holds 0"],
+        "{anomalies:?}"
+    );
+}
+
+#[test]
+fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column() {
+    let reader = reader();
+    // `FixKey` reads every string as a name, so a numeric group key resolves
+    // only tag-first. Resolving it by name alone built a second, tag-less
+    // column beside the counter's own and left the counter holding nothing.
+    let by_tag = reader
+        .text("MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE")
+        .unwrap();
+    let by_name = reader
+        .text("MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE|NOPARTYIDS[1]=PARTYID=VENUE")
+        .unwrap();
+
+    for message in [&by_tag, &by_name] {
+        let columns = message
+            .as_field()
+            .dtype()
+            .as_fields()
+            .expect("a struct root")
+            .len();
+        assert_eq!(columns, 2, "msgtype and the group, and nothing beside them");
+        let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+        assert_eq!(occurrences.len(), 2);
+        assert!(message.anomalies().next().is_none());
+    }
+    assert_eq!(by_tag.by_tag(453).unwrap(), by_name.by_tag(453).unwrap());
+}
+
+#[test]
+fn an_occurrence_that_named_no_member_is_kept_as_the_value_it_stated() {
+    let reader = reader();
+    // A bridge writes `NOPARTYIDS[0]=ONE` where it has nothing to name. The
+    // occurrence has no member, but it is still an occurrence: dropping it
+    // would make the row say the group held nothing, which is the one thing
+    // the frame did not say.
+    let message = reader
+        .text("MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO")
+        .unwrap();
+
+    let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
+    assert_eq!(occurrences.len(), 2);
+    assert_eq!(occurrences[0].as_str(), Some("ONE"));
+    assert_eq!(occurrences[1].as_str(), Some("TWO"));
+    // Two stated and two held, so there is nothing to report.
+    assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_renamed_group_builds_one_column_at_the_version_that_renamed_it() {
+    let reader = reader()
+        .clone()
+        .source_version("4.2".parse::<Version>().unwrap());
+    // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after. The
+    // counter's slot is projected to the message's version and the members'
+    // slot has to be projected with it, or one group builds two columns
+    // carrying one tag.
+    let message = reader
+        .text("MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b")
+        .unwrap();
+
+    let names: Vec<&str> = message
+        .as_field()
+        .dtype()
+        .as_fields()
+        .expect("a struct root")
+        .iter()
+        .map(yggdryl::Field::name)
+        .collect();
+    assert_eq!(names, ["msgtype", "linesoftext"], "{names:?}");
+    assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
+    assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
+    // The FIX layer reads a group as `List` or `LargeList` everywhere it looks
+    // at one, so the miscount looks at the same pair: a dictionary that stored
+    // its group in the wider variant is still a dictionary of groups.
+    let mut party_id = DataType::Utf8.nullable_field("partyid");
+    party_id.as_fix_mut().set_tag(448).unwrap();
+    let item = DataType::from_fields([party_id])
+        .unwrap()
+        .required_field("item");
+    let mut group = DataType::large_list(item).nullable_field("nopartyids");
+    group.as_fix_mut().set_tag(453).unwrap();
+    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    let registry = Arc::new(FixRegistry::from_fields([group, symbol]).unwrap());
+
+    let message = FixReader::new(registry)
+        .text("35=D|55=AAPL|453=2|10=0|")
+        .unwrap();
+    let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
+    assert_eq!(
+        anomalies,
+        ["nopartyids (453) states 2 occurrences and holds 0"],
+        "{anomalies:?}"
+    );
+}
+
+/// A capture that cannot print `0x01` writes it, and the frame is the same.
+///
+/// Every escaped spelling a log uses reaches the same columns as the byte it
+/// stands for: the escape happened on the way into the log, not on the wire.
+#[test]
+fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
+    let reader = reader();
+    let wire = reader
+        .text("recv 8=FIX.4.4\u{1}9=61\u{1}35=0\u{1}49=XPAR\u{1}10=017\u{1}")
+        .expect("a numeric frame");
+    for spelling in ["^A", "\\x01", "<SOH>", "{SOH}"] {
+        let line = format!(
+            "recv 8=FIX.4.4{spelling}9=61{spelling}35=0{spelling}49=XPAR{spelling}10=017{spelling} on session 3"
+        );
+        let held = reader.text(&line).expect("the same frame, escaped");
+        assert_eq!(
+            held.get_by_tag(35).and_then(Scalar::as_str),
+            wire.get_by_tag(35).and_then(Scalar::as_str),
+            "{spelling} lost the message type",
+        );
+        assert_eq!(
+            held.get_by_tag(49).and_then(Scalar::as_str),
+            Some("XPAR"),
+            "{spelling} lost a body field",
+        );
+        // The prose after the checksum stays prose.
+        assert_eq!(held.get_by_tag(10).and_then(Scalar::as_str), Some("017"));
+    }
+}
+
+/// A bridge packs one group occurrence's members behind a control separator,
+/// or concatenates them without one.
+///
+/// ULLINK writes EOT/ETX; a bridge relaying into a session writes SOH. Both
+/// are authoritative when present. With neither, the addressed group's four
+/// declared names provide the boundaries, including the longer
+/// `PartyRoleQualifier` beside `PartyRole`.
+#[test]
+fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
+    let reader = reader();
+    let mut messages = Vec::new();
+    for separator in ["\u{4}\u{3}", "\u{1}", ""] {
+        let line = format!(
+            "toBridge #SYMBOL=TTF|#NOPARTYIDS=1|\
+             #NOPARTYIDS[0]=PARTYID=BUYSIDE{separator}PARTYIDSOURCE=D{separator}\
+             PARTYROLE=1{separator}PARTYROLEQUALIFIER=0"
+        );
+        let held = reader.text(&line).expect("a bridge row");
+        let parties = held
+            .get_by_tag(453)
+            .and_then(Scalar::as_sequence)
+            .expect("the group");
+        assert_eq!(parties.len(), 1);
+        let first = parties[0].as_sequence().expect("one occurrence");
+        assert_eq!(first.len(), 4, "the packed members did not split");
+        assert_eq!(first[0].as_str(), Some("BUYSIDE"));
+        messages.push(held);
+    }
+    assert_eq!(messages[0], messages[1]);
+    assert_eq!(messages[0], messages[2]);
+}
+
+/// Separator-less inference is local to the addressed group.
+///
+/// A globally known `Symbol` inside an unknown member's value is not a
+/// boundary. The later direct `PartyRole` member is, and the unknown residue
+/// remains an ordinary entry with its embedded `=` intact.
+#[test]
+fn separatorless_group_inference_uses_only_direct_members() {
+    let reader = reader();
+    let message = reader
+        .text(
+            "MSGTYPE=D|NOPARTYIDS=1|\
+             NOPARTYIDS[0]=VENUEFLAG=XSymbol=TTFPARTYROLE=1",
+        )
+        .expect("a bridge row");
+
+    let unknown = message
+        .entries()
+        .iter()
+        .find(|entry| entry.key() == "NOPARTYIDS[0].VENUEFLAG")
+        .expect("the unknown member residue");
+    assert_eq!(unknown.tag(), 0);
+    assert_eq!(unknown.value(), "XSymbol=TTF");
+    assert!(
+        message
+            .entries()
+            .iter()
+            .all(|entry| entry.key() != "NOPARTYIDS[0].Symbol")
+    );
+    let members = message
+        .get_by_tag(453)
+        .and_then(Scalar::as_sequence)
+        .and_then(|parties| parties[0].as_sequence())
+        .expect("one occurrence");
+    assert_eq!(members.len(), 2);
+
+    // A rendered group name made only of digits is still a name, not a tag.
+    // It therefore borrows no member declarations from tag 453.
+    let numeric_name = reader
+        .text("MSGTYPE=D|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1")
+        .expect("a bridge row");
+    let party = numeric_name
+        .entries()
+        .iter()
+        .find(|entry| entry.key() == "453[0].PARTYID")
+        .expect("the one unsplit member");
+    assert_eq!(party.value(), "BUYSIDEPARTYROLE=1");
+    assert!(
+        numeric_name
+            .entries()
+            .iter()
+            .all(|entry| entry.key() != "453[0].PARTYROLE")
+    );
+}
+
+/// A row's content can never fail the batch it arrives in.
+///
+/// A message states the members that occurrence carried; the fixed schema
+/// declares the dictionary's. Projecting places them by name and leaves the
+/// rest null, so an occurrence that stated one member is a row rather than a
+/// refusal.
+#[test]
+fn a_group_shorter_than_the_schema_declares_still_projects() {
+    use yggdryl::{FixProjection, fix_schema};
+
+    let registry = registry();
+    let reader = FixReader::new(Arc::clone(&registry));
+    let projection = FixProjection::new(&registry, "fix").expect("the fixed schema");
+    let held = reader
+        .text("toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE")
+        .expect("a bridge row");
+
+    let row = held.to_row(&projection);
+    let field = fix_schema(&registry, "fix").expect("the fixed root");
+    // The completion is what a batch does with the row; it must not refuse.
+    field
+        .canonicalize_value(row)
+        .expect("a short occurrence is nulls, never a refusal");
 }

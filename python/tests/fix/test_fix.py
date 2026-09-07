@@ -17,6 +17,7 @@ import subprocess
 import sys
 from typing import Any, Iterable
 
+import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
@@ -34,6 +35,7 @@ from yggdryl.fix import (
     fix_schema_tags,
     global_registry,
     install_global_registry,
+    parse_arrow_reader,
 )
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
@@ -1032,6 +1034,11 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
+    inferred = reader.bytes(
+        b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
+        b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
+    )
+    assert inferred == bridge
     assert bridge.by_tag(55).as_py() == "TTF"
     assert bridge.by_tag(38).as_py() == 1200.0
     assert bridge.by_tag(44).as_py() == 41.25
@@ -1041,6 +1048,26 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     # The counter says two occurrences and one arrived: reported, not repaired.
     assert len(bridge.anomalies()) == 1
     assert "453" in bridge.anomalies()[0]
+
+
+def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> None:
+    bridge = (
+        b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
+        b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
+    )
+    parsed = parse_arrow_reader(
+        pa.table({"body": pa.array([bridge], pa.binary())}), seed, "body"
+    ).read_all()
+    assert parsed.column("453").to_pylist() == [
+        [
+            {
+                "partyid": "BUYSIDE",
+                "partyidsource": "D",
+                "partyrole": 1,
+                "partyrolequalifier": None,
+            }
+        ]
+    ]
 
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
@@ -1124,6 +1151,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentclordid",
         "parentorderid",
     ]
+    assert [field.display for field in fields.values()] == [
+        "MsgHash",
+        "Version",
+        "SymbolTicker",
+        "Timestamp",
+        "UnixPartition",
+        "ParentClOrdID",
+        "ParentOrderID",
+    ]
 
     held = fields["msghash"]
     assert held.metadata["digest:role"] == "holder"
@@ -1201,4 +1237,3 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     # The standard branch declares no dialect and no session.
     with pytest.raises(ValueError):
         registry.set_branch(FixBranch("", version="4.4"))
-
