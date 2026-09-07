@@ -51,7 +51,13 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("utcdate", DataType::Date32),
         ("utcdateonly", DataType::Date32),
         ("localmktdate", DataType::Date32),
-        ("tztimeonly", DataType::FixedAscii(16)),
+        (
+            "tztimeonly",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
         ("multiplecharvalue", DataType::Utf8),
         ("multiplestringvalue", DataType::Utf8),
         ("xid", DataType::Utf8),

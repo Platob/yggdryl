@@ -42,7 +42,6 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
         ("cfi", DataType::Cfi),
         ("CFI", DataType::Cfi),
         ("MonthYear", DataType::FixedAscii(8)),
-        ("TZTimeOnly", DataType::FixedAscii(16)),
     ] {
         let parsed: DataType = spelling
             .parse()

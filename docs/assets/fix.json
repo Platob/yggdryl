@@ -109,7 +109,7 @@
     "layoutGroups": 580,
     "columns": 89,
     "branches": 2,
-    "datatypes": 21,
+    "datatypes": 20,
     "versions": 10,
     "dtypes": [
       [
@@ -146,7 +146,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        54
+        60
       ],
       [
         "time32(s)",
@@ -171,10 +171,6 @@
       [
         "time64(ns)",
         9
-      ],
-      [
-        "ascii(16)",
-        6
       ],
       [
         "ascii(2)",
@@ -20866,7 +20862,7 @@
     {
       "t": 1079,
       "n": "maturitytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "MaturityTime",
       "x": "Time of security's maturity expressed in local time with offset to UTC specified",
       "s": "4.4"
@@ -22058,7 +22054,7 @@
     {
       "t": 1212,
       "n": "legmaturitytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "LegMaturityTime",
       "x": "Time of security's maturity expressed in local time with offset to UTC specified",
       "s": "5.0"
@@ -22066,7 +22062,7 @@
     {
       "t": 1213,
       "n": "underlyingmaturitytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "UnderlyingMaturityTime",
       "x": "Time of security's maturity expressed in local time with offset to UTC specified",
       "s": "5.0"
@@ -22431,7 +22427,7 @@
     {
       "t": 1253,
       "n": "derivativematuritytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "DerivativeMaturityTime",
       "x": "Time of security's maturity expressed in local time with offset to UTC specified.",
       "s": "5.0"
@@ -23743,7 +23739,7 @@
     {
       "t": 1405,
       "n": "underlyinglegmaturitytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "UnderlyingLegMaturityTime",
       "x": "Time of security's maturity expressed in local time with offset to UTC specified",
       "s": "5.0"
@@ -25048,7 +25044,7 @@
     {
       "t": 1550,
       "n": "instrumentscopematuritytime",
-      "y": "ascii(16)",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "InstrumentScopeMaturityTime",
       "x": "Used to limit instrument scope to specified maturity time.",
       "s": "5.0SP2"

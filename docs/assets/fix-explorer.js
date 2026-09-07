@@ -429,9 +429,21 @@
       return null
     }
     if (dtype.startsWith('datetime64')) {
-      const held = /^(\d{4})(\d{2})(\d{2})-(\d{2}):(\d{2}):(\d{2})(\.\d+)?$/.exec(text)
+      // Three FIX datatypes land here and only their spelling differs:
+      // UTCTimestamp states a date and no zone, TZTimestamp states both, and
+      // TZTimeOnly states a zone and no date - so the epoch day supplies one,
+      // the seconds it may omit are filled, and a stated zone is kept rather
+      // than written over. This is the page's own reading of the shape, not
+      // the package's answer: it names what the text is and does not check
+      // the calendar, so a value the package nulls can still be named here.
+      const held =
+        /^(?:(\d{4})(\d{2})(\d{2})-)?(\d{2}):(\d{2})(?::(\d{2}))?(\.\d+)?([Zz]|[+-]\d{2}:?(?:\d{2})?)?$/.exec(
+          text,
+        )
       if (held === null) return null
-      return `${held[1]}-${held[2]}-${held[3]}T${held[4]}:${held[5]}:${held[6]}${held[7] ?? ''}Z`
+      const date = held[1] === undefined ? '1970-01-01' : `${held[1]}-${held[2]}-${held[3]}`
+      const zone = held[8] === undefined ? 'Z' : held[8]
+      return `${date}T${held[4]}:${held[5]}:${held[6] ?? '00'}${held[7] ?? ''}${zone}`
     }
     if (dtype === 'date32') {
       const held = /^(\d{4})(\d{2})(\d{2})$/.exec(text)

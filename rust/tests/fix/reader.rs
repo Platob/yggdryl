@@ -645,3 +645,91 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
         .canonicalize_value(row)
         .expect("a short occurrence is nulls, never a refusal");
 }
+
+/// The three FIX datatypes that land on `datetime64(ns,"UTC")`, read from the
+/// committed dictionary and decoded to the instant each states.
+///
+/// `TZTimeOnly` states no date, so it lands on the epoch day with its offset
+/// resolved in; `TZTimestamp` states its own zone, which is kept rather than
+/// written over; `UTCTimestamp` states none and is UTC by saying nothing.
+#[test]
+fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
+    use yggdryl::{TimeUnit, Timezone};
+
+    let reader = reader();
+    let instant = |count: i64| {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).expect("a nanosecond count")
+    };
+    // FIXT.1.1 with `ApplVerID(1128)=9`, because MaturityTime and
+    // TZTransactTime are 5.0 fields and a 4.4 frame does not know them.
+    let read = |frame: &str, value: &str, tag: i32| {
+        reader
+            .text(&format!("{frame}|35=D|{tag}={value}|10=0|"))
+            .expect("a readable message")
+            .by_tag(tag)
+            .expect("the tag")
+            .clone()
+    };
+    let latest = |value: &str, tag: i32| read("8=FIXT.1.1|1128=9", value, tag);
+
+    // MaturityTime(1079) is a TZTimeOnly. 07:39:12 is 27552s into the day and
+    // the offset takes 19800 of them back, so the instant is 7752.123s past
+    // the epoch - and a reading before the offset is applied goes behind it.
+    assert_eq!(
+        latest("07:39:12.123+05:30", 1079),
+        instant(7_752_123_000_000)
+    );
+    assert_eq!(latest("07:39Z", 1079), instant(27_540_000_000_000));
+    assert_eq!(latest("00:30+05:30", 1079), instant(-18_000_000_000_000));
+    // FIX means local time by stating no offset, which an instant cannot
+    // hold, so that reads as nothing rather than as a guessed UTC. It is the
+    // same rule that keeps a dateless `UTCTimestamp` from becoming an instant
+    // on the epoch day.
+    assert_eq!(latest("07:39:12", 1079), Scalar::Null);
+    assert_eq!(read("8=FIX.4.4", "10:15:30.000", 60), Scalar::Null);
+
+    // TZTransactTime(1132) is a TZTimestamp: it states the zone, so writing
+    // `Z` over it would spell one twice and read as nothing.
+    assert_eq!(
+        latest("20240102-10:15:30.000-05:00", 1132),
+        instant(1_704_208_530_000_000_000),
+    );
+
+    // TransactTime(60) is a UTCTimestamp: no zone stated, and UTC meant.
+    assert_eq!(
+        read("8=FIX.4.4", "20240102-10:15:30.000", 60),
+        instant(1_704_190_530_000_000_000),
+    );
+}
+
+/// A capture is never ordered by the epoch day.
+///
+/// The clock column is declared an instant however narrow the dictionary is,
+/// so a clock field typed as text is read through FIX's own spelling. A
+/// `TZTimeOnly` is a legal reading of that spelling and never a moment a
+/// capture happened at, so a dateless value contributes nothing and the
+/// ladder keeps walking.
+#[test]
+fn a_dateless_clock_never_becomes_the_capture_instant() {
+    // A dictionary narrow enough to type the clock as text is what reaches
+    // the reading at all: a full one has already made it an instant.
+    let mut narrow = FixRegistry::new();
+    let mut clock = DataType::Utf8.nullable_field("transacttime");
+    clock.as_fix_mut().set_tag(60).expect("a standard tag");
+    narrow.insert(clock).expect("a fresh dictionary");
+    let reader = FixReader::new(Arc::new(narrow));
+    let clocked = |value: &str| {
+        reader
+            .text(&format!("8=FIX.4.4|35=D|60={value}|10=0|"))
+            .expect("a readable message")
+            .market_timestamp()
+    };
+
+    assert_eq!(clocked("07:39:12.123+05:30"), Scalar::Null);
+    // A dated one is answered as the spelling the clock column casts, which
+    // is what this derivation exists to produce.
+    assert_eq!(
+        clocked("20240102-10:15:30.000"),
+        Scalar::from("2024-01-02T10:15:30.000Z"),
+    );
+}

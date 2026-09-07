@@ -229,6 +229,12 @@ fn as_instant(held: crate::Scalar) -> crate::Scalar {
     let Some(text) = held.as_str() else {
         return held;
     };
+    // Only a dated reading. `TZTimeOnly` is an instant on the epoch day,
+    // which is a legal value of that datatype and never a moment a capture
+    // happened at, so a clock column takes nothing from one.
+    if super::build::fix_date(text).is_none() {
+        return crate::Scalar::Null;
+    }
     super::build::wire_spelling(&CLOCK_DATATYPE, text).unwrap_or(crate::Scalar::Null)
 }
 

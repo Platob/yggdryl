@@ -936,8 +936,9 @@
   {
     "name": "maturitytime",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 16
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {

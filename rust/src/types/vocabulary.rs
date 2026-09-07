@@ -57,7 +57,7 @@
 //! | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 //! | `UTCDateOnly` | String | `date32` | a calendar day |
 //! | `LocalMktDate` | String | `date32` | a calendar day |
-//! | `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
+//! | `TZTimeOnly` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant, on the epoch day |
 //! | `MultipleCharValue` | char | `utf8` | space-delimited members |
 //! | `MultipleStringValue` | String | `utf8` | space-delimited members |
 //! | `XID` | String | `utf8` | an XML identifier |
@@ -85,6 +85,13 @@
 //! `TZTimestamp` keeps the instant and drops the local offset, because an
 //! Arrow column carries one zone for every row. Read it under
 //! `datetime64(ns,"<zone>")` when the local reading is the value.
+//!
+//! `TZTimeOnly` is the same instant under a missing date, and the epoch day
+//! supplies it: `07:39+05:30` is `1970-01-01T02:09:00Z`. That keeps the
+//! reading arithmetic - two of them subtract, one sorts against another, the
+//! offset is resolved rather than carried as text - where the fixed-width
+//! ASCII it used to be kept none of it, and did not even hold the type: the
+//! widest legal `TZTimeOnly` is eighteen bytes and the box was sixteen.
 
 use smol_str::format_smolstr;
 
@@ -176,7 +183,13 @@ impl DataType {
         ("utcdate", DataType::Date32),
         ("utcdateonly", DataType::Date32),
         ("localmktdate", DataType::Date32),
-        ("tztimeonly", DataType::FixedAscii(16)),
+        (
+            "tztimeonly",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
         // The remaining text and binary shapes.
         ("multiplecharvalue", DataType::Utf8),
         ("multiplestringvalue", DataType::Utf8),
