@@ -148,15 +148,23 @@ jobs:
         run: |
           python - <<'EOF'
           import glob
+          import pathlib
           import zipfile
 
           wheel, = glob.glob("python/dist/*.whl")
+          # A wheel's file name opens with the distribution and the version, and
+          # that pair is exactly what maturin spells the data directory with. The
+          # expectation is read from the wheel rather than written out, because a
+          # literal here states the release rather than the contract: it was
+          # `0.1.1`, the release after it was `0.1.2`, and the assertion that
+          # exists to prove the command ships failed on the version instead.
+          distribution, version = pathlib.Path(wheel).name.split("-")[:2]
           scripts = [
               name
               for name in zipfile.ZipFile(wheel).namelist()
               if name.endswith(".data/scripts/ygg")
           ]
-          assert scripts == ["yggdryl-0.1.1.data/scripts/ygg"], scripts
+          assert scripts == [f"{distribution}-{version}.data/scripts/ygg"], scripts
           print(f"{wheel} carries {scripts[0]}")
           EOF
       - uses: actions/upload-artifact@v4

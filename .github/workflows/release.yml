@@ -147,6 +147,8 @@ jobs:
     # own build host - musl wheels on a glibc runner - or where PyArrow, the
     # hard runtime dependency, publishes no wheel to install against; the
     # build is still shipped so the platform works the day its stack does.
+    # `cli_target` names the Rust target the staged `ygg` is built for, and is
+    # empty wherever that is the build host's own; see the build step.
     name: Wheel (${{ matrix.label }})
     needs: preflight
     if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
@@ -159,6 +161,7 @@ jobs:
             runner: ubuntu-latest
             target: x86_64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.10
@@ -171,6 +174,7 @@ jobs:
             runner: ubuntu-24.04-arm
             target: aarch64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.10
@@ -183,6 +187,7 @@ jobs:
             runner: ubuntu-latest
             target: x86_64
             manylinux: musllinux_1_2
+            cli_target: "x86_64-unknown-linux-musl"
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.12
@@ -191,6 +196,7 @@ jobs:
             runner: ubuntu-24.04-arm
             target: aarch64
             manylinux: musllinux_1_2
+            cli_target: "aarch64-unknown-linux-musl"
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.12
@@ -199,6 +205,7 @@ jobs:
             runner: macos-15-intel
             target: x86_64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.10
@@ -211,6 +218,7 @@ jobs:
             runner: macos-14
             target: aarch64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.10
@@ -223,6 +231,7 @@ jobs:
             runner: windows-latest
             target: x64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.10 3.11 3.12 3.13 3.14
             pythons: |
               3.10
@@ -235,6 +244,7 @@ jobs:
             runner: windows-11-arm
             target: aarch64
             manylinux: auto
+            cli_target: ""
             interpreters: 3.11 3.12 3.13 3.14
             pythons: |
               3.11
@@ -263,7 +273,26 @@ jobs:
           sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
-          before-script-linux: python3 scripts/stage_cli.py
+          # Two things the container asks of this line that the runner did not.
+          #
+          # `sccache: true` exports `RUSTC_WRAPPER=sccache` into the container
+          # from its first command, and the action installs sccache *after*
+          # this script rather than before it - so cargo here looked for a
+          # wrapper that was not there yet and died on "could not execute
+          # process `sccache ... rustc -vV`", taking all four Linux rows with
+          # it. Staging asks for no wrapper; `env -u` drops it for this command
+          # alone, and the maturin build that follows keeps the one the action
+          # sets up for it.
+          #
+          # The musl rows cross-compile: their image hosts a gnu toolchain and
+          # builds the wheel for a musl target, so a bare `cargo build` stages
+          # a glibc binary into a wheel tagged musllinux - the same mismatch
+          # building on the runner would have made, one layer in. The row names
+          # the target it is built for, and the action has already added it by
+          # the time this runs.
+          before-script-linux: >-
+            env -u RUSTC_WRAPPER python3 scripts/stage_cli.py
+            ${{ matrix.cli_target && format('--target {0}', matrix.cli_target) }}
           args: >-
             --release --locked --manifest-path python/Cargo.toml --out dist
             --interpreter ${{ matrix.interpreters }}
