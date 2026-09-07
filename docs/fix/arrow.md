@@ -13,7 +13,7 @@ A capture already in Arrow is read where it sits: `FixBatchReader::from_column` 
 | Clash | a carried column whose name a FIX column takes is dropped, never renamed and never duplicated |
 | Rows | a row in is a row out, so a batch joins back to its source by position; `dedup` is the one exception |
 | Refuses | nothing a row's content can do; the `Result` is for I/O and for options that do not make a root field |
-| Per row | `branch`, `beginstring`, `targetversion`, `sep` and `direction` are parameters read from the row, and are still carried into it |
+| Per row | `branch`, `beginstring`, `sep` and `direction` are parameters read from the row, and are still carried into it |
 | Lazy | one batch is pulled, its rows built, and it is dropped; the source is never concatenated |
 | Classify | `classify_arrow_array` builds no message and resolves nothing against a dictionary |
 | Bindings | Rust and Python (`parse_arrow_reader`, `classify_arrow_array`); no JavaScript binding |
@@ -98,7 +98,7 @@ One column of frames in, batches out, the capture's own columns still in front o
         }
     )
 
-    read = parse_arrow_reader(capture, registry, "body", target_version="FIX.4.4")
+    read = parse_arrow_reader(capture, registry, "body", version="FIX.4.4")
 
     # The schema is answered before a row is read: the capture leads it, the
     # tags follow, and the two lists close it.
@@ -127,8 +127,7 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the bytes; `from_column`'s own argument sets it |
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a numeric frame is written with |
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
-| `source_version` | `with_source_version` | none | the version arriving rows are written in |
-| `target_version` | `with_target_version` | none | the version built messages are expressed in |
+| `version` | `with_version` | none | the version built messages are expressed in; unpinned, each row answers for itself |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line with no verb in front of its payload took |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
@@ -146,7 +145,6 @@ One column carries the bytes; five more supply, per row, arguments the byte read
 | the payload column, named by the options | the bytes parsed |
 | `branch` | the dialect |
 | `beginstring` | the source version |
-| `targetversion` | the target version |
 | `sep` | the separator |
 | `direction` | the direction, stated |
 

@@ -23,11 +23,11 @@ use pyo3::types::{PyBool, PyBytes, PyInt};
 use yggdryl::types::MsgDirection;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
-    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixField as CoreFixField,
-    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixOptions as CoreFixOptions,
-    FixProjection as CoreFixProjection, FixReader as CoreFixReader, FixRegistry as CoreFixRegistry,
-    IOBase as CoreIOBase, Scalar, Version as CoreVersion, from_json_scalar_with_field,
-    into_json_scalar,
+    FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec,
+    FixField as CoreFixField, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
+    FixOptions as CoreFixOptions, FixProjection as CoreFixProjection,
+    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar, Version as CoreVersion,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -496,17 +496,6 @@ impl PyFixRegistry {
     fn branch_named(&self, name: &str) -> Option<PyFixBranch> {
         self.inner
             .branch_named(name)
-            .cloned()
-            .map(PyFixBranch::from_core)
-    }
-
-    /// The branch declaring one exact session pair, or `None`.
-    ///
-    /// The comparison folds ASCII case, and a branch declaring only one half
-    /// of the pair never matches: a session is both `CompID`s or neither.
-    fn branch_for_session(&self, sender: &str, target: &str) -> Option<PyFixBranch> {
-        self.inner
-            .branch_for_session(sender, target)
             .cloned()
             .map(PyFixBranch::from_core)
     }
@@ -1107,40 +1096,36 @@ impl PyFixMsg {
 /// per row. Copying one gives it a cache of its own, exactly as the core does,
 /// because two readers differing in version would otherwise clear each other's
 /// every row.
-#[pyclass(name = "FixReader", module = "yggdryl._native", skip_from_py_object)]
-pub(crate) struct PyFixReader {
-    inner: CoreFixReader,
+#[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
+pub(crate) struct PyFixCodec {
+    inner: CoreFixCodec,
     registry: Arc<CoreFixRegistry>,
 }
 
 #[pymethods]
-impl PyFixReader {
+impl PyFixCodec {
     /// Open a reader over one dictionary, or over the process default.
     #[new]
-    #[pyo3(signature = (registry=None, *, branch=None, source_version=None, target_version=None, null_values=None))]
+    #[pyo3(signature = (registry=None, *, branch=None, version=None, null_values=None))]
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
         branch: Option<&str>,
-        source_version: Option<&str>,
-        target_version: Option<&str>,
+        version: Option<&str>,
         null_values: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let registry = match registry {
             Some(held) => Arc::clone(&held.inner),
             None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
         };
-        let mut inner = CoreFixReader::new(Arc::clone(&registry));
+        let mut inner = CoreFixCodec::new(Arc::clone(&registry));
         if let Some(held) = branch {
-            inner = inner.branch(&branch_from_py(held)?);
+            inner = inner.with_branch(&branch_from_py(held)?);
         }
-        if let Some(held) = source_version {
-            inner = inner.source_version(version_from_py(held)?);
-        }
-        if let Some(held) = target_version {
-            inner = inner.target_version(version_from_py(held)?);
+        if let Some(held) = version {
+            inner = inner.with_version(version_from_py(held)?);
         }
         if let Some(held) = null_values {
-            inner = inner.null_values(held);
+            inner = inner.with_null_values(held);
         }
         Ok(Self { inner, registry })
     }
@@ -1152,34 +1137,38 @@ impl PyFixReader {
     }
 
     /// One captured line, whatever it is wrapped in.
-    fn text(&self, row: &str) -> PyResult<PyFixMsg> {
+    fn read_line(&self, row: &[u8]) -> PyResult<PyFixMsg> {
         self.inner
-            .text(row)
+            .read_line(row)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
-    /// One captured line as bytes, whatever it is wrapped in.
-    fn bytes(&self, row: &[u8]) -> PyResult<PyFixMsg> {
-        self.inner
-            .bytes(row)
-            .map(PyFixMsg::from_inner)
-            .map_err(value_error)
-    }
-
-    /// One numeric frame with the separator stated rather than inferred.
-    #[pyo3(signature = (body, separator=1))]
-    fn fixtext(&self, body: &[u8], separator: u8) -> PyResult<PyFixMsg> {
-        self.inner
-            .fixtext(body, separator)
+    /// One numeric frame, split on the separator stated or inferred.
+    #[pyo3(signature = (body, separator=None))]
+    fn read_fix_line(&self, body: &[u8], separator: Option<u8>) -> PyResult<PyFixMsg> {
+        let codec = match separator {
+            Some(held) => self.inner.clone().with_separator(held),
+            None => self.inner.clone(),
+        };
+        codec
+            .read_fix_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
-    fn ultext(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+    fn read_ullink_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
         self.inner
-            .ultext(body)
+            .read_ullink_line(body)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// One FIXML row, whose fields are XML attributes.
+    fn read_fixml_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+        self.inner
+            .read_fixml_line(body)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -1189,13 +1178,13 @@ impl PyFixReader {
     /// Taken by value because the borrowed pairs the core reads point into
     /// these strings, so they have to outlive the call rather than the caller.
     #[allow(clippy::needless_pass_by_value)]
-    fn pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
+    fn read_pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .pairs(borrowed)
+            .read_pairs(borrowed)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -1212,7 +1201,7 @@ impl PyFixReader {
     }
 
     fn __repr__(&self) -> String {
-        format!("FixReader({} fields)", self.registry.len())
+        format!("FixCodec({} fields)", self.registry.len())
     }
 }
 
@@ -1359,7 +1348,7 @@ pub(crate) fn fix_schema(
 /// row stays one output row unless `dedup` says otherwise. The reader stays
 /// lazy across the boundary -- `PyArrow` pulls one batch at a time.
 ///
-/// Every keyword is the per-stream form of an argument `FixReader` already
+/// Every keyword is the per-stream form of an argument `FixCodec` already
 /// takes per call, so a stream parses exactly as a line does.
 #[pyfunction]
 #[pyo3(
@@ -1371,8 +1360,7 @@ pub(crate) fn fix_schema(
         *,
         name = "fix",
         branch = None,
-        source_version = None,
-        target_version = None,
+        version = None,
         separator = None,
         direction = None,
         null_values = None,
@@ -1389,8 +1377,7 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     column: &str,
     name: &str,
     branch: Option<&str>,
-    source_version: Option<&str>,
-    target_version: Option<&str>,
+    version: Option<&str>,
     separator: Option<u8>,
     direction: Option<&str>,
     null_values: Option<Vec<String>>,
@@ -1407,11 +1394,8 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     if let Some(branch) = branch {
         options = options.with_branch(branch_from_py(branch)?);
     }
-    if let Some(version) = source_version {
-        options = options.with_source_version(version_from_py(version)?);
-    }
-    if let Some(version) = target_version {
-        options = options.with_target_version(version_from_py(version)?);
+    if let Some(version) = version {
+        options = options.with_version(version_from_py(version)?);
     }
     if let Some(separator) = separator {
         options = options.with_separator(separator);
@@ -1602,31 +1586,17 @@ impl PyFixBranch {
 impl PyFixBranch {
     /// Declare a branch, validating and folding its name once.
     ///
-    /// An empty name is the standard branch, which declares no dialect and no
-    /// session; the version is the dialect's own default, spelled the way the
+    /// An empty name is the standard branch, which declares no dialect; the
+    /// version is the dialect's own default, spelled the way the
     /// specification spells it.
     #[new]
-    #[pyo3(signature = (
-        name = "",
-        *,
-        version = None,
-        sender_comp_id = "",
-        target_comp_id = "",
-        aliases = None,
-    ))]
-    fn new(
-        name: &str,
-        version: Option<&str>,
-        sender_comp_id: &str,
-        target_comp_id: &str,
-        aliases: Option<Vec<String>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (name = "", *, version = None, aliases = None))]
+    fn new(name: &str, version: Option<&str>, aliases: Option<Vec<String>>) -> PyResult<Self> {
         let version = match version {
             Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
             None => yggdryl::Version::default(),
         };
-        let branch = CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
-            .map_err(value_error)?;
+        let branch = CoreFixBranch::from_parts(name, version).map_err(value_error)?;
         match aliases {
             Some(aliases) => branch.with_aliases(aliases).map(Self::from_core),
             None => Ok(Self::from_core(branch)),
@@ -1634,7 +1604,7 @@ impl PyFixBranch {
         .map_err(value_error)
     }
 
-    /// Parse a branch name, with no dialect and no session.
+    /// Parse a branch name, with no dialect.
     #[staticmethod]
     fn from_str(value: &str) -> PyResult<Self> {
         branch_from_py(value).map(Self::from_core)
@@ -1668,18 +1638,6 @@ impl PyFixBranch {
     #[getter]
     fn version(&self) -> String {
         self.inner.version().to_string()
-    }
-
-    /// The session sender as declared.
-    #[getter]
-    fn sender_comp_id(&self) -> &str {
-        self.inner.sender_comp_id()
-    }
-
-    /// The session target as declared.
-    #[getter]
-    fn target_comp_id(&self) -> &str {
-        self.inner.target_comp_id()
     }
 
     /// The other spellings this dictionary answers to, folded, as declared.
@@ -1717,8 +1675,6 @@ impl PyFixBranch {
         Scalar::from_sequence([
             Scalar::from(self.inner.name()),
             Scalar::from(self.inner.version().to_string()),
-            Scalar::from(self.inner.sender_comp_id()),
-            Scalar::from(self.inner.target_comp_id()),
         ])
         .stable_hash()
     }
@@ -1729,11 +1685,9 @@ impl PyFixBranch {
 
     fn __repr__(&self) -> String {
         format!(
-            "FixBranch({:?}, version={:?}, sender_comp_id={:?}, target_comp_id={:?})",
+            "FixBranch({:?}, version={:?})",
             self.inner.name(),
             self.inner.version().to_string(),
-            self.inner.sender_comp_id(),
-            self.inner.target_comp_id(),
         )
     }
 
@@ -1757,7 +1711,7 @@ impl PyFixBranch {
             .unbind())
     }
 
-    fn __reduce__(&self) -> (Py<PyAny>, (String, String, String, String)) {
+    fn __reduce__(&self) -> (Py<PyAny>, (String, String)) {
         Python::attach(|py| {
             (
                 py.get_type::<Self>()
@@ -1767,8 +1721,6 @@ impl PyFixBranch {
                 (
                     self.inner.name().to_owned(),
                     self.inner.version().to_string(),
-                    self.inner.sender_comp_id().to_owned(),
-                    self.inner.target_comp_id().to_owned(),
                 ),
             )
         })
@@ -1776,13 +1728,8 @@ impl PyFixBranch {
 
     /// Rebuild the exact declaration pickle and repr carry.
     #[staticmethod]
-    fn _from_parts(
-        name: &str,
-        version: &str,
-        sender_comp_id: &str,
-        target_comp_id: &str,
-    ) -> PyResult<Self> {
-        Self::new(name, Some(version), sender_comp_id, target_comp_id, None)
+    fn _from_parts(name: &str, version: &str) -> PyResult<Self> {
+        Self::new(name, Some(version), None)
     }
 
     fn __copy__(&self) -> Self {

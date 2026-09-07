@@ -1,12 +1,12 @@
 # Capture
 
-A day of session log is a table. This page is the road from one to the other: [`FixReader`](#a-reader-is-the-whole-parse-surface) turns a captured line into a [message](message.md), [`fix_schema`](#the-columns-are-the-tags) is the one row shape every message answers as, and [`FixProjection`](#a-projection-resolves-the-columns-once) is what makes filling it an indexed read rather than six thousand [dictionary](registry.md) lookups a row.
+A day of session log is a table. This page is the road from one to the other: [`FixCodec`](#a-reader-is-the-whole-parse-surface) turns a captured line into a [message](message.md), [`fix_schema`](#the-columns-are-the-tags) is the one row shape every message answers as, and [`FixProjection`](#a-projection-resolves-the-columns-once) is what makes filling it an indexed read rather than six thousand [dictionary](registry.md) lookups a row.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixReader`, `fix_schema`, `fix_schema_tags`, `FixProjection`, `FixMsg::to_row`, `fix_crate_fields` |
+| Owns | `FixCodec`, `fix_schema`, `fix_schema_tags`, `FixProjection`, `FixMsg::to_row`, `fix_crate_fields` |
 | Columns | named by tag as decimal text - `"35"`, never `"msgtype"`; the spelling stays on the field's `display` |
 | Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's derived facts, then `entries` and `unmapped` |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -23,14 +23,14 @@ One line in, one row out, with the columns named by tag.
     ```rust
     use std::sync::Arc;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixProjection, FixReader, FixRegistry, Scalar};
+    use yggdryl::{FixProjection, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
 
     let projection = FixProjection::new(&registry, "FixMessage")?;
-    let reader = FixReader::new(Arc::clone(&registry));
-    let order = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")?;
+    let reader = FixCodec::new(Arc::clone(&registry));
+    let order = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")?;
 
     let row = order.to_row(&projection);
     let held = row.as_sequence().expect("a row");
@@ -47,13 +47,13 @@ One line in, one row out, with the columns named by tag.
     ```python
     from pathlib import Path
 
-    from yggdryl.fix import FixProjection, FixReader, FixRegistry
+    from yggdryl.fix import FixProjection, FixCodec, FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     projection = FixProjection(registry, "FixMessage")
-    reader = FixReader(registry)
+    reader = FixCodec(registry)
 
-    order = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
+    order = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
     row = order.to_row(projection).as_py()
 
     assert row[projection.position_of(35)] == "D"
@@ -71,9 +71,9 @@ One line in, one row out, with the columns named by tag.
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const projection = new fix.FixProjection(registry, 'FixMessage')
-    const reader = new fix.FixReader(registry)
+    const reader = new fix.FixCodec(registry)
 
-    const order = reader.text('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|')
+    const order = reader.readLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
     const row = order.toRow(projection).toJSON()
 
     assert.equal(row[projection.positionOf(35)], 'D')
@@ -105,16 +105,16 @@ Each is the core's own method under the same name in all three languages.
     ```rust
     use std::sync::Arc;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixReader, FixRegistry};
+    use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let reader = FixReader::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
 
     // A bridge frame: `#`-prefixed name keys, and one group occurrence whose
     // value packs its members behind the two control bytes ULLINK uses.
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
-    let held = reader.bytes(bridge)?;
+    let held = reader.read_line(bridge)?;
 
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?.as_f64(), Some(41.25));
@@ -128,13 +128,13 @@ Each is the core's own method under the same name in all three languages.
     ```python
     from pathlib import Path
 
-    from yggdryl.fix import FixReader, FixRegistry
+    from yggdryl.fix import FixCodec, FixRegistry
 
-    reader = FixReader(FixRegistry.from_handle(Path("config/fix").resolve()))
+    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
 
     # A bridge frame: `#`-prefixed name keys, and one group occurrence whose
     # value packs its members behind the two control bytes ULLINK uses.
-    held = reader.bytes(
+    held = reader.read_line(
         b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
@@ -153,7 +153,7 @@ Each is the core's own method under the same name in all three languages.
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
-    const reader = new fix.FixReader(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
 
     // A bridge frame: `#`-prefixed name keys, and one group occurrence whose
     // value packs its members behind the two control bytes ULLINK uses.
@@ -162,7 +162,7 @@ Each is the core's own method under the same name in all three languages.
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
       'binary',
     )
-    const held = reader.bytes(bridge)
+    const held = reader.readLine(bridge)
 
     assert.equal(held.byTag(55).toJSON(), 'TTF')
     assert.equal(held.byTag(44).toJSON(), 41.25)
@@ -188,7 +188,7 @@ When neither control spelling is present, the reader scans for the next direct m
 
 - A line the reader refuses is not a line lost: it is a message with nothing in it, so the output row count still equals the input line count.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
-- A pinned `source_version` decides which name a tag answers to: tag 32 is `lastshares` at 4.2 and `lastqty` at a newer one.
+- A pinned `version` decides which name a tag answers to: tag 32 is `lastshares` at 4.2 and `lastqty` at a newer one.
 - Cloning a reader gives it a projection cache of its own, because two readers differing in version would otherwise clear each other's every row.
 
 ## The columns are the tags

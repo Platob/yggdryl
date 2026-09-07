@@ -47,8 +47,8 @@ use crate::media::IORecordOptions;
 use crate::types::MsgDirection;
 use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
+use super::codec::FixCodec;
 use super::msg::FixMsg;
-use super::reader::FixReader;
 use super::{FixBranch, FixRegistry};
 
 /// The column a payload is read from when the options name none.
@@ -64,7 +64,6 @@ pub const SOH: u8 = 0x01;
 /// makes this an entry point rather than a second contract.
 const BRANCH_COLUMN: &str = "branch";
 const BEGINSTRING_COLUMN: &str = "beginstring";
-const TARGETVERSION_COLUMN: &str = "targetversion";
 const SEPARATOR_COLUMN: &str = "sep";
 const DIRECTION_COLUMN: &str = "direction";
 
@@ -108,10 +107,8 @@ pub struct FixOptions {
     pub separator: u8,
     /// The dialect, where the caller pins one.
     pub branch: Option<FixBranch>,
-    /// The version arriving rows are written in.
-    pub source_version: Option<Version>,
     /// The version built messages are expressed in.
-    pub target_version: Option<Version>,
+    pub version: Option<Version>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Vec<String>,
     /// The direction a line with no verb in front of its payload took.
@@ -150,8 +147,7 @@ impl Default for FixOptions {
             payload_column: SmolStr::new_static(DEFAULT_PAYLOAD_COLUMN),
             separator: SOH,
             branch: None,
-            source_version: None,
-            target_version: None,
+            version: None,
             null_values: super::DEFAULT_NULL_VALUES
                 .iter()
                 .map(|held| (*held).to_owned())
@@ -194,17 +190,10 @@ impl FixOptions {
         self
     }
 
-    /// Pins the version arriving rows are written in.
-    #[must_use]
-    pub const fn with_source_version(mut self, version: Version) -> Self {
-        self.source_version = Some(version);
-        self
-    }
-
     /// Pins the version built messages are expressed in.
     #[must_use]
-    pub const fn with_target_version(mut self, version: Version) -> Self {
-        self.target_version = Some(version);
+    pub const fn with_version(mut self, version: Version) -> Self {
+        self.version = Some(version);
         self
     }
 
@@ -238,16 +227,13 @@ impl FixOptions {
     }
 
     /// The reader these options describe.
-    fn reader(&self, registry: Arc<FixRegistry>) -> FixReader {
-        let mut reader = FixReader::new(registry).null_values(self.null_values.clone());
+    fn reader(&self, registry: Arc<FixRegistry>) -> FixCodec {
+        let mut reader = FixCodec::new(registry).with_null_values(self.null_values.clone());
         if let Some(branch) = &self.branch {
-            reader = reader.branch(branch);
+            reader = reader.with_branch(branch);
         }
-        if let Some(version) = self.source_version {
-            reader = reader.source_version(version);
-        }
-        if let Some(version) = self.target_version {
-            reader = reader.target_version(version);
+        if let Some(version) = self.version {
+            reader = reader.with_version(version);
         }
         reader
     }
@@ -303,7 +289,7 @@ impl FixBatchReader {
             // A row in is a row out: a line the reader refuses is not a line
             // lost, it is a message with nothing in it, and the count still
             // matches the capture's.
-            let message = reader.bytes(&row).unwrap_or_else(|_| empty(&reader));
+            let message = reader.read_line(&row).unwrap_or_else(|_| empty(&reader));
             let direction = direction_of(&row, default);
             Ok((message, direction, Vec::new()))
         });
@@ -333,6 +319,19 @@ impl FixBatchReader {
         options: FixOptions,
     ) -> Result<BatchReader> {
         let options = options.with_payload_column(column);
+        options
+            .reader(registry)
+            .with_payload_column(options.payload_column.clone())
+            .read_arrow_reader(source, &options)
+    }
+
+    /// The body [`FixCodec::read_arrow_reader`] is, with the codec in hand.
+    pub(super) fn from_codec(
+        reader: &FixCodec,
+        source: BatchReader,
+        options: &FixOptions,
+    ) -> Result<BatchReader> {
+        let registry = Arc::clone(reader.registry());
         let read = options.source_field(&registry)?;
         let carrier = crate::arrow::field_from_arrow_schema("row", source.schema().as_ref())?;
         let names: Vec<SmolStr> = carrier
@@ -351,7 +350,6 @@ impl FixBatchReader {
         let field = projection.field().clone();
         let kept: Vec<usize> = projection.carried_positions().to_vec();
         let reader = options.reader(Arc::clone(&registry));
-        let separator = options.separator;
         let payload = options.payload_column.clone();
         let default = options.direction;
 
@@ -372,7 +370,7 @@ impl FixBatchReader {
             .map(move |row| {
                 let record = named(&names, &row?);
                 let bytes = column_bytes(&record, &payload).unwrap_or_default();
-                let message = read_record(&reader, &record, &bytes, separator)?;
+                let message = read_record(&reader, &record, &bytes)?;
                 let direction = stated(&record).or_else(|| direction_of(&bytes, default));
                 // By position: the columns kept were decided from the schema,
                 // and a row of that schema arrives in that order.
@@ -386,7 +384,7 @@ impl FixBatchReader {
                     .collect();
                 Ok((message, direction, front))
             });
-        Self::stream(field, records, &options)
+        Self::stream(field, records, options)
     }
 
     /// The one stream both constructors end in.
@@ -458,9 +456,9 @@ fn row_of(
 }
 
 /// A row nobody could read, which is still a row.
-fn empty(reader: &FixReader) -> FixMsg {
+fn empty(reader: &FixCodec) -> FixMsg {
     reader
-        .pairs(std::iter::empty::<(&[u8], &[u8])>())
+        .read_pairs(std::iter::empty::<(&[u8], &[u8])>())
         .expect("an empty message builds")
 }
 
@@ -593,13 +591,32 @@ fn stated(record: &[(SmolStr, Scalar)]) -> Option<&'static str> {
         .find(|known| known.eq_ignore_ascii_case(&held))
 }
 
-/// Reads one record through the byte readers, per-row columns applied.
-fn read_record(
-    reader: &FixReader,
-    record: &[(SmolStr, Scalar)],
-    bytes: &[u8],
-    separator: u8,
+/// One record read against one codec, the payload taken from `payload`.
+///
+/// [`FixCodec::read_record`] is the door; this is where the row's own columns
+/// are applied, beside the option-driven path the batch reader takes.
+pub(super) fn read_record_with(
+    reader: &FixCodec,
+    record: &Scalar,
+    payload: &str,
 ) -> Result<FixMsg> {
+    let Some(held) = record.as_record() else {
+        return Err(Error::Parse {
+            target: "fix record",
+            position: 0,
+            reason: crate::text::expected_got("a record", "another value"),
+        });
+    };
+    let row: Vec<(SmolStr, Scalar)> = held
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    let bytes = column_bytes(&row, payload).unwrap_or_default();
+    read_record(reader, &row, &bytes)
+}
+
+/// Reads one record through the byte readers, per-row columns applied.
+fn read_record(reader: &FixCodec, record: &[(SmolStr, Scalar)], bytes: &[u8]) -> Result<FixMsg> {
     // A column is the caller speaking per row and an option is the caller
     // speaking per stream, so both outrank the inference the readers fall back
     // on - and the column outranks the option, because it is the more specific
@@ -608,18 +625,13 @@ fn read_record(
     let mut reader = reader.clone();
     if let Some(name) = column_text(record, BRANCH_COLUMN) {
         if let Ok(branch) = FixBranch::from_str(&name) {
-            reader = reader.branch(&branch);
+            reader = reader.with_branch(&branch);
         }
     }
     if let Some(held) = column_text(record, BEGINSTRING_COLUMN) {
         let spelling = held.strip_prefix("FIX.").unwrap_or(&held);
         if let Ok(version) = spelling.parse::<Version>() {
-            reader = reader.source_version(version);
-        }
-    }
-    if let Some(held) = column_text(record, TARGETVERSION_COLUMN) {
-        if let Ok(version) = held.parse::<Version>() {
-            reader = reader.target_version(version);
+            reader = reader.with_version(version);
         }
     }
     if bytes.is_empty() {
@@ -629,9 +641,12 @@ fn read_record(
     // none stated the reader picks its own dialect from the frame, which is
     // what a record carrying only a payload has to do.
     let stated = column_text(record, SEPARATOR_COLUMN).and_then(|held| held.bytes().next());
-    let built = match stated.or(Some(separator)).filter(|_| stated.is_some()) {
-        Some(separator) => reader.fixtext(bytes, separator),
-        None => reader.bytes(bytes),
+    let built = match stated {
+        Some(separator) => reader
+            .clone()
+            .with_separator(separator)
+            .read_fix_line(bytes),
+        None => reader.read_line(bytes),
     };
     Ok(built.unwrap_or_else(|_| empty(&reader)))
 }
@@ -650,7 +665,6 @@ impl FixMsg {
     /// | the payload column, named by options | the bytes parsed |
     /// | `branch` | the dialect |
     /// | `beginstring` | the source version |
-    /// | `targetversion` | the target version |
     /// | `sep` | the separator |
     /// | `direction` | the direction, stated |
     ///
@@ -666,20 +680,10 @@ impl FixMsg {
         record: &Scalar,
         options: &FixOptions,
     ) -> Result<Self> {
-        let Some(held) = record.as_record() else {
-            return Err(Error::Parse {
-                target: "fix record",
-                position: 0,
-                reason: crate::text::expected_got("a record", "another value"),
-            });
-        };
-        let row: Vec<(SmolStr, Scalar)> = held
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect();
-        let reader = options.reader(registry);
-        let bytes = column_bytes(&row, &options.payload_column).unwrap_or_default();
-        read_record(&reader, &row, &bytes, options.separator)
+        options
+            .reader(registry)
+            .with_payload_column(options.payload_column.clone())
+            .read_record(record)
     }
 }
 

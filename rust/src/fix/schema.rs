@@ -229,6 +229,12 @@ fn as_instant(held: crate::Scalar) -> crate::Scalar {
     let Some(text) = held.as_str() else {
         return held;
     };
+    // Only a dated reading. `TZTimeOnly` is an instant on the epoch day,
+    // which is a legal value of that datatype and never a moment a capture
+    // happened at, so a clock column takes nothing from one.
+    if super::build::fix_date(text).is_none() {
+        return crate::Scalar::Null;
+    }
     super::build::wire_spelling(&CLOCK_DATATYPE, text).unwrap_or(crate::Scalar::Null)
 }
 
@@ -416,12 +422,12 @@ impl super::FixMsg {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixProjection, FixReader, FixRegistry};
+    /// # use yggdryl::{FixProjection, FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let projection = FixProjection::new(&registry, "fix")?;
-    /// let reader = FixReader::new(Arc::clone(&registry));
-    /// let order = reader.text("8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
+    /// let reader = FixCodec::new(Arc::clone(&registry));
+    /// let order = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
     ///
     /// let row = order.to_row(&projection);
     /// let held = row.as_sequence().expect("a row");

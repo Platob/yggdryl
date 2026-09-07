@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::media::IORecordOptions;
-use yggdryl::{FixBatchReader, FixDedup, FixOptions, FixReader};
+use yggdryl::{FixBatchReader, FixCodec, FixDedup, FixOptions};
 
 use super::seed;
 
@@ -70,9 +70,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.finish();
 
     // The digest alone, which the dedup and the column both pay.
-    let reader = FixReader::new(Arc::clone(&registry));
+    let reader = FixCodec::new(Arc::clone(&registry));
     let message = reader
-        .text("8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|10=203|")
+        .read_line(b"8=FIX.4.4|9=176|35=D|49=SENDER|56=TARGET|34=7|11=ORDER-1|55=AAPL|54=1|38=100|44=12.5|10=203|")
         .expect("a readable row");
     let mut group = criterion.benchmark_group("fix/digest");
     group.bench_function("message", |bencher| {

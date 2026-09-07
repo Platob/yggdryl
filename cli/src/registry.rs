@@ -222,13 +222,17 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
                 code.since().map_or_else(String::new, |v| v.to_string()),
                 code.deprecated()
                     .map_or_else(String::new, |v| v.to_string()),
+                code.aliases().collect::<Vec<_>>().join(", "),
                 code.doc().unwrap_or_default().to_owned(),
             ]
         })
         .collect();
     if !codes.is_empty() {
         style::heading("codes");
-        style::table(&["value", "name", "since", "deprecated", "doc"], &codes);
+        style::table(
+            &["value", "name", "since", "deprecated", "aliases", "doc"],
+            &codes,
+        );
     }
     Ok(())
 }

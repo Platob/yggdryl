@@ -489,16 +489,6 @@ impl FixRegistry {
             .find(|held| held.has_alias(branch.name()))
     }
 
-    /// Returns the branch declaring one exact session pair, ASCII-folded.
-    pub fn branch_for_session(&self, sender: &str, target: &str) -> Option<&FixBranch> {
-        self.branch_values().find(|branch| {
-            !branch.sender_comp_id().is_empty()
-                && branch.sender_comp_id().eq_ignore_ascii_case(sender)
-                && !branch.target_comp_id().is_empty()
-                && branch.target_comp_id().eq_ignore_ascii_case(target)
-        })
-    }
-
     /// Iterates the branches held by this registry.
     pub fn branches(&self) -> impl Iterator<Item = &FixBranch> {
         self.branch_values()
@@ -506,14 +496,10 @@ impl FixRegistry {
 
     /// Installs or replaces one complete branch declaration.
     pub fn set_branch(&mut self, branch: FixBranch) -> Result<()> {
-        if branch.is_standard()
-            && (branch.version() != Default::default()
-                || !branch.sender_comp_id().is_empty()
-                || !branch.target_comp_id().is_empty())
-        {
+        if branch.is_standard() && branch.version() != Default::default() {
             return Err(Error::InvalidRecord {
                 path: "".into(),
-                reason: "the standard FIX branch declares no dialect or session".into(),
+                reason: "the standard FIX branch declares no dialect".into(),
             });
         }
         let digest = branch.digest();

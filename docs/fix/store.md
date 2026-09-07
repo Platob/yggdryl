@@ -269,7 +269,7 @@ The split keeps an authored dictionary legible, not the lookup fast: one identit
 
 ## Branch manifest
 
-`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, derived `digest`, `version`, `targetcompid` and `sendercompid`.
+`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, derived `digest` and `version`.
 
 | rule | behaviour |
 | --- | --- |
@@ -284,7 +284,6 @@ A registry answers the stored branch values through five calls.
 | --- | --- |
 | `branch_of(FixId)` | the borrowed `FixBranch` that identifier names |
 | `branch_named(&str)` | the borrowed branch of that name |
-| `branch_for_session(sender, target)` | the borrowed branch of that component pair, matched with ASCII case folded |
 | `branches()` | every stored branch |
 | `set_branch(FixBranch)` | installs one atomically |
 
@@ -370,6 +369,7 @@ Each field carries the specification's wording as its description and a display 
 - A folder under a tree whose name is not a branch -> `FixBranch::from_str`'s parse failure, its byte position and the folder URL.
 - `branches.json` absent -> valid; every branch value is reconstructed from the shards with the branch defaults.
 - A `branches.json` entry no field in either tree claims -> typed error, never an invented dictionary.
+- A `branches.json` entry holding `targetcompid` or `sendercompid` -> typed error naming the key. A branch is a dictionary and the session that spoke it is a fact about a run, so a manifest written before they were dropped is regenerated rather than read around.
 - A branch folder's name -> the canonical lowercase branch text: one path segment, no separators, no `.` or `..`.
 - A `README` beside the shards -> ignored on read, left alone by `write_into`'s cleanup; only `<n>.json` with a decimal `n` is read.
 - A field in the wrong shard, in a folder its `fix:branch` contradicts, or in the tree its datatype contradicts -> refused with both sides named.

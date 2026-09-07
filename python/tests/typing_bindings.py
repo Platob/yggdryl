@@ -1167,7 +1167,7 @@ fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
     pa.RecordBatchReader.from_batches(pa.schema([pa.field("body", pa.binary())]), []),
     fix_registry_from_fields,
     "body",
-    target_version="FIX.4.4",
+    version="FIX.4.4",
     dedup=True,
 )
 
@@ -1208,20 +1208,19 @@ fix_message_anomalies: list[str] = fix_message.anomalies()
 fix_message_arrivals: list[tuple[int, str | None, str, str]] = fix_message.entries()
 fix_message_wire: bytes = fix_message.to_bytes(124)
 
-fix_reader: fix.FixReader = fix.FixReader(fix_registry_from_fields)
-fix_reader_pinned: fix.FixReader = fix.FixReader(
+fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
+fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
     branch="cme",
-    source_version="4.2",
-    target_version="4.4",
+    version="4.2",
     null_values=["<none>"],
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_read_text: fix.FixMsg = fix_reader.text("8=FIX.4.4|35=D|10=0|")
-fix_read_bytes: fix.FixMsg = fix_reader.bytes(b"8=FIX.4.4|35=D|10=0|")
-fix_read_frame: fix.FixMsg = fix_reader.fixtext(b"8=FIX.4.4", 1)
-fix_read_bridge: fix.FixMsg = fix_reader.ultext(b"#SYMBOL=TTF")
-fix_read_pairs: fix.FixMsg = fix_reader.pairs([("55", "AAPL")])
+fix_read_text: fix.FixMsg = fix_reader.read_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_bytes: fix.FixMsg = fix_reader.read_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_frame: fix.FixMsg = fix_reader.read_fix_line(b"8=FIX.4.4", 1)
+fix_read_bridge: fix.FixMsg = fix_reader.read_ullink_line(b"#SYMBOL=TTF")
+fix_read_pairs: fix.FixMsg = fix_reader.read_pairs([("55", "AAPL")])
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()

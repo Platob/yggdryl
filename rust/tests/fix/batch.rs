@@ -251,9 +251,10 @@ fn byte_in_byte_out_over_the_whole_corpus() {
     let back: Vec<&str> = std::str::from_utf8(&written).unwrap().lines().collect();
     assert_eq!(back.len(), CAPTURE.len());
 
-    let plain = yggdryl::FixReader::new(Arc::clone(&registry)).null_values::<[&str; 0], &str>([]);
+    let plain =
+        yggdryl::FixCodec::new(Arc::clone(&registry)).with_null_values::<[&str; 0], &str>([]);
     for (line, source) in back.iter().zip(CAPTURE) {
-        let read = plain.text(source).unwrap();
+        let read = plain.read_line(source.as_bytes()).unwrap();
         let expected = String::from_utf8(read.into_bytes(b'|')).unwrap();
         assert_eq!(*line, expected, "{source}");
     }

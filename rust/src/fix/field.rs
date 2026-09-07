@@ -941,15 +941,44 @@ fn merge_lineage(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<S
 }
 
 /// Fold two code sets by wire value, the incoming winning a shared value.
+///
+/// A code stated under a value the winner already holds is not dropped whole:
+/// its name and its own aliases become spellings on the code that stays,
+/// because a name one side declared is one the merged set has to answer to.
+///
+/// What cannot be kept is a spelling another code already answers to, folded:
+/// two codes one spelling reaches resolve to nothing rather than to either,
+/// and two sharing a name are refused outright. So that spelling is dropped,
+/// and a code whose own *name* is taken is dropped with it, having no other
+/// name to arrive under.
 fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
     let mut codes: Vec<FixCode> = Vec::new();
     for code in winner.codes() {
         codes.push(FixCode::from(code?));
     }
     for code in other.codes() {
-        let code = code?;
-        if !codes.iter().any(|held| held.value() == code.value()) {
-            codes.push(FixCode::from(code));
+        let incoming = FixCode::from(code?);
+        // Every spelling this code arrives with, its name first, held apart
+        // from the code so the code itself can move into the set.
+        let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
+        spellings.extend(incoming.aliases().iter().cloned());
+        let at = match codes
+            .iter()
+            .position(|held| held.value() == incoming.value())
+        {
+            Some(at) => at,
+            None if codes.iter().any(|held| held.is_spelled(&spellings[0])) => continue,
+            None => {
+                codes.push(incoming.with_aliases(std::iter::empty::<SmolStr>()));
+                codes.len() - 1
+            }
+        };
+        // A code answers its own name, so this adds it where the value was
+        // already held and skips it where the code was just pushed.
+        for spelling in &spellings {
+            if !codes.iter().any(|held| held.is_spelled(spelling)) {
+                codes[at].push_alias(spelling.clone());
+            }
         }
     }
     if codes.is_empty() {

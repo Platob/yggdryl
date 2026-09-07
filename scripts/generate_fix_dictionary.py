@@ -611,7 +611,7 @@ def dtype_document(name: str) -> dict[str, Any]:
         "UTCDate": {"type": "date32"},
         "LocalMktDate": {"type": "date32"},
         "LocalMktDatetime": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
-        "TZTimeOnly": {"type": "fixed_ascii", "width": 16},
+        "TZTimeOnly": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "MonthYear": {"type": "fixed_ascii", "width": 8},
         "Tenor": {"type": "fixed_ascii", "width": 8},
         "Language": {"type": "fixed_ascii", "width": 2},

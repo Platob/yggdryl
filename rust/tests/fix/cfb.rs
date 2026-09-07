@@ -118,6 +118,69 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 </cplugin-configuration>
 "#;
 
+/// A file whose maps are named both ways round, over entries a rule reading
+/// the shorter side as the wire value would orient backwards.
+const ORIENTATIONS: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="167" alt="SecurityType" type="string" />
+		<vocabulary-tag name="310" alt="UnderlyingSecurityType" type="string" />
+		<vocabulary-tag name="22830" type="string" />
+	</vocabulary>
+	<maps>
+		<map name="SecurityType" read-only="false">
+			<entries>
+				<entry key="FXSPOT" value="fx" />
+				<entry key="CS" value="equity" />
+			</entries>
+		</map>
+		<map name="UNDERLYINGSECURITYTYPE" read-only="false">
+			<entries>
+				<entry key="fx" value="FXSPOT" />
+				<entry key="equity" value="CS" />
+			</entries>
+		</map>
+		<map name="22830" read-only="false">
+			<entries><entry key="1" value="one" /></entries>
+		</map>
+	</maps>
+</cplugin-configuration>
+"#;
+
+/// A file that stresses what a map's name reaches and what one `entry` may
+/// say: a spelling an earlier field folds onto, whitespace an editor left
+/// behind, an entry stating nothing, and one repeating what another claimed.
+const AWKWARD: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.BuySideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="BLPFIX" sendercompid="OURDESK">
+	<vocabulary>
+		<vocabulary-tag name="100" alt="Ex_Destination" type="string" />
+		<vocabulary-tag name="20000" alt="ExDestination" type="string" />
+		<vocabulary-tag name="59" alt="TimeInForce" type="char" />
+		<vocabulary-tag name="4" alt="AdvSide" type="char" />
+	</vocabulary>
+	<maps>
+		<map name="ExDestination" read-only="false">
+			<entries><entry key="XPAR" value="paris" /></entries>
+		</map>
+		<map name=" TimeInForce " read-only="false">
+			<entries>
+				<entry key="0" value="day" />
+				<entry key="1" value="day" />
+				<entry key="2" value="" />
+				<entry value="atthecrossing" />
+				<entry key="6" value="goodtilldate" />
+			</entries>
+		</map>
+		<map name="ADVSIDE" read-only="false">
+			<entries>
+				<entry key="buy" value="B" />
+				<entry key="bid" value="B" />
+			</entries>
+		</map>
+	</maps>
+</cplugin-configuration>
+"#;
+
 /// A second counterparty's file: one tag both declare, one only this one does.
 const OVERLAY: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 <cplugin-configuration type="com.ullink.ulbridge2.toolkit.plugins.fix.model.state.cblock.SellSideFIXCPluginCBlock" version="1.2" fix-version="4.4" targetcompid="OURDESK" sendercompid="MSFIX">
@@ -333,17 +396,14 @@ fn the_root_element_is_the_branch_record() {
         .branch_named("bloomberg")
         .expect("the named branch");
     assert_eq!(held.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(held.sender_comp_id(), "OURDESK");
-    assert_eq!(held.target_comp_id(), "BLPFIX");
 
-    // The same session written from the other side declares the pair
-    // reversed, and both are matched because a reader tries both orders.
+    // The session pair the root declares is read past rather than recorded:
+    // a branch is a dictionary, and which two parties spoke it is a fact
+    // about a run rather than about the vocabulary. The same file written
+    // from the other side therefore lands identically.
     let (other, _) = FixRegistry::from_cfb(&handle(SELLSIDE), Some(&branch())).unwrap();
     let reversed = other.branch_named("bloomberg").expect("the named branch");
-    assert_eq!(reversed.sender_comp_id(), "BLPFIX");
-    assert_eq!(reversed.target_comp_id(), "OURDESK");
-    assert!(registry.branch_for_session("OURDESK", "BLPFIX").is_some());
-    assert!(other.branch_for_session("BLPFIX", "OURDESK").is_some());
+    assert_eq!(reversed, held);
 
     // A file parsed with no branch lands in the standard branch, which is
     // right for one read only for its vocabulary.
@@ -473,17 +533,17 @@ fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
 fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     let (registry, _) = parse(CBLOCK);
 
-    // A CBlock writes `key="buy" value="B"`, so the name keys and the value
-    // is the value - which is already the order a code set wants.
+    // `ADVSIDE` is not how the vocabulary displays `AdvSide`, so the map is
+    // written the UlMessage way: the name keys and the value is the value,
+    // which is already the order a code set wants.
     let advside = registry.field_by_tag(4).expect("AdvSide");
     let view = advside.as_fix();
     assert_eq!(view.code_value("buy"), Some("B"));
     assert_eq!(view.code_name("X"), Some("cross"));
     assert_eq!(view.codes().count(), 4);
 
-    // One written the other way round would put `B` in a name and `buy` on
-    // the wire, so the side that looks like a wire value decides: short and
-    // wordless is the value, whichever attribute carries it.
+    // `TimeInForce` is exactly how the vocabulary displays it, so that map is
+    // written the FIX way and the key is the wire value.
     let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
     let view = timeinforce.as_fix();
     assert_eq!(view.code_value("day"), Some("0"));
@@ -492,6 +552,75 @@ fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     // A map naming no field is skipped rather than refused: a CBlock maps
     // things that are not fields.
     assert_eq!(registry.get_field_by_name("notafield", None), None);
+}
+
+#[test]
+fn a_map_is_oriented_by_its_name_and_never_by_the_shape_of_an_entry() {
+    let (registry, _) = parse(ORIENTATIONS);
+
+    // Named exactly as the vocabulary displays the field, so the key is the
+    // wire value however long it runs. Reading the shorter side as the value
+    // would have put `fx` on the wire and `FXSPOT` in a name.
+    let security = registry.field_by_tag(167).expect("SecurityType");
+    let view = security.as_fix();
+    assert_eq!(view.code_value("fx"), Some("FXSPOT"));
+    assert_eq!(view.code_name("CS"), Some("equity"));
+
+    // The mirror of that map under a name the file does not display the field
+    // by lands identically, which is the whole rule: the name decides, and the
+    // entries are read whichever way it says.
+    let underlying = registry.field_by_tag(310).expect("UnderlyingSecurityType");
+    let view = underlying.as_fix();
+    assert_eq!(view.code_value("fx"), Some("FXSPOT"));
+    assert_eq!(view.code_name("CS"), Some("equity"));
+
+    // A tag declaring no `alt` is displayed as the tag itself, so a map named
+    // for it matches and is read the FIX way.
+    let extension = registry.field_by_tag(22830).expect("22830");
+    assert_eq!(extension.as_fix().code_value("one"), Some("1"));
+}
+
+#[test]
+fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
+    let (registry, _) = parse(AWKWARD);
+
+    // `Ex_Destination` folds onto `ExDestination` and is declared first, so
+    // resolving by the fold alone would put the set on the wrong tag and,
+    // failing the strict compare there, read it backwards as well.
+    let destination = registry.field_by_tag(20000).expect("ExDestination");
+    assert_eq!(destination.as_fix().code_value("paris"), Some("XPAR"));
+    assert_eq!(
+        registry.field_by_tag(100).unwrap().as_fix().codes().count(),
+        0,
+    );
+
+    // Whitespace around a name is not a spelling, so it neither breaks the
+    // match nor flips the orientation. An entry stating nothing on a side is
+    // dropped whether it says so with an empty attribute or with none, and so
+    // is one repeating a name an earlier entry claimed: a code set may not
+    // name one member twice, and one contradictory entry is not a reason to
+    // refuse the file.
+    let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
+    let view = timeinforce.as_fix();
+    assert_eq!(view.code_value("day"), Some("0"));
+    assert_eq!(view.code_value("goodtilldate"), Some("6"));
+    assert_eq!(view.codes().count(), 2);
+
+    // Two names for one wire value is an alias rather than a contradiction,
+    // so the second is kept as one rather than dropped or made a second code.
+    let advside = registry.field_by_tag(4).expect("AdvSide");
+    let view = advside.as_fix();
+    assert_eq!(view.code_value("buy"), Some("B"));
+    assert_eq!(view.code_value("bid"), Some("B"));
+    assert_eq!(view.codes().count(), 1);
+    assert_eq!(view.code_name("B"), Some("buy"));
+    assert_eq!(
+        view.code("B")
+            .expect("the code")
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["bid"],
+    );
 }
 
 #[test]
@@ -721,8 +850,6 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     // would have lost: a field carries its branch's name and nothing else.
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(branch.sender_comp_id(), "OURDESK");
-    assert_eq!(branch.target_comp_id(), "BLPFIX");
 
     // The file a definition arrived as is a spelling people use for it, so the
     // stem answers beside the name and beside what the caller asked for.
@@ -747,8 +874,8 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     assert_eq!((added, merged), (0, 1), "SELLSIDE declares only tag 35");
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);
-    // And the record is the second file's, whole: it points the other way.
-    assert_eq!(branch.sender_comp_id(), "BLPFIX");
+    // And the record is the second file's, whole.
+    assert_eq!(branch.version(), "4.4".parse::<Version>().unwrap());
 
     // With no branch named, the stem is the name - and a name is not an alias
     // of itself, so nothing is invented.

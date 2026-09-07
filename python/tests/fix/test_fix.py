@@ -25,7 +25,7 @@ from yggdryl.fix import (
     FixBranch,
     FixMsg,
     FixProjection,
-    FixReader,
+    FixCodec,
     FixRegistry,
     STANDARD_BRANCH,
     USER_TAG_MAX,
@@ -730,9 +730,7 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     )
     dictionary.set_branch(cme)
 
-    incoming = FixBranch(
-        "cme", version="4.4", sender_comp_id="BANKX", target_comp_id="CME", aliases=["cmegroup"]
-    )
+    incoming = FixBranch("cme", version="4.4", aliases=["cmegroup"])
     other = FixRegistry.from_fields(
         [_field("SYMBOL", "utf8", 55), _field("VenueTime", "utf8", 5060, branch="cme")]
     )
@@ -747,7 +745,6 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     held = dictionary.branch_named("cme")
     assert held is not None
     assert held.version == "4.4"
-    assert held.sender_comp_id == "BANKX"
     assert held.aliases == ["globex", "cmegroup"]
     for spelling in ("globex", "CMEGROUP", "cme"):
         found = dictionary.branch_named(spelling)
@@ -769,8 +766,6 @@ def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
     branch = registry.branch_named("morgan")
     assert branch is not None
     assert branch.version == "4.4"
-    assert branch.sender_comp_id == "OURDESK"
-    assert branch.target_comp_id == "BLPFIX"
 
     # The file a definition arrived as is a spelling people use for it.
     assert branch.aliases == ["mstanley", "msfix44"]
@@ -1114,23 +1109,23 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
 
 def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
     """One reader, five entry points, and each is the core's own."""
-    reader = FixReader(seed)
+    reader = FixCodec(seed)
 
-    framed = reader.text("sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    framed = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
     assert framed.by_tag(55).as_py() == "AAPL"
-    assert reader.bytes(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
-    assert reader.fixtext(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert reader.read_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
         55
     ).as_py() == "AAPL"
-    assert reader.pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+    assert reader.read_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
 
     # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
     # whose value packs its members behind the two control bytes ULLINK uses.
-    bridge = reader.ultext(
+    bridge = reader.read_ullink_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
-    inferred = reader.bytes(
+    inferred = reader.read_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     )
@@ -1168,19 +1163,19 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     """A branch, a version and the spellings that mean nothing was sent."""
-    assert FixReader(seed).registry == seed
+    assert FixCodec(seed).registry == seed
 
     # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
     # pinned version is what decides which name the row answers to.
-    dated = FixReader(seed, source_version="4.2")
-    assert dated.text("8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+    dated = FixCodec(seed, version="4.2")
+    assert dated.read_line(b"8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
 
     # A stated absence produces no field at all.
-    silent = FixReader(seed, null_values=["<none>"])
-    assert silent.text("8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+    silent = FixCodec(seed, null_values=["<none>"])
+    assert silent.read_line(b"8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
 
     with pytest.raises(ValueError):
-        FixReader(seed, branch="not a branch")
+        FixCodec(seed, branch="not a branch")
 
 
 def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
@@ -1198,8 +1193,8 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     assert projection.carried == 0
     assert projection.field.name == "FixMessage"
 
-    reader = FixReader(seed)
-    row = reader.text("8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    reader = FixCodec(seed)
+    row = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
     assert len(row) == len(columns)
     assert row[projection.position_of(35)] == "D"
     assert row[projection.position_of(55)] == "AAPL"
@@ -1230,7 +1225,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A carried column carries no tag, so a row answers null there: the capture
     # fills it, and nothing in the message says what it held.
-    row = FixReader(seed).text("8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    row = FixCodec(seed).read_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
     assert row[0] is None
     assert row[carried.position_of(35)] == "D"
 
@@ -1267,27 +1262,25 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert held.metadata["partition:sources"] == '["30004"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
-def test_a_branch_declaration_carries_its_dialect_and_its_session() -> None:
+def test_a_branch_declaration_carries_its_dialect() -> None:
     import copy
     import pickle
 
     from yggdryl.fix import FixBranch
 
-    branch = FixBranch("CME", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    branch = FixBranch("CME", version="4.4")
 
     # The name is folded once and is the identity; the rest describes it.
     assert branch.name == "cme"
     assert str(branch) == "cme"
     assert branch.version == "4.4"
-    assert branch.sender_comp_id == "ME"
-    assert branch.target_comp_id == "CLIENT"
     assert not branch.is_standard()
     assert branch.digest() == FixBranch("cme").digest()
 
     # Equality is the whole declaration, not the name it is keyed by: two
-    # branches naming the same dictionary can still declare different sessions.
+    # branches naming the same dictionary can still declare different versions.
     assert branch != FixBranch.from_value("cme")
-    assert branch == FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    assert branch == FixBranch("cme", version="4.4")
     assert hash(branch) == hash(copy.copy(branch))
     assert copy.copy(branch) == branch
     assert pickle.loads(pickle.dumps(branch)) == branch
@@ -1311,18 +1304,13 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     registry = FixRegistry()
     assert registry.branches() == []
 
-    branch = FixBranch("cme", version="4.4", sender_comp_id="ME", target_comp_id="CLIENT")
+    branch = FixBranch("cme", version="4.4")
     registry.set_branch(branch)
 
     assert [held.name for held in registry.branches()] == ["cme"]
     assert registry.branch_named("cme") == branch
     assert registry.branch_named("CME").version == "4.4"
     assert registry.branch_named("absent") is None
-
-    # A session is both CompIDs, folded, or it is no session.
-    assert registry.branch_for_session("me", "client") == branch
-    assert registry.branch_for_session("me", "other") is None
-    assert registry.branch_for_session("", "") is None
 
     # An identifier carries the branch's identity, so it resolves to the
     # declaration without a second lookup. A non-standard branch claims a tag

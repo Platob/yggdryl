@@ -4,6 +4,8 @@
 mod batch;
 #[path = "fix/cfb.rs"]
 mod cfb;
+#[path = "fix/codec.rs"]
+mod codec;
 #[path = "fix/dictionary.rs"]
 mod dictionary;
 #[path = "fix/digest.rs"]
@@ -16,8 +18,6 @@ mod global_home;
 mod global_install;
 #[path = "fix/lift.rs"]
 mod lift;
-#[path = "fix/reader.rs"]
-mod reader;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]

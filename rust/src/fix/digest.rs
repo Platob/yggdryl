@@ -106,19 +106,19 @@ impl FixMsg {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixReader, FixRegistry};
+    /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    /// let reader = FixReader::new(Arc::new(registry));
-    /// let sent = reader.text("8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|")?;
+    /// let reader = FixCodec::new(Arc::new(registry));
+    /// let sent = reader.read_line(b"8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|")?;
     ///
     /// // The frame is not the message: a different separator, a recomputed
     /// // body length and a different checksum are the same message.
-    /// let again = reader.text("8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|")?;
+    /// let again = reader.read_line(b"8=FIX.4.4|9=99|35=D|11=A|55=AAPL|10=000|")?;
     /// assert_eq!(sent.digest(), again.digest());
     ///
     /// // A different value is a different message.
-    /// let other = reader.text("8=FIX.4.4|35=D|11=A|55=MSFT|10=203|")?;
+    /// let other = reader.read_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=203|")?;
     /// assert_ne!(sent.digest(), other.digest());
     /// # Ok(())
     /// # }
@@ -181,17 +181,17 @@ fn length_of(bytes: &[u8]) -> [u8; 4] {
 /// # fn main() -> yggdryl::Result<()> {
 /// # use std::sync::Arc;
 /// # use yggdryl::holder::local::Folder;
-/// # use yggdryl::{FixDedup, FixReader, FixRegistry};
+/// # use yggdryl::{FixDedup, FixCodec, FixRegistry};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-/// let reader = FixReader::new(Arc::new(registry));
+/// let reader = FixCodec::new(Arc::new(registry));
 /// let rows = [
 ///     "8=FIX.4.4|35=D|11=A|10=0|",
 ///     "8=FIX.4.4|35=D|11=A|10=0|",
 ///     "8=FIX.4.4|35=D|11=B|10=0|",
 ///     "8=FIX.4.4|35=D|11=A|10=0|",
 /// ];
-/// let read = rows.iter().map(|row| reader.text(row).expect("a readable row"));
+/// let read = rows.iter().map(|row| reader.read_line(row.as_bytes()).expect("a readable row"));
 ///
 /// let mut dedup = FixDedup::new(read);
 /// let kept: Vec<String> = dedup.by_ref().map(|held| held.into_text('|').unwrap()).collect();

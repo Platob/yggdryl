@@ -7,7 +7,7 @@ import {
   fix,
   type FixMsg,
   type FixProjection,
-  type FixReader,
+  type FixCodec,
   type FixRegistry,
   type FixValueInput,
   type LocationInput,
@@ -209,21 +209,21 @@ field.fix.id = 5001
 field.fix.aliases = [55]
 
 // The reader is a class over one dictionary, with every pin optional.
-const readerClass: typeof FixReader = fix.FixReader
-const reader: FixReader = new fix.FixReader(loaded)
-const pinned: FixReader = new fix.FixReader(loaded, {
+const readerClass: typeof FixCodec = fix.FixCodec
+const reader: FixCodec = new fix.FixCodec(loaded)
+const pinned: FixCodec = new fix.FixCodec(loaded, {
   branch: 'cme',
   sourceVersion: '4.2',
   targetVersion: '4.4',
   nullValues: ['<none>'],
 })
 const readRegistry: FixRegistry = reader.registry
-const fromText: FixMsg = reader.text('8=FIX.4.4|35=D|10=0|')
-const fromBytes: FixMsg = reader.bytes(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromFrame: FixMsg = reader.fixtext(Buffer.from('8=FIX.4.4'), 1)
-const fromBridge: FixMsg = reader.ultext(Buffer.from('#SYMBOL=TTF'))
-const fromPairs: FixMsg = reader.pairs([['55', 'AAPL']])
-const readerCopy: FixReader = reader.clone()
+const fromText: FixMsg = reader.readLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromBytes: FixMsg = reader.readLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromFrame: FixMsg = reader.readFixLine(Buffer.from('8=FIX.4.4'), 1)
+const fromBridge: FixMsg = reader.readUllinkLine(Buffer.from('#SYMBOL=TTF'))
+const fromPairs: FixMsg = reader.readPairs([['55', 'AAPL']])
+const readerCopy: FixCodec = reader.clone()
 
 // The projection is the fixed row's index, and the schema is its root.
 const projectionClass: typeof FixProjection = fix.FixProjection

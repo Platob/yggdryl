@@ -16,7 +16,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 | [Arrow](arrow.md) | `FixBatchReader`, `FixOptions`, `classify_arrow_array`: a capture already in Arrow, streamed through a dictionary |
-| [Capture](capture.md) | `FixReader`, `fix_schema`, `FixProjection`: a day of session log as one table |
+| [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixProjection`: a day of session log as one table |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
 ## Contract
@@ -27,7 +27,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Keys | `fix:branch`, `fix:tag`, `fix:tags`, `fix:aliases`; name, datatype, `display` and `description` stay the field's own |
 | Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
 | Standard branch | Empty name, digest zero, `Version::default()`, empty sender and target component IDs; an absent key means it, and setting it removes the key |
-| Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest, `Version`, `target_comp_id`, `sender_comp_id`, and the registry stores that value |
+| Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest and `Version`, and the registry stores that value |
 | Identity | `FixId` packs the tag in the high 32 bits and the branch's cached XXH32 digest in the low 32 bits of one positive `i64`; `Copy`, eight bytes, tag-major |
 | Spelling | Parsed as `tag:branch`; displayed `35:` for the standard branch and `5001:#7f3a1c02` for another; a field keeps its branch text, so `field.fix.id` reads `5001:cme` |
 | Derived | The identifier is computed on every read from `fix:branch` and `fix:tag`, never stored; `None` without a tag |

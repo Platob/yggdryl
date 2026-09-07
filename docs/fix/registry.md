@@ -475,7 +475,8 @@ A code's pedigree is stored as real numbers. Many codes are dated by extension p
 ### Edges
 
 - An unresolved spelling is never an error. `code_value` answers `None`, and the caller keeps its text.
-- Two codes may share a value; two codes may not share a name, folded. `set_codes` refuses the second, naming it, and leaves the field unchanged.
+- Two codes may share a value - that is an alias, and either spelling reaches it. Two codes may not share a name: `set_codes` refuses the second, naming it, and leaves the field unchanged. The comparison there is ASCII case.
+- A reader assembling a set goes further and keeps a *folded* spelling - `_`, `-` and spaces ignored too - from reaching two codes, dropping the later one. Rendering only has to keep a document readable; a set has to stay answerable, and two codes one spelling reaches resolve to nothing rather than to either.
 - A code stating an empty value or an empty name is refused.
 - An empty slice removes the property rather than storing an empty set.
 - A malformed document answers nothing rather than something wrong: `codes()` reports it with a byte position, while `code`, `code_by_name` and `code_value` answer `None`. Neither path allocates.
@@ -572,9 +573,9 @@ Several sources describe one dictionary, and `FixRegistry::merge_with` is how a 
 
 The field rule is the same in all three: a field whose canonical identity is absent is inserted, one already stored is merged, and the counts say which was which. A bare `insert` loop would replace the stored definition wholesale and drop what only it declared; a bare `update` loop would refuse everything new.
 
-A dialect folds beside the fields. One the dictionary does not hold arrives whole; one it holds takes the incoming record - version and session pair - while keeping every spelling it already answered to, because reading a second source is not a statement that the first one's names were wrong.
+A dialect folds beside the fields. One the dictionary does not hold arrives whole; one it holds takes the incoming record - its version - while keeping every spelling it already answered to, because reading a second source is not a statement that the first one's names were wrong.
 
-`FixRegistry::add_cfb_file` is the whole ingest in one call: it folds the vocabulary exactly as `add_fields` does, and records the dialect the root element declares - the FIX version and the session `CompID` pair - which reading the fields alone loses, because a field carries its branch's *name* and nothing else of it. The location's own stem also becomes a branch alias whenever it is not already the name, so a dictionary read from `MSFIX44.cfb` under the branch `morgan` still answers to `msfix44`; a branch the dictionary already holds keeps the spellings it already answered to, because reading a second file is not a statement that the first one's names were wrong.
+`FixRegistry::add_cfb_file` is the whole ingest in one call: it folds the vocabulary exactly as `add_fields` does, and records the dialect the root element declares - the FIX version - which reading the fields alone loses, because a field carries its branch's *name* and nothing else of it. The location's own stem also becomes a branch alias whenever it is not already the name, so a dictionary read from `MSFIX44.cfb` under the branch `morgan` still answers to `msfix44`; a branch the dictionary already holds keeps the spellings it already answered to, because reading a second file is not a statement that the first one's names were wrong.
 
 `FixField::from_cfb_file` is the source that made the fold worth having. It answers one Ullink CBlock's vocabulary alone - keyed, in declaration order, code sets attached - where `FixRegistry::from_cfb` answers a whole registry plus the message roots its grammar bindings describe. Both build the dictionary, so both refuse the same files; the vocabulary door just drops the one it built. A CBlock never names itself, so with no branch supplied the handle's own stem does: `bloomberg.cfb` reads into the branch `bloomberg`. Rust and Python only.
 
@@ -910,6 +911,10 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `FixField::from_cfb_file` with no branch, on a handle whose stem is not a branch -> refused, never folded into one; a `Buffer`'s URL is an identity rather than a location, so bytes in memory are named by the caller.
 - `FixField::from_cfb_file` on a file naming one field twice -> the same refusal `FixRegistry::from_cfb` gives, because the vocabulary door builds the dictionary too and drops it; a tag declared twice *identically* is the one difference, arriving twice there and once here.
 - A CBlock's `float` or `string` meeting a committed `float64` or `msgtype` -> the datatype refusal above; a CBlock says nothing about which tag is money or which is a MsgType.
+- A dictionary written before `TZTimeOnly` became `datetime64(ns,"UTC")` still holds tags 1079, 1212, 1213, 1253, 1405 and 1550 as `ascii(16)`; folding it against a current one meets the datatype refusal. Regenerate it rather than merging around it.
+- A CBlock `map` becomes the code set of the tag it is named for, and that name alone orients its entries: named byte-exact as the field's display spelling - the `alt` its `vocabulary-tag` declared, or the tag itself where it declared none - `key` is the wire value and `value` the symbolic name; any other spelling, `ADVSIDE` against `AdvSide` included, is read the other way round. A map naming no tag is skipped rather than refused.
+- A CBlock `map` entry stating nothing on a side, with an empty attribute or with none -> dropped, never a refusal. A second name for a wire value the map already gave one -> kept as an alias on that code, because a name a source declared is a spelling the set has to answer to. Two maps naming one tag -> the last one read is the field's code set, replacing rather than merging.
+- A `map` entry whose name another code already answers to, folded -> dropped, and its wire value with it: two codes one spelling reaches resolve to nothing rather than to either, and the entry states no second name to arrive under.
 - `remove` with a path -> never a match; it takes a tag, an identifier or a name, and a bare one means the standard branch.
 - Primitive and nested fields share one identity space; a repeating group claiming a scalar's tag, name, alternate tag or alias -> the same conflict as between two scalars.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.
@@ -936,6 +941,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
     cargo test -p yggdryl --test fix -- cfb::a_file_answers_its_vocabulary cfb::an_unnamed_file_takes_its_branch cfb::a_stem_that_is_not_a_branch cfb::a_cblock_vocabulary_folds cfb::folding_a_cblock_into_the_committed
+    cargo test -p yggdryl --test fix -- cfb::a_map_becomes_the_code_set cfb::a_map_is_oriented_by_its_name
     cargo test -p yggdryl --test fix -- cfb::a_cblock_reads_in_whole cfb::reading_a_cblock_in_whole_is_one_mutation
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```

@@ -62,9 +62,9 @@ pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
     CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, FixAliases, FixAnomalies,
-    FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodes, FixDedup, FixEntry, FixFieldIter,
-    FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty, FixPedigree,
-    FixProjection, FixReader, FixRegistry, MSGDIRECTION_TAG, MSGHASH_TAG, PARENTCLORDID_TAG,
+    FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixEntry,
+    FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty,
+    FixPedigree, FixProjection, FixRegistry, MSGDIRECTION_TAG, MSGHASH_TAG, PARENTCLORDID_TAG,
     PARENTORDERID_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, SYMBOLTICKER_TAG,
     TIMESTAMP_TAG, UNIXPARTITION_TAG, VERSION_TAG, Words, fix_crate_fields, fix_lift, fix_lifts,
     fix_schema, fix_schema_tags,

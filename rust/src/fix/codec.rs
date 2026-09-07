@@ -1,8 +1,11 @@
-//! The three readers, and the stream that holds what is constant across rows.
+//! What every line of one capture is read against.
 //!
-//! Each reader splits its own dialect, rewrites it into the key forms the one
-//! [builder](super::build) understands, and hands the pairs over. None of them
-//! parses a message and none of them builds a tree of its own.
+//! A [`FixCodec`] is the dictionary plus the few facts a whole run shares -
+//! the dialect, the version, the spellings that mean nothing was sent - and
+//! the constructors on [`FixMsg`] take one. Each of them splits its own
+//! dialect, rewrites it into the key forms the one [builder](super::build)
+//! understands, and hands the pairs over. None of them parses a message and
+//! none of them builds a tree of its own.
 //!
 //! # A row is a log line
 //!
@@ -27,8 +30,11 @@
 
 use std::sync::Arc;
 
+use quick_xml::events::Event;
+use smol_str::SmolStr;
+
 use crate::mime_type::line;
-use crate::{DataType, Error, Field, Result, Version};
+use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, root_name};
 use super::project::Projections;
@@ -56,12 +62,13 @@ pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 /// re-does per message what is constant for the whole run. Pinning a branch
 /// and the two versions skips inference for every row - and a capture is one
 /// session, so pinning is the normal case rather than an optimization.
-pub struct FixReader {
+pub struct FixCodec {
     registry: Arc<FixRegistry>,
     projections: Arc<Projections>,
     branch: Option<FixBranch>,
-    source_version: Option<Version>,
-    target_version: Option<Version>,
+    version: Option<Version>,
+    separator: Option<u8>,
+    payload_column: SmolStr,
     null_values: Vec<String>,
 }
 
@@ -69,31 +76,33 @@ pub struct FixReader {
 ///
 /// The cache holds one version's projections, and two readers differing in
 /// version - which is why a reader is usually cloned - would otherwise clear
-/// each other's every row. Sharing the work across threads is `Arc<FixReader>`
+/// each other's every row. Sharing the work across threads is `Arc<FixCodec>`
 /// instead, which shares the cache as well.
-impl Clone for FixReader {
+impl Clone for FixCodec {
     fn clone(&self) -> Self {
         Self {
             registry: Arc::clone(&self.registry),
             projections: Arc::default(),
             branch: self.branch.clone(),
-            source_version: self.source_version,
-            target_version: self.target_version,
+            version: self.version,
+            separator: self.separator,
+            payload_column: self.payload_column.clone(),
             null_values: self.null_values.clone(),
         }
     }
 }
 
-impl FixReader {
-    /// Opens a reader over one dictionary.
+impl FixCodec {
+    /// Opens a codec over one dictionary.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
         Self {
             registry,
             projections: Arc::default(),
             branch: None,
-            source_version: None,
-            target_version: None,
+            version: None,
+            separator: None,
+            payload_column: SmolStr::new_static(super::batch::DEFAULT_PAYLOAD_COLUMN),
             null_values: DEFAULT_NULL_VALUES
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
@@ -101,34 +110,66 @@ impl FixReader {
         }
     }
 
-    /// Pins the dialect, so no row infers one.
+    /// The dictionary every message is read against.
     #[must_use]
-    pub fn branch(mut self, branch: &FixBranch) -> Self {
+    pub const fn registry(&self) -> &Arc<FixRegistry> {
+        &self.registry
+    }
+
+    /// The version messages are built at, where the caller pinned one.
+    #[must_use]
+    pub const fn version(&self) -> Option<Version> {
+        self.version
+    }
+
+    /// The dialect every message is read under, where the caller pinned one.
+    #[must_use]
+    pub const fn branch(&self) -> Option<&FixBranch> {
+        self.branch.as_ref()
+    }
+
+    /// Pins the dialect, so no row is read under the standard one.
+    #[must_use]
+    pub fn with_branch(mut self, branch: &FixBranch) -> Self {
         self.branch = Some(branch.clone());
         self
     }
 
-    /// Pins the version the arriving rows are written in.
+    /// Pins the version the built messages are expressed in.
+    ///
+    /// A field is renamed and retyped to what that version called it, so this
+    /// is what a message *is*. Unpinned, each row answers for itself:
+    /// `ApplVerID(1128)` first, then `BeginString(8)`, then the dialect's own
+    /// default, then the dictionary's newest - which is what a capture
+    /// carrying more than one application version needs.
     #[must_use]
-    pub const fn source_version(mut self, version: Version) -> Self {
-        self.source_version = Some(version);
+    pub const fn with_version(mut self, version: Version) -> Self {
+        self.version = Some(version);
         self
     }
 
-    /// Pins the version the built messages are expressed in.
+    /// Pins the byte a numeric frame is split on, so none is inferred.
     #[must_use]
-    pub const fn target_version(mut self, version: Version) -> Self {
-        self.target_version = Some(version);
+    pub const fn with_separator(mut self, separator: u8) -> Self {
+        self.separator = Some(separator);
+        self
+    }
+
+    /// Names the record column [`Self::read_record`] reads the payload from.
+    #[must_use]
+    pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self {
+        self.payload_column = column.into();
         self
     }
 
     /// Replaces the spellings that mean "nothing was sent".
     ///
+    ///
     /// Empty keeps every literal, which is what a venue for whom the text
     /// `null` is a value sets: the default is a convention, and a convention
     /// has to be overridable to be safe.
     #[must_use]
-    pub fn null_values<I, S>(mut self, spellings: I) -> Self
+    pub fn with_null_values<I, S>(mut self, spellings: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -147,20 +188,21 @@ impl FixReader {
 
     /// Reads one log line, picking its dialect from the frame.
     ///
-    /// # Errors
+    /// The prefix a process printed around the message is located and dropped
+    /// first, then one shallow look decides which of the three readers owns
+    /// the body: a run of digits before the frame's first `=` is numeric FIX,
+    /// and anything else is a bridge row. The decision is made once and holds
+    /// for the whole body, so a `#` or a `<` inside a *value* is part of that
+    /// value.
     ///
-    /// Returns [`Error::Parse`] for input that is not a row at all. A line
-    /// that merely held nothing is `Ok` and says so.
-    pub fn text(&self, row: &str) -> Result<FixMsg> {
-        self.bytes(row.as_bytes())
-    }
-
-    /// Reads one log line of bytes, picking its dialect from the frame.
+    /// A FIXML row is the one that states no `key=value` frame at all, so the
+    /// locator finds nothing to read; a row holding a tag is read as the
+    /// document it is rather than as a line that held nothing.
     ///
     /// # Errors
     ///
     /// Returns [`Error::Parse`] for input that is not a row at all.
-    pub fn bytes(&self, row: &[u8]) -> Result<FixMsg> {
+    pub fn read_line(&self, row: &[u8]) -> Result<FixMsg> {
         if row.is_empty() {
             return Err(Error::Parse {
                 target: "fix",
@@ -170,16 +212,25 @@ impl FixReader {
         }
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
-        if !numeric_frame(body) {
-            return self.ultext(body);
+        if numeric_frame(body) {
+            return self.read_fix_line(body);
         }
-        match unescaped(body) {
-            Some(held) => self.fixtext(&held, 0x01),
-            None => self.fixtext(body, separator_of(body)),
+        // A FIXML row states no `key=value` frame, so the locator finds none
+        // and leaves nothing to read. The document is the payload, and it
+        // opens at the first tag - which is also how a prefix is dropped from
+        // one, since everything before that tag is text the reader skips.
+        if body.is_empty() && memchr::memchr(b'<', row).is_some() {
+            return self.read_fixml_line(row);
         }
+        self.read_ullink_line(body)
     }
 
-    /// Reads one numeric FIX frame split on `separator`.
+    /// Reads one numeric FIX frame.
+    ///
+    /// The separator is the one [`Self::with_separator`] pinned; with none
+    /// pinned a frame spelling its `SOH` as `\x01`, `^A` or `<SOH>` is
+    /// unescaped and split on the real byte, and any other frame is split on
+    /// whichever of `|`, `;` or `SOH` it actually uses.
     ///
     /// A trailing empty segment is tolerated, because a wire message ends
     /// with its separator; a segment with no `=` is dropped, as an empty key
@@ -189,7 +240,18 @@ impl FixReader {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn fixtext(&self, body: &[u8], separator: u8) -> Result<FixMsg> {
+    pub fn read_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
+        if let Some(separator) = self.separator {
+            return self.split_fix(body, separator);
+        }
+        match unescaped(body) {
+            Some(held) => self.split_fix(&held, 0x01),
+            None => self.split_fix(body, separator_of(body)),
+        }
+    }
+
+    /// One numeric frame split on one byte.
+    fn split_fix(&self, body: &[u8], separator: u8) -> Result<FixMsg> {
         let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
         for segment in split(body, separator) {
             let Some((key, value)) = split_pair(segment) else {
@@ -214,7 +276,7 @@ impl FixReader {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn ultext(&self, body: &[u8]) -> Result<FixMsg> {
+    pub fn read_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let separator = if memchr::memchr(b'|', body).is_some() {
             b'|'
         } else {
@@ -249,12 +311,167 @@ impl FixReader {
         self.build(&pairs)
     }
 
+    /// Reads one FIXML row: every element's attributes, in document order.
+    ///
+    /// FIXML spells a field as an XML attribute and a component as a nested
+    /// element, so the attributes *are* the pairs and the nesting flattens the
+    /// way a bridge occurrence already does. An element name is not a tag and
+    /// nothing invents one: `<Order ClOrdID="A"/>` states one field, and one
+    /// field is what this states.
+    ///
+    /// A namespace prefix is dropped from an attribute name, exactly as the
+    /// CBlock reader drops one from an element name, because a prefix names a
+    /// document's own vocabulary and never the field.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] naming the byte position when the row is not
+    /// well-formed XML, and the builder's refusal otherwise.
+    pub fn read_fixml_line(&self, body: &[u8]) -> Result<FixMsg> {
+        let mut reader = quick_xml::Reader::from_reader(body);
+        let mut buffer = Vec::new();
+        let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        let malformed = |reader: &quick_xml::Reader<&[u8]>, reason: String| Error::Parse {
+            target: "fixml",
+            position: reader.buffer_position() as usize,
+            reason: SmolStr::new(reason),
+        };
+        loop {
+            let event = reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| malformed(&reader, error.to_string()))?;
+            match event {
+                Event::Eof => break,
+                Event::Start(element) | Event::Empty(element) => {
+                    for attribute in element.attributes() {
+                        let attribute =
+                            attribute.map_err(|error| malformed(&reader, error.to_string()))?;
+                        owned.push((
+                            attribute.key.local_name().as_ref().to_vec(),
+                            attribute.value.into_owned(),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        let pairs: Vec<(&[u8], &[u8])> = owned
+            .iter()
+            .map(|(key, value)| (key.as_slice(), value.as_slice()))
+            .collect();
+        self.build(&pairs)
+    }
+
+    /// Reads one generic record: its payload column, under its own columns.
+    ///
+    /// The crate already has a generic record - a name-to-value map, one
+    /// `Scalar` variant - and every row-oriented reader in it produces one, so
+    /// taking that shape means this accepts a row from any of them with no
+    /// conversion at the boundary. The payload column is read by
+    /// [`Self::read_line`]; every other named column is a fact this codec
+    /// already holds, stated per row.
+    ///
+    /// | column | supplies |
+    /// | --- | --- |
+    /// | the payload column, [`Self::with_payload_column`] | the bytes read |
+    /// | `branch` | the dialect |
+    /// | `beginstring` | the version |
+    /// | `sep` | the separator, which also means the payload is a FIX frame |
+    /// | `direction` | the direction, stated |
+    ///
+    /// A row outranks this codec, because a column is the caller speaking per
+    /// row where the codec is the caller speaking per run. A column that is
+    /// absent, null or empty is silence, never an instruction and never an
+    /// error - so a record carrying only a payload reads exactly as the bytes
+    /// would, which is what makes this an entry point and not a second
+    /// contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the value is not a record at all.
+    pub fn read_record(&self, record: &Scalar) -> Result<FixMsg> {
+        super::batch::read_record_with(self, record, &self.payload_column)
+    }
+
+    /// Reads a stream of generic records, one message per record, lazily.
+    ///
+    /// Nothing is collected: the iterator is the stream, so a capture of ten
+    /// million rows costs one message at a time. Each record is read exactly
+    /// as [`Self::read_record`] reads it, so what a row states about itself
+    /// still outranks what this codec holds for the run.
+    pub fn read_records<'codec, I>(
+        &'codec self,
+        records: I,
+    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    where
+        I: IntoIterator<Item = Scalar>,
+        I::IntoIter: 'codec,
+    {
+        records
+            .into_iter()
+            .map(move |record| self.read_record(&record))
+    }
+
+    /// Reads one Arrow batch of capture rows into one Arrow batch of messages.
+    ///
+    /// The batch a text reader answers with is already the shape this wants -
+    /// one row per line, the payload in a named column and the capture's own
+    /// `url`, `rownum` and `direction` beside it - so this takes it whole
+    /// rather than through a row-at-a-time boundary, and carries those columns
+    /// through ahead of the FIX ones.
+    ///
+    /// One batch in, one batch out, with the row count preserved. Use
+    /// [`Self::read_arrow_reader`] for a stream, which is the same read
+    /// without holding a batch's worth of messages at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the options do not make a
+    /// root field, and the Arrow layer's own failure.
+    pub fn read_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+        options: &super::FixOptions,
+    ) -> Result<arrow_array::RecordBatch> {
+        let schema = batch.schema();
+        let source = crate::arrow::batch_reader(schema, [batch.clone()]);
+        let mut read = self.read_arrow_reader(source, options)?;
+        let first = read
+            .next()
+            .transpose()
+            .map_err(crate::arrow::from_reader_error)?;
+        match first {
+            Some(held) => Ok(held),
+            // A batch of no rows reads as a batch of no rows, never as an
+            // error: an empty capture is a capture.
+            None => Ok(arrow_array::RecordBatch::new_empty(read.schema())),
+        }
+    }
+
+    /// Reads a stream of Arrow batches into a stream of message batches.
+    ///
+    /// The payload column is this codec's, so a reader whose payload is not
+    /// `body` names it with [`Self::with_payload_column`] once for the run.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the options do not make a
+    /// root field, or the source reader's own failure.
+    pub fn read_arrow_reader(
+        &self,
+        source: crate::arrow::BatchReader,
+        options: &super::FixOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        super::batch::FixBatchReader::from_codec(self, source, options)
+    }
+
     /// Builds one message from pairs the caller already split.
     ///
     /// # Errors
     ///
     /// Returns the builder's refusal.
-    pub fn pairs<'a, I>(&self, pairs: I) -> Result<FixMsg>
+    pub fn read_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg>
     where
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
@@ -264,13 +481,10 @@ impl FixReader {
 
     /// The one build every reader funnels into.
     fn build(&self, pairs: &[(&[u8], &[u8])]) -> Result<FixMsg> {
-        let branch = self
-            .branch
-            .clone()
-            .unwrap_or_else(|| self.infer_branch(pairs));
-        let version = self
-            .source_version
-            .or_else(|| self.infer_version(pairs, &branch));
+        // A row states no dialect, so the caller's pin is the only source: a
+        // capture is one session and the branch is a fact about the run.
+        let branch = self.branch.clone().unwrap_or_default();
+        let version = self.version.or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
         let mut builder = Builder::new(
@@ -310,30 +524,6 @@ impl FixReader {
             _ => return &[],
         };
         item.fields()
-    }
-
-    /// The dialect a row is written in, when the caller pinned none.
-    ///
-    /// The first step is identity rather than inference: `SenderCompID(49)`
-    /// and `TargetCompID(56)` are in every header and a branch declares that
-    /// pair, so one lookup answers exactly. Both orders are tried, because a
-    /// dictionary declares the session from its own side and an inbound
-    /// message carries the pair reversed.
-    fn infer_branch(&self, pairs: &[(&[u8], &[u8])]) -> FixBranch {
-        let sender = value_of(pairs, b"49");
-        let target = value_of(pairs, b"56");
-        if let (Some(sender), Some(target)) = (sender, target) {
-            let sender = String::from_utf8_lossy(sender);
-            let target = String::from_utf8_lossy(target);
-            if let Some(branch) = self
-                .registry
-                .branch_for_session(&sender, &target)
-                .or_else(|| self.registry.branch_for_session(&target, &sender))
-            {
-                return branch.clone();
-            }
-        }
-        FixBranch::STANDARD
     }
 
     /// The version an arriving row is written in, when the caller pinned none.

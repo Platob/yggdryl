@@ -269,13 +269,10 @@ fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
     assert_eq!(FixBranch::STANDARD.to_string(), "");
     assert_eq!(FixBranch::from_str("a-b.c_9").unwrap().name(), "a-b.c_9");
 
-    let complete =
-        FixBranch::from_parts("CME", "4.4".parse::<Version>().unwrap(), "CME", "BANKX").unwrap();
+    let complete = FixBranch::from_parts("CME", "4.4".parse::<Version>().unwrap()).unwrap();
     assert_eq!(complete.name(), "cme");
     assert_eq!(complete.digest(), cme().digest());
     assert_eq!(complete.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(complete.target_comp_id(), "CME");
-    assert_eq!(complete.sender_comp_id(), "BANKX");
 
     let cases = [
         (" cme", 0),
@@ -312,7 +309,7 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
             .unwrap();
     dictionary.set_branch(cme.clone()).unwrap();
 
-    let incoming = FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap(), "CME", "BANKX")
+    let incoming = FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap())
         .unwrap()
         .with_aliases(["cmegroup"])
         .unwrap();
@@ -333,7 +330,6 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
     // whole, and every spelling either side answered to is kept.
     let held = dictionary.branch_named("cme").expect("the venue dialect");
     assert_eq!(held.version(), "4.4".parse::<Version>().unwrap());
-    assert_eq!(held.sender_comp_id(), "BANKX");
     assert_eq!(held.aliases(), ["globex", "cmegroup"]);
     for spelling in ["globex", "CMEGROUP", "cme"] {
         assert_eq!(
@@ -468,8 +464,6 @@ fn a_forced_branch_digest_collision_is_atomic_and_names_both_branches() {
         name: SmolStr::new_static("collision"),
         digest: FixBranch::STANDARD.digest(),
         version: Version::default(),
-        target_comp_id: SmolStr::default(),
-        sender_comp_id: SmolStr::default(),
         aliases: Vec::new(),
     };
     let error = registry.set_branch(collision).unwrap_err();
@@ -2678,6 +2672,34 @@ fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
     // answered as nothing and the caller keeps its own text.
     assert_eq!(view.code_value("VenueOwnSide"), None);
     assert_eq!(view.code_name("Z"), None);
+}
+
+#[test]
+fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it() {
+    // A source naming one wire value twice is declaring an alias, and a
+    // reader building the set meets the second name on its own. `is_spelled`
+    // is what it asks before adding: the fold, so the answer is the same one
+    // the stored set will give, and over the whole set, because whether a
+    // spelling is free is a question about the set and not about one code.
+    let mut buy = FixCode::new("Buy", "1");
+    assert!(buy.is_spelled("b_uy"));
+    assert!(!buy.is_spelled("Bought"));
+    buy.push_alias("Bought");
+    assert!(buy.is_spelled("bought"));
+    assert_eq!(buy.aliases(), ["Bought"]);
+
+    let mut field = DataType::Utf8.nullable_field("Side");
+    field.as_fix_mut().set_tag(54).unwrap();
+    field
+        .as_fix_mut()
+        .set_codes(&[buy, FixCode::new("Sell", "2")])
+        .unwrap();
+    let view = field.as_fix();
+
+    // The grown code is one code with two spellings, not two codes.
+    assert_eq!(view.codes().count(), 2);
+    assert_eq!(view.code_value("Bought"), Some("1"));
+    assert_eq!(view.code_name("1"), Some("Buy"));
 }
 
 #[test]

@@ -1,11 +1,10 @@
 //! An Ullink CBlock configuration, read for the FIX definitions it declares.
 //!
-//! A `.cfb` is one counterparty's dictionary. It states at the top exactly
-//! what a dialect declares - the FIX version it speaks and the session pair
-//! it speaks it over - and then two things worth reading: a `vocabulary` of
-//! tags, and a `grammar-binding` per message type describing that message's
-//! tree. Everything else in the file describes the file, the transcoding, or
-//! the plugin, and is skipped.
+//! A `.cfb` is one counterparty's dictionary. It states at the top the FIX
+//! version a dialect speaks, and then two things worth reading: a
+//! `vocabulary` of tags, and a `grammar-binding` per message type describing
+//! that message's tree. Everything else in the file describes the file, the
+//! transcoding, or the plugin, and is skipped.
 //!
 //! # Two entry points, one parse
 //!
@@ -164,9 +163,9 @@ impl FixField<'_> {
     ///
     /// Two things a registry would hold are therefore not here - the message
     /// roots, and the branch record. A field stores its branch's *name* and
-    /// never the version and session pair the root element declares, so a
-    /// dictionary built from these fields alone knows the dialect by name and
-    /// nothing else. Take [`FixRegistry::from_cfb`] when either matters.
+    /// never the version the root element declares, so a dictionary built
+    /// from these fields alone knows the dialect by name and nothing else.
+    /// Take [`FixRegistry::from_cfb`] when either matters.
     ///
     /// One difference is not a loss: a dictionary keeps one entry per
     /// identity, so a tag a file declares twice identically arrives twice
@@ -253,8 +252,8 @@ impl<'doc> Parse<'doc> {
     fn dictionary(self) -> Result<FixRegistry> {
         let mut registry = FixRegistry::new();
         // The branch record first, and explicitly. A field's metadata carries
-        // only its branch's *name* - the version and the session pair are the
-        // dictionary's own record of the dialect - so inserting fields alone
+        // only its branch's *name* - the version is the dictionary's own
+        // record of the dialect - so inserting fields alone
         // would register a nameless-versioned branch and lose what the root
         // element was read for. The standard branch declares no dialect, so a
         // file parsed without a name registers nothing.
@@ -304,29 +303,22 @@ impl<'doc> Parse<'doc> {
 
     /// Reads the branch record the root element carries.
     ///
-    /// A CBlock is one counterparty's dictionary, and this is what it declares
-    /// about the session it is for. `fix-version` becomes the branch's version
-    /// and never its name: a branch name must start with an ASCII letter, so
-    /// `4.4` could not be one, which is what carrying both on one record ends
-    /// the confusion about.
+    /// A CBlock is one counterparty's dictionary, and `fix-version` is what it
+    /// declares about the dialect. It becomes the branch's version and never
+    /// its name: a branch name must start with an ASCII letter, so `4.4` could
+    /// not be one, which is what carrying both on one record ends the
+    /// confusion about.
     ///
-    /// The session pair is stored exactly as declared. The `type` attribute's
-    /// `BuySide`/`SellSide` portion says which side wrote the file, so the
-    /// counterparty sees the same pair reversed - which is why a reader
-    /// matching a session tries both orders, and why nothing here reverses
-    /// anything.
+    /// `sendercompid` and `targetcompid` are read past. A branch is a
+    /// dictionary, and which two parties spoke it is a fact about a run rather
+    /// than about a vocabulary - the same file written from the other side
+    /// declares the pair reversed and describes the same dialect.
     fn read_root(&mut self, element: &BytesStart<'_>) -> Result<()> {
         let version = self
             .attribute(element, "fix-version")?
             .and_then(|held| held.parse::<Version>().ok())
             .unwrap_or(self.branch.version());
-        let sender = self
-            .attribute(element, "sendercompid")?
-            .unwrap_or_else(|| self.branch.sender_comp_id().to_owned());
-        let target = self
-            .attribute(element, "targetcompid")?
-            .unwrap_or_else(|| self.branch.target_comp_id().to_owned());
-        self.branch = FixBranch::from_parts(self.branch.name(), version, target, sender)?;
+        self.branch = FixBranch::from_parts(self.branch.name(), version)?;
         Ok(())
     }
 
@@ -466,6 +458,9 @@ impl<'doc> Parse<'doc> {
     /// `AdvSide` - so the name resolves through the vocabulary this file has
     /// already read, and a map naming no tag is skipped rather than refused:
     /// a CBlock maps things that are not fields.
+    ///
+    /// That name is also what orients the entries, so it is resolved before
+    /// the first one is read. [`Parse::decodes`] carries the rule.
     fn read_maps(&mut self) -> Result<()> {
         let mut buffer = Vec::new();
         let mut depth = 0_usize;
@@ -478,8 +473,13 @@ impl<'doc> Parse<'doc> {
                 Event::Eof => break,
                 Event::Start(element) if is_named(&element, b"map") => {
                     let named = self.attribute(&element, "name")?;
-                    let codes = self.read_map_entries()?;
-                    self.attach_codes(named.as_deref(), codes)?;
+                    let decodes = named.as_deref().and_then(|named| self.decodes(named));
+                    // A map naming no tag is still read to its end: skipping
+                    // the entries would leave the reader inside them.
+                    let codes = self.read_map_entries(decodes.is_some_and(|(_, fix)| fix))?;
+                    if let Some((at, _)) = decodes {
+                        self.attach_codes(at, &codes)?;
+                    }
                 }
                 Event::Start(_) => depth += 1,
                 Event::End(element) => {
@@ -495,8 +495,11 @@ impl<'doc> Parse<'doc> {
         Ok(())
     }
 
-    /// One map's entries, each oriented into a value and a name.
-    fn read_map_entries(&mut self) -> Result<Vec<FixCode>> {
+    /// One map's entries, each oriented the way the map's name says.
+    ///
+    /// `fix` is what [`Parse::decodes`] resolved: the FIX way round reads
+    /// `key` as the wire value, the UlMessage way reads `value` as it.
+    fn read_map_entries(&mut self, fix: bool) -> Result<Vec<FixCode>> {
         let mut codes: Vec<FixCode> = Vec::new();
         let mut buffer = Vec::new();
         let mut depth = 0_usize;
@@ -508,10 +511,10 @@ impl<'doc> Parse<'doc> {
             match event {
                 Event::Eof => break,
                 Event::Empty(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes)?;
                 }
                 Event::Start(element) if is_named(&element, b"entry") => {
-                    self.push_entry(&element, &mut codes)?;
+                    self.push_entry(&element, fix, &mut codes)?;
                     depth += 1;
                 }
                 Event::Start(_) => depth += 1,
@@ -528,35 +531,100 @@ impl<'doc> Parse<'doc> {
         Ok(codes)
     }
 
-    /// One `entry` as a code, oriented and deduplicated by its wire value.
-    fn push_entry(&self, element: &BytesStart<'_>, codes: &mut Vec<FixCode>) -> Result<()> {
+    /// One `entry` as a code, oriented the way the map's name says.
+    ///
+    /// An empty attribute says what an absent one says, so both drop the
+    /// entry. Everything else is kept, because a CBlock names one wire value
+    /// twice routinely - `7` is both `accountiscarriedonnoncustomersmargined`
+    /// and `accountishousetraderandcrossmargined` - and a set that took the
+    /// first name and dropped the second would answer to one spelling fewer
+    /// than the file declared. A second name for a value already held is what
+    /// a code set calls an alias, so it is added as one.
+    ///
+    /// A spelling another code already answers to is the one thing that
+    /// cannot be kept: two codes one spelling reaches resolve to nothing
+    /// rather than to either, so the entry is dropped. That is a stricter
+    /// test than [`FixCodes::render`](super::codes::FixCodes) refuses on -
+    /// the whole fold rather than ASCII case - because render only has to
+    /// keep a document readable and this has to keep it answerable.
+    fn push_entry(
+        &self,
+        element: &BytesStart<'_>,
+        fix: bool,
+        codes: &mut Vec<FixCode>,
+    ) -> Result<()> {
         let (Some(key), Some(held)) = (
-            self.attribute(element, "key")?,
-            self.attribute(element, "value")?,
+            self.attribute(element, "key")?
+                .filter(|held| !held.is_empty()),
+            self.attribute(element, "value")?
+                .filter(|held| !held.is_empty()),
         ) else {
             return Ok(());
         };
-        let (value, name) = oriented(&key, &held);
-        if !codes.iter().any(|code| code.value() == value) {
-            codes.push(FixCode::new(name, value));
+        let (value, name) = if fix { (key, held) } else { (held, key) };
+        if codes.iter().any(|code| code.is_spelled(&name)) {
+            return Ok(());
+        }
+        match codes.iter_mut().find(|code| code.value() == value) {
+            Some(code) => code.push_alias(name),
+            None => codes.push(FixCode::new(name, value)),
         }
         Ok(())
     }
 
-    /// Puts one code set on the vocabulary field its map is named for.
-    fn attach_codes(&mut self, named: Option<&str>, codes: Vec<FixCode>) -> Result<()> {
-        let (Some(named), false) = (named, codes.is_empty()) else {
-            return Ok(());
-        };
-        let Some(at) = self
+    /// The vocabulary position a map decodes, and whether it is written the
+    /// FIX way round.
+    ///
+    /// A CBlock writes its maps two ways: `key="0" value="day"` under a map
+    /// named for the field as the file spells it, and `key="buy" value="B"`
+    /// under one named the UlMessage way. Nothing in an entry separates
+    /// them: both attributes are free text, and a length or a word shape is
+    /// a guess that puts `B` in a name and `buy` on the wire as soon as a
+    /// code set is spelled the other way round. The map's name is what does,
+    /// so it decides once for the whole map.
+    ///
+    /// A name equal to [`spelled`] *byte for byte* is the FIX way and `key`
+    /// is the wire value. Anything else is the UlMessage way and `value` is:
+    /// `ADVSIDE`, `advside` and `Adv_Side` alike, because none of them is how
+    /// the file spells `AdvSide`. Only resolution is forgiving - it folds
+    /// case and separators like every other name in this crate, so all four
+    /// reach the field.
+    ///
+    /// The spelling is tried before the fold, and both from the end. Two tags
+    /// can fold to one name across branches, and the one a map *spells* is
+    /// the one it decodes; and where a file declares one tag twice, the last
+    /// declaration is the entry the dictionary keeps.
+    ///
+    /// The rule reads `alt` as the FIX spelling, which is what the corpus
+    /// writes. A file spelling it the UlMessage way instead - `alt="SIDE"`
+    /// under `<map name="SIDE">` - is read the FIX way and inverted, and
+    /// nothing in the document separates that from a map that means it.
+    fn decodes(&self, named: &str) -> Option<(usize, bool)> {
+        let named = named.trim();
+        if let Some(at) = self
             .vocabulary
             .iter()
-            .position(|(_, field)| crate::types::folds_equal(field.name(), named))
-        else {
+            .rposition(|(_, field)| spelled(field) == named)
+        {
+            return Some((at, true));
+        }
+        let at = self
+            .vocabulary
+            .iter()
+            .rposition(|(_, field)| crate::types::folds_equal(field.name(), named))?;
+        Some((at, false))
+    }
+
+    /// Puts one code set on the vocabulary field its map decodes.
+    ///
+    /// An empty set is dropped rather than written: `set_codes` reads an empty
+    /// slice as a removal, and a map declaring no entries is not the file
+    /// saying the field has no codes.
+    fn attach_codes(&mut self, at: usize, codes: &[FixCode]) -> Result<()> {
+        if codes.is_empty() {
             return Ok(());
-        };
-        self.vocabulary[at].1.as_fix_mut().set_codes(&codes)?;
-        Ok(())
+        }
+        self.vocabulary[at].1.as_fix_mut().set_codes(codes)
     }
 
     /// Reads one `grammar-binding` into one message root.
@@ -876,22 +944,15 @@ impl Named for quick_xml::events::BytesEnd<'_> {
     }
 }
 
-/// One map entry oriented into the wire value and the name for it.
+/// How a CBlock spells one field: the `alt` its `vocabulary-tag` declared, or
+/// the tag itself where it declared none.
 ///
-/// A CBlock writes `key="buy" value="B"`, so the name keys and the value is
-/// the value - which is the order a code set wants. Not every map is written
-/// that way, and one written the other way round would put `B` in a name and
-/// `buy` on the wire.
-///
-/// The side that looks like a wire value decides. A FIX value is short and
-/// has no word shape: `1`, `B`, `99`, `FXSPOT`. A symbolic name is longer and
-/// reads as words. So the shorter side is the value, and where neither is
-/// clearly shorter the declared order stands, because the declared order is
-/// the documented one and a guess is worse than a convention.
-fn oriented<'entry>(key: &'entry str, value: &'entry str) -> (&'entry str, &'entry str) {
-    if value.len() <= key.len() {
-        (value, key)
-    } else {
-        (key, value)
-    }
+/// The fallback is an identity rather than a guess, and [`Parse::push_tag`]
+/// is what makes it one: it stores `display` exactly when the `alt` differs
+/// from its own lower-case form, and names the field that same lower-case
+/// form - so no `display` means the name already *is* the declared spelling.
+/// That coupling is load-bearing, because [`Parse::decodes`] orients a map by
+/// comparing its name against this.
+fn spelled(field: &Field) -> &str {
+    field.display().unwrap_or_else(|| field.name()).trim()
 }

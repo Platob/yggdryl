@@ -188,7 +188,7 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
 | `UTCDateOnly`, `utcdate` | String | `date32` | a calendar day |
 | `LocalMktDate` | String | `date32` | a calendar day |
-| `TZTimeOnly` | String | `ascii(16)` | a time of day plus an offset has no Arrow type |
+| `TZTimeOnly` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant, on the epoch day |
 | `MultipleCharValue` | char | `utf8` | space-delimited members |
 | `MultipleStringValue` | String | `utf8` | space-delimited members |
 | `XID` | String | `utf8` | an XML identifier |
@@ -616,6 +616,9 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `DataType.fromArrow({})` -> `own textual representation` error, never `[object Object]`.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
+- `TZTimeOnly` -> the same instant under the date it does not state: the epoch day supplies one, so `07:39+05:30` is `1970-01-01T02:09:00Z` and `00:30+05:30` is the evening of 1969-12-31. The date is not data and a reading is not confined to one day, so a day filter is the wrong tool on the column; two readings still subtract.
+- A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
+- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `ascii(16)` and is null now, which is the cost of being typed.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - `DataType::from_arrow(currency.into_arrow())` -> `ascii(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
