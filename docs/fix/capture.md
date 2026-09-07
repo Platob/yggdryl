@@ -438,7 +438,7 @@ A carried column whose name a FIX column already takes is dropped rather than re
     ```bash
     cargo test -p yggdryl --test fix schema::
     cargo test -p yggdryl --test fix reader::a_bridge_frame
-    cargo run -p yggdryl-cli -- schema --root config/fix
+    cargo run -p yggdryl-cli -- fix schema --root config/fix
     ```
 
 === "Python"
