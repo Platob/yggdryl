@@ -394,6 +394,78 @@ impl FixCodec {
         super::batch::read_record_with(self, record, &self.payload_column)
     }
 
+    /// Reads a stream of generic records, one message per record, lazily.
+    ///
+    /// Nothing is collected: the iterator is the stream, so a capture of ten
+    /// million rows costs one message at a time. Each record is read exactly
+    /// as [`Self::read_record`] reads it, so what a row states about itself
+    /// still outranks what this codec holds for the run.
+    pub fn read_records<'codec, I>(
+        &'codec self,
+        records: I,
+    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    where
+        I: IntoIterator<Item = Scalar>,
+        I::IntoIter: 'codec,
+    {
+        records
+            .into_iter()
+            .map(move |record| self.read_record(&record))
+    }
+
+    /// Reads one Arrow batch of capture rows into one Arrow batch of messages.
+    ///
+    /// The batch a text reader answers with is already the shape this wants -
+    /// one row per line, the payload in a named column and the capture's own
+    /// `url`, `rownum` and `direction` beside it - so this takes it whole
+    /// rather than through a row-at-a-time boundary, and carries those columns
+    /// through ahead of the FIX ones.
+    ///
+    /// One batch in, one batch out, with the row count preserved. Use
+    /// [`Self::read_arrow_reader`] for a stream, which is the same read
+    /// without holding a batch's worth of messages at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the options do not make a
+    /// root field, and the Arrow layer's own failure.
+    pub fn read_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+        options: &super::FixOptions,
+    ) -> Result<arrow_array::RecordBatch> {
+        let schema = batch.schema();
+        let source = crate::arrow::batch_reader(schema, [batch.clone()]);
+        let mut read = self.read_arrow_reader(source, options)?;
+        let first = read
+            .next()
+            .transpose()
+            .map_err(crate::arrow::from_reader_error)?;
+        match first {
+            Some(held) => Ok(held),
+            // A batch of no rows reads as a batch of no rows, never as an
+            // error: an empty capture is a capture.
+            None => Ok(arrow_array::RecordBatch::new_empty(read.schema())),
+        }
+    }
+
+    /// Reads a stream of Arrow batches into a stream of message batches.
+    ///
+    /// The payload column is this codec's, so a reader whose payload is not
+    /// `body` names it with [`Self::with_payload_column`] once for the run.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the options do not make a
+    /// root field, or the source reader's own failure.
+    pub fn read_arrow_reader(
+        &self,
+        source: crate::arrow::BatchReader,
+        options: &super::FixOptions,
+    ) -> Result<crate::arrow::BatchReader> {
+        super::batch::FixBatchReader::from_codec(self, source, options)
+    }
+
     /// Builds one message from pairs the caller already split.
     ///
     /// # Errors

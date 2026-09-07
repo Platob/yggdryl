@@ -319,6 +319,19 @@ impl FixBatchReader {
         options: FixOptions,
     ) -> Result<BatchReader> {
         let options = options.with_payload_column(column);
+        options
+            .reader(registry)
+            .with_payload_column(options.payload_column.clone())
+            .read_arrow_reader(source, &options)
+    }
+
+    /// The body [`FixCodec::read_arrow_reader`] is, with the codec in hand.
+    pub(super) fn from_codec(
+        reader: &FixCodec,
+        source: BatchReader,
+        options: &FixOptions,
+    ) -> Result<BatchReader> {
+        let registry = Arc::clone(reader.registry());
         let read = options.source_field(&registry)?;
         let carrier = crate::arrow::field_from_arrow_schema("row", source.schema().as_ref())?;
         let names: Vec<SmolStr> = carrier
@@ -371,7 +384,7 @@ impl FixBatchReader {
                     .collect();
                 Ok((message, direction, front))
             });
-        Self::stream(field, records, &options)
+        Self::stream(field, records, options)
     }
 
     /// The one stream both constructors end in.

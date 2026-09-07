@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use yggdryl::holder::local::Folder;
 use yggdryl::{DataType, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
@@ -862,4 +863,65 @@ fn read_record_takes_the_payload_column_and_the_columns_beside_it() {
         .read_record(&Scalar::from("not a record"))
         .unwrap_err();
     assert!(refused.to_string().contains("record"), "{refused}");
+}
+
+/// The batch readers, each over the one shape it takes.
+///
+/// A capture arrives as records - a text reader answers one per line, with
+/// the payload beside the `url` and `rownum` it came from - so the codec
+/// takes that shape at three widths: one record at a time, one Arrow batch,
+/// and a stream of them. All three are the same read, which is what these
+/// pin: the message a stream answers is the message a record answers.
+#[test]
+fn every_batch_reader_answers_what_the_single_reader_answers() {
+    use yggdryl::FixOptions;
+
+    let codec = codec();
+    let rows = [
+        b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|".to_vec(),
+        b"8=FIX.4.4|35=8|37=O-9|55=MSFT|10=0|".to_vec(),
+    ];
+    let records: Vec<Scalar> = rows
+        .iter()
+        .map(|row| {
+            Scalar::from_record([("body", Scalar::from(row.clone()))]).expect("a capture row")
+        })
+        .collect();
+
+    // One record at a time, lazily: the iterator is the stream.
+    let read: Vec<_> = codec
+        .read_records(records.clone())
+        .collect::<Result<Vec<_>, _>>()
+        .expect("readable records");
+    assert_eq!(read.len(), 2);
+    assert_eq!(read[0].as_field().name(), "D");
+    assert_eq!(read[1].by_name("symbol").unwrap().as_str(), Some("MSFT"));
+
+    // The same rows as one Arrow batch in and one Arrow batch out, with the
+    // row count preserved: a capture joins back to its source by position.
+    let capture = DataType::from_fields([DataType::Binary.required_field("body")])
+        .expect("a capture shape")
+        .required_field("capture");
+    let values = Scalar::from_sequence(
+        rows.iter()
+            .map(|row| Scalar::from_sequence([Scalar::from(row.clone())]))
+            .collect::<Vec<_>>(),
+    );
+    let batch = yggdryl::arrow::batch_from_value(&capture, &values).expect("an Arrow batch");
+    let options = FixOptions::new();
+    let read = codec
+        .read_arrow_batch(&batch, &options)
+        .expect("a readable batch");
+    assert_eq!(read.num_rows(), 2);
+
+    // And the stream, which is the same read without holding a batch of
+    // messages at once.
+    let source = yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]);
+    let streamed: Vec<_> = codec
+        .read_arrow_reader(source, &options)
+        .expect("a readable stream")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("readable batches");
+    assert_eq!(streamed.iter().map(RecordBatch::num_rows).sum::<usize>(), 2);
+    assert_eq!(streamed[0], read);
 }
