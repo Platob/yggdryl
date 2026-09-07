@@ -59,6 +59,22 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
     );
     assert_eq!(typed(44), DataType::Float64, "Price(44)");
 
+    // Crate-owned columns follow the same contract as FIX's: the stable
+    // identity is the folded name, while renderers receive the FIX-style
+    // spelling after the projection replaces that identity with its tag.
+    for (tag, display) in [
+        (yggdryl::MSGHASH_TAG, "MsgHash"),
+        (yggdryl::VERSION_TAG, "Version"),
+        (yggdryl::SYMBOLTICKER_TAG, "SymbolTicker"),
+        (yggdryl::TIMESTAMP_TAG, "Timestamp"),
+        (yggdryl::UNIXPARTITION_TAG, "UnixPartition"),
+        (yggdryl::PARENTCLORDID_TAG, "ParentClOrdID"),
+        (yggdryl::PARENTORDERID_TAG, "ParentOrderID"),
+    ] {
+        let field = &fields[projection.position_of(tag).expect("a crate column")];
+        assert_eq!(field.display(), Some(display), "tag {tag}");
+    }
+
     // Every column is nullable, because a message that carried nothing there
     // must answer null rather than shift its neighbours.
     assert!(fields.iter().all(yggdryl::Field::is_nullable));

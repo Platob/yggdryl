@@ -37659,6 +37659,7 @@
       "t": 30001,
       "n": "msghash",
       "y": "fixed_size_binary(16)",
+      "d": "MsgHash",
       "b": "yggdryl",
       "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
     },
@@ -37666,6 +37667,7 @@
       "t": 30002,
       "n": "version",
       "y": "utf8",
+      "d": "Version",
       "b": "yggdryl",
       "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
     },
@@ -37673,6 +37675,7 @@
       "t": 30003,
       "n": "symbolticker",
       "y": "utf8",
+      "d": "SymbolTicker",
       "b": "yggdryl",
       "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
     },
@@ -37680,6 +37683,7 @@
       "t": 30004,
       "n": "timestamp",
       "y": "datetime64(ns,\"UTC\")",
+      "d": "Timestamp",
       "b": "yggdryl",
       "x": "The market timestamp a capture is ordered by: the first clock the message answers, in decreasing exactness."
     },
@@ -37687,6 +37691,7 @@
       "t": 30005,
       "n": "unixpartition",
       "y": "int64",
+      "d": "UnixPartition",
       "b": "yggdryl",
       "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
     },
@@ -37694,6 +37699,7 @@
       "t": 30006,
       "n": "parentclordid",
       "y": "utf8",
+      "d": "ParentClOrdID",
       "b": "yggdryl",
       "x": "The client order identifier this order descends from, which no standard tag names."
     },
@@ -37701,6 +37707,7 @@
       "t": 30007,
       "n": "parentorderid",
       "y": "utf8",
+      "d": "ParentOrderID",
       "b": "yggdryl",
       "x": "The venue order identifier this order descends from, which no standard tag names."
     },
@@ -128574,49 +128581,49 @@
       {
         "c": "30001",
         "t": 30001,
-        "n": "msghash",
+        "n": "MsgHash",
         "y": "fixed_size_binary(16)",
         "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
       },
       {
         "c": "30002",
         "t": 30002,
-        "n": "version",
+        "n": "Version",
         "y": "utf8",
         "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
       },
       {
         "c": "30003",
         "t": 30003,
-        "n": "symbolticker",
+        "n": "SymbolTicker",
         "y": "utf8",
         "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
       },
       {
         "c": "30004",
         "t": 30004,
-        "n": "timestamp",
+        "n": "Timestamp",
         "y": "datetime64(ns,\"UTC\")",
         "x": "The market timestamp a capture is ordered by: the first clock the message answers, in decreasing exactness."
       },
       {
         "c": "30005",
         "t": 30005,
-        "n": "unixpartition",
+        "n": "UnixPartition",
         "y": "int64",
         "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
       },
       {
         "c": "30006",
         "t": 30006,
-        "n": "parentclordid",
+        "n": "ParentClOrdID",
         "y": "utf8",
         "x": "The client order identifier this order descends from, which no standard tag names."
       },
       {
         "c": "30007",
         "t": 30007,
-        "n": "parentorderid",
+        "n": "ParentOrderID",
         "y": "utf8",
         "x": "The venue order identifier this order descends from, which no standard tag names."
       },

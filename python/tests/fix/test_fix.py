@@ -1015,6 +1015,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentclordid",
         "parentorderid",
     ]
+    assert [field.display for field in fields.values()] == [
+        "MsgHash",
+        "Version",
+        "SymbolTicker",
+        "Timestamp",
+        "UnixPartition",
+        "ParentClOrdID",
+        "ParentOrderID",
+    ]
 
     held = fields["msghash"]
     assert held.metadata["digest:role"] == "holder"
@@ -1092,4 +1101,3 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     # The standard branch declares no dialect and no session.
     with pytest.raises(ValueError):
         registry.set_branch(FixBranch("", version="4.4"))
-

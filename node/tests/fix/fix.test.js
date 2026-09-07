@@ -1020,6 +1020,18 @@ test('the crate fields declare their own protocols', () => {
       'parentorderid',
     ],
   )
+  assert.deepEqual(
+    held.map((field) => field.display),
+    [
+      'MsgHash',
+      'Version',
+      'SymbolTicker',
+      'Timestamp',
+      'UnixPartition',
+      'ParentClOrdID',
+      'ParentOrderID',
+    ],
+  )
 
   const digest = held[0]
   assert.equal(digest.getProperty('digest', 'role'), 'holder')
