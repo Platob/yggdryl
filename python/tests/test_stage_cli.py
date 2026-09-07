@@ -27,6 +27,13 @@ import pytest
 SCRIPT = (
     pathlib.Path(__file__).resolve().parent.parent.parent / "scripts" / "stage_cli.py"
 )
+# A source distribution carries `python/tests/` but prunes `scripts/`, and it
+# is right to: staging is what builds a wheel here, not what an installer
+# runs. These tests are about that tooling, so where the tooling is absent
+# they have nothing to say - and saying it at import time is what keeps them
+# from failing the whole suite on collection.
+if not SCRIPT.exists():  # pragma: no cover - only outside a checkout
+    pytest.skip(f"{SCRIPT.name} is not shipped here", allow_module_level=True)
 
 
 def _stage_cli() -> types.ModuleType:
