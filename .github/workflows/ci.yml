@@ -165,6 +165,28 @@ jobs:
           assert scripts == [f"yggdryl-{version}.data/scripts/ygg"], scripts
           print(f"{wheel} carries {scripts[0]}")
           EOF
+      # The wheel above is built from this checkout; the one a platform with
+      # no wheel builds comes from the source distribution, which maturin
+      # re-roots - this file's directory becomes the tarball root, so every
+      # relative path in `[tool.maturin]` is a path that has to survive the
+      # move. Asking the unpacked sdist for its own metadata is the step
+      # `pip install` reaches first, and it compiles nothing. Without it a
+      # path that did not survive is invisible until PyPI has the tarball,
+      # and PyPI never lets a file be replaced.
+      - name: The source distribution answers for itself
+        run: |
+          python -m maturin sdist --manifest-path python/Cargo.toml --out python/dist
+          rm -rf "$RUNNER_TEMP/sdist" && mkdir -p "$RUNNER_TEMP/sdist"
+          tar xzf python/dist/*.tar.gz -C "$RUNNER_TEMP/sdist"
+          unpacked=("$RUNNER_TEMP"/sdist/*/)
+          if [ "${#unpacked[@]}" -ne 1 ]; then
+            echo "expected one directory in the sdist, got ${unpacked[*]}"
+            exit 1
+          fi
+          cd "${unpacked[0]}"
+          python -m maturin pep517 write-dist-info \
+            --metadata-directory "$RUNNER_TEMP/sdist-metadata" \
+            --interpreter python
       - uses: actions/upload-artifact@v4
         with:
           name: python-ci-wheel

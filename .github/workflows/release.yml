@@ -331,6 +331,32 @@ jobs:
         with:
           command: sdist
           args: --manifest-path python/Cargo.toml --out dist
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # PyPI never lets a file be replaced, so an sdist that cannot be built
+      # is permanent for the version that carries it - and nothing else here
+      # builds one: every wheel job builds from the checkout. This unpacks
+      # what is about to be published and asks it for its own metadata, which
+      # is the step `pip install` reaches first and the step a `[tool.maturin]`
+      # path that did not survive the sdist's re-rooting fails at. It compiles
+      # nothing, so it costs seconds rather than a second build of the
+      # workspace.
+      - name: The source distribution answers for itself
+        shell: bash
+        run: |
+          python -m pip install "maturin>=1.9,<2"
+          rm -rf "$RUNNER_TEMP/sdist" && mkdir -p "$RUNNER_TEMP/sdist"
+          tar xzf dist/*.tar.gz -C "$RUNNER_TEMP/sdist"
+          unpacked=("$RUNNER_TEMP"/sdist/*/)
+          if [ "${#unpacked[@]}" -ne 1 ]; then
+            echo "expected one directory in the sdist, got ${unpacked[*]}"
+            exit 1
+          fi
+          cd "${unpacked[0]}"
+          python -m maturin pep517 write-dist-info \
+            --metadata-directory "$RUNNER_TEMP/sdist-metadata" \
+            --interpreter python
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist

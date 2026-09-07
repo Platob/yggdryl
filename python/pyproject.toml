@@ -46,6 +46,21 @@ bindings = "pyo3"
 # empty one builds a wheel with no scripts - which is exactly what a
 # contributor who only wants the extension module should get.
 data = "wheel-data"
+# `data` is resolved against the directory holding this file, and a source
+# distribution moves that directory. maturin re-roots an sdist: this file,
+# the README, the licence and the `yggdryl` package land at the tarball root
+# while the crates stay under `python/`, and maturin rewrites `manifest-path`
+# for the move but not `data`. So the placeholder that ships at
+# `python/wheel-data/scripts/` is looked for at `wheel-data/scripts/`, and the
+# sdist refuses before it compiles anything - during metadata generation, so
+# `pip install` cannot even read its requirements:
+#
+#     Caused by: No such data directory .../yggdryl-0.1.2/wheel-data
+#
+# Including it for the sdist places a second copy at the tarball root, which
+# is the path the re-rooted file names. It costs an empty file, and it is what
+# makes a wheel buildable from source on a platform that has none.
+include = [{ path = "wheel-data/scripts/.gitkeep", format = "sdist" }]
 exclude = [
   "**/__pycache__",
   "**/__pycache__/**",
