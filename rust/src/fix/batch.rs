@@ -49,22 +49,21 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
 use super::codec::FixCodec;
 use super::msg::FixMsg;
+use super::record::{column, column_bytes, column_text, empty, read_record};
 use super::{FixBranch, FixRegistry};
 
 /// The column a payload is read from when the options name none.
-pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
+///
+/// Reading one record is not this surface, so the column it defaults to is
+/// [`super::record`]'s; the name is carried here because the options that set
+/// it are this page's.
+pub use super::record::DEFAULT_PAYLOAD_COLUMN;
 
 /// The separator FIX itself uses.
 pub const SOH: u8 = 0x01;
 
-/// The columns a record supplies as parameters rather than as payload.
-///
-/// Each names an argument the byte readers already take, so a record carrying
-/// only a payload behaves exactly as the byte reader behaves - which is what
-/// makes this an entry point rather than a second contract.
-const BRANCH_COLUMN: &str = "branch";
-const BEGINSTRING_COLUMN: &str = "beginstring";
-const SEPARATOR_COLUMN: &str = "sep";
+/// The column a row states its direction in, which outranks the reading the
+/// batch reader would otherwise make from the line.
 const DIRECTION_COLUMN: &str = "direction";
 
 /// How a capture is read into columns.
@@ -455,13 +454,6 @@ fn row_of(
     Ok(Scalar::from_sequence(held))
 }
 
-/// A row nobody could read, which is still a row.
-fn empty(reader: &FixCodec) -> FixMsg {
-    reader
-        .read_pairs(std::iter::empty::<(&[u8], &[u8])>())
-        .expect("an empty message builds")
-}
-
 /// What a whole payload column says about itself, without building a message.
 ///
 /// Three `Utf8` arrays the length of the input: the media type each record
@@ -560,95 +552,12 @@ fn named(names: &[SmolStr], row: &Scalar) -> Vec<(SmolStr, Scalar)> {
     names.iter().cloned().zip(values.iter().cloned()).collect()
 }
 
-/// One column's bytes, however the column is typed.
-fn column_bytes(record: &[(SmolStr, Scalar)], name: &str) -> Option<Vec<u8>> {
-    let held = column(record, name)?;
-    held.as_bytes()
-        .map(<[u8]>::to_vec)
-        .or_else(|| held.as_str().map(|text| text.as_bytes().to_vec()))
-}
-
-/// One column by name, absent when it states nothing.
-fn column<'row>(record: &'row [(SmolStr, Scalar)], name: &str) -> Option<&'row Scalar> {
-    record
-        .iter()
-        .find(|(held, _)| crate::types::folds_equal(held, name))
-        .map(|(_, value)| value)
-        .filter(|held| !held.is_null())
-}
-
-/// One column's text.
-fn column_text(record: &[(SmolStr, Scalar)], name: &str) -> Option<String> {
-    let held = column(record, name)?;
-    held.as_str().map(ToOwned::to_owned)
-}
-
 /// The direction a record states, which outranks any reading.
 fn stated(record: &[(SmolStr, Scalar)]) -> Option<&'static str> {
     let held = column_text(record, DIRECTION_COLUMN)?;
     [MsgDirection::SENT, MsgDirection::RECV]
         .into_iter()
         .find(|known| known.eq_ignore_ascii_case(&held))
-}
-
-/// One record read against one codec, the payload taken from `payload`.
-///
-/// [`FixCodec::read_record`] is the door; this is where the row's own columns
-/// are applied, beside the option-driven path the batch reader takes.
-pub(super) fn read_record_with(
-    reader: &FixCodec,
-    record: &Scalar,
-    payload: &str,
-) -> Result<FixMsg> {
-    let Some(held) = record.as_record() else {
-        return Err(Error::Parse {
-            target: "fix record",
-            position: 0,
-            reason: crate::text::expected_got("a record", "another value"),
-        });
-    };
-    let row: Vec<(SmolStr, Scalar)> = held
-        .iter()
-        .map(|(name, value)| (name.clone(), value.clone()))
-        .collect();
-    let bytes = column_bytes(&row, payload).unwrap_or_default();
-    read_record(reader, &row, &bytes)
-}
-
-/// Reads one record through the byte readers, per-row columns applied.
-fn read_record(reader: &FixCodec, record: &[(SmolStr, Scalar)], bytes: &[u8]) -> Result<FixMsg> {
-    // A column is the caller speaking per row and an option is the caller
-    // speaking per stream, so both outrank the inference the readers fall back
-    // on - and the column outranks the option, because it is the more specific
-    // statement. A column absent, null or empty is silence, never an
-    // instruction, and never an error.
-    let mut reader = reader.clone();
-    if let Some(name) = column_text(record, BRANCH_COLUMN) {
-        if let Ok(branch) = FixBranch::from_str(&name) {
-            reader = reader.with_branch(&branch);
-        }
-    }
-    if let Some(held) = column_text(record, BEGINSTRING_COLUMN) {
-        let spelling = held.strip_prefix("FIX.").unwrap_or(&held);
-        if let Ok(version) = spelling.parse::<Version>() {
-            reader = reader.with_version(version);
-        }
-    }
-    if bytes.is_empty() {
-        return Ok(empty(&reader));
-    }
-    // A stated separator is read as a numeric frame with that separator; with
-    // none stated the reader picks its own dialect from the frame, which is
-    // what a record carrying only a payload has to do.
-    let stated = column_text(record, SEPARATOR_COLUMN).and_then(|held| held.bytes().next());
-    let built = match stated {
-        Some(separator) => reader
-            .clone()
-            .with_separator(separator)
-            .read_fix_line(bytes),
-        None => reader.read_line(bytes),
-    };
-    Ok(built.unwrap_or_else(|_| empty(&reader)))
 }
 
 impl FixMsg {

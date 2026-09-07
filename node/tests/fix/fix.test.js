@@ -956,7 +956,7 @@ test('a reader takes the pins the core takes', () => {
 
   // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
   // pinned version is what decides which name the row answers to.
-  const dated = new fix.FixCodec(registry, { sourceVersion: '4.2' })
+  const dated = new fix.FixCodec(registry, { version: '4.2' })
   assert.ok(dated.readLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).getByName('lastshares') !== null)
 
   // A stated absence produces no field at all.
