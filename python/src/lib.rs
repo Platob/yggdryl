@@ -488,6 +488,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_cfb_fields, module)?)?;
     module.add_function(wrap_pyfunction!(
         media::iceberg::iceberg_assign_field_ids,
         module

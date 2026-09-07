@@ -1212,6 +1212,11 @@ fix_read_pairs: fix.FixMsg = fix_reader.pairs([("55", "AAPL")])
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
+fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
+fix_cblock_named: list[Field] = fix.fix_cfb_fields(
+    Path("cblocks") / "bloomberg.cfb", "bloomberg"
+)
+fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
 fix_projection: fix.FixProjection = fix.FixProjection(
     fix_registry_from_fields, "FixMessage"
 )
