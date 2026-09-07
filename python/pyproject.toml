@@ -35,7 +35,30 @@ test = [
 
 [tool.maturin]
 bindings = "pyo3"
-exclude = ["**/__pycache__", "**/__pycache__/**", "**/*.pyc"]
+# The `ygg` command ships in the same wheel as the extension module. maturin
+# copies this directory's `scripts/` into `yggdryl-<version>.data/scripts/`,
+# which an installer puts straight on PATH - so `pip install yggdryl` answers
+# `ygg` with the compiled binary rather than a Python launcher wrapping one.
+#
+# maturin copies; it does not build. `scripts/stage_cli.py` is what puts the
+# binary here, and it must run before maturin does. The directory is committed
+# holding nothing, because maturin refuses a `data` that is not there while an
+# empty one builds a wheel with no scripts - which is exactly what a
+# contributor who only wants the extension module should get.
+data = "wheel-data"
+exclude = [
+  "**/__pycache__",
+  "**/__pycache__/**",
+  "**/*.pyc",
+  # The placeholder holds `scripts/` open for git, and for a source
+  # distribution someone builds a wheel from - which hits the same missing
+  # directory check. Nobody installing needs it on PATH, so it is dropped from
+  # the wheel alone.
+  { path = "wheel-data/scripts/.gitkeep", format = "wheel" },
+  # The staged binary is native to the machine that built it, so a source
+  # distribution never carries one.
+  { path = "wheel-data/scripts/ygg*", format = "sdist" },
+]
 module-name = "yggdryl._native"
 python-source = "."
 strip = true

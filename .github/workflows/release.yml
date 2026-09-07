@@ -249,15 +249,44 @@ jobs:
           python-version: ${{ matrix.pythons }}
       - name: Install Rust
         run: rustup toolchain install stable --profile minimal
+      # maturin copies python/wheel-data/ into the wheel and builds no binary
+      # of its own, so `ygg` is staged first - and staged where the wheel is
+      # built. Off Linux that is the runner; on Linux it is inside the
+      # manylinux or musllinux container, because a binary linked against the
+      # runner's own glibc would defeat the tag the wheel carries.
+      - name: Stage the ygg command
+        if: runner.os != 'Linux'
+        run: python scripts/stage_cli.py
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
+          before-script-linux: python3 scripts/stage_cli.py
           args: >-
             --release --locked --manifest-path python/Cargo.toml --out dist
             --interpreter ${{ matrix.interpreters }}
+      # A wheel that quietly lost the command is worse than a failed build, so
+      # every row asserts what it shipped rather than trusting the step above.
+      - name: The wheels carry the command
+        shell: bash
+        run: |
+          python - <<'EOF'
+          import glob
+          import zipfile
+
+          wheels = sorted(glob.glob("dist/*.whl"))
+          assert wheels, "no wheel was built"
+          for wheel in wheels:
+              scripts = [
+                  name
+                  for name in zipfile.ZipFile(wheel).namelist()
+                  if ".data/scripts/ygg" in name
+              ]
+              assert len(scripts) == 1, f"{wheel} carries {scripts}"
+              print(f"{wheel} carries {scripts[0]}")
+          EOF
       - name: Smoke test the wheel
         if: matrix.smoke
         shell: bash

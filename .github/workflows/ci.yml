@@ -136,8 +136,29 @@ jobs:
           save-if: false
       - name: Install Maturin
         run: python -m pip install "maturin>=1.9,<2"
+      # maturin copies python/wheel-data/ into the wheel and builds no binary
+      # of its own, so the command is staged before the wheel is built.
+      - name: Stage the ygg command
+        run: python scripts/stage_cli.py
       - name: Build wheel
         run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+      # Nothing else fails when staging is skipped - the wheel just quietly
+      # loses the command - so the contract is asserted rather than trusted.
+      - name: The wheel carries the command
+        run: |
+          python - <<'EOF'
+          import glob
+          import zipfile
+
+          wheel, = glob.glob("python/dist/*.whl")
+          scripts = [
+              name
+              for name in zipfile.ZipFile(wheel).namelist()
+              if name.endswith(".data/scripts/ygg")
+          ]
+          assert scripts == ["yggdryl-0.1.1.data/scripts/ygg"], scripts
+          print(f"{wheel} carries {scripts[0]}")
+          EOF
       - uses: actions/upload-artifact@v4
         with:
           name: python-ci-wheel
