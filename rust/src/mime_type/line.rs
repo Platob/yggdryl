@@ -176,6 +176,13 @@ fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
     }
 }
 
+/// How a log spells SOH when it cannot print the byte itself.
+///
+/// One vocabulary: the separator a frame is located with and the one a reader
+/// splits on are the same fact, so a capture that escapes its separator is
+/// recognized once rather than in each place that reads a frame.
+pub(crate) const SOH_MARKERS: [&[u8]; 4] = [b"^A", b"\\x01", b"<SOH>", b"{SOH}"];
+
 impl LineSeparator {
     fn for_line(line: &[u8], start: usize, numeric: bool) -> Self {
         let tail = &line[start..];
@@ -188,14 +195,11 @@ impl LineSeparator {
         }
 
         let mut found: Option<(usize, Self)> = None;
-        for separator in [
-            Self::Byte(0x01),
-            Self::Byte(b'|'),
-            Self::Marker(b"^A"),
-            Self::Marker(b"\\x01"),
-            Self::Marker(b"<SOH>"),
-            Self::Marker(b"{SOH}"),
-        ] {
+        let markers = SOH_MARKERS.map(Self::Marker);
+        for separator in [Self::Byte(0x01), Self::Byte(b'|')]
+            .into_iter()
+            .chain(markers)
+        {
             let position = match separator {
                 Self::Byte(byte) => memchr::memchr(byte, tail),
                 Self::Marker(marker) => memchr::memmem::find(tail, marker),

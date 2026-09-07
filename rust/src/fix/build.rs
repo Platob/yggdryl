@@ -503,7 +503,7 @@ impl Slot {
 /// `20260821`, `10:30:00.000000`. These are facts about FIX rather than about
 /// the datatype, so they are read here and the generic value contract learns
 /// none of them.
-fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
+pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
     match dtype {
         DataType::Boolean => match text.as_bytes() {
             [b'Y' | b'y'] => Some(Scalar::from(true)),

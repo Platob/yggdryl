@@ -216,6 +216,7 @@ nav:
     - Registry: fix/registry.md
     - Store: fix/store.md
     - Message: fix/message.md
+    - Arrow: fix/arrow.md
     - Capture: fix/capture.md
     - CLI: fix/cli.md
   - Extensions:
