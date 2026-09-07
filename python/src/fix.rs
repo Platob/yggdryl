@@ -274,6 +274,52 @@ impl PyFixRegistry {
         self.inner_mut()?.add_fields(held).map_err(value_error)
     }
 
+    /// Fold another dictionary into this one.
+    ///
+    /// The one place two dictionaries combine: every field folds the way
+    /// `add_fields` folds one, and every dialect folds beside them - one this
+    /// dictionary does not hold arrives whole, one it holds takes the incoming
+    /// record while keeping every spelling it already answered to.
+    ///
+    /// Answers the count added and the count merged, over the fields. One
+    /// mutation: a refusal anywhere leaves the dictionary exactly as it was.
+    fn merge_with(&mut self, other: &Self) -> PyResult<(usize, usize)> {
+        let incoming = Arc::clone(&other.inner);
+        self.inner_mut()?.merge_with(&incoming).map_err(value_error)
+    }
+
+    /// Read one Ullink `CBlock` into this dictionary, whole.
+    ///
+    /// The one call an ingest takes: the file's vocabulary folds in the way
+    /// `add_fields` folds any source, and the dialect the root element
+    /// declares - its FIX version and its session `CompID` pair - is recorded
+    /// beside it, which reading the fields alone would lose.
+    ///
+    /// `branch` names the dialect, and the file names it when the caller does
+    /// not. The location's own stem also becomes an alias whenever it is not
+    /// already the name, and `aliases` names any others; a branch this
+    /// dictionary already holds keeps the spellings it already answered to.
+    ///
+    /// Answers the count added and the count merged. One mutation: the branch
+    /// record and the fields are adopted together, so a refusal leaves the
+    /// dictionary exactly as it was.
+    #[pyo3(signature = (location, branch=None, aliases=None))]
+    fn add_cfb_file(
+        &mut self,
+        location: &Bound<'_, PyAny>,
+        branch: Option<&str>,
+        aliases: Option<Vec<String>>,
+    ) -> PyResult<(usize, usize)> {
+        // Naming none and naming an empty list are the same statement, so
+        // both arrive as the empty slice rather than as two shapes.
+        let owned = aliases.unwrap_or_default();
+        let held: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let registry = self.inner_mut()?;
+        read_cfb(location, |handle| {
+            registry.add_cfb_file(handle, branch, Some(&held))
+        })
+    }
+
     /// Add this crate's own fields, so they resolve by tag and by name.
     fn with_crate_fields(&mut self) -> PyResult<()> {
         let held = std::mem::take(self.inner_mut()?);
@@ -1560,20 +1606,32 @@ impl PyFixBranch {
     /// session; the version is the dialect's own default, spelled the way the
     /// specification spells it.
     #[new]
-    #[pyo3(signature = (name = "", *, version = None, sender_comp_id = "", target_comp_id = ""))]
+    #[pyo3(signature = (
+        name = "",
+        *,
+        version = None,
+        sender_comp_id = "",
+        target_comp_id = "",
+        aliases = None,
+    ))]
     fn new(
         name: &str,
         version: Option<&str>,
         sender_comp_id: &str,
         target_comp_id: &str,
+        aliases: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let version = match version {
             Some(text) => text.parse::<yggdryl::Version>().map_err(value_error)?,
             None => yggdryl::Version::default(),
         };
-        CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
-            .map(Self::from_core)
-            .map_err(value_error)
+        let branch = CoreFixBranch::from_parts(name, version, target_comp_id, sender_comp_id)
+            .map_err(value_error)?;
+        match aliases {
+            Some(aliases) => branch.with_aliases(aliases).map(Self::from_core),
+            None => Ok(Self::from_core(branch)),
+        }
+        .map_err(value_error)
     }
 
     /// Parse a branch name, with no dialect and no session.
@@ -1622,6 +1680,23 @@ impl PyFixBranch {
     #[getter]
     fn target_comp_id(&self) -> &str {
         self.inner.target_comp_id()
+    }
+
+    /// The other spellings this dictionary answers to, folded, as declared.
+    ///
+    /// A lookup spelling and nothing more: the canonical name is what a field
+    /// stores and what every identifier packs, so an alias moves no field.
+    #[getter]
+    fn aliases(&self) -> Vec<&str> {
+        self.inner.aliases().iter().map(AsRef::as_ref).collect()
+    }
+
+    /// Whether `name` is one of this dictionary's aliases, ASCII case folded.
+    ///
+    /// The canonical name is not an alias of itself, so this answers `False`
+    /// for it.
+    fn has_alias(&self, name: &str) -> bool {
+        self.inner.has_alias(name)
     }
 
     /// Whether this is the FIX specification's own dictionary.
@@ -1707,7 +1782,7 @@ impl PyFixBranch {
         sender_comp_id: &str,
         target_comp_id: &str,
     ) -> PyResult<Self> {
-        Self::new(name, Some(version), sender_comp_id, target_comp_id)
+        Self::new(name, Some(version), sender_comp_id, target_comp_id, None)
     }
 
     fn __copy__(&self) -> Self {
