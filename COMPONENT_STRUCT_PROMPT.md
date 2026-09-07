@@ -280,6 +280,81 @@ in the fixed row.
 assertions; the two Rust column assertions. Report every assertion site moved
 (11).
 
+## Phase G6 — the entry names its branch by id
+
+Runs before G5, so the entry's member list settles before recursion appends to
+it. Its id is stable; the brief's phases are ordered by the `## Order` line, not
+by their numbers.
+
+`FixEntry` holds `branch: Option<SmolStr>` — the dialect's *name*. Replace it
+with `bid: i64`, the branch's digest, and make the registry publish the table
+that resolves one.
+
+**G6-R1.** Rename the member to `bid` and type it `i64`, holding the value
+`FixBranch::digest` answers. It is the same number `FixId` already packs into
+its low 32 bits, so an entry's dialect and a field's identity now spell their
+branch identically.
+
+**G6-R2.** Type it `int64` in Arrow, **not** `int32` or `uint32`. The digest is
+a `u32`: half its range exceeds `i32::MAX` and would render negative, and Avro
+has no unsigned integer type at all. `int64` is the smallest signed type that
+holds every digest exactly and round-trips through Arrow IPC, Parquet and Avro.
+
+**G6-R3.** Declare it **non-null**, and drop the `Option`. The standard branch's
+digest is `0` — `STANDARD_BRANCH_DIGEST` — and `FixId::from_parts` already
+refuses a non-standard branch whose digest collides with it, so `0` means the
+standard branch and nothing else. Today's `None` becomes `0` exactly. The column
+stops paying a validity bitmap and the member stops being an `Option`.
+
+**G6-R4.** Set it on every entry, not only the non-standard ones. `with_branch`
+currently records a name only when the branch is not standard; a fixed-width
+number has nothing to save by omission, and a column that is always present is
+one a reader never branches on.
+
+**This repeals a Decided rule.** `FixEntry`'s doc comment states the branch is
+held as a name "because an entry is the arrival record: a branch held as an
+integer would be the one part a reader cannot read — unprintable in a debug
+line, unjoinable in a column, and resolvable only by someone holding the
+registry that produced it." Delete that paragraph and write the new reason in
+its place: the entry is fixed-width and the registry publishes the table that
+resolves a `bid`, so the number is joinable and the capture is self-describing.
+`G6-R5` is what makes that true — **without it this rename is the regression the
+old rule predicted.**
+
+**G6-R5.** `FixRegistry` publishes the branch id. Two things, both required:
+
+- an accessor pair in the landed convention —
+  `get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch>` beside
+  `branch_by_bid(&self, bid: i64) -> Result<&FixBranch>`. The reverse map
+  already exists: branches are held keyed by their `u32` digest. Narrow, look
+  up, and refuse in the register of the landed absences.
+- the dialect manifest carries each branch's `bid` beside its name, written on
+  every dump.
+
+**G6-R6.** Writing the `bid` into the manifest stores a fact derivable from the
+name, and `N4` permits that only where a rule says so and why. The why: the
+derivation is a one-way XXH32 over the folded name, so a reader joining a
+capture's `bid` column against the manifest would otherwise have to reimplement
+that hash bit-for-bit in its own language. The manifest is a published join key,
+not a cached computation. State this in the manifest writer's doc comment.
+
+**G6-R7.** Pin the stored copy to the derivation: a test asserting that every
+`bid` in a written manifest equals the digest of that branch's folded name, for
+every branch in the committed dictionary. A stored derivable fact that is not
+pinned is a stored derivable fact that will drift.
+
+**G6-R8.** Do not hash the `bid` into the message digest. The digest walks
+tag, key and value and has never hashed the branch; a rename does not change
+what identifies a message.
+
+**Verify G6.** A round-trip of a capture on a non-standard dialect: assert the
+`bid` column is non-null on every row, that a standard-branch row is `0`, and
+that `branch_by_bid` answers the branch the message resolved in. Assert the
+manifest's `bid` equals the derived digest for all committed branches. Report:
+the entries column's per-row byte delta (a `u32`-wide name string becomes a
+fixed 8 bytes with no validity bitmap), and `size_of::<FixEntry>()` before and
+after.
+
 ## Phase G5 — the recursive entry
 
 **G5-R1.** The Rust `FixEntry` gains `children: Vec<FixEntry>` as its **last**
@@ -301,11 +376,11 @@ root-to-leaf path — seven Arrow nodes:
 
 ```text
 nofixentries : list<fixentry: struct<
-    tag int32, branch utf8, key utf8, value utf8,
+    tag int32, bid int64, key utf8, value utf8,
     nofixentries: list<fixentry: struct<
-        tag int32, branch utf8, key utf8, value utf8,
+        tag int32, bid int64, key utf8, value utf8,
         nofixentries: list<fixentry: struct<
-            tag int32, branch utf8, key utf8, value utf8,
+            tag int32, bid int64, key utf8, value utf8,
             nofixentries: binary>>>>>>
 ```
 
@@ -318,10 +393,10 @@ the item struct. The meaning is identical at each — the entries this entry
 holds — and the *type*, not a second name, is what says the subtree stopped
 being materialized. A reader that walks one level walks them all.
 
-**G5-R5.** Keep the four existing members exactly as they are, all nullable, and
-append the fifth. Declare all three `fixentry` items non-null, the two inner
-lists non-null, and the binary leaf non-null; the outer list stays nullable as
-today. An empty child list means no children and an empty leaf means nothing was
+**G5-R5.** Keep the four existing members exactly as G6 leaves them — `tag`,
+`key` and `value` nullable, `bid` non-null — and append the fifth. Declare all
+three `fixentry` items non-null, the two inner lists non-null, and the binary
+leaf non-null; the outer list stays nullable as today. An empty child list means no children and an empty leaf means nothing was
 truncated, so no level pays a validity bitmap.
 
 **G5-R6.** The leaf holds everything at level 4 and below as **the crate's own
@@ -402,8 +477,10 @@ dialect or a live capture — say which fixture exercises it).
 
 ## Order
 
-`G1 → G3`; `G2 → G3`; `G3 → G4 → G5`. G1 and G2 block on nobody and may land in
-either order.
+`G1 → G3`; `G2 → G3`; `G3 → G4 → G6 → G5`. G1 and G2 block on nobody and may
+land in either order. G6 precedes G5 so the entry's member list settles before
+recursion appends to it, and the entry's Arrow shape and fixtures are rewritten
+once per phase rather than the same members twice.
 
 ## Never, in this change
 
@@ -434,6 +511,12 @@ Beyond `N1`–`N7` in the repository contract.
 - **NG12.** Write a second serializer, parser or refusal for the leaf. The
   crate's JSON pair renders and reads it; serialization is inherited, not
   written.
+- **NG13.** Keep the branch's name on the entry beside its `bid`, or make the
+  `bid` nullable. One spelling, always present, `0` for the standard branch.
+- **NG14.** Rename the entry's branch member without publishing the resolution
+  table in the same phase. The number alone is the regression the repealed rule
+  predicted.
+- **NG15.** Hash the `bid` into the message digest.
 
 ## Done when
 
@@ -472,3 +555,5 @@ drop the promise.
 | `size_of::<FixEntry>()` | before and after |
 | per-row Arrow cost on a never-nesting capture | measured, not estimated |
 | leaf JSON round-trip | folded entries recovered, byte-for-byte re-emission |
+| entries column per-row delta | name string → fixed 8 bytes, no validity bitmap |
+| manifest `bid` vs derived digest | equal for every committed branch |
