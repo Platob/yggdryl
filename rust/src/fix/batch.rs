@@ -1,6 +1,6 @@
 //! A capture in, columns out.
 //!
-//! Plumbing between two things that already exist: the [readers](super::reader)
+//! Plumbing between two things that already exist: the [readers](super::FixCodec)
 //! that turn a line into a message, and the crate's one batch reader that
 //! every format returns and every consumer is written against. Nothing here
 //! is a second parser, a second streaming shape, or a second byte accounting.
