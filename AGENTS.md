@@ -17,7 +17,8 @@ results and exact skipped checks.
 1. **Locate** the owning layer in [Layout](#layout); read its neighbours and the
    names in `.api-inventory.txt` (Rust) / `.api-bindings.txt` (Python, JS).
 2. **Design against §1**: one owner per fact, one spelling per verb, no second
-   schema, no second dispatcher.
+   schema, no second dispatcher - and the [Patterns](#patterns) the core already
+   has for equivalences, the handle stack, row accessors, and what is zero copy.
 3. **Implement in Rust**: behavior, edges, errors, `rust/tests/`,
    `rust/benchmarks/`, rustdoc examples, both directions of any exchange format.
    Delete what it replaces in the same commit.
@@ -95,7 +96,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, datatype families |
-| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, storage variants; each backend a sibling folder with `Path`, `Folder`, `File` |
+| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder (`local/`, `s3/`, `zip/`) with `Path`, `Folder`, `File` |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -144,6 +145,88 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
   temporal/interval unit parser and Arrow converter; `MimeType`/`MediaType` own
   MIME parsing, suffix and content-coding inference, preferred extensions;
   `Scheme` owns URI and compatibility scheme vocabulary.
+
+## Patterns
+
+### `DataType`, `Field`, `Scalar`
+
+| Concern | Type | Holds |
+| --- | --- | --- |
+| shape | `DataType` | no name, no nullability, no metadata |
+| schema | `Field` = name + `DataType` + nullable + metadata | a non-null Struct `Field` is the row schema |
+| value | `Scalar` | one variant per physical width |
+| checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
+| narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>`, `TypedScalar<K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
+| Arrow value | `arrow::ArrowValue` | one scalar, array, batch, or stream under one `Field` |
+
+Equivalences a change keeps lossless, in both directions:
+
+- `DataType`/`Field` <-> Arrow, through `from_arrow`/`into_arrow` and the core
+  recursive exporters - never a schema rebuilt in a binding.
+- `Scalar` <-> Arrow array or scalar, through `arrow::scalar_array` and
+  `arrow::scalar_value` under the exact `Field`, which decides nullability,
+  dictionaries, extension identity.
+- rows <-> ordered `Scalar::Sequence`; named input <-> sorted `Scalar::Record`
+  (`from_record`), canonicalized against the Struct `Field`;
+  `ArrowValue::from_rows` and `into_scalar` cross the same way.
+- a datatype's canonical default is `default_value`/`is_default_value` - the
+  value a declaring protocol's `apply_arrow_batch` leaves alone.
+- widths: a family constructor picks the physical width once, and shared logic
+  reads across widths with `as_integer`, `as_float`, `as_decimal`, `as_temporal`.
+
+### Stack: holder -> media -> arrow
+
+| Level | Surface | Answers |
+| --- | --- | --- |
+| bytes | `IOBase`: `pread`/`pwrite`, `read_all_bytes`, `read_range_bytes`, `append_bytes`, `pstream_bytes`, `read_digest` | positional bytes, digests, bounded streams |
+| position | `IOCursor`, `Cursor<H>` | the only place a cursor is retained |
+| records | `IOMedia`: `read_arrow_field`, `read_arrow_reader`, `read_arrow_value`, `write_arrow_*`, `*_records`, `row_size`, `column_size`, `record_options` | schema, rows, batches, statistics |
+| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowValue`, `cast_reader`, `combined` | the `Scalar`/Arrow boundary |
+
+`IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
+implements `overwrite_arrow_reader` and inherits streamed append and merge.
+Wrappers compose over a handle, never inside it - `Coded` (coding), `Buffered`
+(holder), `Hashed` (xxhash), `Counted` (tests) - each forwarding through
+`delegate_iobase!` and overriding only what it changes. Commit cadence belongs to
+`RecordOptions` and the write session in `iobase/transfer.rs`
+(`ArrowWriteSession::{overwrite,append,merge}` with `push` and `finish`/`abort`),
+never to a wrapper's own buffer.
+
+### Record and row accessors
+
+- Whole value: `read_scalar(field)` / `write_scalar(value)`. Schema alone:
+  `read_arrow_field(options)`.
+- Rows out: `read_arrow_reader(options)` streams; `read_arrow_value(field)`
+  answers an `ArrowValue` carrying its own shape.
+- Rows in, by shape, each with `overwrite`/`append`/`merge` plus a generic
+  `write_*` taking an `IOMode`: `*_arrow_reader` (the streamed primitive),
+  `*_arrow_batch` (one batch), `*_records` (a row iterator), `write_arrow_value`.
+- Navigate a row `Scalar` with `get`, `get_key_str`, `path`, `iter`,
+  `sequence_iter`, `record_iter`, and update with `with_field`/`without_field`;
+  a row is an ordered sequence, never a map.
+- `ArrowValue` reports `shape`, `is_scalar`/`is_array`/`is_batch`/`is_stream`,
+  `row_size`, `column_size`; borrows with `as_array`/`as_batch`; consumes with
+  `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
+- Add no row type, schema accessor, or per-row map/JSON bridge; a binding's row
+  helper closes over one Struct `Field`.
+
+### Zero copy
+
+Holds, and is asserted with the counting allocator at several corpus sizes -
+timing alone proves nothing:
+
+- borrowed views allocate nothing: `as_*`, `as_array`, `as_batch`, `as_field`,
+  `TypedFieldRef`, `ProtocolField`; `into_*` is the allocating counterpart.
+- an exact cast returns the caller's own batch, and `Representation::Bits` shares
+  the value buffer between two same-width layouts.
+- `holder/local/` is memory-mapped, `Buffered<H>` pins pages instead of copying
+  them forward, and shared nesting clones a reference while empty collections
+  hold no backing.
+- Python crosses the C Data Interface and PyArrow holders.
+
+Does not hold, and is never claimed: JavaScript interop is copied IPC with
+bounded cursors; `read_all_bytes`, any `Vec` return, `into_*`, and text or JSON
+rendering allocate by contract.
 
 ## Public vocabulary
 
@@ -418,54 +501,50 @@ payloads are signed over plain HTTP, unsigned over HTTPS.
 
 ### Iceberg
 
-`media/iceberg/` is the implementation; these are its invariants.
+`docs/media/iceberg/` documents the format surface and its edges; these bind a
+change to `media/iceberg/`.
 
 - A table is a folder reached only through `IOBase`: metadata = core JSON,
   manifests = core Avro, data = core Parquet, and no Iceberg/Avro/catalog
   dependency whose I/O or Arrow model conflicts.
 - Plan snapshot -> manifest list -> manifest -> files from metadata, never by
-  walking `data/`; partition summaries and safe statistics prune, row filtering
-  handles residuals, the scan reports read/skipped counts, and parallel scans
-  emit plan order - sequential and parallel differ only in speed.
-- Manifest tuples are authoritative partition values, paths layout and a text
-  fallback; only invertible transforms write rows; emit bounds only where Parquet
-  and Iceberg encodings agree - missing bounds cost performance, wrong bounds
-  violate correctness. Merge reads only files whose key bounds may overlap.
-- `SchemaUpdate` owns evolution: Int32->Int64, Float32->Float64, same-scale
-  decimal widening; preserve IDs and never reuse dropped ones; validate loaded
-  metadata and every commit. Retained snapshots are complete, time travel reads
-  under its stored schema, `main` never expires, non-main writes stay
-  unsupported.
+  walking `data/`; prune on partition summaries and safe statistics, resolve
+  residuals by row filtering, report read/skipped counts, and keep parallel scans
+  in plan order - they differ from sequential only in speed.
+- `SchemaUpdate` owns evolution: preserve field IDs and never reuse dropped ones;
+  promotions are Int32->Int64, Float32->Float64, and same-scale decimal widening;
+  validate loaded metadata and every commit.
+- `Table` answers the same `IOMedia` surface as a leaf - a table format is a
+  media wrapper, not a second record API.
+- Emit bounds only where Parquet and Iceberg encodings agree: missing bounds cost
+  performance, wrong bounds violate correctness.
 - Options resolve explicit -> table property -> default in `IcebergOptions`, one
-  resolver per key. One retry gate rechecks versions with bounded full-jitter
-  backoff: append and metadata-only commits may rebase, overwrite/merge/compact
-  never rebase and restore state on conflict, and a failed commit may leave only
-  unreferenced files.
-- Collections share `get`, `create`, `open_or_create`, `contains`, lazy
-  iteration, `len`, `is_empty`; `Table` answers the same `IOMedia` methods as a
-  leaf; metadata writes create ancestry with no pre-checks.
+  resolver per key. The retry gate rebases append and metadata-only commits only;
+  overwrite/merge/compact restore state on conflict, and a failed commit may
+  leave unreferenced files.
 
 ## Structured codecs
 
-- JSON/YAML/TOML parse bytes, slices, readers and emit bytes, writers over
-  `Scalar`; string conveniences reuse the same parser, with no intermediate
-  serialization.
+`docs/text/` documents the surface; these bind a change to `text/`.
+
+- Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
+  conveniences reuse the same parser with no intermediate serialization.
 - Emit ordinary native shapes only - no tags, envelopes, version markers, or
-  private wire representation - and reject kinds a format cannot represent.
-- Parsing accepts an optional `Field` to type natural strings, order records, and
-  canonicalize in Rust; without it, return only types the document proves. YAML
-  ignores tags as annotations; TOML follows its native root/table, integer,
-  date/time, and single-document limits, and unsupported values fail.
+  private wire representation - and reject kinds a format cannot represent. An
+  optional `Field` types natural strings, orders records, and canonicalizes;
+  without it, return only types the document proves.
+- YAML ignores tags as annotations; TOML follows its native root/table, integer,
+  date/time, and single-document limits; unsupported values fail.
 - Limits bound bytes, depth, nodes, documents, aliases, and hard recursion;
-  errors name format and byte position. Streaming processes one item at a time
-  with backpressure and fails at the failing item.
+  errors name format and byte position; streaming fails at the failing item under
+  backpressure.
 - Inference is deterministic: explicit format, then path suffix; byte-like is
-  content; a string is a path only when it names an existing file. Content parse
-  order: JSON, TOML when complete and non-empty, then YAML. Never infer JSONL
+  content, a string is a path only when it names an existing file; content parse
+  order is JSON, TOML when complete and non-empty, then YAML. Never infer JSONL
   from content.
 - Placeholder substitution walks parsed `Scalar` under a closed grammar and needs
-  separate opt-ins for substitution and environment access.
-- Benchmark slice, stream, writer, field-directed, wide, and deep paths.
+  separate opt-ins for substitution and environment access. Benchmark slice,
+  stream, writer, field-directed, wide, and deep paths.
 
 ## Arrow and allocation
 
@@ -665,41 +744,33 @@ npm run --prefix node bench:<coding|fix|holder|media|text|types|xxhash>   # rele
 Write for lookup - the readers are human scanners and LLM retrieval. Contract,
 then the smallest runnable example, then non-obvious edges, then measured
 performance. Canonical symbol names, stable headings, short paragraphs, tables
-only for exact mappings, examples beside the API they prove, exact commands and
-results preserved. One fact in one place: link instead of paraphrasing, and never
-narrate signatures, repeat examples in prose, add marketing text, or create
-benchmark-only pages.
+only for exact mappings, exact commands and results preserved. One fact in one
+place: link instead of paraphrasing, and never narrate signatures, repeat
+examples in prose, add marketing text, or create benchmark-only pages.
 
-- Root `mkdocs.yml` is authoritative: strict build, nav, and links change
-  together; README is a short landing page.
-- The top bar is the layer list - one tab per layer (`types`, `holder`, `coding`,
-  `media`, `text`, `uri`, `arrow`, `expression`, `xxhash`, `fix`) plus Home and
-  Extensions. A tab's sidebar lists that layer's families, one page per family
-  under `docs/<layer>/`, `docs/<layer>/index.md` the overview. Root vocabulary is
-  documented with the layer using it; extension pages document boundaries only.
-- One page skeleton, in order: H1 and one purpose sentence; `## Contract` (one
-  compact table); `## Use` (the smallest runnable example); feature sections;
-  `## Edges` (refusals and limits, one line each); `## Commands` (that page's
-  test and benchmark commands in bash fences); `## Performance` (only where
-  measured numbers exist). At most two sentences between blocks; decision facts
-  live in Contract rows or Edges lines.
+The layer tabs, the page skeleton, and the per-change docs rules are spelled out
+in `docs/architecture.md` and `docs/contributing.md`; those pages and this
+section change together. What binds every page:
+
+- Root `mkdocs.yml` is authoritative - strict build, nav, and links change
+  together, README stays a short landing page. A family page lives under
+  `docs/<layer>/` for the layer owning the vocabulary, with
+  `docs/<layer>/index.md` as its overview; extension pages document boundaries
+  only.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
-  binding. Every code block is self-contained with an assertion and runs through
+  binding. Every block is self-contained with an assertion and runs through
   `scripts/check_docs_examples.py`; ignored blocks use valid superfence syntax
   and are reported; shell commands use `bash` fences and name real targets.
-- Interactive documentation comes from the JavaScript extension: a script runs
-  the published package over a fixed corpus into a committed manifest under
-  `docs/assets/`, every package fact on a page comes from it, and the addon job
-  checks manifests for drift. Page scripts add no framework, CDN, or build step
-  and reimplement nothing; an ungeneratable page stays an ordinary example block.
-  A page may read reader input *against* the manifest - resolving a key,
-  translating a coded value, checking a protocol's arithmetic - saying which
-  answers are the package's and which are the reading.
-- Benchmark tables live in the Performance section of the page owning the
-  measured method, name machine/runtime/build, compare a trusted baseline, end
-  with the regenerate command, come from release runs. `docs/benchmarks.md` is
-  only an index of those sections plus the rules.
+- Interactive pages read the committed manifest under `docs/assets/` that the
+  JavaScript extension generates from the published package: every package fact
+  comes from it, the addon job checks it for drift, page scripts add no
+  framework, CDN, or build step and reimplement nothing, an ungeneratable page
+  stays an ordinary example block, and a page reading reader input against the
+  manifest says which answers are the package's and which are the reading.
+- A benchmark table lives in the Performance section of the page owning the
+  measured method, names machine/runtime/build, compares a trusted baseline, and
+  ends with its regenerate command; `docs/benchmarks.md` only indexes them.
 
 ## Gate 4 - Documentation validation
 
