@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -28,14 +29,50 @@ STAGE = ROOT / "python" / "wheel-data" / "scripts"
 # the extension because an installer copies the name verbatim onto PATH, and a
 # `ygg` with no `.exe` there is not executable.
 NAME = "ygg.exe" if sys.platform == "win32" else "ygg"
+# What the manifest calls the bin target, which is the name cargo reports it by
+# on every platform - `NAME` is only what the file is called once it is written.
+BIN = "ygg"
 
 
-def built(profile: str, target: str | None) -> pathlib.Path:
-    """Where cargo leaves the binary for one profile and target."""
-    directory = ROOT / "target"
-    if target:
-        directory = directory / target
-    return directory / profile / NAME
+def linked(output: str) -> pathlib.Path | None:
+    """The binary cargo says it linked, read out of its own artifact stream.
+
+    `target/<profile>/` is where a binary lands only when nothing moves it, and
+    the release matrix moves it three ways: `--target` on a cross build,
+    `CARGO_TARGET_DIR` in an environment, and `CARGO_BUILD_TARGET` set by an
+    image. The last is what the musllinux container does, so a build that had
+    already succeeded left `target/<triple>/release/ygg` while a path
+    reconstructed from the profile alone looked in `target/release/` and called
+    the build empty:
+
+        Finished `release` profile [optimized] target(s) in 4m 02s
+        cargo built nothing at /home/runner/work/yggdryl/yggdryl/target/release/ygg
+
+    So cargo names the file rather than the path being guessed from the pieces:
+    under `--message-format json-render-diagnostics` every linked artifact is a
+    line of JSON on stdout carrying the `executable` it produced, while
+    diagnostics still render as text on stderr and read as they always did. A
+    build that was already up to date reports its artifacts the same way, so a
+    second run stages the same binary rather than finding none.
+    """
+    executable = None
+    for line in output.splitlines():
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            # Anything on stdout that is not one of cargo's messages - a
+            # wrapper's own chatter, or the blank line at the end.
+            continue
+        if not isinstance(message, dict):
+            continue
+        if message.get("reason") != "compiler-artifact":
+            continue
+        target = message.get("target") or {}
+        if target.get("name") != BIN or "bin" not in (target.get("kind") or ()):
+            continue
+        if message.get("executable"):
+            executable = pathlib.Path(message["executable"])
+    return executable
 
 
 def environment() -> dict[str, str]:
@@ -87,14 +124,26 @@ def main() -> int:
         command.append("--release")
     if arguments.target:
         command += ["--target", arguments.target]
+    command += ["--message-format", "json-render-diagnostics"]
     print(" ".join(command))
-    result = subprocess.run(command, cwd=ROOT, check=False, env=environment())
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        env=environment(),
+        stdout=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
+    )
     if result.returncode != 0:
         return result.returncode
 
-    source = built("debug" if arguments.debug else "release", arguments.target)
+    source = linked(result.stdout)
+    if source is None:
+        print(f"cargo linked no {BIN} binary", file=sys.stderr)
+        return 1
     if not source.exists():
-        print(f"cargo built nothing at {source}", file=sys.stderr)
+        print(f"cargo named {source}, which is not there", file=sys.stderr)
         return 1
     shutil.copy2(source, staged)
     # The executable bit is what makes the staged file runnable once an
