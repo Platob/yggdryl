@@ -703,3 +703,79 @@ fn both_doors_refuse_a_file_that_names_one_field_twice() {
     let (registry, _) = FixRegistry::from_cfb(&handle(repeated), None).unwrap();
     assert_eq!(registry.len(), 1);
 }
+
+#[test]
+fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
+    let mut dictionary = FixRegistry::new();
+    let (added, merged) = dictionary
+        .add_cfb_file(
+            &named_handle(CBLOCK, "MSFIX44.cfb"),
+            Some("morgan"),
+            Some(&["mstanley"]),
+        )
+        .expect("a readable CBlock");
+    assert_eq!((added, merged), (15, 0));
+    assert_eq!(dictionary.len(), 15);
+
+    // The dialect the root element declared, which reading the fields alone
+    // would have lost: a field carries its branch's name and nothing else.
+    let branch = dictionary.branch_named("morgan").expect("the named branch");
+    assert_eq!(branch.version(), "4.4".parse::<Version>().unwrap());
+    assert_eq!(branch.sender_comp_id(), "OURDESK");
+    assert_eq!(branch.target_comp_id(), "BLPFIX");
+
+    // The file a definition arrived as is a spelling people use for it, so the
+    // stem answers beside the name and beside what the caller asked for.
+    assert_eq!(branch.aliases(), ["mstanley", "msfix44"]);
+    for spelling in ["morgan", "MSTANLEY", "msfix44"] {
+        assert_eq!(
+            dictionary.branch_named(spelling).map(FixBranch::name),
+            Some("morgan"),
+            "{spelling}",
+        );
+    }
+
+    // Reading a second file is not a statement that the first one's names were
+    // wrong, so the spellings accumulate.
+    let (added, merged) = dictionary
+        .add_cfb_file(
+            &named_handle(SELLSIDE, "morgan-2024.cfb"),
+            Some("morgan"),
+            None,
+        )
+        .expect("the same dialect, read again");
+    assert_eq!((added, merged), (0, 1), "SELLSIDE declares only tag 35");
+    let branch = dictionary.branch_named("morgan").expect("the named branch");
+    assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);
+    // And the record is the second file's, whole: it points the other way.
+    assert_eq!(branch.sender_comp_id(), "BLPFIX");
+
+    // With no branch named, the stem is the name - and a name is not an alias
+    // of itself, so nothing is invented.
+    let mut standalone = FixRegistry::new();
+    standalone
+        .add_cfb_file(&handle(CBLOCK), None, None)
+        .expect("a readable CBlock");
+    let branch = standalone.branch_named("one").expect("the stem named it");
+    assert_eq!(branch.aliases(), [] as [&str; 0]);
+}
+
+#[test]
+fn reading_a_cblock_in_whole_is_one_mutation() {
+    // The committed dictionary types tag 35 as a MsgType, which a CBlock's
+    // generic `string` disagrees with - so this file refuses partway.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    let mut seeded =
+        FixRegistry::from_handle(&Folder::new(root).expect("the seed folder")).expect("the seed");
+    let before = seeded.clone();
+
+    let error = seeded
+        .add_cfb_file(&handle(CBLOCK), Some("bloomberg"), None)
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
+    assert_eq!(seeded, before, "neither the branch nor a field arrived");
+    assert!(seeded.branch_named("bloomberg").is_none());
+}

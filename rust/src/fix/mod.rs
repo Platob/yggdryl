@@ -236,6 +236,10 @@ pub struct FixBranch {
     version: Version,
     target_comp_id: SmolStr,
     sender_comp_id: SmolStr,
+    // The other spellings this dictionary answers to. Empty for every branch
+    // a field's metadata is parsed into, which is the probe path, so the
+    // common case allocates nothing here either.
+    aliases: Vec<SmolStr>,
 }
 
 impl FixBranch {
@@ -247,6 +251,7 @@ impl FixBranch {
         version: Version::MIN,
         target_comp_id: SmolStr::new_static(""),
         sender_comp_id: SmolStr::new_static(""),
+        aliases: Vec::new(),
     };
 
     /// The longest a branch may be, in bytes.
@@ -280,6 +285,80 @@ impl FixBranch {
         branch.target_comp_id = target_comp_id.into();
         branch.sender_comp_id = sender_comp_id.into();
         Ok(branch)
+    }
+
+    /// Declares the other spellings this dictionary answers to.
+    ///
+    /// One venue is named several ways by the desks that talk to it, and a
+    /// dictionary should answer to all of them without becoming several
+    /// dictionaries. An alias is a *lookup* spelling and nothing more: the
+    /// canonical name is what a field stores, what a
+    /// [`FixId`] packs and what every digest is taken over, so adding one
+    /// changes no identity and moves no field.
+    ///
+    /// Each alias is held to the branch grammar and folded exactly as a name
+    /// is, so `BLP` and `blp` are one alias. Replaces whatever was declared
+    /// before, because a declaration is a whole statement.
+    ///
+    /// ```
+    /// use yggdryl::FixBranch;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let branch = FixBranch::from_str("bloomberg")?.with_aliases(["BLP", "blpfix"])?;
+    /// assert_eq!(branch.aliases(), ["blp", "blpfix"]);
+    /// assert!(branch.has_alias("BLP"));
+    /// // The name is not one of them, and neither is anything else.
+    /// assert!(!branch.has_alias("bloomberg"));
+    /// // An alias changes no identity: the digest is the name's alone.
+    /// assert_eq!(branch.digest(), FixBranch::from_str("bloomberg")?.digest());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when an alias is not a branch, and
+    /// [`Error::InvalidRecord`] when one repeats, or repeats the canonical
+    /// name - a spelling that already reaches this dictionary is not a second
+    /// way to reach it.
+    pub fn with_aliases<I, S>(mut self, aliases: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut held: Vec<SmolStr> = Vec::new();
+        for alias in aliases {
+            // Parsed as a branch rather than merely checked, so one grammar
+            // and one folding answer for a name and for an alias alike.
+            let alias = Self::from_str(alias.as_ref())?.name;
+            if alias == self.name || held.contains(&alias) {
+                return Err(Error::InvalidRecord {
+                    path: alias.clone(),
+                    reason: format_smolstr!(
+                        "expected each alias once and none equal to {:?}, got {alias:?} twice",
+                        self.name.as_str()
+                    ),
+                });
+            }
+            held.push(alias);
+        }
+        self.aliases = held;
+        Ok(self)
+    }
+
+    /// The other spellings this dictionary answers to, folded, as declared.
+    pub fn aliases(&self) -> &[SmolStr] {
+        &self.aliases
+    }
+
+    /// Whether `name` is one of this dictionary's aliases, ASCII case folded.
+    ///
+    /// The canonical name is not an alias of itself, so this answers `false`
+    /// for it: a caller asking which spelling matched wants the two apart.
+    pub fn has_alias(&self, name: &str) -> bool {
+        self.aliases
+            .iter()
+            .any(|held| crate::types::folds_equal(held, name))
     }
 
     /// Returns the canonical lowercase name without allocating.
@@ -368,6 +447,7 @@ impl FromStr for FixBranch {
             version: Version::default(),
             target_comp_id: SmolStr::default(),
             sender_comp_id: SmolStr::default(),
+            aliases: Vec::new(),
         })
     }
 }

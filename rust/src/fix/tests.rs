@@ -305,6 +305,162 @@ fn a_branch_folds_once_and_refuses_what_it_cannot_hold() {
 }
 
 #[test]
+fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
+    let cme = cme().with_aliases(["globex"]).unwrap();
+    let mut dictionary =
+        FixRegistry::from_fields([tagged("symbol", 55), identified("VenueSym", &cme, 5_055)])
+            .unwrap();
+    dictionary.set_branch(cme.clone()).unwrap();
+
+    let incoming = FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap(), "CME", "BANKX")
+        .unwrap()
+        .with_aliases(["cmegroup"])
+        .unwrap();
+    let mut other = FixRegistry::from_fields([
+        tagged("SYMBOL", 55),
+        identified("VenueTime", &incoming, 5_060),
+    ])
+    .unwrap();
+    other.set_branch(incoming.clone()).unwrap();
+
+    let (added, merged) = dictionary.merge_with(&other).unwrap();
+    assert_eq!((added, merged), (1, 1));
+    assert_eq!(dictionary.len(), 3);
+    // The incoming spelling wins the field, as it does in any fold.
+    assert_eq!(dictionary.field_by_tag(55).unwrap().name(), "SYMBOL");
+
+    // The dialect arrives beside the fields: the incoming record is taken
+    // whole, and every spelling either side answered to is kept.
+    let held = dictionary.branch_named("cme").expect("the venue dialect");
+    assert_eq!(held.version(), "4.4".parse::<Version>().unwrap());
+    assert_eq!(held.sender_comp_id(), "BANKX");
+    assert_eq!(held.aliases(), ["globex", "cmegroup"]);
+    for spelling in ["globex", "CMEGROUP", "cme"] {
+        assert_eq!(
+            dictionary.branch_named(spelling).map(FixBranch::name),
+            Some("cme"),
+            "{spelling}",
+        );
+    }
+
+    // One mutation: a refusal leaves the dictionary as it was, branches too.
+    let before = dictionary.clone();
+    let mut refusing = FixRegistry::from_fields([tagged("symbol", 55)]).unwrap();
+    refusing
+        .insert({
+            let mut widened = tagged("SYMBOL", 55);
+            widened.set_dtype(DataType::LargeUtf8).unwrap();
+            widened
+        })
+        .unwrap();
+    let branch = FixBranch::from_str("blp").unwrap();
+    refusing
+        .insert(identified("BlpSym", &branch, 5_070))
+        .unwrap();
+    assert!(dictionary.merge_with(&refusing).is_err());
+    assert_eq!(dictionary, before);
+    assert!(dictionary.branch_named("blp").is_none());
+}
+
+#[test]
+fn a_branch_answers_to_its_aliases_and_never_loses_its_own_name() {
+    let bloomberg = FixBranch::from_str("bloomberg")
+        .unwrap()
+        .with_aliases(["BLP", "blpfix"])
+        .unwrap();
+    // Folded exactly as a name is, and the canonical name is not one of them.
+    assert_eq!(bloomberg.aliases(), ["blp", "blpfix"]);
+    assert!(bloomberg.has_alias("blp") && bloomberg.has_alias("BLPFIX"));
+    assert!(!bloomberg.has_alias("bloomberg"));
+    // An alias changes no identity, so nothing a digest keys moves.
+    assert_eq!(
+        bloomberg.digest(),
+        FixBranch::from_str("BLOOMBERG").unwrap().digest()
+    );
+    assert!(bloomberg.has_identity(&FixBranch::from_str("bloomberg").unwrap()));
+
+    let mut registry =
+        FixRegistry::from_fields([identified("VenueSym", &bloomberg, 5_055)]).unwrap();
+    registry.set_branch(bloomberg.clone()).unwrap();
+
+    // Every spelling reaches the one dictionary, and the canonical answer is
+    // what comes back however it was reached.
+    for spelling in ["bloomberg", "BLOOMBERG", "blp", "BLP", "blpfix"] {
+        assert_eq!(
+            registry.branch_named(spelling).map(FixBranch::name),
+            Some("bloomberg"),
+            "{spelling}",
+        );
+    }
+    assert!(registry.branch_named("nowhere").is_none());
+    // An alias is a lookup spelling and never an identity. A field stores the
+    // canonical *name* and nothing else of the dialect, so the branch parsed
+    // back out of it declares no alias - the declaration lives in the
+    // dictionary, which is where `branch_named` reads it from.
+    let stored = registry
+        .field_by_tag(5_055)
+        .unwrap()
+        .as_fix()
+        .branch()
+        .unwrap();
+    assert!(stored.has_identity(&bloomberg));
+    assert_eq!(stored.aliases(), [] as [&str; 0]);
+    assert_ne!(stored, bloomberg, "a name is not the whole declaration");
+
+    // A canonical name never loses to another dialect's alias for it.
+    let shadowing = FixBranch::from_str("blp").unwrap();
+    registry.set_branch(shadowing.clone()).unwrap();
+    assert_eq!(
+        registry.branch_named("blp").map(FixBranch::name),
+        Some("blp")
+    );
+    assert_eq!(
+        registry.branch_named("blpfix").map(FixBranch::name),
+        Some("bloomberg"),
+        "the alias nobody claims still reaches the dialect that declared it",
+    );
+}
+
+#[test]
+fn a_branch_alias_is_held_to_the_grammar_a_branch_name_is() {
+    let branch = FixBranch::from_str("bloomberg").unwrap();
+
+    // An alias is parsed as a branch, so one grammar answers for both.
+    let error = branch.clone().with_aliases(["2blp"]).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            Error::Parse {
+                target: "fix branch",
+                ..
+            }
+        ),
+        "{error}",
+    );
+
+    // A spelling that already reaches this dictionary is not a second way to.
+    for clash in [vec!["BLOOMBERG"], vec!["blp", "BLP"]] {
+        let error = branch.clone().with_aliases(clash).unwrap_err();
+        assert!(matches!(&error, Error::InvalidRecord { .. }), "{error}");
+        assert!(error.to_string().contains("twice"), "{error}");
+    }
+
+    // Declaring aliases replaces what was declared before, whole.
+    let held = branch
+        .clone()
+        .with_aliases(["blp"])
+        .unwrap()
+        .with_aliases(["blpfix"])
+        .unwrap();
+    assert_eq!(held.aliases(), ["blpfix"]);
+    assert_eq!(
+        branch.aliases(),
+        [] as [&str; 0],
+        "the default declares none"
+    );
+}
+
+#[test]
 fn a_forced_branch_digest_collision_is_atomic_and_names_both_branches() {
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
     let before = registry.clone();
@@ -314,6 +470,7 @@ fn a_forced_branch_digest_collision_is_atomic_and_names_both_branches() {
         version: Version::default(),
         target_comp_id: SmolStr::default(),
         sender_comp_id: SmolStr::default(),
+        aliases: Vec::new(),
     };
     let error = registry.set_branch(collision).unwrap_err();
     assert!(

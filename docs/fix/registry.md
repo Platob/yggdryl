@@ -11,6 +11,7 @@
 | Collision | A read rechecks the field behind every name digest, so a digest collision is a miss; a mutation refuses it loudly |
 | Tiers | canonical identifier, alternate identifier, canonical name folded, alias folded; a later tier only when every earlier one missed |
 | Branch | An explicit branch never crosses into another dictionary; with no branch, one deterministic best-match order decides; outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` no named branch may hold a tag |
+| Branch aliases | A declaration may name other spellings it answers to; `branch_named` tries the canonical name first and an alias only after, so a dialect is never shadowed by another's second spelling. An alias is a lookup spelling alone - the canonical name is what a field stores and what a `FixId` packs |
 | String key | A colon-bearing string is a name, never an identifier; `From<&str>` cannot fail, so an identifier is parsed with `FixId::from_str` |
 | Folding | ASCII case, once at insert; a probe hashes the query folded beside an inline branch and allocates nothing on a hit |
 | Identity | The `FixId`, and separately the branch plus folded canonical name; two fields share neither, nor an alternate identifier, nor an alias |
@@ -18,12 +19,12 @@
 | Order | `iter` and `next_field_after` walk ascending packed identifiers, tag-major then by branch digest |
 | Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
-| Fold | `add_fields` is add-or-update in bulk and one mutation: an absent canonical identity inserts, a present one merges, a refusal writes nothing; it answers the counts added and merged and records the pair through `log` |
-| CBlock | `FixRegistry::from_cfb` answers one Ullink CBlock's vocabulary and its message roots; `FixField::from_cfb_file` answers the vocabulary alone, named by the file's own stem when the caller names no branch |
+| Fold | `merge_with` is the one place two dictionaries combine - fields add-or-update, dialects fold beside them, aliases accumulate. `add_fields` is the same fold over a bare field list, `add_cfb_file` a parse in front of it. All three are one mutation: a refusal writes nothing, and all answer the counts added and merged |
+| CBlock | `FixRegistry::from_cfb` answers one Ullink CBlock's vocabulary and its message roots; `FixField::from_cfb_file` answers the vocabulary alone; `add_cfb_file` reads one into this dictionary whole - the fold, plus the dialect the root element declares, plus the file's own stem as an alias |
 | Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
 | Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
-| Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`, `fix_cfb_fields`, and `FixRegistry.add_fields`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
+| Bindings | Python `yggdryl.fix.FixRegistry`, `global_registry`, `install_global_registry`, `fix_cfb_fields`, and `FixRegistry.merge_with` / `add_fields` / `add_cfb_file`; JavaScript `fix.FixRegistry`, `fix.globalRegistry`, `fix.installGlobalRegistry` |
 
 ## Use
 
@@ -561,7 +562,19 @@ Both mutations build the result first and check every key it would claim, so a r
 
 ## Folding a second source in
 
-Several sources describe one dictionary, and `add_fields` is how a later one enters an earlier one: a field whose canonical identity is absent is inserted, one already stored is merged, and the counts say which was which. A bare `insert` loop would replace the stored definition wholesale and drop what only it declared; a bare `update` loop would refuse everything new.
+Several sources describe one dictionary, and `FixRegistry::merge_with` is how a later one enters an earlier one. It is the single place that knows how two dictionaries combine, and the other two entry points are it with something in front:
+
+| call | what it takes |
+| --- | --- |
+| `merge_with(other)` | another dictionary: its fields *and* its dialects |
+| `add_fields(fields)` | a bare field list, folded by the same rule |
+| `add_cfb_file(handle, branch, aliases)` | one Ullink CBlock, parsed and then merged |
+
+The field rule is the same in all three: a field whose canonical identity is absent is inserted, one already stored is merged, and the counts say which was which. A bare `insert` loop would replace the stored definition wholesale and drop what only it declared; a bare `update` loop would refuse everything new.
+
+A dialect folds beside the fields. One the dictionary does not hold arrives whole; one it holds takes the incoming record - version and session pair - while keeping every spelling it already answered to, because reading a second source is not a statement that the first one's names were wrong.
+
+`FixRegistry::add_cfb_file` is the whole ingest in one call: it folds the vocabulary exactly as `add_fields` does, and records the dialect the root element declares - the FIX version and the session `CompID` pair - which reading the fields alone loses, because a field carries its branch's *name* and nothing else of it. The location's own stem also becomes a branch alias whenever it is not already the name, so a dictionary read from `MSFIX44.cfb` under the branch `morgan` still answers to `msfix44`; a branch the dictionary already holds keeps the spellings it already answered to, because reading a second file is not a statement that the first one's names were wrong.
 
 `FixField::from_cfb_file` is the source that made the fold worth having. It answers one Ullink CBlock's vocabulary alone - keyed, in declaration order, code sets attached - where `FixRegistry::from_cfb` answers a whole registry plus the message roots its grammar bindings describe. Both build the dictionary, so both refuse the same files; the vocabulary door just drops the one it built. A CBlock never names itself, so with no branch supplied the handle's own stem does: `bloomberg.cfb` reads into the branch `bloomberg`. Rust and Python only.
 
@@ -892,6 +905,8 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `add_fields` of a field with no `fix:tag` -> absence naming `fix:tag`; there is no identity to add or fold under.
 - `add_fields` of the same tag in another branch -> added, never folded; the identity is the whole probe, and a tag alone is not.
 - `add_fields` refusing on any field -> the dictionary is unchanged, `len` included; one copy of it is staged per call, not per field.
+- `merge_with` or `add_cfb_file` refusing -> the branch records and the fields are staged together and adopted together, so neither arrives.
+- `add_cfb_file` where the stem already is the branch name -> no alias is invented; a name is not an alias of itself.
 - `FixField::from_cfb_file` with no branch, on a handle whose stem is not a branch -> refused, never folded into one; a `Buffer`'s URL is an identity rather than a location, so bytes in memory are named by the caller.
 - `FixField::from_cfb_file` on a file naming one field twice -> the same refusal `FixRegistry::from_cfb` gives, because the vocabulary door builds the dictionary too and drops it; a tag declared twice *identically* is the one difference, arriving twice there and once here.
 - A CBlock's `float` or `string` meeting a committed `float64` or `msgtype` -> the datatype refusal above; a CBlock says nothing about which tag is money or which is a MsgType.
@@ -900,6 +915,9 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - `install_global` after `global()` has resolved -> typed conflict (`already resolved` in the bindings); the value every caller saw cannot change.
 - `YGGDRYL_FIX_REGISTRY` set to a missing directory -> error from `global()`, where an absent `~/.config/fix` is the empty registry.
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` in a named branch -> refused ([FIX](index.md)); inside it a vendor field is also reachable by its `FixId` or a branch-qualified name.
+- `branch_named` with a spelling one branch declares as an alias and another holds as its canonical name -> the canonical one; the exact spelling is answered before any alias is tried.
+- An alias equal to the branch's own name, or repeated -> refused; a spelling that already reaches a dictionary is not a second way to reach it.
+- A field whose `fix:branch` holds an alias -> a different branch, not that one; an alias is resolved by `branch_named` and never stored on a field.
 
 ## Commands
 
@@ -910,6 +928,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
     cargo test -p yggdryl --lib -- fix::tests::a_lineage fix::tests::a_version_filters fix::tests::a_removed_entry fix::tests::two_entries
+    cargo test -p yggdryl --lib -- fix::tests::a_branch_answers_to_its_aliases fix::tests::a_branch_alias_is_held fix::tests::merge_with_folds_the_fields
     cargo test -p yggdryl --lib -- fix::tests::a_code_set fix::tests::an_alias_shares fix::tests::an_ambiguous_spelling fix::tests::tier_three fix::tests::a_version_hides fix::tests::two_codes_may
     cargo test -p yggdryl --test allocations a_fix_lineage_read a_fix_code_lookup
     cargo bench -p yggdryl --bench fix -- fix/resolve
@@ -917,6 +936,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
     cargo test -p yggdryl --test fix -- cfb::a_file_answers_its_vocabulary cfb::an_unnamed_file_takes_its_branch cfb::a_stem_that_is_not_a_branch cfb::a_cblock_vocabulary_folds cfb::folding_a_cblock_into_the_committed
+    cargo test -p yggdryl --test fix -- cfb::a_cblock_reads_in_whole cfb::reading_a_cblock_in_whole_is_one_mutation
     cargo bench -p yggdryl --bench fix -- fix/mutate
     ```
 
@@ -925,7 +945,7 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
     ```bash
     python/.venv/bin/python -m pytest python/tests/fix
     python/.venv/bin/python -m pytest python/tests/fix -k "registry_resolves or explicit_branch or inference or registry_absence or registry_keys or registry_coerces or registry_iterates or seed_iterates or registry_insert or registry_mutation or install_global"
-    python/.venv/bin/python -m pytest python/tests/fix -k "add_fields or cblock"
+    python/.venv/bin/python -m pytest python/tests/fix -k "add_fields or cblock or merge_with or alias"
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     ```
 

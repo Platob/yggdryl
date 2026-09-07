@@ -441,13 +441,28 @@ impl FixRegistry {
 }
 
 fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
-    Scalar::from_record([
+    let mut record = vec![
         ("name", Scalar::from(branch.name())),
         ("digest", Scalar::from(branch.digest())),
         ("version", Scalar::from(branch.version())),
         ("targetcompid", Scalar::from(branch.target_comp_id())),
         ("sendercompid", Scalar::from(branch.sender_comp_id())),
-    ])
+    ];
+    // Written only when there are any, so a dictionary that declares no
+    // second spelling writes the record it always wrote.
+    if !branch.aliases().is_empty() {
+        record.push((
+            "aliases",
+            Scalar::from_sequence(
+                branch
+                    .aliases()
+                    .iter()
+                    .map(|alias| Scalar::from(alias.as_str()))
+                    .collect::<Vec<_>>(),
+            ),
+        ));
+    }
+    Scalar::from_record(record)
 }
 
 fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
@@ -457,7 +472,14 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
             reason: crate::text::expected_got("a FIX branch record", value.kind()),
         });
     };
-    const KEYS: [&str; 5] = ["name", "digest", "version", "targetcompid", "sendercompid"];
+    const KEYS: [&str; 6] = [
+        "name",
+        "digest",
+        "version",
+        "targetcompid",
+        "sendercompid",
+        "aliases",
+    ];
     if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
         return Err(Error::InvalidRecord {
             path: key.clone(),
@@ -499,8 +521,26 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
             .transpose()
             .map(|value| value.unwrap_or_default())
     };
-    let branch =
+    let mut branch =
         FixBranch::from_parts(name, version, text("targetcompid")?, text("sendercompid")?)?;
+    // Absent is no aliases rather than a defect: a manifest written before a
+    // dictionary named a second spelling declares none, which is the truth.
+    if let Some(aliases) = record.get("aliases") {
+        let Some(entries) = aliases.as_sequence() else {
+            return Err(Error::InvalidRecord {
+                path: "aliases".into(),
+                reason: crate::text::expected_got("an array of branch names", aliases.kind()),
+            });
+        };
+        let mut held = Vec::with_capacity(entries.len());
+        for value in entries {
+            held.push(value.as_str().ok_or_else(|| Error::InvalidRecord {
+                path: "aliases".into(),
+                reason: "a branch alias must be text".into(),
+            })?);
+        }
+        branch = branch.with_aliases(held)?;
+    }
     if let Some(digest) = record.get("digest") {
         let declared = digest
             .as_u64()

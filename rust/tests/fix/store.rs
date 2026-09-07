@@ -495,8 +495,10 @@ fn the_branch_manifest_is_optional_canonical_and_session_aware() {
     let mut trade = DataType::Utf8.nullable_field("TradeID");
     trade.as_fix_mut().set_id(&cme, 5001).unwrap();
     let mut registry = FixRegistry::from_fields([tagged("MsgType", 35), trade]).unwrap();
-    let branch =
-        FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap(), "CME", "BANKX").unwrap();
+    let branch = FixBranch::from_parts("cme", "4.4".parse::<Version>().unwrap(), "CME", "BANKX")
+        .unwrap()
+        .with_aliases(["CMEGROUP", "globex"])
+        .unwrap();
     registry.set_branch(branch.clone()).unwrap();
     registry.write_into(&mut folder).unwrap();
 
@@ -506,8 +508,13 @@ fn the_branch_manifest_is_optional_canonical_and_session_aware() {
     assert!(text.contains("\"version\": \"4.4\""), "{text}");
     assert!(text.contains("\"targetcompid\": \"CME\""), "{text}");
     assert!(text.contains("\"sendercompid\": \"BANKX\""), "{text}");
+    assert!(text.contains("\"cmegroup\""), "{text}");
     let reloaded = FixRegistry::from_handle(&folder).unwrap();
     assert_eq!(reloaded.branch_named("CME"), Some(&branch));
+    // Every declared spelling survives the round trip and reaches the one
+    // dictionary, which is the whole point of writing them down.
+    assert_eq!(reloaded.branch_named("CMEGroup"), Some(&branch));
+    assert_eq!(reloaded.branch_named("globex"), Some(&branch));
     assert_eq!(reloaded.branch_for_session("bankx", "cme"), Some(&branch));
     assert!(reloaded.branch_for_session("cme", "bankx").is_none());
 
@@ -521,6 +528,8 @@ fn the_branch_manifest_is_optional_canonical_and_session_aware() {
     let bare = FixRegistry::from_handle(&folder).unwrap();
     let bare_cme = bare.branch_named("cme").unwrap();
     assert_eq!(bare_cme, &cme);
+    assert_eq!(bare_cme.aliases(), [] as [&str; 0]);
+    assert!(bare.branch_named("globex").is_none());
     assert_eq!(bare_cme.version(), Version::default());
     assert_eq!(bare_cme.sender_comp_id(), "");
     assert_eq!(bare_cme.target_comp_id(), "");
