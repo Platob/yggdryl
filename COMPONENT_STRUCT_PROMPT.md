@@ -490,15 +490,19 @@ one, and every rename is persisted as a version in a field's history:
 | --- | --- |
 | entries | 1,926 |
 | type changes | 323 |
-| **…that resolve to the same `DataType`** | **208 (64.4%)** |
-| …that are genuine retypes | 115 |
-| entries removable outright | 206 (10.7% of all entries) |
+| **…that resolve to the same `DataType`** | **173 (53.6%)** |
+| …that are genuine retypes | 150 |
+| entries removable outright | 173 (9.0% of all entries) |
 
 The top offenders: `char → String` ×62, `String → XID` ×34, `String → XIDREF`
-×29, `int → NumInGroup` ×21, `float → Price` ×12, `UTCDateOnly → LocalMktDate`
-×12. Not one is a retype. Every FIX datatype name in the shipped lineages
-resolves through the crate's table, with **0 unknowns**, so the harmonization is
-total rather than best-effort.
+×29, `int → NumInGroup` ×21, `UTCDateOnly → LocalMktDate` ×12,
+`String → MultipleCharValue` ×6. Not one is a retype. All 34 distinct FIX
+datatype names in the shipped lineages resolve, with **0 unknowns**, so the
+harmonization is total rather than best-effort.
+
+**Measure through `DataType::from_str`, which is what a lineage actually uses**
+(`FixLineageEntry::parse_dtype`), not through the generator's private table.
+They disagree, and the disagreement is the next rule.
 
 **G7-R1.** Persist a lineage entry's type as the datatype **resolved through the
 crate's own `DataType`**, never as the FIX datatype name. One representation —
@@ -523,10 +527,45 @@ and resolving the name to one is work the projection does on every version read
 today. **Removing that lookup from the version-read path is the second reason
 for this phase.**
 
-**G7-R6.** The collapse is a **write-side** normalization, in one place. A
+**G7-R6.** The collapse is a **write-side** normalization, in one place, and
+that place is `FixLineage::render` — not `set_lineage`, which validates only the
+*newest* entry against the field and writes every older one through unchecked. A
 hand-authored dictionary and a `.cfb` dialect both build lineages without the
 generator, so the rule cannot live in the generator alone; a read-side skip
 would leave the document holding entries the contract calls impossible.
+
+**G7-R7.** `FixLineageEntry` is `Copy` and holds its type as `Option<&'field
+str>` borrowed from the stored document. A `DataType` is not `Copy` and owns its
+parameters. Decide the slot deliberately: either the entry stops being `Copy`
+and `with_dtype` takes a `DataType`, or the slot stays a borrowed spelling that
+`render` requires to be the crate's canonical one. Do not discover this while
+implementing — `merge_lineage`, `derived_aliases` and `render` all move entries
+by value today.
+
+**G7-R8.** The `type` key keeps its name and its slot. It is key 4 of the seven
+`KEYS`, read by a cursor that refuses an out-of-order or unknown key, and the
+value stays a quoted escape-free ASCII word. A canonical `DataType` spelling is
+one — `float64`, `time64(nanosecond)` — so the grammar is untouched.
+
+**G7-R9. This phase fixes a live bug, and that is the third reason for it.**
+`DataType::from_str("float")` is **`Float32`** — a grammar arm, pinned by test
+and documented — while FIX's `float` is a decimal the crate types `Float64`
+everywhere else (`Qty`, `Price`, `Amt`, `Percentage` all resolve `float64`). The
+generator's private table maps `float` to `float64`; the crate's parser does not.
+So **36 shipped fields carry a newest lineage entry `"type":"float"` on a
+`Float64` field**: `set_lineage` refuses every one of them with its
+`disagreement` conflict, and a version read retypes those columns
+`Float64 → Float32`. Resolve FIX `float` to `Float64` in the FIX table. Storing
+a resolved `DataType` is what makes the contradiction unrepresentable — an
+ambiguous *word* is what allowed it.
+
+**G7-R10.** One table, not two. The generator's private datatype map and the
+crate's `LOGICAL_NAMES` are the same mapping maintained twice, and `float` is
+where they already drifted. Pin them with a test, or delete one.
+
+*Not a bug, do not "fix" it:* 104 fields carry a newest lineage entry
+`NumInGroup → int32` while the field itself is a `List`. That is `L1` — the
+group **is** the counter — not a contradiction.
 
 ## Phase G8 — one string, one instant
 
@@ -583,13 +622,18 @@ a silent retype.
 
 **What G7 and G8 achieve together**, measured on the shipped dictionary:
 
-| | today | after G7 | after G8 |
-| --- | --- | --- | --- |
-| adjacent typed pairs | 362 | 362 | 362 |
-| collapsing | 208 | 208 | **270** |
-| surviving retypes | 115 | 115 | **53** |
-| removable entries | 206 | 206 | **268** (13.9%) |
-| back-typed string entries | — | — | 62 |
+| | today | G7 | G8 | G8 + `float` |
+| --- | --- | --- | --- | --- |
+| adjacent typed pairs | 362 | 362 | 362 | 362 |
+| collapsing | 173 | 173 | 235 | **270** |
+| surviving retypes | 150 | 150 | 88 | **53** |
+| removable entries | 173 | 173 | 235 | **268** (13.9%) |
+| back-typed string entries | — | — | 62 | 62 |
+
+`G7-R9` is load-bearing in that last column, not a rounding: leaving FIX `float`
+at `Float32` keeps 35 spurious retypes alive — `float32 → float64` ×33 and
+`float64 → float32` ×2 — which are not retypes at all, only the grammar arm and
+the FIX table disagreeing about one word.
 
 The 62 back-types are `String` adopting `time64(nanosecond)` ×51,
 `datetime64(nanosecond, UTC)` ×8 and `date32` ×3.
@@ -598,8 +642,9 @@ The 62 back-types are `String` adopting `time64(nanosecond)` ×51,
 **zero** temporal→temporal, string→string and string→temporal retypes, and all
 53 survivors are genuine cross-family changes: `int32 → float64` ×13,
 `utf8 → boolean` ×9, `int32 → utf8` ×8, `utf8 → int32` ×6, `int32 → int64` ×6,
-`float64 → utf8` ×1, and the ten refinements to a validated code type. A test
-asserts that census exactly.
+`float64 → utf8` ×1, and the ten refinements to a validated code type
+(`utf8` → `mic` ×3, `currency` ×3, `msgdirection`, `msgtype`, `side`,
+`country`). A test asserts that census exactly.
 
 **Verify G7 and G8.** Regenerate the dictionary and report the table above,
 measured rather than restated. Assert the surviving-retype census exactly.
@@ -616,7 +661,13 @@ type. Report the `config/fix` byte delta and the provenance checksums changed.
   had one.
 - **NG19.** Back-type from a string to anything but a temporal type.
 - **NG20.** Back-type without proving the earlier wire spelling parses.
-- **NG21.** Collapse in the generator only. A dialect builds lineages too.
+- **NG21.** Collapse in the generator only, or in `set_lineage` only. A dialect
+  builds lineages too, and `set_lineage` checks only the newest entry.
+- **NG22.** Measure any of this through the generator's private datatype table.
+  A lineage resolves through `DataType::from_str`, and the two disagree on
+  `float`.
+- **NG23.** "Fix" the 104 `NumInGroup` entries on List-typed fields. That is the
+  counter-is-the-group rule, not a contradiction.
 
 ## Order
 
@@ -703,6 +754,7 @@ drop the promise.
 | leaf JSON round-trip | folded entries recovered, byte-for-byte re-emission |
 | entries column per-row delta | name string → fixed 8 bytes, no validity bitmap |
 | manifest `bid` vs derived digest | equal for every committed branch |
-| lineage entries removed | 268 of 1,926 (13.9%) |
-| surviving retypes | 115 → 53, census asserted exactly |
+| lineage entries removed | 173 after G7, 268 after G8 (13.9% of 1,926) |
+| surviving retypes | 150 → 53, census asserted exactly |
 | string entries back-typed | 62 |
+| `float` contradictions repaired | 36 fields |
