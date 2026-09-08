@@ -65,9 +65,16 @@ impl FixWhen {
         if self.values.is_empty() {
             return true;
         }
-        // The row holds the wire code rather than the symbolic name, so a
-        // condition is written in the codes the specification's own matrices
-        // are written in.
+        // A condition is written in the codes the specification's own
+        // matrices are written in. A state column holds the ranked value
+        // rather than the code, so the code is read the way the column read
+        // it before the two are compared; every other column holds the code.
+        if let Scalar::Ascii(AsciiFamily::State(state)) = held {
+            return self
+                .values
+                .iter()
+                .any(|value| State::from_spelling(value).as_ref() == Some(state));
+        }
         let Some(rendered) = held.as_str() else {
             return false;
         };
