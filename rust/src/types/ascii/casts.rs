@@ -383,12 +383,23 @@ fn code_cell<'a, const WIDTH: usize>(
     index: usize,
     bytes: &'a [u8],
 ) -> Result<&'a str> {
-    code_text::<WIDTH>(bytes).map_err(|error| {
+    let text = code_text::<WIDTH>(bytes).map_err(|error| {
         Error::IncompatibleSchema(format!(
             "row {index} of column {name}: {error}",
             name = field.name()
         ))
-    })
+    })?;
+    // A securities number carries its own check, and a column of them
+    // holds the canonical spelling: what a cast lets in is what a read
+    // answers, so the check digit and the case are settled here rather
+    // than on every read of the cell.
+    if matches!(field.dtype(), DataType::Isin) && !crate::types::Isin::is_canonical(text) {
+        return Err(Error::IncompatibleSchema(format!(
+            "row {index} of column {name}: expected a securities number in its canonical spelling, got {text:?}",
+            name = field.name()
+        )));
+    }
+    Ok(text)
 }
 /// Validates one cell under an ASCII width, naming the field and the row
 /// beside the width the rule itself names.

@@ -222,6 +222,19 @@ impl Isin {
             && Self::refusal(&text.to_ascii_uppercase()).is_none()
     }
 
+    /// Whether `text` is a number exactly as this type stores it: upper
+    /// case, and closed by its check digit.
+    ///
+    /// What a column holds is the canonical spelling, so bytes arriving
+    /// through a cast are held to it rather than folded on every read.
+    #[must_use]
+    pub fn is_canonical(text: &str) -> bool {
+        text.len() == ISIN_WIDTH
+            && text.is_ascii()
+            && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+            && Self::refusal(text).is_none()
+    }
+
     /// The check digit that closes eleven leading characters, or `None`
     /// where they are not two letters and nine alphanumerics.
     ///

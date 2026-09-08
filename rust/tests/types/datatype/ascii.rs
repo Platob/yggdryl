@@ -181,6 +181,49 @@ fn a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows() {
 }
 
 #[test]
+fn a_cast_into_a_securities_number_holds_the_column_to_the_canonical_spelling() {
+    let schema = root([DataType::Utf8.required_field("sid")]);
+    let batch = |values: Vec<&str>| {
+        RecordBatch::try_new(
+            schema.clone().into_arrow_schema().unwrap(),
+            vec![Arc::new(StringArray::from(values))],
+        )
+        .unwrap()
+    };
+    let bound = "cast(sid as isin) = 'US0378331005'"
+        .parse::<Expression>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    // Two numbers closed by their check digits pass, and one matches.
+    assert_eq!(
+        bound
+            .filter(&batch(vec!["US0378331005", "CH0012221716"]))
+            .unwrap()
+            .num_rows(),
+        1
+    );
+    // The column tier refuses a number its check digit does not close, and
+    // one spelled in lower case: a column's bytes are what every reader
+    // digests, so a cast lets in the canonical spelling and nothing else.
+    for column in [vec!["US0378331005", "US0378331006"], vec!["us0378331005"]] {
+        let message = bound.filter(&batch(column)).unwrap_err().to_string();
+        assert!(message.contains("canonical spelling"), "{message}");
+    }
+    // The row tier reads a value as the scalar does, folding the case.
+    assert!(
+        bound
+            .matches(&Scalar::from_sequence([Scalar::from("us0378331005")]))
+            .unwrap()
+    );
+    let message = bound
+        .matches(&Scalar::from_sequence([Scalar::from("US0378331006")]))
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("check digit"), "{message}");
+}
+
+#[test]
 fn an_ascii_literal_has_a_text_form() {
     let parsed = "ccy = ascii(4) 'USD'".parse::<Expression>().unwrap();
     let Expression::Compare(_, _, literal) = &parsed else {

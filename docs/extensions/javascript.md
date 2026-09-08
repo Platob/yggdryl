@@ -788,7 +788,8 @@ assert.equal(registry.clone().remove(55).name, 'symbol')
 const venue = fix.FixRegistry.fromFields([vendor])
 assert.equal(venue.remove('TradeID'), null)
 assert.equal(venue.removeById('5001:cme').name, 'TradeID')
-assert.equal(venue.size, 0)
+// What remains is the crate's own fields, which every registry holds.
+assert.equal(venue.size, fix.crateFields().length)
 
 // Both collections are lazy native iterators the loader gives the protocol.
 assert.equal([...registry].length, registry.size)
