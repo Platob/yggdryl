@@ -61,10 +61,10 @@ pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
 pub use expression::Expression;
 pub use fix::{
-    CRATE_BRANCH, DEFAULT_BATCH_BYTE_SIZE, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS,
-    ERROR_TAG, FixAnomalies, FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes,
-    FixDedup, FixEntry, FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg,
-    FixParty, FixPedigree, FixProjection, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG,
+    CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, ERROR_TAG, FixAnomalies,
+    FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixEntry,
+    FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty,
+    FixPedigree, FixProjection, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG,
     MSGHASH_TAG, OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, SESSIONINTERFACES_TAG,
     STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATUS_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG,
     ULBRIDGE_BRANCH, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, VERSION_TAG, Words, fix_crate_fields,
@@ -72,7 +72,8 @@ pub use fix::{
 };
 #[cfg(feature = "arrow")]
 pub use fix::{
-    DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
+    DEFAULT_BATCH_BYTE_SIZE, DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH,
+    classify_arrow_array, write_fix,
 };
 pub use i256::I256;
 #[cfg(feature = "arrow")]

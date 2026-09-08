@@ -215,9 +215,12 @@ const readerClass: typeof FixCodec = fix.FixCodec
 const reader: FixCodec = new fix.FixCodec(loaded)
 const pinned: FixCodec = new fix.FixCodec(loaded, {
   branch: 'cme',
-  version: '4.2',
+  version: '4.4',
   nullValues: ['<none>'],
 })
+// @ts-expect-error the source and target pins are one `version`
+const stalePin: FixCodec = new fix.FixCodec(loaded, { sourceVersion: '4.2' })
+void stalePin
 const readRegistry: FixRegistry = reader.registry
 const fromText: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
 const fromBytes: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))

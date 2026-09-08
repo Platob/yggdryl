@@ -171,6 +171,9 @@ mod lift;
 mod lineage;
 mod msg;
 mod project;
+// Reading one generic record is not the Arrow surface, so it is not gated
+// with it: a schema-only build keeps `FixCodec::read_record`.
+mod record;
 mod registry;
 mod schema;
 mod store;
