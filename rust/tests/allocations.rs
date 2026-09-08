@@ -300,8 +300,8 @@ fn a_fix_registry_lookup_allocates_nothing() {
     free("get_field_by_tag miss", || {
         let _ = black_box(registry.get_field_by_tag(7));
     });
-    // A packed identifier is the hash key itself, so vendor probes cost what
-    // standard ones do.
+    // An identifier is the hash key itself, both halves, so vendor probes
+    // cost what standard ones do.
     free("get_field_by_id vendor hit", || {
         let _ = black_box(registry.get_field_by_id(vendor));
     });

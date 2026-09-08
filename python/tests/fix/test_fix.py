@@ -540,7 +540,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
             _field("Tail", "utf8", 9001),
         ]
     )
-    # Tag-major, then by branch digest - the packed identifier's order.
+    # Tag-major, then by branch digest - the identifier's own order.
     assert [field.fix.id for field in registry] == [
         "1:",
         "44:",

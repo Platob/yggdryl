@@ -449,7 +449,7 @@ impl<'field> FixField<'field>
   pub fn description(&self) -> Option<&'field str>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
-  pub fn set_id(&mut self, id: &FixId) -> Result<()>
+  pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
@@ -473,20 +473,22 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   impl FromStr for FixBranch  (Err = Error)
   impl AsRef<str> for FixBranch
   impl fmt::Display for FixBranch
-  pub struct FixId
-  pub const STANDARD_TAG_LIMIT: i32
-  pub fn standard(tag: i32) -> Self
-  pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self>
+  pub struct FixId  (a tag i32 beside a branch digest i32, eight bytes)
+  pub const USER_TAG_MIN: i32
+  pub const USER_TAG_MAX: i32
+  pub const fn standard(tag: i32) -> Self
+  pub fn from_parts(branch: &FixBranch, tag: i32) -> Result<Self>
   pub fn from_str(text: &str) -> Result<Self>
-  pub const fn branch(&self) -> &FixBranch
-  pub const fn tag(&self) -> i32
-  pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is branch-major)
+  pub const fn tag(self) -> i32
+  pub const fn branch(self) -> i32  (the digest signed, as an entry stores it)
+  pub const fn branch_digest(self) -> u32
+  pub const fn is_standard(self) -> bool
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is tag-major, then the signed branch digest)
   impl FromStr for FixId  (Err = Error)
-  impl fmt::Display for FixId  (always "<branch>:<tag>")
-  pub enum FixKey<'a>  (Tag(i32) | Id(&'a FixId) | Name(&'a str))
+  impl fmt::Display for FixId  ("<tag>:" in the standard branch, else "<tag>:#<digest hex>")
+  pub enum FixKey<'a>  (Tag(i32) | Id(FixId) | Name(&'a str))
   impl From<i32> for FixKey<'_>
-  impl<'a> From<&'a FixId> for FixKey<'a>
+  impl From<FixId> for FixKey<'_>
   impl<'a> From<&'a str> for FixKey<'a>
   impl<'a> From<&'a String> for FixKey<'a>
   impl fmt::Display for FixKey<'_>
@@ -499,8 +501,8 @@ pub struct FixMsg
   pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
   pub const fn as_value(&self) -> &Scalar
-  pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar>
-  pub fn by_id(&self, id: &FixId) -> Result<&Scalar>
+  pub fn get_by_id(&self, id: FixId) -> Option<&Scalar>
+  pub fn by_id(&self, id: FixId) -> Result<&Scalar>
   pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar>
   pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<&Scalar>
@@ -515,8 +517,8 @@ pub struct FixMsg
 pub struct FixRegistry
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
-  pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field>
-  pub fn field_by_id(&self, id: &FixId) -> Result<&Field>
+  pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
+  pub fn field_by_id(&self, id: FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
   pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
@@ -535,7 +537,7 @@ pub struct FixRegistry
   pub fn branch_named(&self, name: &str) -> Option<&FixBranch>
   pub fn branches(&self) -> impl Iterator<Item = &FixBranch>
   pub fn set_branch(&mut self, branch: FixBranch) -> Result<()>
-  pub fn next_field_after(&self, after: Option<&FixId>) -> Option<&Field>
+  pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>
   pub fn iter(&self) -> FixFieldIter<'_>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool

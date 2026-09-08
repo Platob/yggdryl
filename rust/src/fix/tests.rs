@@ -794,15 +794,25 @@ fn a_forced_branch_digest_collision_is_atomic_and_names_both_branches() {
 }
 
 #[test]
-fn an_identifier_is_packed_and_renders_without_inventing_branch_text() {
+fn an_identifier_is_two_halves_and_renders_without_inventing_branch_text() {
     const STANDARD: FixId = FixId::standard(35);
-    assert_eq!(size_of::<FixId>(), 8);
+    // A tag and a branch digest, four bytes each and nothing beside them.
+    assert_eq!(size_of::<FixId>(), 2 * size_of::<i32>());
     assert_eq!(STANDARD, FixId::standard(35));
     assert_eq!(FixBranch::STANDARD.digest(), 0);
+    assert_eq!(FixId::standard(35).branch(), 0);
     assert_eq!(FixId::standard(35).branch_digest().to_ne_bytes(), [0; 4]);
     assert_eq!(FixId::standard(35).to_string(), "35:");
     let cme = cme();
     let vendor = FixId::from_parts(&cme, 5001).unwrap();
+    // The halves are the two columns a capture carries, in that same reading.
+    assert_eq!(vendor.tag(), 5001);
+    assert_eq!(vendor.branch(), cme.digest_signed());
+    assert_eq!(vendor.branch_digest(), cme.digest());
+    assert_eq!(
+        FixEntry::new(5001, "5001", "x").with_branch(&cme).id(),
+        Some(vendor)
+    );
     assert_eq!(vendor.to_string(), format!("5001:#{:08x}", cme.digest()));
     for text in ["35:", "5001:cme", "0:", "39999:cme"] {
         assert_eq!(
@@ -821,7 +831,9 @@ fn an_identifier_is_packed_and_renders_without_inventing_branch_text() {
     assert!(!id.is_standard());
     assert!(FixId::standard(35).is_standard());
 
-    // Ordering is tag-major, then by the unsigned branch digest.
+    // Ordering is tag-major, then by the branch digest in the signed reading
+    // the halves are stored in: `xnas` hashes above `i32::MAX` and so sorts
+    // below `cme`, which the unsigned reading would order the other way.
     let mut ids = [
         FixId::from_str("1:").unwrap(),
         FixId::from_str("9000:cme").unwrap(),
@@ -830,6 +842,39 @@ fn an_identifier_is_packed_and_renders_without_inventing_branch_text() {
     ];
     ids.sort();
     assert_eq!(ids.map(FixId::tag), [0, 1, 5000, 9000]);
+    // Tag-major whatever the branch: a standard tag above a vendor one still
+    // sorts after it, which the halves declared the other way round would
+    // reverse - the standard digest being zero, it would lead every branch.
+    let mut across = [
+        FixId::standard(9_001),
+        FixId::from_parts(&cme, 5_001).unwrap(),
+    ];
+    across.sort();
+    assert_eq!(across.map(FixId::tag), [5_001, 9_001]);
+    let xnas = FixBranch::from_str("xnas").unwrap();
+    assert!(xnas.digest() > cme.digest() && xnas.digest_signed() < cme.digest_signed());
+    let mut branched = [
+        FixId::from_parts(&cme, 5001).unwrap(),
+        FixId::from_parts(&xnas, 5001).unwrap(),
+    ];
+    branched.sort();
+    assert_eq!(
+        branched.map(FixId::branch),
+        [xnas.digest_signed(), cme.digest_signed()]
+    );
+
+    // Both halves reach the hasher: keeping only the last write would answer
+    // one control-byte class for every tag one dictionary declares.
+    let tags = 5_000..5_064;
+    let counted = tags.len();
+    let classes: HashSet<u8> = tags
+        .map(|tag| control_byte(FixId::from_parts(&cme, tag).unwrap()))
+        .collect();
+    assert!(
+        classes.len() > 16,
+        "{counted} tags reached {} classes",
+        classes.len()
+    );
 
     // A bare tag is not an identifier, and the tag half may not be empty or
     // signed.
@@ -4240,7 +4285,7 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
     assert_eq!(unknown.branch(), 0);
     assert_eq!(unknown.id(), None, "no tag is no identity");
 
-    // The identity an entry names is packed from the digest it stores.
+    // The identity an entry names is the two columns it stores.
     assert_eq!(venue.id().unwrap(), FixId::from_parts(&cme, 5_055).unwrap());
 }
 

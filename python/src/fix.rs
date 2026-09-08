@@ -113,7 +113,7 @@ pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
     CoreFixId::from_str(text).map_err(value_error)
 }
 
-/// Retain the branch spelling beside the packed identifier for a field write.
+/// Retain the branch spelling beside the identifier for a field write.
 pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
     let id = id_from_py(text)?;
     let branch = text
@@ -1740,7 +1740,7 @@ impl PyFixBranch {
         self.inner.is_standard()
     }
 
-    /// The identity packed into every identifier of this branch.
+    /// The identity every identifier of this branch carries.
     ///
     /// The signed reading of the XXH32, which is exactly what an arrival
     /// entry's `branch` carries and what `FixRegistry.branch_by_digest`
@@ -1754,7 +1754,7 @@ impl PyFixBranch {
     /// The deterministic cross-language hash of the whole declaration.
     ///
     /// Equality is the whole declaration, so the hash is too; `digest` is the
-    /// narrower answer, the name identity a packed identifier carries.
+    /// narrower answer, the name identity an identifier carries.
     fn stable_hash(&self) -> u64 {
         Scalar::from_sequence([
             Scalar::from(self.inner.name()),

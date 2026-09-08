@@ -53,7 +53,7 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
     CoreFixId::from_str(text).map_err(napi_error)
 }
 
-/// Retain branch text beside a packed identifier for a field write.
+/// Retain branch text beside the identifier for a field write.
 ///
 /// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
 /// the colon first would answer a malformed identifier with a message of this
