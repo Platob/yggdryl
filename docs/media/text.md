@@ -86,10 +86,6 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         options.start_rownum = 1
         options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
         options.framing = True
-        # A record hands back a `datetime`, which stops at microseconds, so the
-        # nanosecond time this file would date its rows with is read as a batch
-        # rather than here.
-        options.parse_mtime = False
 
         handle = IOBase(source).into_text(options)
         rows = list(handle.read_records())
@@ -215,7 +211,7 @@ column and appending the terminator.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
-- Python `read_records()` over a file whose modification time is not a whole microsecond -> refused, because a record hands back a `datetime` and a `datetime` stops at microseconds. The batch path carries the full nanosecond reading; set `parse_mtime = False` when the record path is what you want.
+- Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - `body` holding the terminator -> write refused.

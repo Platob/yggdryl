@@ -2546,7 +2546,7 @@ fn time_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     let temporal = value
         .as_time()
         .ok_or_else(|| PyValueError::new_err(format!("expected a time, got {}", value.kind())))?;
-    let count = exact_microseconds(value)?;
+    let count = best_microseconds(value)?;
     if !(0..MICROSECONDS_PER_DAY).contains(&count) {
         return Err(PyValueError::new_err(format!(
             "a time of day must be within one day of midnight, got {count} microseconds"
@@ -2585,7 +2585,7 @@ fn duration_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         PyValueError::new_err(format!("expected a duration, got {}", value.kind()))
     })?;
     let kwargs = PyDict::new(py);
-    kwargs.set_item("microseconds", exact_microseconds(value)?)?;
+    kwargs.set_item("microseconds", best_microseconds(value)?)?;
     py.import("datetime")?
         .getattr("timedelta")?
         .call((), Some(&kwargs))
@@ -2624,7 +2624,7 @@ fn overflowing_timestamp() -> PyErr {
 
 /// Build the `datetime.datetime` one UTC-relative count and zone name.
 fn datetime_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
-    let count = exact_microseconds(value)?;
+    let count = best_microseconds(value)?;
     let temporal = value.as_datetime().ok_or_else(|| {
         PyValueError::new_err(format!("expected a datetime, got {}", value.kind()))
     })?;
@@ -2729,14 +2729,55 @@ fn timedelta_microseconds(value: &Bound<'_, PyAny>) -> PyResult<i64> {
     })
 }
 
-/// Restate one temporal at Python's microsecond resolution, or refuse.
-fn exact_microseconds(value: &Scalar) -> PyResult<i64> {
-    value.temporal_count_at(TimeUnit::Microsecond).ok_or_else(|| {
+/// Restate one temporal at Python's microsecond resolution, flooring a finer
+/// reading rather than refusing it.
+///
+/// `datetime` and `timedelta` count microseconds, so a nanosecond reading -
+/// which is what a filesystem dates a record with - cannot cross whole. It
+/// crosses truncated: the microseconds Python can hold are worth more than the
+/// refusal, and the discarded remainder is under a microsecond. The core keeps
+/// its exact contract; this is the coercion the boundary owes Python, and the
+/// Arrow path still carries the full reading.
+///
+/// Floored rather than truncated toward zero, so the rounding is monotonic:
+/// a reading before the epoch moves the same direction as one after it, and
+/// two values that compared one way still do.
+///
+/// An interval is the exception and is still refused. A month is not a fixed
+/// count of anything, so there is no reading to floor.
+fn best_microseconds(value: &Scalar) -> PyResult<i64> {
+    if let Some(count) = value.temporal_count_at(TimeUnit::Microsecond) {
+        return Ok(count);
+    }
+    let temporal = value
+        .as_temporal()
+        .filter(|temporal| !matches!(temporal, Temporal::Interval(_)));
+    let Some(temporal) = temporal else {
+        return Err(PyValueError::new_err(format!(
+            "a {} has no microsecond count, which is all datetime holds",
+            value.kind()
+        )));
+    };
+    let per = nanoseconds_per((*temporal).unit()).ok_or_else(|| {
         PyValueError::new_err(format!(
-            "a {} at this resolution has no exact microsecond count, which is all datetime holds",
+            "a {} has no fixed nanosecond width to restate",
             value.kind()
         ))
-    })
+    })?;
+    let nanoseconds = i128::from((*temporal).count()) * per;
+    i64::try_from(nanoseconds.div_euclid(1_000))
+        .map_err(|_| PyOverflowError::new_err("timestamp exceeds the microseconds datetime holds"))
+}
+
+/// The nanoseconds one fixed-width temporal unit spans.
+const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
+    match unit {
+        TimeUnit::Second => Some(1_000_000_000),
+        TimeUnit::Millisecond => Some(1_000_000),
+        TimeUnit::Microsecond => Some(1_000),
+        TimeUnit::Nanosecond => Some(1),
+        _ => None,
+    }
 }
 
 /// Return the dotted `module.qualname` of a value's class.

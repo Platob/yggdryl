@@ -25,8 +25,8 @@ def text_options() -> TextOptions:
 
 
 def dated(target: pathlib.Path) -> pathlib.Path:
-    """Pin the modification time the `mtime` column reads, to the microsecond
-    a `datetime` holds."""
+    """Pin the modification time the `mtime` column reads, so a test asserts an
+    instant rather than whenever it happened to run."""
     stamp = int(MTIME.timestamp()) * 1_000_000_000 + MTIME.microsecond * 1_000
     os.utime(target, ns=(stamp, stamp))
     return target
@@ -569,3 +569,27 @@ def test_declared_text_field_uses_the_shared_projection_and_cast(
     field = source.read_arrow_field(options=options)
     assert field.dtype == DataType("struct<body: binary not null, id: int64>")
     assert list(source.read_records(options=options)) == [{"body": b"body", "id": 7}]
+
+
+def test_a_nanosecond_modification_time_reaches_a_record_floored(
+    tmp_path: pathlib.Path,
+) -> None:
+    # A filesystem dates a file to the nanosecond and `datetime` counts
+    # microseconds, so the record path floors rather than refusing: the reading
+    # a real file carries is worth more truncated than withheld.
+    target = tmp_path / "odd.log"
+    target.write_bytes(b"first\nsecond\n")
+    stamp = int(MTIME.timestamp()) * 1_000_000_000 + MTIME.microsecond * 1_000 + 789
+    os.utime(target, ns=(stamp, stamp))
+    source = IOBase(target)
+
+    # The batch path keeps every nanosecond of it, which is why the count and
+    # not the `datetime` is what proves it.
+    table = source.read_arrow_reader(options=TextOptions()).read_all()
+    assert table.column("mtime").cast(pa.int64()).to_pylist() == [stamp, stamp]
+
+    # The record path hands back the microsecond `datetime` holds.
+    assert [row["mtime"] for row in source.read_records(options=TextOptions())] == [
+        MTIME,
+        MTIME,
+    ]

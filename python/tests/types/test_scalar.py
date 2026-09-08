@@ -112,9 +112,21 @@ def test_a_naive_fold_is_dropped_and_zoned_times_are_refused() -> None:
         Scalar.from_py(dt.time(1, 2, tzinfo=dt.timezone.utc))
 
 
-def test_a_temporal_python_cannot_hold_is_refused_not_truncated() -> None:
-    with pytest.raises(ValueError, match="no exact microsecond count"):
-        Scalar.datetime(1, "ns", "UTC").as_py()
+def test_a_temporal_finer_than_python_holds_is_floored_not_refused() -> None:
+    # `datetime` counts microseconds, so a nanosecond reading crosses floored
+    # rather than withheld - the discarded remainder is under a microsecond,
+    # and the Arrow path still carries the whole reading.
+    assert Scalar.datetime(1, "ns", "UTC").as_py() == dt.datetime(
+        1970, 1, 1, tzinfo=dt.timezone.utc
+    )
+    assert Scalar.datetime(1_500, "ns", "UTC").as_py() == dt.datetime(
+        1970, 1, 1, 0, 0, 0, 1, tzinfo=dt.timezone.utc
+    )
+    # Floored, not truncated toward zero, so the rounding stays monotonic
+    # across the epoch and two ordered values stay ordered.
+    assert Scalar.datetime(-1, "ns", "UTC").as_py() == dt.datetime(
+        1969, 12, 31, 23, 59, 59, 999_999, tzinfo=dt.timezone.utc
+    )
 
     with pytest.raises(OverflowError, match="microseconds a duration counts"):
         Scalar.from_py(dt.timedelta.max)

@@ -57,7 +57,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase, TextOptions
+    from yggdryl import IOBase
     from yggdryl.coding import Coded, Gzip
     from yggdryl.holder import Path
 
@@ -72,12 +72,8 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
     assert str(source.media_type) == "text/plain"
     assert source.read_text() == "[INFO] alpha\n[WARN] beta\n"
 
-    # Records read the same way, decoding as the batches are pulled. A record
-    # hands back a `datetime`, which stops at microseconds, so the nanosecond
-    # `mtime` column the file would date its rows with is left off here.
-    rows = TextOptions()
-    rows.parse_mtime = False
-    assert [row["body"] for row in source.read_records(options=rows)] == [
+    # Records read the same way, decoding as the batches are pulled.
+    assert [row["body"] for row in source.read_records()] == [
         b"[INFO] alpha",
         b"[WARN] beta",
     ]

@@ -337,9 +337,10 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
 
 
 def test_repr_remains_total_when_python_temporal_projection_would_be_lossy() -> None:
+    # `as_py` floors to the microsecond `datetime` holds, so the projection is
+    # lossy; `repr` is what stays exact, and round-trips the whole value.
     nanosecond = Scalar.datetime(1, "ns", "UTC")
-    with pytest.raises(ValueError, match="microsecond"):
-        nanosecond.as_py()
+    assert nanosecond.as_py() == dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
     assert eval(repr(nanosecond), {"Scalar": Scalar}) == nanosecond
 
     outside_python_date = Scalar.date(2**63 - 1, "ms")
