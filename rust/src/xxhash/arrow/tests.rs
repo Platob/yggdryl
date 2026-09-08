@@ -222,6 +222,10 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
         ),
         (
+            Field::new("isin", DataType::Isin, true),
+            Scalar::from_sequence([Scalar::from("US0378331005"), Scalar::Null]),
+        ),
+        (
             Field::new("side", DataType::Side, true),
             Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
         ),

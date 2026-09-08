@@ -904,6 +904,7 @@ static_field_constructor!(super::ascii::CountryType, DataType::Country);
 static_field_constructor!(super::ascii::CurrencyType, DataType::Currency);
 static_field_constructor!(super::ascii::MicType, DataType::Mic);
 static_field_constructor!(super::ascii::CfiType, DataType::Cfi);
+static_field_constructor!(super::ascii::IsinType, DataType::Isin);
 static_field_constructor!(super::ascii::SideType, DataType::Side);
 static_field_constructor!(super::ascii::MsgTypeType, DataType::MsgType);
 static_field_constructor!(super::ascii::MsgDirectionType, DataType::MsgDirection);

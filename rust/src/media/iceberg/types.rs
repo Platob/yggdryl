@@ -197,6 +197,7 @@ impl PrimitiveType {
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
+            | DataType::Isin
             // A URL orders by its canonical text, so writing it as text loses
             // nothing but the name of the type - unlike `version`, whose
             // numeric ordering text cannot carry, and which Iceberg therefore

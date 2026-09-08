@@ -45,7 +45,7 @@ use smol_str::format_smolstr;
 use crate::{DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::ascii::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, MIC_WIDTH};
+use super::ascii::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH};
 use super::uuid::UUID_BYTES;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
@@ -563,6 +563,7 @@ fn text_rank(dtype: &DataType) -> Option<TextRank> {
         DataType::Currency => Some(TextRank::Fixed(CURRENCY_WIDTH as i32)),
         DataType::Mic => Some(TextRank::Fixed(MIC_WIDTH as i32)),
         DataType::Cfi => Some(TextRank::Fixed(CFI_WIDTH as i32)),
+        DataType::Isin => Some(TextRank::Fixed(ISIN_WIDTH as i32)),
         DataType::Ascii => Some(TextRank::Ascii),
         DataType::Utf8 => Some(TextRank::Utf8),
         DataType::Utf8View => Some(TextRank::Utf8View),

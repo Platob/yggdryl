@@ -369,7 +369,7 @@ fn build() -> Result<Vec<Field>> {
             "isincode",
             "ISINCode",
             ISINCODE_TAG,
-            DataType::Utf8,
+            DataType::Isin,
             "The instrument's ISIN: the message's own, else SecurityID or a \
              SecurityAltID whose source is ISIN.",
         )?,

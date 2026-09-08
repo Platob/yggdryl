@@ -792,6 +792,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Side
         | D::MsgType
         | D::MsgDirection
@@ -803,6 +804,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     | (D::Currency, Scalar::Ascii(AsciiFamily::Currency(_)))
                     | (D::Mic, Scalar::Ascii(AsciiFamily::Mic(_)))
                     | (D::Cfi, Scalar::Ascii(AsciiFamily::Cfi(_)))
+                    | (D::Isin, Scalar::Ascii(AsciiFamily::Isin(_)))
                     | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
                     | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
                     | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
@@ -831,6 +833,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }
                 D::Mic => Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(text)?)),
                 D::Cfi => Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(text)?)),
+                D::Isin => Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(text)?)),
                 D::Side => Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(text)?)),
                 D::MsgType => {
                     Scalar::Ascii(AsciiFamily::MsgType(crate::types::MsgType::coerce(text)))
@@ -1491,6 +1494,7 @@ fn validate_dtype_value(
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Side
         | D::MsgDirection
         | D::State

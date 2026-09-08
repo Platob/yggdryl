@@ -263,6 +263,7 @@ impl Serialize for Scalar {
                 AsciiFamily::Currency(value) => tagged(serializer, "currency", &value.as_str()),
                 AsciiFamily::Mic(value) => tagged(serializer, "mic", &value.as_str()),
                 AsciiFamily::Cfi(value) => tagged(serializer, "cfi", &value.as_str()),
+                AsciiFamily::Isin(value) => tagged(serializer, "isin", &value.as_str()),
                 AsciiFamily::Side(value) => tagged(serializer, "side", &value.as_str()),
                 AsciiFamily::MsgType(value) => tagged(serializer, "msgtype", &value.as_str()),
                 AsciiFamily::State(value) => tagged(serializer, "state", &value.as_str()),
@@ -473,6 +474,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Currency(SmolStr),
             Mic(SmolStr),
             Cfi(SmolStr),
+            Isin(SmolStr),
             Uuid(SmolStr),
             Version(Version),
             Url(SmolStr),
@@ -547,6 +549,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralValue::Cfi(value) => super::ascii::Cfi::new(value)
                 .map(|value| Self::Ascii(AsciiFamily::Cfi(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::Isin(value) => super::ascii::Isin::new(value)
+                .map(|value| Self::Ascii(AsciiFamily::Isin(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Uuid(value) => Uuid::from_bytes(value.as_bytes())
                 .map(Self::Uuid)
@@ -882,6 +887,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Currency(_)) => DataTypeId::Currency,
             Self::Ascii(AsciiFamily::Mic(_)) => DataTypeId::Mic,
             Self::Ascii(AsciiFamily::Cfi(_)) => DataTypeId::Cfi,
+            Self::Ascii(AsciiFamily::Isin(_)) => DataTypeId::Isin,
             Self::Ascii(AsciiFamily::Side(_)) => DataTypeId::Side,
             Self::Ascii(AsciiFamily::MsgType(_)) => DataTypeId::MsgType,
             Self::Ascii(AsciiFamily::MsgDirection(_)) => DataTypeId::MsgDirection,
@@ -943,6 +949,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::Currency(_)) => "currency",
             Self::Ascii(AsciiFamily::Mic(_)) => "mic",
             Self::Ascii(AsciiFamily::Cfi(_)) => "cfi",
+            Self::Ascii(AsciiFamily::Isin(_)) => "isin",
             Self::Ascii(AsciiFamily::Side(_)) => "side",
             Self::Ascii(AsciiFamily::MsgType(_)) => "msgtype",
             Self::Ascii(AsciiFamily::MsgDirection(_)) => "direction",

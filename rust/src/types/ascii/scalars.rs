@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+use super::dtypes::ISIN_WIDTH;
 use crate::types::typed::define_scalar_type;
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
@@ -133,6 +134,168 @@ ascii_code_leaf!(Country, 2);
 ascii_code_leaf!(Currency, 3);
 ascii_code_leaf!(Mic, 4);
 ascii_code_leaf!(Cfi, 6);
+
+/// One validated ISO 6166 international securities identification number.
+///
+/// Twelve bytes: a two-letter prefix, nine alphanumerics of national number
+/// and one check digit, which is the Luhn digit of the eleven before it read
+/// with each letter expanded to the two digits of its alphabet position.
+/// A spelling whose check digit does not close it is refused, because an
+/// identifier that fails its own checksum is not that identifier - it is a
+/// typo, and a typo typed as a security joins to the wrong one.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Isin(SmolStr);
+
+impl Isin {
+    /// Validate and construct a securities identification number.
+    ///
+    /// Lower case is read as the upper case it spells, because the number
+    /// is case-insensitive by construction: the check digit expands a letter
+    /// by its position, which case does not change.
+    ///
+    /// ```
+    /// use yggdryl::types::Isin;
+    ///
+    /// let apple = Isin::new("US0378331005").unwrap();
+    /// assert_eq!(apple.as_str(), "US0378331005");
+    /// assert_eq!(apple.prefix(), "US");
+    /// assert_eq!(apple.nsin(), "037833100");
+    /// assert_eq!(apple.check_digit(), 5);
+    /// assert_eq!(Isin::new("us0378331005").unwrap(), apple);
+    /// // One digit off is a typo, not a security.
+    /// assert!(Isin::new("US0378331006").is_err());
+    /// assert!(Isin::new("US037833100").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the text is not twelve ASCII bytes of the
+    /// number's shape, or when its check digit does not close it.
+    pub fn new(value: impl AsRef<str>) -> Result<Self> {
+        let value = types::ascii_text(ISIN_WIDTH as i32, value.as_ref().as_bytes())?;
+        let folded = value.to_ascii_uppercase();
+        if let Some(reason) = Self::refusal(&folded) {
+            return Err(crate::Error::InvalidDataType {
+                kind: "isin",
+                reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
+            });
+        }
+        Ok(Self(SmolStr::new(folded)))
+    }
+
+    /// Borrow the validated number.
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Borrow the shared storage without copying the number.
+    pub fn storage(&self) -> &SmolStr {
+        &self.0
+    }
+
+    /// The two-letter prefix: the country of the numbering agency, or one of
+    /// the international prefixes such as `XS`.
+    #[must_use]
+    pub fn prefix(&self) -> &str {
+        &self.0[..2]
+    }
+
+    /// The nine-character national securities identifying number.
+    #[must_use]
+    pub fn nsin(&self) -> &str {
+        &self.0[2..11]
+    }
+
+    /// The check digit that closes the number.
+    #[must_use]
+    pub fn check_digit(&self) -> u8 {
+        self.0.as_bytes()[11] - b'0'
+    }
+
+    /// Whether `text` spells a number this type would accept, in either case.
+    #[must_use]
+    pub fn is_valid(text: &str) -> bool {
+        text.len() == ISIN_WIDTH
+            && text.is_ascii()
+            && Self::refusal(&text.to_ascii_uppercase()).is_none()
+    }
+
+    /// The check digit that closes eleven leading characters, or `None`
+    /// where they are not two letters and nine alphanumerics.
+    ///
+    /// ISO 6166 reads the eleven as digits - a letter as the two digits of
+    /// its position from `A` at ten - and closes them with the Luhn digit,
+    /// doubling every second digit from the right.
+    #[must_use]
+    pub fn closing_digit(body: &str) -> Option<u8> {
+        let bytes = body.as_bytes();
+        if bytes.len() != ISIN_WIDTH - 1
+            || !bytes[..2].iter().all(u8::is_ascii_uppercase)
+            || !bytes[2..].iter().all(u8::is_ascii_alphanumeric)
+        {
+            return None;
+        }
+        // Eleven characters expand to at most twenty-two digits.
+        let mut digits = [0_u8; 2 * (ISIN_WIDTH - 1)];
+        let mut held = 0;
+        for byte in bytes {
+            match byte {
+                b'0'..=b'9' => {
+                    digits[held] = byte - b'0';
+                    held += 1;
+                }
+                b'A'..=b'Z' => {
+                    let position = byte - b'A' + 10;
+                    digits[held] = position / 10;
+                    digits[held + 1] = position % 10;
+                    held += 2;
+                }
+                _ => return None,
+            }
+        }
+        let mut sum = 0_u32;
+        for (from_right, digit) in digits[..held].iter().rev().enumerate() {
+            let mut value = u32::from(*digit);
+            if from_right % 2 == 0 {
+                value *= 2;
+                if value > 9 {
+                    value -= 9;
+                }
+            }
+            sum += value;
+        }
+        u8::try_from((10 - sum % 10) % 10).ok()
+    }
+
+    /// Why an upper-cased, twelve-byte spelling is not a number, or nothing.
+    fn refusal(folded: &str) -> Option<&'static str> {
+        let bytes = folded.as_bytes();
+        if bytes.len() != ISIN_WIDTH {
+            return Some("expected twelve characters");
+        }
+        if !bytes[..2].iter().all(u8::is_ascii_uppercase) {
+            return Some("expected a two-letter prefix");
+        }
+        if !bytes[2..11].iter().all(u8::is_ascii_alphanumeric) {
+            return Some("expected nine alphanumerics after the prefix");
+        }
+        if !bytes[11].is_ascii_digit() {
+            return Some("expected a closing check digit");
+        }
+        match Self::closing_digit(&folded[..11]) {
+            Some(digit) if digit == bytes[11] - b'0' => None,
+            _ => Some("the check digit does not close the number"),
+        }
+    }
+}
+
+impl fmt::Display for Isin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
 ascii_code_leaf!(Side, 4);
 ascii_code_leaf!(MsgType, 8);
 ascii_code_leaf!(MsgDirection, 4);
@@ -774,6 +937,8 @@ pub enum AsciiFamily {
     Mic(Mic),
     /// ISO 10962 classification code.
     Cfi(Cfi),
+    /// ISO 6166 securities identification number.
+    Isin(Isin),
     /// FIX's side of a trade.
     Side(Side),
     /// FIX's message type, case-bearing.
@@ -796,6 +961,7 @@ impl AsciiFamily {
             Self::Currency(value) => value.as_str(),
             Self::Mic(value) => value.as_str(),
             Self::Cfi(value) => value.as_str(),
+            Self::Isin(value) => value.as_str(),
             Self::Side(value) => value.as_str(),
             Self::MsgType(value) => value.as_str(),
             Self::MsgDirection(value) => value.as_str(),
@@ -816,6 +982,7 @@ impl AsciiFamily {
             Self::Currency(value) => value.storage(),
             Self::Mic(value) => value.storage(),
             Self::Cfi(value) => value.storage(),
+            Self::Isin(value) => value.storage(),
             Self::Side(value) => value.storage(),
             Self::MsgType(value) => value.storage(),
             Self::MsgDirection(value) => value.storage(),
@@ -926,6 +1093,7 @@ ascii_value!(
 );
 ascii_value!(Mic, super::MicType, Mic, Mic, Mic, Some(4));
 ascii_value!(Cfi, super::CfiType, Cfi, Cfi, Cfi, Some(6));
+ascii_value!(Isin, super::IsinType, Isin, Isin, Isin, Some(12));
 ascii_value!(Side, super::SideType, Side, Side, Side, Some(4));
 ascii_value!(
     MsgType,
@@ -1001,6 +1169,7 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => DataTypeId::Currency,
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
+            Self::Isin(_) => DataTypeId::Isin,
             Self::Side(_) => DataTypeId::Side,
             Self::MsgType(_) => DataTypeId::MsgType,
             Self::MsgDirection(_) => DataTypeId::MsgDirection,
@@ -1017,6 +1186,7 @@ impl ScalarFamily for AsciiFamily {
             Self::Currency(_) => Ok(DataType::Currency),
             Self::Mic(_) => Ok(DataType::Mic),
             Self::Cfi(_) => Ok(DataType::Cfi),
+            Self::Isin(_) => Ok(DataType::Isin),
             Self::Side(_) => Ok(DataType::Side),
             Self::MsgType(_) => Ok(DataType::MsgType),
             Self::MsgDirection(_) => Ok(DataType::MsgDirection),
@@ -1058,6 +1228,7 @@ define_scalar_type!(
 );
 define_scalar_type!(MicScalar, super::MicType, "mic", crate::DataType::Mic);
 define_scalar_type!(CfiScalar, super::CfiType, "cfi", crate::DataType::Cfi);
+define_scalar_type!(IsinScalar, super::IsinType, "isin", crate::DataType::Isin);
 define_scalar_type!(SideScalar, super::SideType, "side", crate::DataType::Side);
 define_scalar_type!(
     MsgTypeScalar,

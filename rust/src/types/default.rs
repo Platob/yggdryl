@@ -233,6 +233,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Currency
             | DataType::Mic
             | DataType::Cfi
+            | DataType::Isin
             | DataType::Side
             | DataType::MsgType
             | DataType::MsgDirection
@@ -336,6 +337,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Currency
         | D::Mic
         | D::Cfi
+        | D::Isin
         | D::Side
         | D::MsgType
         | D::MsgDirection
