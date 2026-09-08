@@ -36,6 +36,8 @@ Results live beside the method they measure. Each page's Performance section nam
 | xxHash | [Handles](xxhash/handles.md) | One containerized x86_64 Linux run (benchmarks): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 relea... |
 | xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/digest.py`, and `node/benchmarks/xxhash.js` measure one pro... |
 | xxHash | [Values](xxhash/values.md) | One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin... |
+| TxHash | [TxHash](txhash/index.md) | The coupling beside the digest it wraps, the value's projections, and reading an instant out of a value; one containerized x86_64 Linux run |
+| TxHash | [Arrow](txhash/arrow.md) | Coupled columns beside the digest column and instant column they join, and the coupled holder beside a plain one, 65,536 rows |
 
 ## Running every target
 
@@ -48,6 +50,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench text
     cargo bench --bench coding
     cargo bench --bench xxhash
+    cargo bench --bench txhash
     cargo bench --bench fix
     cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
@@ -68,6 +71,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
     python/.venv/bin/python python/benchmarks/uri.py --iterations 2000
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
+    python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```
@@ -86,6 +90,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:media:text
     npm run --prefix node bench:text
     npm run --prefix node bench:xxhash
+    npm run --prefix node bench:txhash
     npm run --prefix node bench:fix
     ```
 
@@ -102,6 +107,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
 | `xxhash` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, and Arrow row digests |
+| `txhash` | the coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
 
 ## Rules
 

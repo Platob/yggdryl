@@ -48,6 +48,7 @@ use super::scalar::{
     write_binary, write_bool, write_decimal, write_float, write_null, write_sequence_header,
     write_signed, write_string, write_temporal, write_unsigned,
 };
+use crate::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -179,11 +180,20 @@ struct StructPlan<'field> {
 
 struct HolderPlan<'field> {
     index: usize,
+    path: String,
     field: &'field Field,
     algorithm: DigestAlgorithm,
     use_prototype: bool,
     default: Scalar,
     selected: Vec<Selection<'field>>,
+    /// The instant a coupled holder stores in front of its digest.
+    time: Option<TimePlan<'field>>,
+}
+
+/// Where a coupled holder reads its instant, and the resolution it keeps.
+struct TimePlan<'field> {
+    selection: Selection<'field>,
+    unit: TimeUnit,
 }
 
 struct Selection<'field> {
@@ -217,6 +227,13 @@ impl<'field> StructPlan<'field> {
                     format!("cannot read stored algorithm: {error}"),
                 )
             })?;
+            let declared_unit = field.as_digest().unit().map_err(|error| {
+                digest_metadata_error(
+                    DIGEST_UNIT_KEY,
+                    &field_path,
+                    format!("cannot read stored unit: {error}"),
+                )
+            })?;
             if !field.as_digest().is_holder() {
                 if sources.is_some() {
                     return Err(digest_sources_error(
@@ -230,10 +247,65 @@ impl<'field> StructPlan<'field> {
                         "digest:algorithm belongs only to a digest holder",
                     ));
                 }
+                if field.as_digest().time().is_some() {
+                    return Err(digest_metadata_error(
+                        DIGEST_TIME_KEY,
+                        &field_path,
+                        "digest:time belongs only to a digest holder",
+                    ));
+                }
+                if declared_unit.is_some() {
+                    return Err(digest_metadata_error(
+                        DIGEST_UNIT_KEY,
+                        &field_path,
+                        "digest:unit belongs only to a digest holder",
+                    ));
+                }
                 continue;
             }
             let holder_algorithm =
                 resolve_holder_algorithm(field, declared_algorithm, algorithm, &field_path)?;
+            // The instant is read through the same Struct-only descent a
+            // source takes, and it must be a leaf an instant can be read from.
+            let time = match field.as_digest().time() {
+                Some(path) => {
+                    let selection = resolve_selection(fields, path, &field_path, DIGEST_TIME_KEY)?;
+                    if selection.field.as_digest().is_holder() {
+                        return Err(digest_metadata_error(
+                            DIGEST_TIME_KEY,
+                            &field_path,
+                            format!(
+                                "time {path:?} selects digest holder {:?}; holders are outputs, not instants",
+                                selection.field.name()
+                            ),
+                        ));
+                    }
+                    if !crate::txhash::arrow::accepts_time(selection.field.dtype()) {
+                        return Err(digest_metadata_error(
+                            DIGEST_TIME_KEY,
+                            &field_path,
+                            format!(
+                                "time {path:?} must name a datetime, date, or integer field, got {}",
+                                selection.field.dtype()
+                            ),
+                        ));
+                    }
+                    Some(TimePlan {
+                        selection,
+                        unit: declared_unit.unwrap_or(crate::txhash::DEFAULT_UNIT),
+                    })
+                }
+                None => {
+                    if declared_unit.is_some() {
+                        return Err(digest_metadata_error(
+                            DIGEST_UNIT_KEY,
+                            &field_path,
+                            "digest:unit belongs only to a holder naming digest:time",
+                        ));
+                    }
+                    None
+                }
+            };
             // An absent list and the `["*"]` spelling are the same selection:
             // every field of this Struct the holder does not hold. Naming
             // sources on the holder is what keeps the fields it reads
@@ -243,7 +315,8 @@ impl<'field> StructPlan<'field> {
                 Some(sources) => sources
                     .iter()
                     .map(|path| {
-                        let selection = resolve_selection(fields, path, &field_path)?;
+                        let selection =
+                            resolve_selection(fields, path, &field_path, DIGEST_SOURCES_KEY)?;
                         if selection
                             .steps
                             .first()
@@ -287,11 +360,13 @@ impl<'field> StructPlan<'field> {
             }
             holders.push(HolderPlan {
                 index,
+                path: field_path,
                 field,
                 algorithm: holder_algorithm,
                 use_prototype: holder_algorithm == algorithm,
                 default: field.default_value().map_err(Error::from)?,
                 selected,
+                time,
             });
         }
         Ok(Self {
@@ -380,12 +455,39 @@ fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> 
                 "digest:algorithm belongs only to a digest holder",
             ));
         }
+        if digest.time().is_some() {
+            return Err(digest_metadata_error(
+                DIGEST_TIME_KEY,
+                &child_path,
+                "digest:time belongs only to a digest holder",
+            ));
+        }
+        if digest
+            .unit()
+            .map_err(|error| {
+                digest_metadata_error(
+                    DIGEST_UNIT_KEY,
+                    &child_path,
+                    format!("cannot read stored unit: {error}"),
+                )
+            })?
+            .is_some()
+        {
+            return Err(digest_metadata_error(
+                DIGEST_UNIT_KEY,
+                &child_path,
+                "digest:unit belongs only to a digest holder",
+            ));
+        }
         reject_unreachable_digests(child.dtype(), &child_path, container)?;
     }
     Ok(())
 }
 
 fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
+    if field.as_digest().time().is_some() {
+        return crate::txhash::coupled_holder_algorithm(field);
+    }
     match field.dtype() {
         DataType::Int32 | DataType::UInt32 => Some(DigestAlgorithm::Xxh32),
         DataType::Int64 | DataType::UInt64 => Some(DigestAlgorithm::Xxh3),
@@ -406,7 +508,7 @@ fn resolve_holder_algorithm(
                 holder_path,
                 format!(
                     "algorithm {algorithm} requires {}, got {}",
-                    expected_holder_dtypes(algorithm),
+                    expected_holder_dtypes(field, algorithm),
                     field.dtype()
                 ),
             ));
@@ -417,18 +519,27 @@ fn resolve_holder_algorithm(
         return Ok(prototype);
     }
     default_holder_algorithm(field).ok_or_else(|| {
+        let expected = if field.as_digest().time().is_some() {
+            "fixed_size_binary[12], [16], or [24] when coupling an instant"
+        } else {
+            "int32, uint32, int64, uint64, or fixed_size_binary[16]"
+        };
         Error::IncompatibleSchema(format!(
-            "digest holder {holder_path} must be int32, uint32, int64, uint64, or fixed_size_binary[16], got {}",
+            "digest holder {holder_path} must be {expected}, got {}",
             field.dtype()
         ))
     })
 }
 
 /// Resolve an exact-name-first path through Struct children only.
+///
+/// `key` names the property the path was written under, so a refusal points
+/// at `digest:sources` or `digest:time` as the holder spelled it.
 fn resolve_selection<'field>(
     fields: &'field [Field],
     path: &str,
     holder: &str,
+    key: &'static str,
 ) -> Result<Selection<'field>> {
     if let Some((index, field)) = fields
         .iter()
@@ -458,14 +569,17 @@ fn resolve_selection<'field>(
                 offset = boundary + 1;
                 continue;
             }
-            if let Ok(mut tail) = resolve_selection(field.fields(), &path[boundary + 1..], holder) {
+            if let Ok(mut tail) =
+                resolve_selection(field.fields(), &path[boundary + 1..], holder, key)
+            {
                 tail.steps.insert(0, index);
                 return Ok(tail);
             }
         }
         offset = boundary + 1;
     }
-    Err(digest_sources_error(
+    Err(digest_metadata_error(
+        key,
         holder,
         blocked.unwrap_or_else(|| format!("path {path:?} does not name a field")),
     ))
@@ -550,6 +664,18 @@ fn fill_struct<S: ArrowDigestState>(
 
     for holder in &plan.holders {
         let original = Arc::clone(&columns[holder.index]);
+        // Read after the nested fills, so an instant a nested declaration
+        // just produced is the one this holder couples.
+        let unix = match &holder.time {
+            Some(time) => Some(crate::txhash::arrow::unix_selection(
+                &columns,
+                plan.fields,
+                &time.selection.steps,
+                parent_nulls,
+                time.unit,
+            )?),
+            None => None,
+        };
         let mut mask = Vec::with_capacity(row_count);
         let mut values = Vec::with_capacity(row_count);
         let mut worker = if holder.use_prototype {
@@ -580,7 +706,23 @@ fn fill_struct<S: ArrowDigestState>(
         if !mask.iter().any(|selected| *selected) {
             continue;
         }
-        let computed = collect(&values, holder.algorithm);
+        let computed = match (&holder.time, &unix) {
+            (Some(time), Some(unix)) => {
+                // A null instant names no key. A nullable holder stores that
+                // absence; a required one cannot, and inventing an instant
+                // would be worse than no digest.
+                if !holder.field.is_nullable() {
+                    if let Some(row) = (0..row_count).find(|row| mask[*row] && unix.is_null(*row)) {
+                        return Err(Error::IncompatibleSchema(format!(
+                            "holder {} row {row}: digest:time source is null and the holder is required",
+                            holder.path
+                        )));
+                    }
+                }
+                crate::txhash::arrow::collect(unix, &values, None, time.unit, holder.algorithm)?
+            }
+            _ => collect(&values, holder.algorithm, None),
+        };
         // A signed holder stores the unsigned digest's bits, not a narrower
         // number: the same bytes under the width the schema declared.
         let computed = if matches!(holder.field.dtype(), DataType::Int32 | DataType::Int64) {
@@ -706,6 +848,19 @@ fn feed_selected_cell(
 /// Returns an error when a column's schema does not project to the core
 /// datatype model, or a value cannot be represented.
 pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<ArrayRef> {
+    let digests = row_digests_with(&algorithm.digester(), batch)?;
+    Ok(collect(&digests, algorithm, None))
+}
+
+/// Digest every row of a batch under a configured state.
+///
+/// The prototype supplies the algorithm, seed, and secret; bytes already
+/// fed to it are never read. This is the loop [`row_digests`] runs, and what
+/// a coupled column reads its digest half from.
+pub(crate) fn row_digests_with<S: ArrowDigestState>(
+    prototype: &S,
+    batch: &RecordBatch,
+) -> Result<Vec<Digest>> {
     let fields: Vec<Field> = batch
         .schema()
         .fields()
@@ -719,9 +874,9 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
         .filter_map(|(index, field)| is_digest_source(field).then_some(index))
         .collect();
     let mut digests = Vec::with_capacity(batch.num_rows());
-    let mut digester = algorithm.digester();
+    let mut digester = prototype.clone();
     for index in 0..batch.num_rows() {
-        digester.clear();
+        digester.reset();
         write_sequence_header(&mut digester, selected.len());
         for &column in &selected {
             feed_cell(
@@ -731,9 +886,9 @@ pub fn row_digests(batch: &RecordBatch, algorithm: DigestAlgorithm) -> Result<Ar
                 index,
             )?;
         }
-        digests.push(digester.as_digest());
+        digests.push(digester.answer());
     }
-    Ok(collect(&digests, algorithm))
+    Ok(digests)
 }
 
 /// Digest every value of one column.
@@ -766,6 +921,19 @@ pub fn column_digests(
     field: &Field,
     algorithm: DigestAlgorithm,
 ) -> Result<ArrayRef> {
+    let digests = column_digests_with(&algorithm.digester(), array, field)?;
+    Ok(collect(&digests, algorithm, None))
+}
+
+/// Digest every value of one column under a configured state.
+///
+/// The loop [`column_digests`] runs, reconciliation included; the prototype
+/// supplies the algorithm, seed, and secret.
+pub(crate) fn column_digests_with<S: ArrowDigestState>(
+    prototype: &S,
+    array: ArrayRef,
+    field: &Field,
+) -> Result<Vec<Digest>> {
     let array = field.cast_arrow_array(
         array,
         ArrowCastOptions::new()
@@ -774,23 +942,40 @@ pub fn column_digests(
     )?;
     let array = array.as_ref();
     let mut digests = Vec::with_capacity(array.len());
-    let mut digester = algorithm.digester();
+    let mut digester = prototype.clone();
     for index in 0..array.len() {
-        digester.clear();
+        digester.reset();
         feed_cell(&mut digester, field.dtype(), array, index)?;
-        digests.push(digester.as_digest());
+        digests.push(digester.answer());
     }
-    Ok(collect(&digests, algorithm))
+    Ok(digests)
 }
 
 /// Build the digest column the algorithm's width calls for.
-fn collect(digests: &[Digest], algorithm: DigestAlgorithm) -> ArrayRef {
+///
+/// `nulls` marks the rows that hold no digest; the digest functions answer
+/// none, and only a coupled column split back into its halves carries any.
+pub(crate) fn collect(
+    digests: &[Digest],
+    algorithm: DigestAlgorithm,
+    nulls: Option<NullBuffer>,
+) -> ArrayRef {
     match algorithm {
-        DigestAlgorithm::Xxh32 => Arc::new(UInt32Array::from_iter_values(
-            digests.iter().filter_map(|digest| digest.as_u32()),
+        DigestAlgorithm::Xxh32 => Arc::new(UInt32Array::new(
+            digests
+                .iter()
+                .filter_map(|digest| digest.as_u32())
+                .collect::<Vec<_>>()
+                .into(),
+            nulls,
         )),
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => Arc::new(UInt64Array::from_iter_values(
-            digests.iter().filter_map(|digest| digest.as_u64()),
+        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => Arc::new(UInt64Array::new(
+            digests
+                .iter()
+                .filter_map(|digest| digest.as_u64())
+                .collect::<Vec<_>>()
+                .into(),
+            nulls,
         )),
         DigestAlgorithm::Xxh128 => {
             // The canonical big-endian bytes, because no Arrow integer is 128
@@ -811,7 +996,7 @@ fn collect(digests: &[Digest], algorithm: DigestAlgorithm) -> ArrayRef {
             Arc::new(FixedSizeBinaryArray::new(
                 16,
                 arrow_buffer::Buffer::from_vec(flat),
-                None,
+                nulls,
             ))
         }
     }
@@ -1055,7 +1240,7 @@ fn fallback(
 }
 
 /// Downcast an array to the layout its datatype names.
-fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
+pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
     array.as_any().downcast_ref::<T>().ok_or_else(|| {
         Error::IncompatibleSchema(format!(
             "expected an Arrow {} array, got {}",

@@ -21,7 +21,7 @@ use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 
 /// Decode exactly one Arrow batch, transform it, and return one IPC batch.
-fn apply_arrow_batch_ipc(
+pub(crate) fn apply_arrow_batch_ipc(
     bytes: &Uint8Array,
     fill: impl FnOnce(arrow_array::RecordBatch) -> yggdryl::arrow::Result<arrow_array::RecordBatch>,
 ) -> Result<Buffer> {
@@ -59,7 +59,7 @@ pub type DigestContent<'content> = Either<Buffer, Either<Uint8Array, String>>;
 ///
 /// Every shape here is already contiguous native memory or a `string`, so the
 /// slice is the caller's own bytes: nothing is copied to hash it.
-fn content_bytes<'content>(content: &'content DigestContent<'content>) -> &'content [u8] {
+pub(crate) fn content_bytes<'content>(content: &'content DigestContent<'content>) -> &'content [u8] {
     match content {
         Either::A(buffer) => buffer.as_ref(),
         Either::B(Either::A(array)) => array.as_ref(),
@@ -86,7 +86,7 @@ fn bigint_from_u128(value: u128) -> BigInt {
 }
 
 /// Read a `BigInt` seed, refusing a value wider than the seed it names.
-fn seed_from_bigint(value: Option<BigInt>) -> Result<u64> {
+pub(crate) fn seed_from_bigint(value: Option<BigInt>) -> Result<u64> {
     let Some(value) = value else { return Ok(0) };
     let (signed, value, lossless) = value.get_u64();
     if signed || !lossless {
@@ -188,6 +188,11 @@ impl Clone for JsDigest {
 impl JsDigest {
     pub(crate) const fn from_core(inner: Digest) -> Self {
         Self { inner }
+    }
+
+    /// The native digest this wrapper carries.
+    pub(crate) const fn inner(&self) -> Digest {
+        self.inner
     }
 }
 
@@ -314,6 +319,14 @@ macro_rules! state {
                 Self {
                     inner: self.inner.clone(),
                 }
+            }
+        }
+
+        impl $class {
+            /// This state as the runtime dispatcher, seed, secret, and fed
+            /// bytes included.
+            pub(crate) fn digester(&self) -> yggdryl::Digester {
+                self.inner.clone().into()
             }
         }
 

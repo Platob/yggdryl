@@ -1,6 +1,6 @@
 # Architecture
 
-Shared vocabulary lives in root files; implementations live in ten layer folders. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
+Shared vocabulary lives in root files; implementations live in eleven layer folders. Rust is the source of truth, and Python and JavaScript are native views of the same contracts.
 
 ```text
 root traits, enums, and values
@@ -13,7 +13,7 @@ root traits, enums, and values
         │                         │
         ├── uri ──────────────────┘
         ├── text
-        └── xxhash
+        └── xxhash ──► txhash
 
 fix ── protocol vocabulary over types + holder
 ```
@@ -33,6 +33,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, or value (`iobase.rs` own
 | [`arrow`](arrow/index.md) | Arrow schema, scalar, array, batch, and reader boundaries |
 | [`expression`](expression/index.md) | parsing, binding, row evaluation, Arrow evaluation, and pushdown |
 | [`xxhash`](xxhash/index.md) | digest values, one-shot and resumable hashes, streams, handles, and row hashes |
+| [`txhash`](txhash/index.md) | an instant coupled with a digest: the sortable value, its instant intake, coupled columns, and the `digest:time` holder |
 | [`fix`](fix/index.md) | FIX vocabulary over core `Field` values and `IOBase` registry storage |
 
 Tests, benchmarks, Python modules, JavaScript source groups, and documentation mirror these names, so one path finds a concept's implementation, validation, boundary, and contract.

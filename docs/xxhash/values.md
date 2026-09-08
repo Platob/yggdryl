@@ -204,6 +204,7 @@ Each visible row is framed as an ordered `Scalar::Sequence` and streamed through
 | `["*"]` or no `digest:sources` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a path is refused |
 | Selected nested Struct with one direct holder | feeds that holder's digest payload instead of hashing the Struct again, which is the bypass a nested holder earns |
 | `digest:algorithm` | `xxh32`, `xxh64`, `xxh3-64`, or `xxh3-128`; it must fit the holder's storage mapping |
+| `digest:time`, `digest:unit` | the holder stores an instant in front of its digest and is a `fixed_size_binary` of the coupled width; [TxHash](../txhash/arrow.md#coupled-holders) owns the layout |
 | No `digest:algorithm` | a receiver whose output width fits the holder, with its seed and secret |
 | Fresh default by holder type | `int32`/`uint32` picks XXH32, `int64`/`uint64` picks XXH3-64, `fixed_size_binary(16)` picks XXH3-128 |
 | `force=false` | a cell equal to the holder `Field`'s default is computed, every non-default value preserved |

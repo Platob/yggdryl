@@ -11,13 +11,23 @@ use crate::{DataType, DigestAlgorithm, Error, Field, Result};
 const ALGORITHM: &str = "algorithm";
 const ROLE: &str = "role";
 const SOURCES: &str = "sources";
+/// The two coupling properties `txhash` owns; named here only so a role
+/// removal can refuse while they stand.
+const TIME: &str = "time";
+const UNIT: &str = "unit";
 pub(crate) const DIGEST_ALGORITHM_KEY: &str = "digest:algorithm";
 pub(crate) const DIGEST_ROLE_KEY: &str = "digest:role";
 pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
 pub(crate) const DIGEST_SOURCES_KEY: &str = "digest:sources";
 
 /// Return whether a holder's storage carries this algorithm's exact width.
+///
+/// A holder coupling an instant stores that instant in front of the digest,
+/// so its width is the coupled one; `txhash` owns that layout.
 pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool {
+    if field.as_digest().time().is_some() {
+        return crate::txhash::coupled_holder_accepts(field, algorithm);
+    }
     match algorithm {
         DigestAlgorithm::Xxh32 => {
             matches!(field.dtype(), DataType::Int32 | DataType::UInt32)
@@ -30,7 +40,10 @@ pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool 
 }
 
 /// Return the canonical datatype spellings an algorithm's holder accepts.
-pub(crate) const fn expected_holder_dtypes(algorithm: DigestAlgorithm) -> &'static str {
+pub(crate) fn expected_holder_dtypes(field: &Field, algorithm: DigestAlgorithm) -> &'static str {
+    if field.as_digest().time().is_some() {
+        return crate::txhash::expected_coupled_dtype(algorithm);
+    }
     match algorithm {
         DigestAlgorithm::Xxh32 => "int32 or uint32",
         DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "int64 or uint64",
@@ -192,7 +205,7 @@ impl DigestFieldMut<'_> {
                 ALGORITHM,
                 format_smolstr!(
                     "algorithm {algorithm} requires {}, got {}",
-                    expected_holder_dtypes(algorithm),
+                    expected_holder_dtypes(self.as_field(), algorithm),
                     self.as_field().dtype()
                 ),
             ));
@@ -238,13 +251,13 @@ impl DigestFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when holder-owned algorithm or source metadata is
-    /// present, leaving the field unchanged. Remove both first.
+    /// Returns an error when holder-owned algorithm, source, time, or unit
+    /// metadata is present, leaving the field unchanged. Remove those first.
     pub fn remove_role(&mut self) -> Result<Option<String>> {
         if self.has_holder_properties() {
             return Err(self.rejected(
                 ROLE,
-                "cannot remove holder role while digest:algorithm or digest:sources is present"
+                "cannot remove holder role while digest:algorithm, digest:sources, digest:time, or digest:unit is present"
                     .into(),
             ));
         }
@@ -252,11 +265,14 @@ impl DigestFieldMut<'_> {
     }
 
     fn has_holder_properties(&self) -> bool {
-        self.contains_key(ALGORITHM) || self.contains_key(SOURCES)
+        self.contains_key(ALGORITHM)
+            || self.contains_key(SOURCES)
+            || self.contains_key(TIME)
+            || self.contains_key(UNIT)
     }
 
     /// Name the full digest key a typed mutation was refused under.
-    fn rejected(&self, name: &str, reason: SmolStr) -> Error {
+    pub(crate) fn rejected(&self, name: &str, reason: SmolStr) -> Error {
         Error::InvalidMetadataValue {
             key: SmolStr::new(self.key(name)),
             reason,

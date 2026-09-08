@@ -20,6 +20,7 @@ values cross the JavaScript boundary.
 | `avro` | [Avro](../media/avro.md) |
 | `gzip`, `zlib`, `zstd` | [coding](../coding/index.md) |
 | `xxhash`, `Digest` | [xxhash](../xxhash/index.md) |
+| `txhash`, `TxHash`, `TxHasher` | [txhash](../txhash/index.md) |
 
 ## Use
 
@@ -674,6 +675,21 @@ hashed in place, an `ArrayBuffer` is narrowed to a `Buffer` window, and a
 Each resumable state also exposes `applyArrowBatch(root, batch, force = false)`.
 The root Field's digest metadata selects the row values, and the state supplies
 its algorithm, seed, and secret.
+
+`txhash` couples an instant with that digest. Every `unix` argument is a
+`bigint`, an integer `number`, a `Date`, timestamp text, or a `Scalar`; the
+coupled columns stay Rust and Python only ([txhash](../txhash/index.md)).
+
+```javascript
+const assert = require('node:assert/strict')
+const { TxHash, txhash, xxhash } = require('yggdryl')
+
+const value = txhash.txh3('abc', new Date('2023-11-14T22:13:20Z'))
+assert.equal(value.unix, 1_700_000_000_000_000n)
+assert.equal(value.digest.value(), xxhash.xxh3('abc'))
+assert.equal(Buffer.from(value.bytes()).readBigInt64BE(0), value.unix)
+assert.ok(TxHash.from(value.toString()).equals(value))
+```
 
 ## FIX is a namespace
 

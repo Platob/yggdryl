@@ -1016,3 +1016,67 @@ fn planning_once_is_what_a_reused_plan_saves_per_batch() {
         "compiling per batch cost {planned} and reusing one plan cost {applied}"
     );
 }
+
+#[test]
+fn coupled_value_bytes_allocate_nothing() {
+    // A coupled value is an inline instant and an inline digest, so laying
+    // the two out, reading them back, and restating the resolution copies
+    // nothing to the heap. The one-shot XXH32 answer is inline too; XXH3
+    // keeps its secret on the heap, which is the algorithm's cost.
+    use yggdryl::txhash::{self, TxHash};
+    use yggdryl::{DigestAlgorithm, TimeUnit};
+
+    let value = txhash::txh128(b"AAPL", 1_700_000_000_000_000);
+    let bytes = value.into_bytes();
+    free("laying out a coupled value", || {
+        black_box(value.into_bytes().len());
+    });
+    free("reading a coupled value back", || {
+        black_box(
+            TxHash::from_bytes(TimeUnit::Microsecond, DigestAlgorithm::Xxh128, &bytes)
+                .expect("the exact width"),
+        );
+    });
+    free("restating a coupled instant", || {
+        black_box(value.with_unit(TimeUnit::Second).expect("a coarser unit"));
+    });
+    free("coupling an XXH32 one-shot", || {
+        black_box(txhash::txh32(black_box(b"AAPL"), 1));
+    });
+    free("projecting the instant as a datetime", || {
+        black_box(value.into_datetime());
+    });
+}
+
+#[test]
+fn reading_an_instant_out_of_a_value_allocates_nothing() {
+    use yggdryl::txhash;
+    use yggdryl::{Scalar, TimeUnit, Timezone};
+
+    let integer = Scalar::from(1_700_000_000_000_000_i64);
+    let zoned = Scalar::from_datetime(1_700_000_000, TimeUnit::Second, Timezone::UTC)
+        .expect("a valid datetime");
+    let day = Scalar::date32(19_723);
+    for (label, value) in [
+        ("an integer", &integer),
+        ("a zoned datetime", &zoned),
+        ("a date", &day),
+    ] {
+        free(&format!("reading an instant out of {label}"), || {
+            black_box(
+                txhash::unix_from_scalar(black_box(value), TimeUnit::Microsecond)
+                    .expect("an instant"),
+            );
+        });
+    }
+    free("restating a unix count", || {
+        black_box(
+            txhash::restate_unix(
+                black_box(1_999),
+                TimeUnit::Nanosecond,
+                TimeUnit::Microsecond,
+            )
+            .expect("a coarser unit"),
+        );
+    });
+}

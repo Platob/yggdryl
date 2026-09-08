@@ -157,6 +157,7 @@ Metadata belongs to the field and behaves like each language's mapping type.
 | Naming a resource | [URI](uri/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |
 | Digests | [xxHash](xxhash/index.md) |
+| Time-keyed digests | [TxHash](txhash/index.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks

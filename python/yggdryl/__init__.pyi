@@ -46,6 +46,7 @@ from . import (
     holder as holder,
     media as media,
     text as text,
+    txhash as txhash,
     types as types,
     uri as uri,
     xxhash as xxhash,

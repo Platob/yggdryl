@@ -208,6 +208,9 @@ nav:
     - Streaming: xxhash/streaming.md
     - Handles: xxhash/handles.md
     - Values: xxhash/values.md
+  - TxHash:
+    - txhash/index.md
+    - Arrow: txhash/arrow.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

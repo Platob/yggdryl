@@ -14,6 +14,7 @@ Field metadata the library reads: reserved keys, `scheme:name` properties behind
 | `scheme:name` | protocol property, prefix canonicalized to a known [`Scheme`](scalar.md) |
 | `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
 | `digest:role` | `holder`; anything else refused |
+| `digest:time`, `digest:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([TxHash](../txhash/arrow.md#coupled-holders)) |
 | view | borrow of the one metadata map, cache-aware writes |
 | Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
@@ -257,7 +258,7 @@ depend on.
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `branch`, `id`, `tag`, `tags`, `aliases`, `description` |
-| [`DigestField`, `DigestFieldMut`](../xxhash/values.md#filling-digest-holders) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters |
+| [`DigestField`, `DigestFieldMut`](../xxhash/values.md#filling-digest-holders) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; [`time`, `unit`, `is_coupled`](../txhash/arrow.md#coupled-holders) and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `expression`, `apply_arrow_batch`, and the two setters |
 

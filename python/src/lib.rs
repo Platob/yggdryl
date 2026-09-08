@@ -35,6 +35,7 @@ mod media;
 mod text;
 mod types;
 mod uri;
+mod txhash;
 mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
@@ -468,6 +469,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PyDataFile>()?;
     media::partition::register(module)?;
     xxhash::register(module)?;
+    txhash::register(module)?;
     Ok(())
 }
 

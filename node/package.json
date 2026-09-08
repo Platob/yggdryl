@@ -44,6 +44,7 @@
     "bench:media": "node benchmarks/media.js",
     "bench:media:text": "node benchmarks/media/text.js",
     "bench:text": "node benchmarks/text.js",
+    "bench:txhash": "node benchmarks/txhash.js",
     "bench:types": "node benchmarks/types.js",
     "bench:types:defaults": "node benchmarks/types/defaults.js",
     "bench:xxhash": "node benchmarks/xxhash.js",

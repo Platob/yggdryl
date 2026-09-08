@@ -2896,6 +2896,78 @@ impl PyProtocolField {
         Ok(field.inner.as_digest_mut().remove_sources())
     }
 
+    /// The field whose instant a coupled holder stores in front of its digest.
+    ///
+    /// Writing it checks what the stored form cannot: this field is a holder
+    /// and its storage is the `fixed_size_binary` a coupled digest needs.
+    #[getter]
+    fn time(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("time")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_digest().time().map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_time(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("time")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_time(value)
+            .map_err(value_error)
+    }
+
+    /// Remove the coupled instant, refusing while `digest:unit` still stands.
+    fn remove_time(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_time")?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .remove_time()
+            .map_err(value_error)
+    }
+
+    /// The clock resolution a coupled holder counts its instant in, or
+    /// `None` for the microsecond default.
+    #[getter]
+    fn unit(&self, py: Python<'_>) -> PyResult<Option<&'static str>> {
+        self.require_digest("unit")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_digest()
+            .unit()
+            .map_err(value_error)?
+            .map(yggdryl::TimeUnit::as_str))
+    }
+
+    #[setter]
+    fn set_unit(&self, py: Python<'_>, value: &str) -> PyResult<()> {
+        self.require_digest("unit")?;
+        let unit = crate::txhash::unit_from_str(value)?;
+        let mut field = self.borrow_field_mut(py)?;
+        field
+            .inner
+            .as_digest_mut()
+            .set_unit(unit)
+            .map_err(value_error)
+    }
+
+    /// Remove the explicit resolution, which is the microsecond default again.
+    fn remove_unit(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_digest("remove_unit")?;
+        let mut field = self.borrow_field_mut(py)?;
+        Ok(field.inner.as_digest_mut().remove_unit())
+    }
+
+    /// Whether this holder couples an instant with its digest.
+    fn is_coupled(&self, py: Python<'_>) -> PyResult<bool> {
+        self.require_digest("is_coupled")?;
+        Ok(self.borrow_field(py)?.inner.as_digest().is_coupled())
+    }
+
     /// How this partition column derives its value, on the `partition` view.
     ///
     /// The vocabulary is the [expression](../expression/grammar.md) grammar's
