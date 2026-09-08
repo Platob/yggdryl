@@ -166,14 +166,14 @@ impl Leaf {
                 return Ok(codec);
             }
         }
-        // A representation that already carries a content coding is stored as
-        // it is: compressing a `.csv.gz` member again costs time and grows it.
-        let declared = Codec::from_media_type(self.media_type());
-        if declared.is_identity() {
-            Ok(self.archive.codec())
-        } else {
-            Ok(Codec::Identity)
+        // A representation that is already compressed is stored as it is:
+        // recoding a `.csv.gz` member costs time and grows it, and an archive
+        // member stored whole is one whose own members stay addressable.
+        let media_type = self.media_type();
+        if !Codec::from_media_type(media_type).is_identity() || media_type.base().is_archive() {
+            return Ok(Codec::Identity);
         }
+        Ok(self.archive.codec())
     }
 
     /// Write the decoded member back into the archive.

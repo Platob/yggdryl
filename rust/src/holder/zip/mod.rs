@@ -130,11 +130,13 @@ pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
         Archive::new(Holder::Path(crate::holder::local::Path::from_url(base)?)).mount(),
     );
     let member = member.unwrap_or_default();
-    let mut levels = member
-        .split(archive::NESTED)
-        .filter(|level| !level.is_empty())
-        .peekable();
+    let mut levels = member.split(archive::NESTED).peekable();
     while let Some(level) = levels.next() {
+        // A level with nothing in it is the marker at the end, which names the
+        // archive mounted over the member the level before it resolved.
+        if level.is_empty() {
+            continue;
+        }
         let child = held.child_by_path(level)?;
         // Every level but the last names the archive the next one is inside.
         held = if levels.peek().is_some() {
@@ -162,6 +164,12 @@ fn member_name(holder: &Holder) -> Option<&str> {
 /// partition again inside one, and a member carries whichever it is under.
 fn member_partitions(archive: &Archive, member: &str) -> Vec<(String, String)> {
     let mut pairs = archive.url().hive_partitions();
+    // An archive inside an archive spells its own chain in the fragment, and
+    // every link of it can partition too; the empty segment a level marker
+    // leaves behind is not a pair, so the split needs no special case.
+    if let Ok(Some(chain)) = archive.url().fragment(true) {
+        pairs.extend(crate::uri::hive_partitions_of(chain.split('/')));
+    }
     pairs.extend(crate::uri::hive_partitions_of(member.split('/')));
     pairs
 }

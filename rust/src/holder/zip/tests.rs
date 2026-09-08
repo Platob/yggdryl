@@ -942,10 +942,22 @@ fn an_archive_inside_an_archive_names_its_own_members() {
     // The inner archive is one member of the outer one, and mounting it
     // keeps that identity rather than claiming the outer archive's.
     let inner = Holder::zip(outer.child_by_path("inner.zip").expect("the member"));
+    // The mounted archive and the member holding its bytes are two resources,
+    // and the marker with nothing after it is what tells them apart.
     assert_eq!(
         inner.url().expect("the inner archive url").to_string(),
+        format!("{}#inner.zip//", outer.archive().url())
+    );
+    assert_eq!(
+        outer
+            .child_by_path("inner.zip")
+            .expect("the member")
+            .url()
+            .expect("a member url")
+            .to_string(),
         format!("{}#inner.zip", outer.archive().url())
     );
+
 
     let member = inner.child_by_path("trades/eu.csv").expect("the member");
     assert_eq!(
@@ -1026,6 +1038,19 @@ fn a_nested_archive_is_written_through_and_read_back() {
             .expect("writes");
     }
     outer.archive().flush().expect("publishes");
+
+    // An archive member is stored rather than deflated by default, so its own
+    // members stay one positional read of the outer archive away.
+    assert_eq!(
+        outer
+            .archive()
+            .get_entry("inner.zip")
+            .expect("the index")
+            .expect("the member")
+            .codec()
+            .expect("a coding"),
+        Codec::Identity,
+    );
 
     let remounted = mounted(bytes(outer.archive()));
     let inner = Holder::zip(remounted.child_by_path("inner.zip").expect("the member"));

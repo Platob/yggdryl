@@ -711,16 +711,17 @@ impl Archive {
     /// written down opens the member again however deeply it was nested.
     pub(super) fn member_url(&self, member: &str) -> Url {
         let member = member.trim_end_matches('/');
-        if member.is_empty() {
-            return self.url.clone();
-        }
         let held = match self.url.fragment(true) {
-            Ok(held) => held,
+            Ok(held) => held.filter(|held| !held.is_empty()),
             Err(_) => return self.url.clone(),
         };
         let fragment = match held {
-            Some(outer) if !outer.is_empty() => format_smolstr!("{outer}{NESTED}{member}"),
-            _ => SmolStr::new(member),
+            // A member-backed archive continues the chain past the marker,
+            // and its own root is the marker with nothing after it - which is
+            // what tells the archive apart from the member holding its bytes.
+            Some(outer) => format_smolstr!("{outer}{NESTED}{member}"),
+            None if member.is_empty() => return self.url.clone(),
+            None => SmolStr::new(member),
         };
         let mut url = self.url.clone();
         // A member path is not URI text, so the fragment carries it encoded.
