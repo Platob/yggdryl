@@ -182,6 +182,12 @@ struct Index {
     dirty: bool,
     /// Whether a removal left dead space the next flush must reclaim.
     compact: bool,
+    /// Bytes before the first record, which belong to something else.
+    ///
+    /// A self-extracting archive carries a program there. It is not the
+    /// archive's to move, so compaction packs the records behind it rather
+    /// than over it.
+    prologue: u64,
     /// Where each member's bytes start, once a local header has said so.
     ///
     /// A member's data offset is only knowable from its own local header, so
@@ -496,10 +502,27 @@ impl Archive {
             )));
         }
         let method = format::method_of(codec)?;
+        if name.len() > usize::from(format::ZIP64_MARK_16) {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected a member name of at most {} bytes, got {}",
+                    format::ZIP64_MARK_16,
+                    name.len()
+                ),
+            )));
+        }
         let mut guard = self.locked()?;
         let inner = &mut *guard;
-        let offset = Self::index_of(inner)?.directory_offset;
-        let entry = Entry::new(name, method, now_nanos()).with_header_offset(offset);
+        let index = Self::index_of(inner)?;
+        let offset = index.directory_offset;
+        let previous = index.entries.get(name.as_str()).cloned();
+        let mut entry = Entry::new(name, method, now_nanos()).with_header_offset(offset);
+        // Replacing a member's bytes says nothing about the member: what the
+        // record already stated about it is carried rather than reinvented.
+        if let Some(previous) = &previous {
+            entry = entry.with_facts_of(previous);
+        }
         let stride = if codec.has_restarts() && !codec.is_identity() {
             self.restart_stride
         } else {
@@ -635,12 +658,14 @@ impl Archive {
     pub fn clear_members(&self) -> Result<()> {
         let mut guard = self.locked()?;
         let index = Self::index(&mut guard)?;
+        // Clearing is not a write: an archive that holds nothing is not
+        // brought into being by being emptied.
         if !index.entries.is_empty() {
             index.entries.clear();
             index.data.clear();
             index.compact = true;
+            index.dirty = true;
         }
-        index.dirty = true;
         Ok(())
     }
 
@@ -1254,15 +1279,19 @@ impl Archive {
         );
         let end = offset + trailer.len() as u64;
         let shrinks = end < index.stored_end;
-        index.dirty = false;
-        index.stored_end = end;
         inner.pwrite_all(offset, &trailer)?;
         // Shortening is only needed when this trailer ends before the last one
         // did; an archive that only grew has nothing beyond it to discard.
         if shrinks {
             inner.truncate(end)?;
         }
-        inner.flush()
+        inner.flush()?;
+        // Only a published directory makes the index match the archive, so a
+        // failed write leaves the flush still owed rather than forgotten.
+        let index = Self::index_of(inner)?;
+        index.dirty = false;
+        index.stored_end = end;
+        Ok(())
     }
 
     /// Move every surviving member to the front, reclaiming dead space.
@@ -1273,10 +1302,11 @@ impl Archive {
     /// each record exactly as long as it was and makes that guarantee hold.
     fn compact(guard: &mut MutexGuard<'_, Inner>) -> Result<()> {
         let inner = &mut **guard;
-        let mut ordered: Vec<Entry> = Self::index_of(inner)?.entries.values().cloned().collect();
+        let index = Self::index_of(inner)?;
+        let mut ordered: Vec<Entry> = index.entries.values().cloned().collect();
+        let mut cursor = index.prologue;
         ordered.sort_by_key(Entry::header_offset);
 
-        let mut cursor = 0_u64;
         let mut moved = Vec::with_capacity(ordered.len());
         let mut buffer = vec![0_u8; COMPACT_CHUNK];
         for entry in ordered {
@@ -1706,6 +1736,7 @@ fn parse(inner: &mut Inner) -> Result<Index> {
         comment,
         dirty: false,
         compact: false,
+        prologue: u64::try_from(shift).unwrap_or(0),
         data: BTreeMap::new(),
         proven: BTreeSet::new(),
         stored_end: size,

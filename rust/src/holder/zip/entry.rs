@@ -31,6 +31,7 @@ use super::format;
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Entry {
     name: SmolStr,
+    made_by: u16,
     flags: u16,
     method: u16,
     modified: i64,
@@ -48,6 +49,7 @@ impl Entry {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn from_parts(
         name: SmolStr,
+        made_by: u16,
         flags: u16,
         method: u16,
         modified: i64,
@@ -60,6 +62,7 @@ impl Entry {
     ) -> Self {
         Self {
             name,
+            made_by,
             flags,
             method,
             modified,
@@ -77,6 +80,7 @@ impl Entry {
     pub(super) fn new(name: SmolStr, method: u16, modified: i64) -> Self {
         let directory = name.ends_with('/');
         Self {
+            made_by: format::MADE_BY_THIS,
             flags: format::FLAG_UTF8,
             method,
             modified,
@@ -189,6 +193,26 @@ impl Entry {
         self.external_attributes
     }
 
+    /// The host system and specification version the record was made by.
+    ///
+    /// The high byte is what says how to read the external attributes, so a
+    /// record rewritten under a different one changes what its mode means.
+    pub(super) const fn made_by(&self) -> u16 {
+        self.made_by
+    }
+
+    /// Restate this entry under what another record already said about it.
+    ///
+    /// A rewrite replaces a member's bytes, not the facts around them: the
+    /// host that made the record, the mode it carries, and the comment beside
+    /// it all describe the member rather than its content.
+    pub(super) fn with_facts_of(mut self, previous: &Self) -> Self {
+        self.made_by = previous.made_by;
+        self.external_attributes = previous.external_attributes;
+        self.comment = previous.comment.clone();
+        self
+    }
+
     /// Restate this entry with the sizes and digest a published member has.
     pub(super) fn with_content(mut self, crc32: u32, compressed_size: u64, size: u64) -> Self {
         self.crc32 = crc32;
@@ -204,6 +228,18 @@ impl Entry {
     pub(super) fn with_restarts(mut self, restarts: Restarts) -> Self {
         self.restarts = restarts;
         self
+    }
+
+    /// The host byte a record was made by, for a test that asserts it.
+    #[cfg(test)]
+    pub(super) const fn made_by_for_test(&self) -> u16 {
+        self.made_by
+    }
+
+    /// The external attributes a record carries, for a test that asserts them.
+    #[cfg(test)]
+    pub(super) const fn external_attributes_for_test(&self) -> u32 {
+        self.external_attributes
     }
 
     /// Restate this entry with the general purpose bit flags a record has.

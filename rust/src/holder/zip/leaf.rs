@@ -74,6 +74,30 @@ pub struct Leaf {
     plain: Option<Vec<u8>>,
     /// Whether `plain` holds changes the archive has not seen.
     dirty: bool,
+    /// What the archive said about the member when this handle decoded it.
+    ///
+    /// A staged value describes the bytes it was decoded from, so publishing
+    /// it over a member another handle has since replaced would drop that
+    /// write silently. The two are compared instead, and the conflict named.
+    decoded_from: Decoded,
+}
+
+/// What the archive said about a member when a handle decoded it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Decoded {
+    /// Nothing was decoded, so nothing constrains what a publish replaces.
+    Nothing,
+    /// The archive held no such member.
+    Absent,
+    /// The member's record began at this offset.
+    Record(u64),
+}
+
+impl Decoded {
+    /// What the archive says about the member now.
+    fn of(entry: Option<&Entry>) -> Self {
+        entry.map_or(Self::Absent, |entry| Self::Record(entry.header_offset()))
+    }
 }
 
 impl Leaf {
@@ -88,6 +112,7 @@ impl Leaf {
             codec: None,
             plain: None,
             dirty: false,
+            decoded_from: Decoded::Nothing,
         }
     }
 
@@ -139,6 +164,7 @@ impl Leaf {
     /// Materialize the decoded member, decoding the archive's bytes once.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
+            self.decoded_from = Decoded::of(self.get_entry()?.as_ref());
             self.plain = Some(self.read_whole()?);
         }
         self.plain
@@ -181,9 +207,19 @@ impl Leaf {
         if !self.dirty {
             return Ok(());
         }
+        if self.decoded_from != Decoded::Nothing
+            && Decoded::of(self.get_entry()?.as_ref()) != self.decoded_from
+        {
+            return Err(Error::conflict(
+                "the member this value was decoded from",
+                "a member another handle has since written",
+                &self.url,
+            ));
+        }
         let codec = self.write_codec()?;
         let plain = self.plain.take().unwrap_or_default();
-        self.archive.write_member_from(&self.name, &plain[..], codec)?;
+        let entry = self.archive.write_member_from(&self.name, &plain[..], codec)?;
+        self.decoded_from = Decoded::Record(entry.header_offset());
         self.plain = Some(plain);
         self.dirty = false;
         self.archive.flush()
@@ -216,6 +252,7 @@ impl IOFile for Leaf {
     fn clear_file(&mut self) -> Result<()> {
         self.plain = None;
         self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
         if !self.file_exists() {
             return Ok(());
         }
@@ -228,6 +265,7 @@ impl IOFile for Leaf {
     fn delete_file(&mut self) -> Result<()> {
         self.plain = None;
         self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
         if self.archive.remove_member(&self.name)? {
             return self.archive.flush();
         }
@@ -261,10 +299,19 @@ impl IOBase for Leaf {
         let Some(entry) = self.get_entry()? else {
             return Ok(0);
         };
-        Ok(std::io::Read::read(
-            &mut self.archive.entry_reader(&entry, offset)?,
-            buffer,
-        )?)
+        // A decode step answers whatever one step produced, which is short of
+        // the buffer far more often than the member is short of the offset,
+        // and `pread` is short only at the end of a value.
+        let mut reader = self.archive.entry_reader(&entry, offset)?;
+        let mut filled = 0;
+        while filled < buffer.len() {
+            let read = std::io::Read::read(&mut reader, &mut buffer[filled..])?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+        }
+        Ok(filled)
     }
 
     /// Stream the decoded member without materializing it.
@@ -292,6 +339,7 @@ impl IOBase for Leaf {
         self.archive.write_member_from(&self.name, bytes, codec)?;
         self.plain = None;
         self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
         self.archive.flush()
     }
 
@@ -405,6 +453,7 @@ impl IOBase for Leaf {
     fn close(&mut self) -> Result<()> {
         self.publish()?;
         self.plain = None;
+        self.decoded_from = Decoded::Nothing;
         Ok(())
     }
 

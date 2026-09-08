@@ -879,6 +879,119 @@ fn a_positional_write_through_a_location_stages_rather_than_publishing() {
 }
 
 #[test]
+fn a_second_handle_writing_the_member_is_a_conflict_rather_than_a_loss() {
+    let root = root();
+    root.archive()
+        .write_member("notes.txt", b"0123456789")
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    let mut first = root.as_leaf("notes.txt").expect("a member");
+    let mut second = root.as_leaf("notes.txt").expect("the same member");
+    first.pwrite(0, b"AAAA").expect("a positional write");
+    second.pwrite(6, b"BBBB").expect("a positional write");
+    second.flush().expect("the second handle publishes");
+
+    // The first handle staged over bytes that are gone, so publishing it
+    // would drop the second handle's write without saying so.
+    let refused = first.flush().expect_err("a conflict");
+    assert!(matches!(refused, Error::Conflict { .. }), "{refused:?}");
+    assert_eq!(
+        root.archive().read_member("notes.txt").expect("the member"),
+        b"012345BBBB"
+    );
+}
+
+#[test]
+fn a_member_name_in_a_code_page_reads_rather_than_failing_the_archive() {
+    // The byte 0x87 is not UTF-8; IBM 437 spells it `\u{e7}`, and the member
+    // beside it has to be readable whatever that name resolves to.
+    let named = Entry::new(SmolStr::new("cafX.txt"), 0, 0)
+        .with_content(0, 0, 0)
+        .with_flags(0);
+    let mut crc = flate2::Crc::new();
+    crc.update(b"symbol");
+    let plain = Entry::new(SmolStr::new("ok.txt"), 0, 0).with_content(crc.sum(), 6, 6);
+    let mut raw = image(&[(named, Vec::new()), (plain, b"symbol".to_vec())], b"");
+    // Spell the first member's name as the code page would, in every record
+    // that states it, keeping the length the records declare.
+    for at in 0..raw.len() - 8 {
+        if &raw[at..at + 8] == b"cafX.txt" {
+            raw[at + 3] = 0x87;
+        }
+    }
+    let root = mounted(raw);
+
+    let names: Vec<String> = root
+        .archive()
+        .entries()
+        .expect("the index")
+        .iter()
+        .map(|entry| entry.name().to_owned())
+        .collect();
+    assert_eq!(names, vec!["caf\u{e7}.txt".to_owned(), "ok.txt".to_owned()]);
+    assert_eq!(
+        root.archive().read_member("ok.txt").expect("the member"),
+        b"symbol"
+    );
+}
+
+#[test]
+fn a_split_archive_is_refused_by_the_volume_it_names() {
+    let root = root();
+    root.archive().write_member("a.txt", b"symbol").expect("writes");
+    let mut raw = bytes(root.archive());
+    // The end record's disk number, four bytes past its signature.
+    let end = raw.len() - format::END_LEN;
+    raw[end + 4] = 3;
+    raw[end + 6] = 3;
+
+    let refused = mounted(raw)
+        .archive()
+        .entries()
+        .expect_err("a split archive");
+    assert!(
+        refused.to_string().contains("volume 3"),
+        "{refused} names the volume"
+    );
+}
+
+#[test]
+fn a_rewrite_keeps_what_the_record_said_about_the_member() {
+    // A record another tool wrote: made by MS-DOS, its own mode, a comment.
+    let mut raw = {
+        let root = root();
+        root.archive().write_member("a.txt", b"symbol").expect("writes");
+        bytes(root.archive())
+    };
+    let central = raw
+        .windows(4)
+        .position(|window| window == format::CENTRAL_SIGNATURE.to_le_bytes())
+        .expect("a central record");
+    raw[central + 5] = 0;
+    let root = mounted(raw);
+    let before = root
+        .archive()
+        .get_entry("a.txt")
+        .expect("the index")
+        .expect("the member");
+
+    root.archive()
+        .write_member("a.txt", b"price")
+        .expect("rewrites");
+    let after = root
+        .archive()
+        .get_entry("a.txt")
+        .expect("the index")
+        .expect("the member");
+    assert_eq!(after.made_by_for_test(), before.made_by_for_test());
+    assert_eq!(
+        after.external_attributes_for_test(),
+        before.external_attributes_for_test()
+    );
+}
+
+#[test]
 fn a_truncation_shortens_the_member() {
     let root = root();
     let mut member = root.as_leaf("notes.txt").expect("a member");
