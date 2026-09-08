@@ -219,8 +219,8 @@ pub fn stages(criterion: &mut Criterion) {
         bencher.iter(|| {
             messages
                 .iter()
-                .map(|message| black_box(message).to_row(&schema).expect("a row"))
-                .count()
+                .map(|message| black_box(message).to_row(&schema).expect("a row").len())
+                .sum::<usize>()
         });
     });
     let rows: Vec<Scalar> = messages
@@ -234,8 +234,9 @@ pub fn stages(criterion: &mut Criterion) {
                     schema
                         .canonicalize_value(black_box(row).clone())
                         .expect("canonical")
+                        .len()
                 })
-                .count()
+                .sum::<usize>()
         });
     });
     let all = Scalar::from_sequence(rows.clone());
@@ -251,7 +252,7 @@ pub fn stages(criterion: &mut Criterion) {
             messages
                 .iter()
                 .map(|message| black_box(message).digest())
-                .count()
+                .fold(0_u128, |folded, digest| folded ^ digest)
         });
     });
     group.bench_function("entries_columns", |bencher| {
@@ -270,8 +271,8 @@ pub fn stages(criterion: &mut Criterion) {
         bencher.iter(|| {
             messages
                 .iter()
-                .map(|message| black_box(message).to_row(&narrow).expect("a row"))
-                .count()
+                .map(|message| black_box(message).to_row(&narrow).expect("a row").len())
+                .sum::<usize>()
         });
     });
     group.finish();
