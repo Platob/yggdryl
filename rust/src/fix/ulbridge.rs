@@ -113,7 +113,7 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 /// Every capture is named for what it does. `timestamp` is the row's clock,
 /// so it stamps the message; `msgCtxId` fills the crate's own
 /// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
-/// through the spellings [`capture_tag`] knows; `plugin` names the plugin
+/// through the bridge's own spellings of standard fields; `plugin` names the plugin
 /// session that logged the line, which fills
 /// [`SenderPluginSession`](super::SENDERPLUGINSESSION_TAG) for a line it
 /// sent and [`TargetPluginSession`](super::TARGETPLUGINSESSION_TAG) for one
