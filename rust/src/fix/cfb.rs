@@ -81,11 +81,19 @@
 //! the wording beside it, the two mapping tables spell the same type the way
 //! UlMessage does, and a `grammar-binding` binds one the listing sometimes
 //! omits. Each becomes one code - the file's own spelling as its name, the
-//! other spellings as aliases, the listing's wording as its description -
-//! valued by [`MsgType::coerce`](crate::types::MsgType): the spelling itself
-//! where it fits the column, and this crate's stable digest of it where it
-//! does not, which is what a bridge's composite key like `P Report Ack`
-//! needs.
+//! other spellings as aliases, the listing's wording as its description.
+//!
+//! A CBlock spells a type as the wire value and a qualifier, and the value is
+//! the first word: `AR Inbound` and `AR Outbound` are tag 35 `AR` in the two
+//! directions, `J Report` is `J` used as a report, `c SDR` and `c SLR` are
+//! `c` used two ways. A FIX message type is alphanumeric and never holds a
+//! space, so two declarations of one wire type are one code answering to
+//! both spellings - and a message root keeps the whole spelling, because the
+//! qualifier is what says which grammar the file bound. Resolving a root's
+//! name through this code set is what joins the two: `AR Outbound` answers
+//! `AR`. A first word wider than the column is hashed by
+//! [`MsgType::coerce`](crate::types::MsgType), which is what a bridge
+//! writing one key rather than a pair needs.
 //!
 //! A message type is a code of tag 35 and never a field, so a file that
 //! declares no tag 35 keeps its types out of the dictionary rather than
@@ -942,14 +950,14 @@ impl<'doc> Parse<'doc> {
 
     /// One message type as a code of tag 35, answering where it sits.
     ///
-    /// The value is [`MsgType::coerce`](crate::types::MsgType)'s: the spelling
-    /// itself where it fits the column, and this crate's stable digest of it
-    /// where it does not, which is what a bridge's composite key needs. A
-    /// spelling the file states twice is one code, and the first wording it
-    /// gave is the one it keeps.
+    /// The value is [`msgtype_value`]'s and the name is the file's whole
+    /// spelling, so two declarations of one wire type - `AR Inbound` and
+    /// `AR Outbound` - are one code answering to both. A spelling the file
+    /// states twice is one code, and the first wording it gave is the one it
+    /// keeps.
     fn push_msgtype(&mut self, spelling: &str, described: Option<&str>) -> Result<usize> {
         let spelling = spelling.trim();
-        let value = crate::types::MsgType::coerce(spelling);
+        let value = msgtype_value(spelling);
         let described = described.map(single_line).filter(|held| !held.is_empty());
         if let Some(at) = self.values.get(value.as_str()).copied() {
             if self.msgtypes[at].description().is_none() {
@@ -1473,6 +1481,24 @@ fn refusal(position: usize, reason: SmolStr) -> Error {
 /// in what the reader answers - only the space in front of it, which goes.
 fn spelling(element: &BytesStart<'_>) -> String {
     format!("<{}>", String::from_utf8_lossy(element).trim_end())
+}
+
+/// The wire value one declared message type carries.
+///
+/// A CBlock spells a message type as the wire value and a qualifier: `AR
+/// Inbound` and `AR Outbound` are tag 35 `AR` in the two directions, `J
+/// Report` is `J` used as a report, `c SDR` and `c SLR` are `c` used two
+/// ways. The wire value is the first word - a FIX message type is
+/// alphanumeric and never holds a space - and the qualifier says which
+/// grammar the file binds under it, which is why a message root keeps the
+/// whole spelling while the code takes the value and answers to both.
+///
+/// A first word wider than the column is still hashed by
+/// [`MsgType::coerce`](crate::types::MsgType), because a bridge writing one
+/// key rather than a pair is the case that mapping exists for.
+fn msgtype_value(spelling: &str) -> crate::types::MsgType {
+    let wire = spelling.split_whitespace().next().unwrap_or(spelling);
+    crate::types::MsgType::coerce(wire)
 }
 
 /// One description as a single line of prose.

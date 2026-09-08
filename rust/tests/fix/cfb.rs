@@ -24,6 +24,10 @@ const CBLOCK: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 	<description>Standard Buy Side 4.4</description>
 	<message-types>
 		<message-type value="P Report Ack" description="Allocation Report ACK" rejection="not supported" supported="false" />
+		<message-type value="AR Inbound" description="Trade Capture Report Ack" rejection="not supported" supported="false" />
+		<message-type value="AR Outbound" description="Trade Capture Report Ack" rejection="not supported" supported="true" />
+		<message-type value="c SDR" description="Security Definition" supported="true" />
+		<message-type value="c SLR" description="Security Definition" supported="true" />
 	</message-types>
 	<inbound-message-type-mappings />
 	<outbound-message-type-mappings>
@@ -819,24 +823,38 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
     let msgtype = registry.field_by_tag(35).expect("MsgType");
     let view = msgtype.as_fix();
 
-    // The listing states the type and the wording beside it. `P Report Ack`
-    // is wider than the column, so it takes the stable synthesized value the
-    // type's own mapping gives it.
-    let value = view.code_value("P Report Ack").expect("the listed type");
-    assert!(value.starts_with('~'), "{value}");
-    assert_eq!(view.code_name(value), Some("P Report Ack"));
+    // A CBlock spells a type as the wire value and a qualifier, and the wire
+    // value is what tag 35 carries: `P Report Ack` is `P` used as a report
+    // ack, under the wording the listing gave it.
+    assert_eq!(view.code_value("P Report Ack"), Some("P"));
+    assert_eq!(view.code_name("P"), Some("P Report Ack"));
     assert_eq!(
         view.code_by_name("P Report Ack")
             .and_then(|code| code.parse_doc().ok().flatten()),
         Some("Allocation Report ACK".to_owned()),
     );
 
-    // The mapping table spells the same type the way UlMessage does, so both
-    // spellings reach one value rather than declaring two types.
-    assert_eq!(view.code_value("allocationreportack"), Some(value));
+    // The qualifier is the direction as often as a role, and both directions
+    // are one type on the wire: one code, answering to both spellings.
+    assert_eq!(view.code_value("AR Inbound"), Some("AR"));
+    assert_eq!(view.code_value("AR Outbound"), Some("AR"));
+    assert_eq!(view.code_name("AR"), Some("AR Inbound"));
+    assert_eq!(
+        view.codes().count(),
+        4,
+        "AR was declared twice and is one code"
+    );
+
+    // Two roles of one wire type are one code too: `c SDR` and `c SLR` are
+    // both tag 35 `c`, and a code set keys on the wire.
+    assert_eq!(view.code_value("c SLR"), Some("c"));
+
+    // The mapping table spells the same type the way UlMessage does, so that
+    // spelling reaches the value rather than declaring a second type.
+    assert_eq!(view.code_value("allocationreportack"), Some("P"));
 
     // A bound type the listing never mentioned is still a type this dialect
-    // carries: `7` fits the column and is itself.
+    // carries: the binding declares `7`.
     assert_eq!(view.code_value("7"), Some("7"));
 
     // The vocabulary door reads the same file the same way.
@@ -845,7 +863,7 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
         .iter()
         .find(|field| field.as_fix().tag().ok() == Some(Some(35)))
         .expect("MsgType");
-    assert_eq!(held.as_fix().code_value("P Report Ack"), Some(value));
+    assert_eq!(held.as_fix().code_value("AR Outbound"), Some("AR"));
 }
 
 #[test]
