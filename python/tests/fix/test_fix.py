@@ -1292,9 +1292,9 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
 # of the document, the duration the call took behind it. Both are prose.
 LOGGED = (
     '2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":'
-    '"com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_OrderRouting,'
-    'plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"SmartTrade_OrderRouting",'
-    '"Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"PIC.PROD.TRD",'
+    '"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,'
+    'plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting",'
+    '"Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD",'
     '"TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90",'
     '"CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,'
     '"cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)'
@@ -1346,7 +1346,7 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     message = reader.transform_ulconfig_line(LOGGED)
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
     # inside the occurrence the document answered for.
-    assert message.by_path("SessionInterfaces.0.SenderCompID").as_py() == "PIC.PROD.TRD"
+    assert message.by_path("SessionInterfaces.0.SenderCompID").as_py() == "CLI.PROD.TRD"
     assert message.by_path("SessionInterfaces.0.Version").as_py() == "4.7.0"
     # The registered vocabulary types a port as a number and a flag as a flag.
     assert message.by_path("SessionInterfaces.0.CurrentPort").as_py() == 9726
@@ -1382,9 +1382,9 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
     single = UlPlugin.from_json_bytes(LOGGED)
     assert len(single) == 1
-    assert single[0].name == "SmartTrade_OrderRouting"
+    assert single[0].name == "Router_OrderRouting"
     assert single[0].state == "logged"
-    assert single[0].mbean is not None and "SmartTrade_OrderRouting" in single[0].mbean
+    assert single[0].mbean is not None and "Router_OrderRouting" in single[0].mbean
 
     # A parsed document is the same walk as the bytes it was parsed from, and
     # anything the Scalar boundary reads is a parsed document.
@@ -1416,7 +1416,7 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     assert copy.copy(plugin) == plugin
     assert copy.deepcopy(plugin) == plugin
     assert pickle.loads(pickle.dumps(plugin)) == plugin
-    assert "SmartTrade_OrderRouting" in repr(plugin)
+    assert "Router_OrderRouting" in repr(plugin)
 
     # Built from the parts a caller has, rather than from a document.
     built = UlPlugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)

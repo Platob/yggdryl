@@ -415,9 +415,9 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
 /// is what a reader that assumed the document ended the line never saw.
 const LOGGED: &str = concat!(
     r#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"#,
-    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_OrderRouting,"#,
-    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"SmartTrade_OrderRouting","#,
-    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"PIC.PROD.TRD","#,
+    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,"#,
+    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Router_OrderRouting","#,
+    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"CLI.PROD.TRD","#,
     r#""TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90","#,
     r#""CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,"#,
     r#""cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)"#,
@@ -460,7 +460,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         message
             .get_by_path("SessionInterfaces.0.SenderCompID")
             .and_then(Scalar::as_str),
-        Some("PIC.PROD.TRD")
+        Some("CLI.PROD.TRD")
     );
     assert_eq!(
         message
@@ -499,7 +499,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
         .expect("a readable line")
         .collect();
     assert_eq!(single.len(), 1);
-    assert_eq!(single[0].name(), Some("SmartTrade_OrderRouting"));
+    assert_eq!(single[0].name(), Some("Router_OrderRouting"));
     assert_eq!(single[0].state(), Some("logged"));
 
     // And back to a typed message, and out of one again: the crossing keeps

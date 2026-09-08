@@ -41,25 +41,25 @@ const ROWHEADER: &str = r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[
 /// configuration document - then the frames and the rows of the sessions it
 /// configured, with the plugin's own sentences between them.
 const BLOCK: [&str; 12] = [
-    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) URI: /jolokia/read/com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_TradeCapture,plugin-type=FIX,type=Plugin",
-    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Path-Info: read/com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_TradeCapture,plugin-type=FIX,type=Plugin",
-    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Request: JmxReadRequest[attribute=null, objectName = com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_TradeCapture,plugin-type=FIX,type=Plugin]",
+    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) URI: /jolokia/read/com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin",
+    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Path-Info: read/com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin",
+    "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Request: JmxReadRequest[attribute=null, objectName = com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin]",
     "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Execution time: 0 ms",
     concat!(
-        r#"2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},"#,
-        r#""value":{"SenderCompID":"PICTETFIS","TargetCompID":"ITGADC","BeginString":"FIX.4.2","Category":"Fix TradeCapture","PrimaryHost":"10.20.30.40","PrimaryPort":9726,"BackupHost":null,"BackupPort":-1,"#,
+        r#"2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},"#,
+        r#""value":{"SenderCompID":"CLIENTFIS","TargetCompID":"VENUEADC","BeginString":"FIX.4.2","Category":"Fix TradeCapture","PrimaryHost":"10.20.30.40","PrimaryPort":9726,"BackupHost":null,"BackupPort":-1,"#,
         r#""CurrentHost":"10.20.30.40","CurrentPort":9726,"IncomingMsgSeqNum":4507,"OutgoingMsgSeqNum":571,"LogLevel":-1,"PriorityLevel":5,"LoadIsolation":0,"NotificationsStatus":false,"NeedReload":false,"#,
-        r#""Name":"SmartTrade_TradeCapture","Version":"4.7.0","State":"logged","Type":"I","BinaryName":"ULFix.jar","ClassName":"ULFix","MinimumBridgeRevision":"20050101000000","Comment":"","Prefix":"","Suffix":"","#,
+        r#""Name":"Router_TradeCapture","Version":"4.7.0","State":"logged","Type":"I","BinaryName":"ULFix.jar","ClassName":"ULFix","MinimumBridgeRevision":"20050101000000","Comment":"","Prefix":"","Suffix":"","#,
         r#""Guid":"e7254b20-9f01-5ed0-23a1-000000000935","ExtendedActions":[{"name":"send-test-request","enabled":true}],"Enrichments":[],"#,
         r#""ClassHierarchy":[{"className":"com.ullink.ulbridge2.plugins.ULFix","classRevision":"4.7.0"}],"Resources":[]},"timestamp":1755153982,"status":200}"#,
     ),
-    "2026-08-14 06:46:30.416 [15261] [Fidessa_X1_TradeCapture] (DEBUG) Sending : 8=FIX.4.4|9=68|35=0|49=PICAUDITX1|56=FIDAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|",
+    "2026-08-14 06:46:30.416 [15261] [OMS_X1_TradeCapture] (DEBUG) Sending : 8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|",
     "2026-08-14 06:46:30.947 [402-e7254b20:9f015ed023:935] [ULMSG_BROKER_TO_DMZ] (DEBUG) Receiving : 8=FIX.4.2|9=55|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|10=186|",
-    "2026-08-14 06:46:36.887 [653] [EBS_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=ITGADC|56=PICTETFIS|52=20260814-04:46:36|1=pictet|6=547.771791547861|11=20260814_TP1_PICTET_1003|14=982|15=INR|17=E-20260814-4507|20=0|22=4|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=INE786A01032|54=1|55=JKLAKSHMI|58=Filled|59=0|60=20260814-04:46:36|75=20260814|76=RJEA|77=O|150=2|151=0|10=197|",
-    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Virtu_TritonBlack_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=pictet|AVGPX=547.771791547861|CLORDID=20260814_TP1_PICTET_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=RJEA|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=JKLAKSHMI|TRANSACTTIME=20260814-04:46:36|",
-    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Virtu_TritonBlack_TradeCapture] (INFO) Filtering - Message for KRM22",
-    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [EnrichmentManager] (INFO) Enrichment execution[&SetEnv, &Virtu_TritonBlack_TradeCapture]",
-    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_PICTET_1003) without any route so using not persisted route: [UNDEFINED] --> [Virtu_TritonBlack_TradeCapture]",
+    "2026-08-14 06:46:36.887 [653] [Spot_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=VENUEADC|56=CLIENTFIS|52=20260814-04:46:36|1=client|6=547.771791547861|11=20260814_TP1_CLIENT_1003|14=982|15=INR|17=E-20260814-4507|20=0|22=4|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=XX0000000001|54=1|55=EXAMPLECO|58=Filled|59=0|60=20260814-04:46:36|75=20260814|76=BRKR|77=O|150=2|151=0|10=197|",
+    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=client|AVGPX=547.771791547861|CLORDID=20260814_TP1_CLIENT_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=BRKR|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=EXAMPLECO|TRANSACTTIME=20260814-04:46:36|",
+    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (INFO) Filtering - Message for RiskMonitor",
+    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [EnrichmentManager] (INFO) Enrichment execution[&SetEnv, &Broker_DarkPool_TradeCapture]",
+    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_CLIENT_1003) without any route so using not persisted route: [UNDEFINED] --> [Broker_DarkPool_TradeCapture]",
 ];
 
 /// The log, as the bytes a `.log` file holds.
