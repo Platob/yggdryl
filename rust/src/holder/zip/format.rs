@@ -535,6 +535,7 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         &mut unicode_name,
     )?;
 
+    let spelled = name;
     let name = unicode_path(name, unicode_name.as_ref())
         .unwrap_or_else(|| decode_text(name, offset, "name"));
     let comment = decode_text(comment, offset, "comment");
@@ -551,6 +552,7 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         external_attributes,
         comment,
     )
+    .with_spelling(spelled)
     .with_restarts(restarts))
 }
 
@@ -610,7 +612,7 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     put_u32(target, entry.crc32());
     put_u32(target, marked(entry.compressed_size()));
     put_u32(target, marked(entry.size()));
-    put_u16(target, entry.name().len() as u16);
+    put_u16(target, entry.spelling().len() as u16);
     put_u16(target, extra_len as u16);
     put_u16(target, entry.comment().len() as u16);
     // One disk, and no internal attributes: a member is opaque bytes here.
@@ -618,7 +620,7 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     put_u16(target, 0);
     put_u32(target, entry.external_attributes());
     put_u32(target, marked(entry.header_offset()));
-    target.extend_from_slice(entry.name().as_bytes());
+    target.extend_from_slice(entry.spelling());
     target.extend_from_slice(&zip64);
     target.extend_from_slice(&timestamp);
     target.extend_from_slice(&restarts);
@@ -649,9 +651,9 @@ pub(super) fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8
     put_u32(target, entry.crc32());
     put_u32(target, marked(entry.compressed_size()));
     put_u32(target, marked(entry.size()));
-    put_u16(target, entry.name().len() as u16);
+    put_u16(target, entry.spelling().len() as u16);
     put_u16(target, extra_len as u16);
-    target.extend_from_slice(entry.name().as_bytes());
+    target.extend_from_slice(entry.spelling());
     target.extend_from_slice(&zip64);
     target.extend_from_slice(&timestamp);
 }

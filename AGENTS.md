@@ -40,7 +40,7 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
-| storage backend | `holder/<name>/` with `Path`, `Folder`, `File` over the root traits; state and assert its call/request counts -> interop script -> docs |
+| storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
@@ -96,7 +96,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, datatype families |
-| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder (`local/`, `s3/`, `zip/`) with `Path`, `Folder`, `File` |
+| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `s3/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -396,6 +396,32 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   the operation bounds them. Object-safe traits return one named iterator type
   per item kind; bindings expose native lazy protocols without collecting;
   benchmarks measure time to first item and full drain.
+
+### ZIP (`holder/zip/`)
+
+An archive is a file system inside one file, so it supplies the backend roles
+under the names its own index has: `Node` is a prefix of that index, `Leaf` is
+one entry in it, `Path` resolves to whichever is there.
+
+- Codings are `Codec::Identity`, `Codec::Deflate`, `Codec::Zstd` and nothing
+  else spells one; the archive adds no second coding dispatcher, and gzip and
+  zlib are refused by name because their framing wraps a whole resource.
+- A member is addressed by the archive's URL with its path in the fragment.
+  An archive inside an archive continues that fragment past a `//` marker,
+  which is a spelling no canonical member path can claim; the marker with
+  nothing after it is the mounted archive, and the same fragment without it is
+  the member whose bytes hold it.
+- A compressed member is written as units a stated stride apart, and its
+  central record carries the map of where they begin under this crate's own
+  extra field id `0x5967`. A read decodes one unit, not the whole prefix; a
+  point is proven against the coding's own evidence before it is used, and a
+  member another writer compressed maps nothing and says so.
+- One member writer, and it streams: nothing holds a member whole, the header
+  reserves the sizes a stream does not know yet, and the index learns about a
+  member only once its bytes are in the handle.
+- `Archive::handle_reads`/`handle_writes` count what the backend asked of the
+  handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
+  and asserted in those terms.
 
 ### S3 (`holder/s3/`, non-default `s3` feature)
 

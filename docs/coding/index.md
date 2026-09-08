@@ -20,7 +20,8 @@
 | Deflate | No framing to detect, so it wraps as the zlib handle |
 | Level | `with_level`; `Identity` ignores it |
 | Composes | Any [`IOBase`](../holder/index.md), `Holder` or another coded handle; `Coded` is itself an `IOBase` |
-| Seek | None; the decoded value is materialized once and held until `close` |
+| Seek | None through `Coded`; the decoded value is materialized once and held until `close` |
+| Restart | `Encoder::restart` ends a unit so a decoder can begin at the next byte, `Codec::restarts` scans encoded bytes for those offsets, `Codec::has_restarts` says which codings have any: `Identity` everywhere, `Deflate` after a full flush, `Zstd` at each frame. Gzip and zlib have none - their framing wraps the whole payload - and refuse a restart by name |
 | Commit | `flush`, `close`, or `into_handle`; never `pwrite` |
 | Media type | Decoded, coding removed |
 | Python | `yggdryl.coding.Coded`, with `Identity`, `Gzip`, `Zlib`, `Zstd` under it - the same four handles. A coded name composes one on construction, [`IOBase.into_coded`](../holder/iobase/bytes.md) names the coding otherwise; they are answers, never constructors |
@@ -149,6 +150,43 @@ Four handles serve five codings, in both languages.
     assert handle.codec == "zlib"
     ```
 
+## Restart points
+
+A stream that only decodes from its first byte cannot answer a read at an offset without decoding everything before it. Two of these codings can do better, and say so: a raw DEFLATE stream restarts after a full flush, which closes the block, aligns to a byte, and drops the window; a Zstandard stream restarts at every frame. What follows a restart decodes on its own, so a map of restart offsets turns a positional read into a decode of one unit.
+
+Restarting costs compression - each unit starts with no history of the one before it - so a caller restarts on a stride it chose, never per write. The [ZIP backend](../holder/backends/zip.md) is what this exists for: it writes members as units and states the map in their records.
+
+```rust
+use yggdryl::{Codec, Level};
+use std::io::Write;
+
+let mut encoded = Vec::new();
+let mut encoder = Codec::Deflate.writer_with_level(&mut encoded, Level::DEFAULT);
+encoder.write_all(b"symbol,price\n")?;
+encoder.restart()?;
+encoder.write_all(b"AAPL,187.23\n")?;
+encoder.finish()?;
+
+// The whole stream still decodes as one payload.
+assert_eq!(Codec::Deflate.load(&encoded)?, b"symbol,price\nAAPL,187.23\n");
+
+// And the scan finds the one offset a decoder may begin at instead.
+let mut offsets = Vec::new();
+Codec::Deflate.restart_scan().push(&encoded, &mut offsets);
+assert_eq!(offsets.len(), 1);
+let start = usize::try_from(offsets[0])?;
+assert_eq!(Codec::Deflate.load(&encoded[start..])?, b"AAPL,187.23\n");
+
+// A coding whose framing wraps the payload has none, and says which.
+assert!(!Codec::Gzip.has_restarts());
+let mut framed = Vec::new();
+let mut gzip = Codec::Gzip.writer(&mut framed);
+assert!(gzip.restart().is_err());
+gzip.finish()?;
+```
+
+The scan answers *candidates*: the pattern a coding restarts after can also occur inside compressed data, so a caller that depends on the answer decodes a probe from each offset before trusting it. The stream's own start is never reported - a decoder may always begin there.
+
 ## Decoded media type
 
 The wrapper's media type drops the coding; the wrapped handle holds the frame.
@@ -206,7 +244,7 @@ The wrapper's media type drops the coding; the wrapped handle holds the frame.
 ## Edges
 
 - `Codec::Deflate` -> `Coded::wrap` answers `Codec::Zlib`; no raw handle exists, and `yggdryl.coding` has no `Deflate`.
-- `Codec::Identity` -> pass-through; `with_level` changes nothing.
+- `Codec::Identity` -> pass-through; `with_level` changes nothing, and every offset already begins a unit, so `restart` is a flush and the scan reports nothing.
 - `into_handle` -> publishes first; an encode or write failure is the `Err`.
 - Python `into_coded` -> the coded handle; the handle it took is spent and raises `ValueError`.
 

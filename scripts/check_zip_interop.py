@@ -24,6 +24,7 @@ the same archives through the standard library's implementation:
 
 from __future__ import annotations
 
+import io
 import subprocess
 import sys
 import zipfile
@@ -38,6 +39,10 @@ MEMBERS: list[tuple[str, bytes]] = [
     ("notes/read me.txt", b"symbol,price\n"),
     ("trades/2024/eu.csv", b"symbol,price\nAAPL,187.23\n" * 64),
     ("trades/2024/us.csv", b"symbol,price\nMSFT,412.10\n"),
+    # Longer than one write window and many restart strides, so the Rust
+    # writer settles its local header afterwards and its DEFLATE stream
+    # carries full flushes. Both must be invisible to the reference reader.
+    ("trades/2024/big.csv", b"symbol,price\nNVDA,131.14\n" * 60_000),
 ]
 # The one member the Rust writer stores rather than deflates.
 STORED = "trades/2024/us.csv"
@@ -94,6 +99,36 @@ def read_with_zipfile(path: Path) -> None:
         if not listed["empty-directory/"].is_dir():
             raise SystemExit("the directory record does not read as a directory")
 
+        # A nested archive is bytes to this reader and a resource to the other.
+        nested = archive.read("inner.zip")
+        with zipfile.ZipFile(io.BytesIO(nested)) as inner:
+            if inner.read("deep/notes.txt") != b"nested":
+                raise SystemExit("the nested archive does not read back")
+
+        # The restart points the Rust writer emitted are a full flush, which
+        # is an ordinary part of the stream: the reference decoder reads the
+        # member whole without knowing they are there. Its map rides an extra
+        # field this reader skips by length, which is what keeps it invisible.
+        big = listed["trades/2024/big.csv"]
+        if big.compress_type != zipfile.ZIP_DEFLATED:
+            raise SystemExit("the streamed member is not deflated")
+        if not any(
+            identifier == 0x5967 for identifier, _ in _extras(big.extra)
+        ):
+            raise SystemExit("the streamed member carries no restart map")
+
+
+def _extras(extra: bytes) -> list[tuple[int, bytes]]:
+    """Split an extra field block into the records it holds."""
+    fields: list[tuple[int, bytes]] = []
+    at = 0
+    while at + 4 <= len(extra):
+        identifier = int.from_bytes(extra[at : at + 2], "little")
+        length = int.from_bytes(extra[at + 2 : at + 4], "little")
+        fields.append((identifier, extra[at + 4 : at + 4 + length]))
+        at += 4 + length
+    return fields
+
 
 def write_with_zipfile(path: Path) -> None:
     """Write the archive the Rust reading half asserts."""
@@ -103,6 +138,28 @@ def write_with_zipfile(path: Path) -> None:
         for name, payload in MEMBERS:
             method = zipfile.ZIP_STORED if name == STORED else zipfile.ZIP_DEFLATED
             archive.writestr(name, payload, compress_type=method)
+        # A placeholder for the code page name patched in below.
+        archive.writestr(CODE_PAGE_PLACEHOLDER, b"symbol,price\n")
+    _spell_in_code_page(path)
+
+
+# `zipfile` encodes every name as ASCII or UTF-8, so the one spelling it
+# cannot produce is the code page the format defaults to - which is exactly
+# what a pre-Unicode writer leaves behind and what this reader has to survive.
+# The placeholder is the same length as the name that replaces it, so only the
+# one byte changes and every record stays exactly as long as it declared.
+CODE_PAGE_PLACEHOLDER = "notes/cafX.txt"
+# IBM 437 spells 0x82 as `e` with an acute accent.
+CODE_PAGE_NAME = b"notes/caf\x82.txt"
+
+
+def _spell_in_code_page(path: Path) -> None:
+    """Rewrite the placeholder name as the bytes a code page would."""
+    raw = path.read_bytes()
+    placeholder = CODE_PAGE_PLACEHOLDER.encode("ascii")
+    if placeholder not in raw:
+        raise SystemExit(f"the placeholder name is not in {path}")
+    path.write_bytes(raw.replace(placeholder, CODE_PAGE_NAME))
 
 
 class _Unseekable:

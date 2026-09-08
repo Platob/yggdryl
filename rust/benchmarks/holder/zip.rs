@@ -20,6 +20,15 @@ const MEMBER_LEN: usize = 1 << 20;
 /// The byte range one positional read asks for.
 const READ_LEN: usize = 512;
 
+/// The decoded distance between the restart points a member is written with.
+const STRIDE: u64 = 64 * 1024;
+
+/// An offset inside a unit rather than on the point that begins it.
+///
+/// Half the member lands exactly on a point at this stride, which would
+/// measure the one case a seek never has to decode for.
+const MID_UNIT: u64 = (MEMBER_LEN / 2) as u64 + STRIDE / 2;
+
 /// How many members the listing and write legs are measured over.
 const MEMBERS: usize = crate::bench_profile::corpus(2_000, 100);
 
@@ -74,16 +83,67 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // A closed compressed read decodes to the offset and retains nothing.
+    // A closed compressed read decodes from the restart point before the
+    // offset, so what it costs is one unit rather than the whole prefix.
     let deflated = one_member(Codec::Deflate);
     let deflated_member = deflated.as_leaf("blob.bin").expect("a member");
     group.bench_function("read/deflate_closed", |bencher| {
+        bencher.iter(|| {
+            black_box(&deflated_member)
+                .read_range_bytes(MID_UNIT, READ_LEN)
+                .expect("a range")
+        });
+    });
+
+    // The same read where the offset is a point, which decodes nothing but
+    // the bytes it answers.
+    group.bench_function("read/deflate_onpoint", |bencher| {
         bencher.iter(|| {
             black_box(&deflated_member)
                 .read_range_bytes((MEMBER_LEN / 2) as u64, READ_LEN)
                 .expect("a range")
         });
     });
+
+    // A member written solid, which is what another writer's member is: every
+    // read of one decodes from its first byte.
+    let solid = {
+        let root = Archive::new(Holder::buffer(Buffer::new()))
+            .with_restart_stride(0)
+            .mount();
+        root.archive()
+            .write_member_with("blob.bin", &payload(MEMBER_LEN), Codec::Deflate)
+            .expect("the member writes");
+        root.archive().flush().expect("the directory publishes");
+        root
+    };
+    let solid_member = solid.as_leaf("blob.bin").expect("a member");
+    group.bench_function("read/deflate_solid", |bencher| {
+        bencher.iter(|| {
+            black_box(&solid_member)
+                .read_range_bytes(MID_UNIT, READ_LEN)
+                .expect("a range")
+        });
+    });
+
+    // A scan that walks backwards, which is where a map turns a quadratic
+    // cost into a linear one.
+    group.throughput(Throughput::Elements(16));
+    for (name, member) in [
+        ("mapped", &deflated_member),
+        ("solid", &solid_member),
+    ] {
+        group.bench_function(BenchmarkId::new("read/backward", name), |bencher| {
+            bencher.iter(|| {
+                for step in (0..16).rev() {
+                    black_box(member)
+                        .read_range_bytes(step * STRIDE, READ_LEN)
+                        .expect("a range");
+                }
+            });
+        });
+    }
+    group.throughput(Throughput::Bytes(READ_LEN as u64));
 
     // An opened one decodes once and answers from the member it holds.
     let mut opened_member = deflated.as_leaf("blob.bin").expect("a member");
@@ -123,6 +183,29 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
                 .expect("a range")
         });
     });
+
+    // A member streamed in from a reader, which is what a write of something
+    // larger than memory costs against a write of something already in it.
+    group.throughput(Throughput::Bytes(MEMBER_LEN as u64));
+    let streamed = payload(MEMBER_LEN);
+    for (name, stride) in [("mapped", STRIDE), ("solid", 0)] {
+        group.bench_function(BenchmarkId::new("write/stream", name), |bencher| {
+            bencher.iter(|| {
+                let root = Archive::new(Holder::buffer(Buffer::new()))
+                    .with_restart_stride(stride)
+                    .mount();
+                root.archive()
+                    .write_member_from(
+                        "blob.bin",
+                        std::io::Cursor::new(black_box(&streamed)),
+                        Codec::Deflate,
+                    )
+                    .expect("the member writes");
+                root.archive().flush().expect("the directory publishes");
+            });
+        });
+    }
+    group.throughput(Throughput::Bytes(READ_LEN as u64));
 
     // Mounting parses the directory, which is the archive's one fixed cost.
     let image = {

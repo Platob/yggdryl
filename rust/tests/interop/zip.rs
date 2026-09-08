@@ -35,6 +35,11 @@ fn expected_members() -> Vec<(&'static str, Vec<u8>)> {
             "trades/2024/us.csv",
             b"symbol,price\nMSFT,412.10\n".to_vec(),
         ),
+        // Longer than one write window, so its local header was written with
+        // room reserved for sizes nobody knew yet and settled afterwards -
+        // and longer than one restart stride, so its stream carries the full
+        // flushes the map states. Both are the reader's problem, not ours.
+        ("trades/2024/big.csv", b"symbol,price\nNVDA,131.14\n".repeat(60_000)),
     ]
 }
 
@@ -65,6 +70,23 @@ fn writes_an_archive_for_the_external_reader() {
     archive
         .create_directory("empty-directory")
         .expect("the directory record writes");
+    // One member is an archive of its own, which the external reader must see
+    // as ordinary bytes and this one must see as a resource.
+    let inner = {
+        let staged = dir.join("inner-stage.zip");
+        let _ = std::fs::remove_file(&staged);
+        let root = zip::mount(Holder::file(&staged).expect("a local archive"));
+        root.child_by_path("deep/notes.txt")
+            .expect("a member")
+            .write_all_bytes(b"nested")
+            .expect("the member writes");
+        let bytes = std::fs::read(&staged).expect("the staged archive");
+        let _ = std::fs::remove_file(&staged);
+        bytes
+    };
+    archive
+        .write_member_with("inner.zip", &inner, Codec::Identity)
+        .expect("the nested archive writes");
     archive
         .set_comment(b"written by yggdryl")
         .expect("the archive comment");
@@ -124,6 +146,16 @@ fn reads_the_archive_the_external_writer_produced() {
     assert_eq!(
         archive.comment().expect("the comment"),
         b"written by python"
+    );
+
+    // A name Python spelled in its own code page reads rather than failing
+    // the archive around it.
+    let coded = root
+        .child_by_path("notes/caf\u{e9}.txt")
+        .expect("a code page name");
+    assert_eq!(
+        coded.read_all_bytes().expect("the member reads"),
+        b"symbol,price\n"
     );
     println!("zip-interop: read");
 }

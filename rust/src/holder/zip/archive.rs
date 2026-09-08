@@ -119,6 +119,12 @@ struct Inner {
     handle: Holder,
     /// The parsed index, materialized on first use.
     index: Option<Index>,
+    /// The batch a member write reads its source through, reused by every one.
+    ///
+    /// A write holds the archive, so there is only ever one of these in use,
+    /// and an archive of many small members allocates it once rather than
+    /// once each.
+    scratch: Vec<u8>,
     /// Questions asked of the handle.
     reads: u64,
     /// Operations that changed the handle.
@@ -221,6 +227,7 @@ impl Archive {
             inner: Mutex::new(Inner {
                 handle,
                 index: None,
+                scratch: Vec::new(),
                 reads: 0,
                 writes: 0,
             }),
@@ -542,6 +549,8 @@ impl Archive {
         stride: u64,
     ) -> Result<Entry> {
         let produced = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut batch = std::mem::take(&mut inner.scratch);
+        batch.resize(crate::DEFAULT_STREAM_BATCH_SIZE, 0);
         let mut sink = MemberSink {
             offset: entry.header_offset(),
             entry: entry.clone(),
@@ -557,7 +566,6 @@ impl Archive {
         let mut size = 0_u64;
         {
             let mut encoder = codec.writer_with_level(&mut sink, self.level);
-            let mut batch = vec![0_u8; crate::DEFAULT_STREAM_BATCH_SIZE];
             loop {
                 let read = source.read(&mut batch)?;
                 if read == 0 {
@@ -589,6 +597,7 @@ impl Archive {
             )
             .with_restarts(log.into_restarts());
         let data = sink.finish(&entry)?;
+        inner.scratch = batch;
         Self::index_record(inner, &entry, data)?;
         Ok(entry)
     }

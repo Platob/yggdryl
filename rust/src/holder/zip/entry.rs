@@ -42,6 +42,7 @@ pub struct Entry {
     external_attributes: u32,
     comment: SmolStr,
     restarts: Restarts,
+    spelling: Option<Box<[u8]>>,
 }
 
 impl Entry {
@@ -73,6 +74,7 @@ impl Entry {
             external_attributes,
             comment,
             restarts: Restarts::default(),
+            spelling: None,
         }
     }
 
@@ -91,6 +93,7 @@ impl Entry {
             external_attributes: format::external_attributes(directory),
             comment: SmolStr::default(),
             restarts: Restarts::default(),
+            spelling: None,
             name,
         }
     }
@@ -221,6 +224,25 @@ impl Entry {
         // The map describes bytes that are being replaced, so it goes with
         // them; the writer states the new one beside the new content.
         self.restarts = Restarts::default();
+        self
+    }
+
+    /// The bytes a record spells this member's name with.
+    ///
+    /// A name is UTF-8 in every record this crate writes, and a record it did
+    /// not write may spell one in a code page or under an extra field. The
+    /// recorded bytes are kept so republishing a directory leaves an untouched
+    /// member exactly as it was - a name re-encoded in the central record
+    /// alone would no longer match the local header that introduces it.
+    pub(super) fn spelling(&self) -> &[u8] {
+        self.spelling
+            .as_deref()
+            .unwrap_or_else(|| self.name.as_bytes())
+    }
+
+    /// Restate this entry with the bytes its record spells the name with.
+    pub(super) fn with_spelling(mut self, spelling: &[u8]) -> Self {
+        self.spelling = (spelling != self.name.as_bytes()).then(|| spelling.into());
         self
     }
 

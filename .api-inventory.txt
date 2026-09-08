@@ -72,6 +72,21 @@ pub struct Level(u8);
   pub const fn get(self) -> u8
   pub enum Codec
   pub const ALL: [Self; 5] = [ Self::Identity, Self::Gzip, Self::Zlib, Self::Deflate, Self::Zstd, ];
+  pub const fn has_restarts(self) -> bool
+  pub const fn restart_scan(self) -> RestartScan
+pub struct RestartScan
+  pub const fn consumed(&self) -> u64
+  pub fn push(&mut self, chunk: &[u8], into: &mut Vec<u64>)
+pub struct Restarts
+  pub fn new(stride: u64, points: impl Into<std::sync::Arc<[u64]>>) -> Self
+  pub const fn stride(&self) -> u64
+  pub fn points(&self) -> &[u64]
+  pub fn is_empty(&self) -> bool
+  pub fn before(&self, position: u64) -> (u64, u64)
+pub struct Encoder
+  pub const fn codec(&self) -> Codec
+  pub fn restart(&mut self) -> Result<()>
+  pub fn finish(self) -> Result<()>
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn extension(self) -> Option<&'static str>
@@ -581,6 +596,89 @@ pub struct Path
   pub fn exists(&self) -> bool
   pub fn as_directory(&self) -> Result<Folder>
   pub fn as_file(&self) -> Result<File>
+
+### yggdryl::holder::zip::archive  [rust\src\holder\zip\archive.rs]
+pub struct Archive
+  pub fn new(handle: Holder) -> Self
+  pub fn from_path(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
+  pub const fn with_level(mut self, level: Level) -> Self
+  pub const fn with_restart_stride(mut self, stride: u64) -> Self
+  pub const fn codec(&self) -> Codec
+  pub const fn level(&self) -> Level
+  pub const fn restart_stride(&self) -> u64
+  pub const fn url(&self) -> &Url
+  pub fn mount(self) -> Node
+  pub fn into_handle(self) -> Result<Holder>
+  pub fn entries(&self) -> Result<Vec<Entry>>
+  pub fn get_entry(&self, path: &str) -> Result<Option<Entry>>
+  pub fn comment(&self) -> Result<Vec<u8>>
+  pub fn set_comment(&self, comment: &[u8]) -> Result<()>
+  pub fn read_member(self: &Arc<Self>, path: &str) -> Result<Vec<u8>>
+  pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<Entry>
+  pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<Entry>
+  pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry>
+  pub fn create_directory(&self, path: &str) -> Result<()>
+  pub fn remove_member(&self, path: &str) -> Result<bool>
+  pub fn remove_under(&self, path: &str) -> Result<usize>
+  pub fn clear_members(&self) -> Result<()>
+  pub fn remove(&self) -> Result<()>
+  pub fn flush(&self) -> Result<()>
+  pub fn open(&self) -> Result<()>
+  pub fn close(&self) -> Result<()>
+  pub fn is_indexed(&self) -> bool
+  pub fn is_pending(&self) -> bool
+  pub fn size(&self) -> u64
+  pub fn handle_reads(&self) -> u64
+  pub fn handle_writes(&self) -> u64
+  pub const DEFAULT_RESTART_STRIDE: u64
+
+### yggdryl::holder::zip::entry  [rust\src\holder\zip\entry.rs]
+pub struct Entry
+  pub fn name(&self) -> &str
+  pub fn codec(&self) -> Result<Codec>
+  pub const fn size(&self) -> u64
+  pub const fn compressed_size(&self) -> u64
+  pub const fn crc32(&self) -> u32
+  pub const fn modified(&self) -> i64
+  pub const fn header_offset(&self) -> u64
+  pub fn comment(&self) -> &str
+  pub const fn restarts(&self) -> &Restarts
+  pub fn is_directory(&self) -> bool
+  pub const fn is_encrypted(&self) -> bool
+  pub const fn has_data_descriptor(&self) -> bool
+
+### yggdryl::holder::zip::leaf  [rust\src\holder\zip\leaf.rs]
+pub struct Leaf
+  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
+  pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn get_entry(&self) -> Result<Option<Entry>>
+
+### yggdryl::holder::zip::node  [rust\src\holder\zip\node.rs]
+pub struct Node
+  pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn is_root(&self) -> bool
+  pub fn as_leaf(&self, path: &str) -> Result<Leaf>
+  pub fn as_node(&self, path: &str) -> Result<Self>
+
+### yggdryl::holder::zip::path  [rust\src\holder\zip\path.rs]
+pub struct Path
+  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn as_node(&self) -> Node
+  pub fn as_leaf(&self) -> &Leaf
+
+### yggdryl::holder::zip  [rust\src\holder\zip\mod.rs]
+  pub fn mount(handle: Holder) -> Holder
+  pub fn from_url(url: &crate::Url) -> crate::Result<Holder>
 
 ### yggdryl::holder  [rust\src\holder\mod.rs]
 pub enum Holder
