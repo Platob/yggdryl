@@ -546,14 +546,73 @@ pub(crate) fn payload(line: &[u8]) -> (Option<usize>, Option<bool>) {
 /// a `[jolokia]` in the prose is not mistaken for the document and the bound a
 /// direction is read against is the whole prefix rather than part of it.
 fn ulconfig_at(line: &[u8]) -> Option<usize> {
+    Some(ulconfig_span(line)?.start)
+}
+
+/// The span of the ULBridge configuration document one line carries.
+///
+/// Two facts hold together and neither is enough alone: the line has to name
+/// the ULBridge namespace, and an object has to open in front of that name and
+/// close after it. The namespace is what makes the reading unambiguous, so a
+/// document not carrying it is ordinary JSON and stays that way.
+///
+/// The close is found rather than assumed, so a transport writing prose on
+/// both sides of the document - a timestamp in front, a duration behind - is
+/// read exactly as one writing prose in front alone. A document the line cut
+/// short never closes and is no document.
+pub(crate) fn ulconfig_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
     // The cheap half first: the namespace is absent from every line that is
     // not one of these, and finding it is one prefiltered pass.
     let named = object_names(line).next()?.start;
-    // A bulk read answers an array of these, so either closer ends one.
-    if !matches!(trim_ascii(line).last(), Some(b'}' | b']')) {
-        return None;
+    // A bulk read answers an array of these, so either opener opens one -
+    // an object by its first member, an array by the object it holds. A
+    // `[Jolokia]` in the prose opens neither.
+    let opened = memchr::memchr2_iter(b'{', b'[', &line[..named]).find(|at| {
+        if line[*at] == b'[' {
+            opens_object(line, at + 1)
+        } else {
+            opens_member(line, at + 1)
+        }
+    })?;
+    Some(opened..json_end(line, opened)?)
+}
+
+/// Where the JSON value opening at `start` closes, one past its last byte.
+///
+/// A brace inside a string closes nothing, and a bridge writes braces into
+/// strings routinely: an init file, a `${placeholder}`, a rejection sentence.
+/// So the scan tracks the string it is inside and the escape in front of a
+/// quote, and depth alone answers the rest.
+fn json_end(line: &[u8], start: usize) -> Option<usize> {
+    let mut depth = 0_usize;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (offset, byte) in line[start..].iter().enumerate() {
+        if quoted {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => quoted = false,
+                _ => {}
+            }
+            continue;
+        }
+        match byte {
+            b'"' => quoted = true,
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                // An unbalanced closer closes nothing: a caller pointing at
+                // something that is not an opener gets no span rather than a
+                // panic.
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(start + offset + 1);
+                }
+            }
+            _ => {}
+        }
     }
-    memchr::memchr_iter(b'{', &line[..named]).find(|at| opens_member(line, at + 1))
+    None
 }
 
 /// Every ULBridge MBean the line names, rather than every class it spells.
@@ -582,6 +641,17 @@ pub(crate) fn object_names(line: &[u8]) -> impl Iterator<Item = std::ops::Range<
         let end = memchr::memchr(b'"', &line[at..]).map_or(line.len(), |offset| at + offset);
         Some(start..end)
     })
+}
+
+/// Whether a `[` at this position opens an array of objects.
+///
+/// The bulk shape and nothing else: a transport's own `[jolokia]` opens no
+/// document, and reading which is which costs one byte.
+fn opens_object(line: &[u8], mut at: usize) -> bool {
+    while line.get(at).is_some_and(u8::is_ascii_whitespace) {
+        at += 1;
+    }
+    line.get(at) == Some(&b'{')
 }
 
 /// Whether a `{` at this position opens an object rather than stands in prose.

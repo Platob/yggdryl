@@ -407,3 +407,115 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
     assert_eq!(leaves[1], Scalar::from(60.0_f64), "the part-filled report");
     assert_eq!(leaves[2], Scalar::from(0.0_f64), "the closing fill");
 }
+
+/// A Jolokia answer as a log line writes it: prose in front, prose behind.
+///
+/// The shape a bridge actually prints - a timestamp, the reader that logged
+/// it, the level, then the document - with a duration written after it, which
+/// is what a reader that assumed the document ended the line never saw.
+const LOGGED: &str = concat!(
+    r#"2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":"#,
+    r#""com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_OrderRouting,"#,
+    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"SmartTrade_OrderRouting","#,
+    r#""Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"PIC.PROD.TRD","#,
+    r#""TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90","#,
+    r#""CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,"#,
+    r#""cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)"#,
+);
+
+/// A wildcard read: one answer, a plugin per key, each named by its ObjectName.
+const WILDCARD: &str = concat!(
+    r#"{"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},"#,
+    r#" "value": {"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,"#,
+    r#"plugin-type=FIX,type=ConfigurationPlugin": {"Comment": "", "Category": "InterBridge","#,
+    r#" "Prefix": "", "Name": "ULMSG_BROKER_BDG_DMZ_PCO", "LoadIsolation": 0, "Suffix": "","#,
+    r#" "PriorityLevel": 5, "Version": "2.0.3"},"#,
+    r#" "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
+    r#"plugin-type=FIX,type=Plugin": {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}},"#,
+    r#" "status": 200}"#,
+);
+
+#[test]
+fn a_document_is_read_out_of_the_line_that_carries_it() {
+    // The classifier already read past the prose in front; the reader reads to
+    // the document's own close rather than to the end of the line, so what a
+    // transport writes behind it is prose too.
+    assert_eq!(
+        yggdryl::MimeType::infer_bytes(LOGGED.as_bytes()),
+        yggdryl::MimeType::ULCONFIG
+    );
+    assert_eq!(
+        yggdryl::types::MsgType::infer_bytes(LOGGED.as_bytes()),
+        Some(&b"Plugin"[..])
+    );
+
+    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
+    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let message = codec
+        .transform_ulconfig_line(LOGGED.as_bytes(), false)
+        .expect("the document the line carries");
+    // FIX's own names stay FIX's, and the bridge's own are the bridge's -
+    // both inside the occurrence the document answered for.
+    assert_eq!(
+        message
+            .get_by_path("SessionInterfaces.0.SenderCompID")
+            .and_then(Scalar::as_str),
+        Some("PIC.PROD.TRD")
+    );
+    assert_eq!(
+        message
+            .get_by_path("SessionInterfaces.0.Version")
+            .and_then(Scalar::as_str),
+        Some("4.7.0")
+    );
+    // A `[Jolokia]` in the prose opens no document: only an object whose first
+    // member is quoted, or an array of those, does.
+    assert!(message.get_by_tag(yggdryl::MBEAN_TAG).is_some());
+}
+
+#[test]
+fn every_plugin_a_document_answers_for_crosses_both_ways() {
+    // A wildcard read answers a plugin per key; a single read answers one, and
+    // the request's own MBean names it. Both are the same walk.
+    let held: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(WILDCARD.as_bytes())
+        .expect("a readable answer")
+        .collect();
+    assert_eq!(held.len(), 2);
+    assert_eq!(held[0].name(), Some("ULMSG_BROKER_BDG_DMZ_PCO"));
+    assert_eq!(held[0].mbean_type(), Some("ConfigurationPlugin"));
+    assert_eq!(held[0].plugin_type(), Some("FIX"));
+    assert_eq!(held[0].category(), Some("InterBridge"));
+    assert_eq!(held[0].version(), Some("2.0.3"));
+    assert_eq!(held[1].name(), Some("ULMSG_BROKER_TO_DMZ"));
+    assert_eq!(held[1].mbean_type(), Some("Plugin"));
+
+    // The spelling is folded the way every other name in this crate is.
+    assert_eq!(
+        held[0].get("priority_level").and_then(Scalar::as_i64),
+        Some(5)
+    );
+
+    let single: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(LOGGED.as_bytes())
+        .expect("a readable line")
+        .collect();
+    assert_eq!(single.len(), 1);
+    assert_eq!(single[0].name(), Some("SmartTrade_OrderRouting"));
+    assert_eq!(single[0].state(), Some("logged"));
+
+    // And back to a typed message, and out of one again: the crossing keeps
+    // the ObjectName, the attributes and their types.
+    let branch = yggdryl::FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap();
+    let codec = FixCodec::new(registry()).with_branch(&branch);
+    let message = held[0].into_fixmsg(&codec, false).expect("a typed message");
+    assert_eq!(
+        message
+            .get_by_path("SessionInterfaces.0.PriorityLevel")
+            .and_then(Scalar::as_i64),
+        Some(5)
+    );
+    let back: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_fixmsg(&message).collect();
+    assert_eq!(back.len(), 1);
+    assert_eq!(back[0].mbean(), held[0].mbean());
+    assert_eq!(back[0].name(), held[0].name());
+    assert_eq!(back[0].version(), held[0].version());
+}

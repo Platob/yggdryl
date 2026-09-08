@@ -206,7 +206,7 @@ pub use msg::FixMsg;
 pub use registry::{FixFieldIter, FixRegistry};
 pub use ulbridge::{
     ERROR_TAG, MBEAN_TAG, OPERATION_TAG, SESSIONINTERFACES_TAG, STATUS_TAG, ULBRIDGE_BRANCH,
-    ULBRIDGE_TAG_MIN, fix_ulbridge_fields,
+    ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,
 };
 
 pub use schema::{

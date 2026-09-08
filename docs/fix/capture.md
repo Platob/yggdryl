@@ -357,6 +357,8 @@ A [bridge configuration document](registry.md#a-bridge-configuration-is-a-docume
 
 **One entry or fifty is one shape.** Jolokia answers a single read with one attribute map and a wildcard read with a map keyed by ObjectName; both read as one repeating group, `SessionInterfaces`, whose occurrences are the MBeans the document answered for in canonical ObjectName order.
 
+**A document is read out of the line that carries it.** A bridge prints one behind a timestamp, a reader name and a level, and sometimes prints a duration after it. The classifier reads past the prose in front and the reader reads to the document's own close rather than to the end of the line, so both sides are prose. What opens a document is exact: an object whose first member is quoted, or an array holding one — a `[Jolokia]` in the prose opens neither.
+
 | the document says | the row holds |
 | --- | --- |
 | the `request` it echoes, or the request itself | `MBean` 20001, `Operation` 20002 |
@@ -397,6 +399,54 @@ A [bridge configuration document](registry.md#a-bridge-configuration-is-a-docume
 
 Rust only: neither binding registers ULBridge's fields today, and a dictionary that does not have them keeps every key under its own folded spelling rather than dropping it.
 
+### One plugin, out of a document and back
+
+A row is one exchange, and a wildcard read answers fifty plugins in one. `UlPlugin` is one of those answers on its own — the ObjectName the bridge holds it under beside the attributes it stated — which is what a reader walking a hundred of them holds before it types any of them.
+
+| call | what it answers |
+| --- | --- |
+| `UlPlugin::from_json_bytes(line)` | every plugin the line's document answers for, prose on either side read past |
+| `UlPlugin::from_json_scalar(document)` | the same, over a document already parsed |
+| `UlPlugin::from_fixmsg(message)` | the same, out of a typed message's occurrences |
+| `plugin.into_fixmsg(codec, enrich)` | that plugin as a message typed against the codec's dictionary |
+
+`name`, `version`, `category`, `state`, `mbean`, `mbean_type` and `plugin_type` answer the facts a monitor asks for; `get` answers any attribute under the fold every other name in this crate uses, and `attributes` walks them all. A name the attributes do not state falls back to the ObjectName's own property, because a wildcard read names every plugin in the key it answers under.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, ULBRIDGE_BRANCH, UlPlugin};
+
+    // A wildcard read, as a log line writes it: prose in front, prose behind.
+    let line = br#"06:46:22 [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"ULMSG_BROKER_BDG_DMZ_PCO","Version":"2.0.3","PriorityLevel":5},"com.ullink.ulbridge.sessioninterfaces.plugins:name=OrderRouting,plugin-type=FIX,type=Plugin":{"Name":"OrderRouting","Version":"4.7.0","State":"logged"}},"status":200} (12 ms)"#;
+
+    // In ObjectName order, because a JSON object has no order of its own.
+    let held: Vec<UlPlugin> = UlPlugin::from_json_bytes(line)?.collect();
+    assert_eq!(held.len(), 2);
+    assert_eq!(held[0].name(), Some("OrderRouting"));
+    assert_eq!(held[1].name(), Some("ULMSG_BROKER_BDG_DMZ_PCO"));
+    // The ObjectName's own properties, read off the name rather than kept twice.
+    assert_eq!(held[1].mbean_type(), Some("ConfigurationPlugin"));
+    assert_eq!(held[1].plugin_type(), Some("FIX"));
+    assert_eq!(held[0].state(), Some("logged"));
+    // Any attribute, under the fold every other name uses.
+    assert_eq!(held[1].get("priority_level").and_then(Scalar::as_i64), Some(5));
+
+    // And back to a typed message, one plugin at a time.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_ulbridge_fields()?;
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&FixBranch::from_str(ULBRIDGE_BRANCH)?);
+
+    let message = held[0].into_fixmsg(&reader, false)?;
+    assert_eq!(message.by_path("SessionInterfaces.0.Version")?, &Scalar::from("4.7.0"));
+    // Out of the message again, and it is the same plugin.
+    let back: Vec<UlPlugin> = UlPlugin::from_fixmsg(&message).collect();
+    assert_eq!(back[0].name(), held[0].name());
+    assert_eq!(back[0].mbean(), held[0].mbean());
+    ```
+
 ### Edges
 
 - A group inside a group — `ExtendedActions[i].parameters[j]` — is one level deeper than a key addresses, so it is retained as the JSON it is. The four arrays a session interface always carries are declared, so each has a name and a tag; anything else keeps its own folded spelling.
@@ -404,6 +454,8 @@ Rust only: neither binding registers ULBridge's fields today, and a dictionary t
 - A request document carries no `value`, so it is the envelope alone — which is also what says it went out rather than came back.
 - A sentinel is a number the bridge sent: `BackupPort: -1` and `LogLevel: -1` land as `-1`, never as an absence. A stated `null` is the absence.
 - Without `with_ulbridge_fields`, every attribute is still kept — as nullable text under its own folded spelling, with no tag.
+- A line whose document never closes — one a capture cut short — carries no document, and the line is read as the prose it is.
+- `UlPlugin::from_fixmsg` reads `MBeanType` and `PluginType` back off the ObjectName rather than out of the occurrence: they are the name's own properties, and keeping them twice would give one fact two owners.
 
 ## A column is the name its tag spells
 
