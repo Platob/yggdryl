@@ -286,8 +286,8 @@ Eleven fields carry ten facts a capture states that no dictionary publishes - th
 | `parentorderid` | `ParentOrderID` | 30007 | the venue order identifier this order descends from |
 | `sessionid` | `SessionId` | 30008 | the session a bridge handled the message under, as its own log names it |
 | `msgctxid` | `MsgCtxId` | 30009 | the message context a bridge handled the message in |
-| `senderpluginid` | `SenderPluginId` | 30010 | the plugin the message came from inside a bridge |
-| `targetpluginid` | `TargetPluginId` | 30011 | the plugin the message went to inside a bridge |
+| `pluginid` | `PluginId` | 30010 | the plugin the message came from inside a bridge |
+| `prevpluginid` | `PrevPluginId` | 30011 | the plugin the message went to inside a bridge |
 
 The envelope `msghash` drops is the standard header and the standard trailer whole, read from the same two tag lists the row shape is ordered by, so a tag either component gains leaves the digest without a second listing learning about it. `MsgType` is the one exception and stays in: a message type is what a message *is* rather than how it travelled, so an order and a report carrying the same tags are not one message. The consequence is the point - two identical orders sent a second apart hash equal, and so do the same order relayed through two sessions or replayed on a resend.
 

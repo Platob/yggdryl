@@ -49,7 +49,7 @@ dropping a capture column whose folded name a FIX column already takes.
 specification, on its own ``yggdryl`` branch: ``msghash``, ``version``,
 ``symbolticker``, ``timestamp``, ``unixpartition``, ``parentclordid``,
 ``parentorderid``, and the four facts a bridge's own log states about a line -
-``sessionid``, ``msgctxid``, ``senderpluginid``, ``targetpluginid``.
+``sessionid``, ``msgctxid``, ``pluginid``, ``prevpluginid``.
 
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX

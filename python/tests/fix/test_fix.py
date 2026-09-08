@@ -1581,8 +1581,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentorderid",
         "sessionid",
         "msgctxid",
-        "senderpluginid",
-        "targetpluginid",
+        "pluginid",
+        "prevpluginid",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -1594,8 +1594,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ParentOrderID",
         "SessionId",
         "MsgCtxId",
-        "SenderPluginId",
-        "TargetPluginId",
+        "PluginId",
+        "PrevPluginId",
     ]
     assert [field.fix.tag for field in fields.values()] == list(
         range(30001, 30001 + CRATED)
@@ -1615,7 +1615,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
 
     # What a bridge's own log states about a line: its session, its message
     # context, and the plugins it moved between - text, all four.
-    for name in ("sessionid", "msgctxid", "senderpluginid", "targetpluginid"):
+    for name in ("sessionid", "msgctxid", "pluginid", "prevpluginid"):
         assert fields[name].dtype == DataType("utf8"), name
         assert fields[name].nullable, name
         assert fields[name].description is not None, name
