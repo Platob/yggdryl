@@ -1129,6 +1129,17 @@ export declare class FixCodec {
    * a stated value is never replaced.
    */
   enrichFixmsg(message: FixMsg): FixMsg
+  /**
+   * Stamps an array of messages with the identities it implies, in order.
+   *
+   * One `FixLifecycle` over the whole array: each message gets its
+   * `instid`, its `id` and - where it carries an order identifier - the
+   * `persistentid` of the chain that identifier reaches, and a terminal
+   * state closes the chain. The array is the stream, so the chain a
+   * message joins depends on the messages before it; a stream longer than
+   * one array is fed to one `FixLifecycle` instead.
+   */
+  lifecycle(messages: Array<FixMsg>): Array<FixMsg>
   /** A cheap clone: the dictionary is shared and the pins are copied. */
   clone(): FixCodec
   /** How this reader renders: the dictionary it reads against. */
@@ -1156,6 +1167,48 @@ export declare class FixFieldIterator {
 
 }
 export type JsFixFieldIterator = FixFieldIterator
+
+/**
+ * The state a stream of messages has reached, one chain per order alive.
+ *
+ * Built once per stream, over one dictionary or the process default, and fed
+ * every message in order through `fill`, which stamps the three identities
+ * the stream implies: `instid`, the instrument; `id`, the message, sorting by
+ * the market's own clock; `persistentid`, the order chain that every message
+ * sharing one of its identifiers carries. A terminal state closes the chain
+ * and forgets its identifiers, so what is held is the orders still alive.
+ * `FixCodec.lifecycle` runs one of these over an array.
+ */
+export declare class FixLifecycle {
+  /**
+   * A stream with no order alive yet.
+   *
+   * The three columns are the registry's own crate fields, which every
+   * registry this package builds holds.
+   */
+  constructor(registry?: FixRegistry | undefined | null)
+  /**
+   * Stamps one message with its three identities and moves the chain it
+   * belongs to along.
+   *
+   * A stated value is never overwritten: a message already carrying an
+   * `id` keeps it, and one carrying a `persistentid` joins nothing new,
+   * which is what makes a second pass over a stamped stream a no-op. Only
+   * the row is stamped: the arrival record is what the wire carried, so
+   * `toBytes` re-emits the received line either way.
+   */
+  fill(message: FixMsg): FixMsg
+  /**
+   * How many orders are alive: opened by a message and not yet closed by
+   * a terminal state.
+   */
+  get alive(): number
+  /** Forgets every chain, as a new session or a new day would. */
+  clear(): void
+  /** How this stream renders: the orders alive in it. */
+  toString(): string
+}
+export type JsFixLifecycle = FixLifecycle
 
 /**
  * A FIX message: a value plus the registry that types it.
@@ -1344,12 +1397,12 @@ export declare class FixRegistry {
   /**
    * A registry holding nothing but this crate's own fields.
    *
-   * Every registry starts here: the sixteen standard fields from tag 65000
+   * Every registry starts here: the nineteen standard fields from tag 65000
    * that `fixCrateFields` lists - the digest, the clock and its partition,
-   * the session a message states, the bridge's message context and the
-   * plugin sessions a line moved between - are what a row is typed by, so
-   * a dictionary loaded from a store, built from fields or left alone holds
-   * them alike.
+   * the session a message states, the bridge's message context, the
+   * plugin sessions a line moved between and the identities a lifecycle
+   * pass stamps - are what a row is typed by, so a dictionary loaded from
+   * a store, built from fields or left alone holds them alike.
    */
   constructor()
   /**
@@ -1404,7 +1457,7 @@ export declare class FixRegistry {
    * registry holds them already.
    */
   writeInto(location: LocationInput): void
-  /** How many fields are held, the crate's own sixteen among them. */
+  /** How many fields are held, the crate's own nineteen among them. */
   get size(): number
   /**
    * The field a canonical or alternate identifier names, or `null`.
@@ -4360,14 +4413,15 @@ export interface FixCodecOptions {
 }
 
 /**
- * The sixteen fields this crate defines, in tag order: standard fields from
+ * The nineteen fields this crate defines, in tag order: standard fields from
  * 65000 up, above every tag FIX or a venue publishes.
  *
  * The digest, the version read at, the ticker, the clock and its partition,
  * the parent identifiers, the session the message states, the bridge's
- * message context, the plugins and plugin sessions a line moved between, and
- * the ISIN, MIC and order state a row derives. Every registry already holds
- * them, so this is the listing a schema or a document walks rather than
+ * message context, the plugins and plugin sessions a line moved between, the
+ * ISIN, MIC and order state a row derives, and the instrument, message and
+ * order-chain identities a lifecycle pass stamps. Every registry already
+ * holds them, so this is the listing a schema or a document walks rather than
  * something a caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>

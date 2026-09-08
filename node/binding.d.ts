@@ -74,6 +74,7 @@ import {
   DataFile,
   FixMsg,
   FixCodec,
+  FixLifecycle,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -98,6 +99,7 @@ export type {
   DataFile,
   FixMsg,
   FixCodec,
+  FixLifecycle,
   FixRegistry,
   IcebergOptions,
   ManifestFile,
@@ -2802,6 +2804,13 @@ export interface Fix {
   /** One dictionary, reading captured lines into messages. */
   readonly FixCodec: typeof FixCodec
   /**
+   * The state a stream of messages has reached, one chain per order alive:
+   * `fill` stamps each message with its instrument, its own identity and
+   * the order chain it belongs to, `alive` counts the chains a terminal
+   * state has not closed, and `clear` forgets them all.
+   */
+  readonly FixLifecycle: typeof FixLifecycle
+  /**
    * The fixed root every message answers as, built from one dictionary.
    *
    * Columns are spelled by the dictionary's folded canonical names, so
@@ -2825,11 +2834,12 @@ export interface Fix {
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
   /**
-   * The sixteen fields this crate defines, in tag order: standard fields from
-   * 65000 up, above every tag FIX or a venue publishes - the digest, the
-   * clock and its partition, the session a message states, the bridge's
+   * The nineteen fields this crate defines, in tag order: standard fields
+   * from 65000 up, above every tag FIX or a venue publishes - the digest,
+   * the clock and its partition, the session a message states, the bridge's
    * message context, the plugins and plugin sessions a line moved between,
-   * and the ISIN, MIC and order state a row derives. Every registry holds
+   * the ISIN, MIC and order state a row derives, and the instrument, message
+   * and order-chain identities a lifecycle pass stamps. Every registry holds
    * them from construction.
    */
   crateFields(): Field[]

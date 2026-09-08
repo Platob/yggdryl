@@ -27,6 +27,7 @@ from yggdryl.fix import (
     FixBranch,
     FixMsg,
     FixCodec,
+    FixLifecycle,
     FixRegistry,
     STANDARD_BRANCH,
     ULBRIDGE_BRANCH,
@@ -49,9 +50,9 @@ SEED = REPO / "config" / "fix"
 
 # What every registry holds before anything is inserted: the crate's own
 # fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists -
-# sixteen standard fields, one tag block from 65000.
+# nineteen standard fields, one tag block from 65000.
 CRATE_TAG_MIN = 65000
-CRATED = 16
+CRATED = 19
 CRATE_TAGS = list(range(CRATE_TAG_MIN, CRATE_TAG_MIN + CRATED))
 
 # One Ullink CBlock in the shape a production file has: a vocabulary of a
@@ -601,7 +602,7 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # The crate's own sixteen close the walk, above every tag the
+    # The crate's own nineteen close the walk, above every tag the
     # specification publishes.
     assert tags[-CRATED:] == CRATE_TAGS
     # Every stored field is a specification field and the crate's own are
@@ -1532,7 +1533,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
-    # spelling kept as the display: sixteen of them after the trailer, then
+    # spelling kept as the display: nineteen of them after the trailer, then
     # FIX's own `msgdirection`, read from the line rather than the wire, then
     # the two lists.
     assert fix_schema_tags()[-(CRATED + 1) :] == [*CRATE_TAGS, 385]
@@ -1651,6 +1652,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "isincode",
         "miccode",
         "state",
+        "instid",
+        "id",
+        "persistentid",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -1669,6 +1673,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ISINCode",
         "MICCode",
         "State",
+        "InstId",
+        "Id",
+        "PersistentId",
     ]
     assert [field.fix.tag for field in fields.values()] == CRATE_TAGS
     assert all(field.fix.branch == STANDARD_BRANCH for field in fields.values())
@@ -1707,14 +1714,19 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "targetpluginid",
         "senderpluginsession",
         "targetpluginsession",
-        "isincode",
     ):
         assert fields[name].dtype == DataType("utf8"), name
     assert fields["senderpluginsession"].fix.aliases == ["ULFromSessionName"]
     assert fields["targetpluginsession"].fix.aliases == ["ULToSessionName"]
-    # The market and the order's state are typed as the thing they hold.
+    # The ISIN, the market and the order's state are typed as the thing they
+    # hold.
+    assert fields["isincode"].dtype == DataType("isin")
     assert fields["miccode"].dtype == DataType("mic")
     assert fields["state"].dtype == DataType("state")
+    # The three identities the lifecycle pass stamps are digests, sixteen
+    # bytes each, big-endian for the reason `msghash` is.
+    for name in ("instid", "id", "persistentid"):
+        assert fields[name].dtype == DataType("fixed_size_binary(16)"), name
 
     # Every registry holds them from construction, on the branch every
     # dictionary resolves through: the standard one is the only branch a new
@@ -2011,3 +2023,177 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     # The standard branch declares no dialect and no session.
     with pytest.raises(ValueError):
         registry.set_branch(FixBranch("", version="4.4"))
+
+
+# The messages of one order's life, as a venue and its client tell it: the
+# order under the client's identifier, its acknowledgement under the venue's,
+# half of it done, a replace whose new identifier names the old one, its
+# acknowledgement, and the fill under the new identifier alone.
+LIFE = [
+    b"8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|44=12.5|60=20260102-10:15:30.000|10=0|",
+    b"8=FIX.4.4|35=8|11=A1|37=O1|17=E1|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=100|14=0|151=100|60=20260102-10:15:30.250|10=0|",
+    b"8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=1|55=AAPL|207=XNAS|15=USD|38=100|14=50|151=50|32=50|31=12.5|60=20260102-10:15:31.000|10=0|",
+    b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|44=12.6|60=20260102-10:15:32.000|10=0|",
+    b"8=FIX.4.4|35=8|41=A1|11=A2|37=O1|17=E3|150=5|39=5|55=AAPL|207=XNAS|15=USD|38=120|14=50|151=70|60=20260102-10:15:32.100|10=0|",
+    b"8=FIX.4.4|35=8|11=A2|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=120|14=120|151=0|32=70|31=12.6|60=20260102-10:15:33.000|10=0|",
+]
+INSTID_TAG = 65016
+ID_TAG = 65017
+PERSISTENTID_TAG = 65018
+
+
+def _identity(message: FixMsg, tag: int) -> bytes | None:
+    """The bytes one identity column holds, or ``None`` where it is null."""
+    held = message.get_by_tag(tag)
+    if held is None or held.is_null():
+        return None
+    value = held.as_py()
+    assert isinstance(value, bytes)
+    return value
+
+
+def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
+    seed: FixRegistry,
+) -> None:
+    """The lifecycle pass is the core's; Python feeds it one message at a time."""
+    reader = FixCodec(seed)
+    life = FixLifecycle(seed)
+    stamped: list[FixMsg] = []
+    for line in LIFE:
+        stamped.append(life.fill(reader.transform_line(line)))
+        # Alive from the first message to the fill that ends it.
+        assert life.alive() == int(len(stamped) < len(LIFE))
+
+    # One instrument, one chain, six messages.
+    instruments = [_identity(held, INSTID_TAG) for held in stamped]
+    assert all(held == instruments[0] for held in instruments)
+    assert instruments[0] is not None and len(instruments[0]) == 16
+    chains = [_identity(held, PERSISTENTID_TAG) for held in stamped]
+    assert chains[0] is not None
+    # The replace's new identifier joined the chain the old one opened.
+    assert all(held == chains[0] for held in chains)
+    ids = [_identity(held, ID_TAG) for held in stamped]
+    assert all(held is not None for held in ids)
+    # Ids sort by the impact clock.
+    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
+    # The chain is dated by the order's own transaction time, in
+    # microseconds, and every id after it opens with a later instant.
+    assert int.from_bytes(chains[0][:8], "big") == 1_767_348_930_000_000
+    assert ids[0] is not None and ids[0][:8] == chains[0][:8]
+    # A state column holds the ranked spelling, never the wire's code.
+    assert stamped[1].by_tag(39).as_py() == "20NEW"
+    assert stamped[5].by_tag(39).as_py() == "80FILLED"
+
+    # Nothing here is an entry: the wire re-emits byte for byte.
+    for line, message in zip(LIFE, stamped):
+        assert message.to_bytes(ord("|")) == line
+
+    # The identifier a venue reuses tomorrow opens a new chain rather than
+    # joining yesterday's, which ended: dated by its own clock, it is another
+    # identity.
+    tomorrow = LIFE[0].replace(b"20260102", b"20260103")
+    again = life.fill(reader.transform_line(tomorrow))
+    assert _identity(again, PERSISTENTID_TAG) != chains[0]
+    assert life.alive() == 1
+    life.clear()
+    assert life.alive() == 0
+    assert repr(life) == "FixLifecycle(0 alive)"
+    # The same line at the same instant is the same chain identity, which is
+    # what makes two reads of one capture agree.
+    replayed = life.fill(reader.transform_line(LIFE[0]))
+    assert _identity(replayed, PERSISTENTID_TAG) == chains[0]
+    assert _identity(replayed, ID_TAG) == ids[0]
+
+    # The state moves, so nothing about it hashes.
+    with pytest.raises(TypeError):
+        hash(life)
+
+
+def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> None:
+    reader = FixCodec(seed)
+    heartbeat = reader.transform_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|")
+    # The codec runs one lifecycle over any iterable, a generator included.
+    stamped = reader.lifecycle(held for held in [heartbeat])
+    assert len(stamped) == 1
+    (held,) = stamped
+    # Every message has an id; no identifier, no chain; no instrument, no
+    # identity.
+    assert _identity(held, ID_TAG) is not None
+    assert _identity(held, PERSISTENTID_TAG) is None
+    assert _identity(held, INSTID_TAG) is None
+    # The impact clock is the sending time where no transaction time is
+    # stated, and the epoch where the message states no clock at all.
+    sent = _identity(held, ID_TAG)
+    assert sent is not None and int.from_bytes(sent[:8], "big") == 1_767_348_930_000_000
+    (undated,) = reader.lifecycle([reader.transform_line(b"8=FIX.4.4|35=0|10=0|")])
+    undated_id = _identity(undated, ID_TAG)
+    assert undated_id is not None and undated_id[:8] == bytes(8)
+
+    # An element that is not a message is refused where it is met.
+    with pytest.raises(TypeError):
+        reader.lifecycle([heartbeat, b"8=FIX.4.4|35=0|10=0|"])
+
+    # The process default is the registry a lifecycle built over nothing uses.
+    assert FixLifecycle().alive() == 0
+
+
+def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
+    seed: FixRegistry,
+) -> None:
+    reader = FixCodec(seed)
+    life = FixLifecycle(seed)
+
+    def identity(line: bytes) -> bytes | None:
+        return _identity(life.fill(reader.transform_line(line)), INSTID_TAG)
+
+    # An ISIN outranks a symbol, so the same security under two symbols is
+    # one instrument, and case is not a difference.
+    by_isin = identity(b"8=FIX.4.4|35=D|11=B1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|10=0|")
+    by_isin_again = identity(
+        b"8=FIX.4.4|35=D|11=B2|48=us0378331005|22=4|55=APPLE|207=xnas|15=usd|10=0|"
+    )
+    assert by_isin is not None and by_isin == by_isin_again
+    # Another market is another instrument identity.
+    elsewhere = identity(b"8=FIX.4.4|35=D|11=B3|48=US0378331005|22=4|55=AAPL|207=XLON|15=USD|10=0|")
+    assert by_isin != elsewhere
+    # Without an ISIN the symbol stands in, and a stated one wins over a
+    # symbol that would say otherwise.
+    by_symbol = identity(b"8=FIX.4.4|35=D|11=B4|55=AAPL|207=XNAS|15=USD|10=0|")
+    assert by_symbol is not None and by_symbol != by_isin
+    # A bridge row names the same facts under its own keys.
+    bridged = identity(b"#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|")
+    assert bridged == by_isin
+
+
+def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) -> None:
+    reader = FixCodec(seed)
+    once = reader.lifecycle(reader.transform_line(line) for line in LIFE)
+    twice = reader.lifecycle(once)
+    for first, second in zip(once, twice):
+        for tag in (INSTID_TAG, ID_TAG, PERSISTENTID_TAG):
+            assert _identity(first, tag) == _identity(second, tag), tag
+        assert len(first.entries()) == len(second.entries())
+    assert once == twice
+
+
+def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistry) -> None:
+    """`lifecycle` is a per-stream flag: a row's chain depends on the rows before it."""
+    source = pa.table({"body": pa.array(LIFE, pa.binary())})
+    parsed = parse_arrow_reader(source, seed, "body", lifecycle=True).read_all()
+    chains = parsed.column("persistentid").to_pylist()
+    assert len(chains) == len(LIFE)
+    assert chains[0] is not None and all(held == chains[0] for held in chains)
+    ids = parsed.column("id").to_pylist()
+    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
+    # A state column holds the ranked spelling, never the wire's code, in the
+    # fixed width the datatype declares.
+    states = [held.rstrip(b"\0") for held in parsed.column("ordstatus").to_pylist()[1:3]]
+    assert states == [b"20NEW", b"40PARTFILL"]
+    # Off by default: a stamped value is indistinguishable from a stated one.
+    bare = parse_arrow_reader(source, seed, "body").read_all()
+    assert bare.column("persistentid").to_pylist() == [None] * len(LIFE)
+    assert bare.column("id").to_pylist() == [None] * len(LIFE)
+    # `enrich` is the other per-stream flag, and the two compose.
+    both = parse_arrow_reader(source, seed, "body", enrich=True, lifecycle=True).read_all()
+    assert both.column("persistentid").to_pylist() == chains
+    assert both.column("state").to_pylist()[1].rstrip(b"\0") == b"20NEW"

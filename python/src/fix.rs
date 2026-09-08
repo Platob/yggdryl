@@ -24,10 +24,10 @@ use yggdryl::types::MsgDirection;
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec,
-    FixField as CoreFixField, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar,
-    UlPlugin as CoreUlPlugin, Version as CoreVersion, from_json_scalar_with_field,
-    into_json_scalar,
+    FixField as CoreFixField, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
+    FixMsg as CoreFixMsg, FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry,
+    IOBase as CoreIOBase, Scalar, UlPlugin as CoreUlPlugin, Version as CoreVersion,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -212,7 +212,7 @@ impl PyFixRegistry {
 
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the sixteen standard fields from tag 65000
+    /// Every registry starts here: the nineteen standard fields from tag 65000
     /// that `fix_crate_fields` lists are what a row is typed by, so a
     /// dictionary loaded from a store, built from fields or left alone holds
     /// them alike, on the standard branch every one of them resolves through.
@@ -1318,6 +1318,24 @@ impl PyFixCodec {
             .collect()
     }
 
+    /// Stamps a stream of messages with the identities it implies, in order.
+    ///
+    /// One `FixLifecycle` over the whole iterable: each message gets its
+    /// `instid`, its `id` and - where it carries an order identifier - the
+    /// `persistentid` of the chain that identifier reaches, and a terminal
+    /// state closes the chain. The iterable is read once, in order, and the
+    /// stamped messages come back as a list in that order.
+    fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<Vec<PyFixMsg>> {
+        let mut held: Vec<CoreFixMsg> = Vec::new();
+        for message in messages.try_iter()? {
+            held.push(message?.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone());
+        }
+        self.inner
+            .lifecycle(held)
+            .map(|stamped| stamped.map(PyFixMsg::from_inner).map_err(value_error))
+            .collect()
+    }
+
     fn __copy__(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -1331,6 +1349,64 @@ impl PyFixCodec {
 
     fn __repr__(&self) -> String {
         format!("FixCodec({} fields)", self.registry.len())
+    }
+}
+
+/// The state a stream of messages has reached, one chain per order alive.
+///
+/// One [`FixLifecycle`](CoreFixLifecycle), fed every message of a stream in
+/// order through `fill`; the chains it holds are the orders still alive, so
+/// it is mutable and, like the registry, unhashable.
+#[pyclass(name = "FixLifecycle", module = "yggdryl._native")]
+pub(crate) struct PyFixLifecycle {
+    inner: CoreFixLifecycle,
+}
+
+#[pymethods]
+impl PyFixLifecycle {
+    // The chains move with every message, so no hash is stable.
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    /// A stream with no order alive yet, over one dictionary or the process
+    /// default.
+    #[new]
+    #[pyo3(signature = (registry=None))]
+    fn new(registry: Option<PyRef<'_, PyFixRegistry>>) -> PyResult<Self> {
+        let registry = match registry {
+            Some(held) => Arc::clone(&held.inner),
+            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
+        };
+        Ok(Self {
+            inner: CoreFixLifecycle::new(registry),
+        })
+    }
+
+    /// Stamps one message with its three identities and moves the chain it
+    /// belongs to along.
+    ///
+    /// A stated `instid`, `id` or `persistentid` is never overwritten, and the
+    /// entries are untouched, so `to_bytes` re-emits the received line.
+    fn fill(&mut self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
+        self.inner
+            .fill(message.inner.clone())
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// How many orders are alive: opened by a message and not yet closed by
+    /// a terminal state.
+    fn alive(&self) -> usize {
+        self.inner.alive()
+    }
+
+    /// Forgets every chain, as a new session or a new day would.
+    fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    fn __repr__(&self) -> String {
+        format!("FixLifecycle({} alive)", self.inner.alive())
     }
 }
 
@@ -1402,7 +1478,9 @@ pub(crate) fn fix_schema_carrying(
 /// for a row its direction says was sent, the target's for one it received -
 /// and any other column named after a field fills it where the frame did not
 /// state it - never as an entry. A column whose folded name a fixed column
-/// takes lands there rather than being carried in front.
+/// takes lands there rather than being carried in front. `enrich` fills what
+/// each line implies; `lifecycle` runs one `FixLifecycle` over the whole read,
+/// so a row's `persistentid` depends on the rows before it.
 #[pyfunction]
 #[pyo3(
     name = "fix_parse_arrow_reader",
@@ -1418,6 +1496,8 @@ pub(crate) fn fix_schema_carrying(
         direction = None,
         null_values = None,
         dedup = false,
+        enrich = false,
+        lifecycle = false,
         batch_row_size = None,
         batch_byte_size = None,
     )
@@ -1435,6 +1515,8 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     direction: Option<&str>,
     null_values: Option<Vec<String>>,
     dedup: bool,
+    enrich: bool,
+    lifecycle: bool,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
 ) -> PyResult<Bound<'py, PyAny>> {
@@ -1442,7 +1524,10 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
         Some(held) => Arc::clone(&held.inner),
         None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
     };
-    let mut options = CoreFixOptions::new().with_dedup(dedup);
+    let mut options = CoreFixOptions::new()
+        .with_dedup(dedup)
+        .with_enrich(enrich)
+        .with_lifecycle(lifecycle);
     options.name = name.into();
     if let Some(branch) = branch {
         options = options.with_branch(branch_from_py(branch)?);
@@ -1513,16 +1598,18 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The fields this crate defines, in tag order: sixteen standard fields from
+/// The fields this crate defines, in tag order: nineteen standard fields from
 /// tag 65000, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
 /// partition it falls in, the two parent order identifiers no standard tag
 /// names, what a bridge's own log states about a line - the session the
 /// message itself names, its message context, the plugins and the plugin
-/// sessions it moved between - and the three facts a row derives from what
-/// the message said: its ISIN, its market and the order's state. Every
-/// registry holds them from construction; this is the listing.
+/// sessions it moved between - the three facts a row derives from what the
+/// message said: its ISIN, its market and the order's state - and the three
+/// identities a stream implies, which `FixLifecycle` stamps: the instrument,
+/// the message and the order chain. Every registry holds them from
+/// construction; this is the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

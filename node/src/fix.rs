@@ -21,7 +21,8 @@ use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unkno
 use napi_derive::napi;
 use yggdryl::{
     Field as CoreField, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec, FixId as CoreFixId,
-    FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
+    FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
+    Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -86,6 +87,22 @@ pub fn fix_user_tag_min_native() -> i32 {
 #[napi(js_name = "_fixUserTagMaxNative", skip_typescript)]
 pub fn fix_user_tag_max_native() -> i32 {
     CoreFixId::USER_TAG_MAX
+}
+
+/// The dictionary a caller named, or the process default where none was.
+///
+/// Every entry point that resolves against a registry - a message, a reader, a
+/// lifecycle, the fixed row - takes the same optional argument and falls back
+/// the same way, so the fallback is spelled here once.
+fn registry_or_global(
+    registry: Option<ClassInstance<'_, JsFixRegistry>>,
+) -> Result<Arc<CoreFixRegistry>> {
+    match registry {
+        Some(held) => Ok(Arc::clone(&held.inner)),
+        None => CoreFixRegistry::global()
+            .map(Arc::clone)
+            .map_err(napi_error),
+    }
 }
 
 /// One lookup key, read once at the boundary.
@@ -161,12 +178,12 @@ impl JsFixRegistry {
 impl JsFixRegistry {
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the sixteen standard fields from tag 65000
+    /// Every registry starts here: the nineteen standard fields from tag 65000
     /// that `fixCrateFields` lists - the digest, the clock and its partition,
-    /// the session a message states, the bridge's message context and the
-    /// plugin sessions a line moved between - are what a row is typed by, so
-    /// a dictionary loaded from a store, built from fields or left alone holds
-    /// them alike.
+    /// the session a message states, the bridge's message context, the
+    /// plugin sessions a line moved between and the identities a lifecycle
+    /// pass stamps - are what a row is typed by, so a dictionary loaded from
+    /// a store, built from fields or left alone holds them alike.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -261,7 +278,7 @@ impl JsFixRegistry {
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many fields are held, the crate's own sixteen among them.
+    /// How many fields are held, the crate's own nineteen among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -643,10 +660,7 @@ impl JsFixMsg {
         value: &JsScalar,
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
     ) -> Result<Self> {
-        let registry = match registry {
-            Some(registry) => Arc::clone(&registry.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
-        };
+        let registry = registry_or_global(registry)?;
         CoreFixMsg::with_registry(registry, field.inner.clone(), value.inner.clone())
             .map(|inner| Self { inner })
             .map_err(napi_error)
@@ -1046,10 +1060,7 @@ impl JsFixCodec {
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
         options: Option<FixCodecOptions>,
     ) -> Result<Self> {
-        let registry = match registry {
-            Some(held) => Arc::clone(&held.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
-        };
+        let registry = registry_or_global(registry)?;
         let options = options.unwrap_or_default();
         let mut inner = CoreFixCodec::new(Arc::clone(&registry));
         if let Some(held) = &options.branch {
@@ -1149,6 +1160,22 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
+    /// Stamps an array of messages with the identities it implies, in order.
+    ///
+    /// One `FixLifecycle` over the whole array: each message gets its
+    /// `instid`, its `id` and - where it carries an order identifier - the
+    /// `persistentid` of the chain that identifier reaches, and a terminal
+    /// state closes the chain. The array is the stream, so the chain a
+    /// message joins depends on the messages before it; a stream longer than
+    /// one array is fed to one `FixLifecycle` instead.
+    #[napi(ts_args_type = "messages: Array<FixMsg>")]
+    pub fn lifecycle(&self, messages: Vec<ClassInstance<'_, JsFixMsg>>) -> Result<Vec<JsFixMsg>> {
+        self.inner
+            .lifecycle(messages.iter().map(|message| message.inner.clone()))
+            .map(|held| held.map(JsFixMsg::from_core).map_err(napi_error))
+            .collect()
+    }
+
     /// A cheap clone: the dictionary is shared and the pins are copied.
     #[napi(js_name = "clone")]
     pub fn clone_js(&self) -> Self {
@@ -1183,6 +1210,69 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
     spelling.parse::<CoreVersion>().map_err(napi_error)
 }
 
+/// The state a stream of messages has reached, one chain per order alive.
+///
+/// Built once per stream, over one dictionary or the process default, and fed
+/// every message in order through `fill`, which stamps the three identities
+/// the stream implies: `instid`, the instrument; `id`, the message, sorting by
+/// the market's own clock; `persistentid`, the order chain that every message
+/// sharing one of its identifiers carries. A terminal state closes the chain
+/// and forgets its identifiers, so what is held is the orders still alive.
+/// `FixCodec.lifecycle` runs one of these over an array.
+#[napi(js_name = "FixLifecycle")]
+pub struct JsFixLifecycle {
+    inner: CoreFixLifecycle,
+}
+
+#[napi]
+impl JsFixLifecycle {
+    /// A stream with no order alive yet.
+    ///
+    /// The three columns are the registry's own crate fields, which every
+    /// registry this package builds holds.
+    #[napi(constructor)]
+    pub fn new(registry: Option<ClassInstance<'_, JsFixRegistry>>) -> Result<Self> {
+        Ok(Self {
+            inner: CoreFixLifecycle::new(registry_or_global(registry)?),
+        })
+    }
+
+    /// Stamps one message with its three identities and moves the chain it
+    /// belongs to along.
+    ///
+    /// A stated value is never overwritten: a message already carrying an
+    /// `id` keeps it, and one carrying a `persistentid` joins nothing new,
+    /// which is what makes a second pass over a stamped stream a no-op. Only
+    /// the row is stamped: the arrival record is what the wire carried, so
+    /// `toBytes` re-emits the received line either way.
+    #[napi]
+    pub fn fill(&mut self, message: &JsFixMsg) -> Result<JsFixMsg> {
+        self.inner
+            .fill(message.inner.clone())
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// How many orders are alive: opened by a message and not yet closed by
+    /// a terminal state.
+    #[napi(getter)]
+    pub fn alive(&self) -> u32 {
+        u32::try_from(self.inner.alive()).unwrap_or(u32::MAX)
+    }
+
+    /// Forgets every chain, as a new session or a new day would.
+    #[napi]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// How this stream renders: the orders alive in it.
+    #[napi(js_name = "toString")]
+    pub fn js_string(&self) -> String {
+        format!("FixLifecycle({} alive)", self.inner.alive())
+    }
+}
+
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
@@ -1195,10 +1285,7 @@ pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
     name: Option<String>,
 ) -> Result<JsField> {
-    let registry = match registry {
-        Some(held) => Arc::clone(&held.inner),
-        None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
-    };
+    let registry = registry_or_global(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
     yggdryl::fix_schema(&registry, name)
         .map(JsField::from_core)
@@ -1234,14 +1321,15 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The sixteen fields this crate defines, in tag order: standard fields from
+/// The nineteen fields this crate defines, in tag order: standard fields from
 /// 65000 up, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read at, the ticker, the clock and its partition,
 /// the parent identifiers, the session the message states, the bridge's
-/// message context, the plugins and plugin sessions a line moved between, and
-/// the ISIN, MIC and order state a row derives. Every registry already holds
-/// them, so this is the listing a schema or a document walks rather than
+/// message context, the plugins and plugin sessions a line moved between, the
+/// ISIN, MIC and order state a row derives, and the instrument, message and
+/// order-chain identities a lifecycle pass stamps. Every registry already
+/// holds them, so this is the listing a schema or a document walks rather than
 /// something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {

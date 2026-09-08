@@ -149,7 +149,7 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 
 `name` names the root, and is `fix` unless it is set.
 
-Python spells them as keywords on `parse_arrow_reader`, under the same names, with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+Python spells them as keywords on `parse_arrow_reader`, under the same names - `dedup`, `enrich` and `lifecycle` as booleans - with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
 
 ## A column is the caller speaking per row
 

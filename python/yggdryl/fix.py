@@ -9,7 +9,7 @@ those fields by identifier, by tag, by branch-qualified name or by
 branch-qualified dotted path and persists them as JSON shards through any
 ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against. Every registry holds this crate's own fields from
-construction - ``FixRegistry()`` is those sixteen fields, never nothing - and a
+construction - ``FixRegistry()`` is those nineteen fields, never nothing - and a
 store neither writes them nor overrides them. Resolution, folding, merging,
 sharding and validation are native; this module only names them.
 
@@ -49,15 +49,26 @@ to be resolved per row; the tag stays on each column's ``fix:tag``.
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: sixteen standard fields from tag 65000, above every tag FIX or a
-venue publishes, so they need no branch of their own. ``msghash``, ``version``,
-``symbolticker``, ``timestamp``, ``unixpartition``, ``parentclordid`` and
-``parentorderid``; what a bridge's own log states about a line - ``sessionid``,
-the session the message itself names, ``msgctxid``, the plugins
-``senderpluginid`` and ``targetpluginid`` and the plugin sessions
-``senderpluginsession`` and ``targetpluginsession`` it moved between; and the
+specification: nineteen standard fields from tag 65000, above every tag FIX or
+a venue publishes, so they need no branch of their own. ``msghash``,
+``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
+``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
+line - ``sessionid``, the session the message itself names, ``msgctxid``, the
+plugins ``senderpluginid`` and ``targetpluginid`` and the plugin sessions
+``senderpluginsession`` and ``targetpluginsession`` it moved between; the
 three facts a row derives from what the message said - ``isincode``,
-``miccode`` and ``state``.
+``miccode`` and ``state``; and the three identities a stream implies -
+``instid``, ``id`` and ``persistentid``.
+
+:class:`FixLifecycle` stamps those three. It reads a stream once, in order,
+through :meth:`FixLifecycle.fill`: every message gets the instrument's identity
+and its own, and one naming an order gets the identity of the chain that order
+belongs to - joined on ``OrigClOrdID``, ``ClOrdID``, ``OrderID``,
+``SecondaryClOrdID`` and ``SecondaryOrderID``, closed by a terminal state, so
+:meth:`FixLifecycle.alive` counts the orders still open and
+:meth:`FixLifecycle.clear` forgets them. :meth:`FixCodec.lifecycle` runs one over
+an iterable of messages, and ``parse_arrow_reader(lifecycle=True)`` runs one over
+a whole capture.
 
 A branch is a ``str`` wherever it is a *key*; :class:`FixBranch` is what a
 *declaration* is, because a declaration also carries the dialect's default FIX
@@ -78,6 +89,7 @@ from ._native import (
     FixBranch,
     FixMsg,
     FixCodec,
+    FixLifecycle,
     FixRegistry,
     UlPlugin,
     fix_cfb_fields,
@@ -100,6 +112,7 @@ __all__ = [
     "FixBranch",
     "FixMsg",
     "FixCodec",
+    "FixLifecycle",
     "FixRegistry",
     "UlPlugin",
     "classify_arrow_array",

@@ -1198,6 +1198,8 @@ fix_parsed: pa.RecordBatchReader = fix.parse_arrow_reader(
     "body",
     version="FIX.4.4",
     dedup=True,
+    enrich=True,
+    lifecycle=True,
 )
 
 fix_root: Field = Field(
@@ -1258,6 +1260,13 @@ fix_read_bytes: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
 fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
 fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
+fix_read_filled: list[fix.FixMsg] = fix_reader.enrich_fixmsgs([fix_read_text])
+fix_read_stamped: list[fix.FixMsg] = fix_reader.lifecycle(iter([fix_read_text]))
+fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
+fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
+fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
+fix_life_alive: int = fix_life.alive()
+fix_life.clear()
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()

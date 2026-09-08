@@ -693,11 +693,12 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 
 ## FIX is a namespace
 
-`fix.FixRegistry`, `fix.FixMsg`, `fix.globalRegistry()`,
-`fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH` (`''`, what an absent
-`fix:branch` means), and `fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX`
-(`40000`), the half-open tag range a non-standard branch may claim, are the
-whole surface. The `fix:` vocabulary
+`fix.FixRegistry`, `fix.FixMsg`, `fix.FixCodec`, `fix.FixLifecycle`,
+`fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
+`fix.globalRegistry()`, `fix.installGlobalRegistry()`, `fix.STANDARD_BRANCH`
+(`''`, what an absent `fix:branch` means), and `fix.USER_TAG_MIN` (`5000`) and
+`fix.USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may
+claim, are the whole surface. The `fix:` vocabulary
 is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
 `aliases`, and `description`.
 
@@ -714,6 +715,7 @@ is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
 | `field.fix.branch` | `''` when the key is absent; assigning `''` removes it |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
+| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - an array in and out for the reader, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry branch-major then by tag, message in the root's declared order |
 
 ```javascript

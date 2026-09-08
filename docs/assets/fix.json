@@ -96,9 +96,9 @@
     ]
   },
   "kpi": {
-    "fields": 6219,
+    "fields": 6222,
     "groups": 521,
-    "primitives": 5698,
+    "primitives": 5701,
     "codeSets": 2016,
     "codes": 27103,
     "lineage": 1564,
@@ -107,9 +107,9 @@
     "messages": 181,
     "components": 167,
     "layoutGroups": 580,
-    "columns": 98,
+    "columns": 101,
     "branches": 1,
-    "datatypes": 20,
+    "datatypes": 21,
     "versions": 10,
     "dtypes": [
       [
@@ -118,7 +118,7 @@
       ],
       [
         "utf8",
-        1900
+        1899
       ],
       [
         "float64",
@@ -169,6 +169,10 @@
         12
       ],
       [
+        "fixed_size_binary(16)",
+        4
+      ],
+      [
         "state",
         3
       ],
@@ -177,7 +181,7 @@
         1
       ],
       [
-        "fixed_size_binary(16)",
+        "isin",
         1
       ],
       [
@@ -196,7 +200,7 @@
     "branchSizes": [
       [
         "",
-        6219
+        6222
       ]
     ],
     "versionList": [
@@ -62962,7 +62966,7 @@
     {
       "t": 65013,
       "n": "isincode",
-      "y": "utf8",
+      "y": "isin",
       "d": "ISINCode",
       "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
     },
@@ -62979,6 +62983,27 @@
       "y": "state",
       "d": "State",
       "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
+    },
+    {
+      "t": 65016,
+      "n": "instid",
+      "y": "fixed_size_binary(16)",
+      "d": "InstId",
+      "x": "The instrument's own identity: the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
+    },
+    {
+      "t": 65017,
+      "n": "id",
+      "y": "fixed_size_binary(16)",
+      "d": "Id",
+      "x": "The message's own identity: the instant closest to the market impact in microseconds, then the xxh3 digest of what it said."
+    },
+    {
+      "t": 65018,
+      "n": "persistentid",
+      "y": "fixed_size_binary(16)",
+      "d": "PersistentId",
+      "x": "The order chain's identity: the instant it was created, then the xxh3 digest of its instrument and first identifier, carried by every later message sharing one of its identifiers."
     }
   ],
   "messages": [
@@ -128726,7 +128751,7 @@
         "c": "isincode",
         "t": 65013,
         "n": "ISINCode",
-        "y": "utf8",
+        "y": "isin",
         "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
       },
       {
@@ -128742,6 +128767,27 @@
         "n": "State",
         "y": "state",
         "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
+      },
+      {
+        "c": "instid",
+        "t": 65016,
+        "n": "InstId",
+        "y": "fixed_size_binary(16)",
+        "x": "The instrument's own identity: the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
+      },
+      {
+        "c": "id",
+        "t": 65017,
+        "n": "Id",
+        "y": "fixed_size_binary(16)",
+        "x": "The message's own identity: the instant closest to the market impact in microseconds, then the xxh3 digest of what it said."
+      },
+      {
+        "c": "persistentid",
+        "t": 65018,
+        "n": "PersistentId",
+        "y": "fixed_size_binary(16)",
+        "x": "The order chain's identity: the instant it was created, then the xxh3 digest of its instrument and first identifier, carried by every later message sharing one of its identifiers."
       },
       {
         "c": "msgdirection",
@@ -129089,7 +129135,7 @@
         ],
         [
           "status",
-          "2",
+          "80FILLED",
           "39:"
         ],
         [
@@ -129130,7 +129176,7 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 17,
+      "size": 14,
       "columns": [],
       "arrivals": [
         [
@@ -129282,10 +129328,8 @@
           "56:"
         ]
       ],
-      "anomalies": [
-        "nopartyids (453) states 2 occurrences and holds 0"
-      ],
-      "digest": "b4e010fcf7bebd152376c5ad91e316b5",
+      "anomalies": [],
+      "digest": "d945e237f1e044ec2fa94e2bf862c3b4",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:02.000000000Z",
       "partition": "1706788800",
@@ -129301,7 +129345,7 @@
       "msgtype": "W",
       "direction": null,
       "branch": "",
-      "size": 12,
+      "size": 9,
       "columns": [],
       "arrivals": [
         [
@@ -129393,10 +129437,8 @@
           "56:"
         ]
       ],
-      "anomalies": [
-        "nomdentries (268) states 2 occurrences and holds 0"
-      ],
-      "digest": "50169881299c468ceebc4e82c03af49a",
+      "anomalies": [],
+      "digest": "948e968e4353a7779eb307909c4d96bc",
       "ticker": "BRN",
       "clock": "1970-01-01T00:00:00.000000000Z",
       "partition": "0",

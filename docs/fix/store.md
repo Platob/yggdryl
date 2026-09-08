@@ -349,9 +349,10 @@ Each field carries the specification's wording as its description and a display 
     assert registry.field_by_tag(150).display == "ExecType"
     assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
     assert registry.field_by_name("ClOrdID", STANDARD_BRANCH).display == "ClOrdID"
-    # Every seed field is a specification field, so none states a branch;
-    # the ones that do are the crate's own, which every registry holds.
-    assert sum("fix:branch" in field.metadata for field in registry) == len(fix_crate_fields())
+    # Every field is a specification field or one of the crate's own, and
+    # both are standard, so none states a branch.
+    assert sum("fix:branch" in field.metadata for field in registry) == 0
+    assert len(fix_crate_fields()) == 19
     # The whole published dictionary, not a sample of it.
     assert len(registry) > 6_000
     ```
@@ -373,9 +374,10 @@ Each field carries the specification's wording as its description and a display 
     assert.equal(registry.fieldByTag(150).display, 'ExecType')
     assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
     assert.equal(registry.fieldByName('ClOrdID', standard).display, 'ClOrdID')
-    // Every seed field is a specification field, so none states a branch;
-    // the ones that do are the crate's own, which every registry holds.
-    assert.equal([...registry].filter((field) => field.has('fix:branch')).length, fix.crateFields().length)
+    // Every field is a specification field or one of the crate's own, and
+    // both are standard, so none states a branch.
+    assert.equal([...registry].filter((field) => field.has('fix:branch')).length, 0)
+    assert.equal(fix.crateFields().length, 19)
     // The whole published dictionary, not a sample of it.
     assert.ok(registry.size > 6_000)
     ```

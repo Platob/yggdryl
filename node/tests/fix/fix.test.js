@@ -21,9 +21,9 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix } = require(
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
 // What every registry holds before anything is inserted: the crate's own
-// sixteen fields, standard fields from tag 65000 up, which
+// nineteen fields, standard fields from tag 65000 up, which
 // `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
-const CRATED = 16
+const CRATED = 19
 // The first tag the crate claims; every tag from it up is one of its own.
 const CRATE_TAG_MIN = 65000
 
@@ -526,7 +526,7 @@ test('the seed iterates in canonical-tag order and every field is standard', () 
 
   const tags = [...registry].map((field) => field.fix.tag)
   assert.deepEqual(tags, [...tags].sort((left, right) => left - right))
-  // Every stored field is a specification field, and the crate's own sixteen
+  // Every stored field is a specification field, and the crate's own nineteen
   // are standard fields above every published tag, so no field states a
   // branch at all - and the crate's close the walk, since nothing the seed
   // stores sits at or above their first tag.
@@ -901,6 +901,7 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     Object.keys(fix).sort(),
     [
       'FixCodec',
+      'FixLifecycle',
       'FixMsg',
       'FixRegistry',
       'STANDARD_BRANCH',
@@ -922,9 +923,11 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     'FixMsg',
     'FixMsgEntries',
     'FixCodec',
+    'FixLifecycle',
     'FixRegistry',
     'JsFixMsg',
     'JsFixCodec',
+    'JsFixLifecycle',
     'JsFixRegistry',
     'fixCrateFields',
     'fixSchema',
@@ -1064,6 +1067,147 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
   assert.equal(opaque.getByTag(65013), null)
 })
 
+// The messages of one order's life, as a venue and its client tell it.
+const LIFE = [
+  // The order, sent under the client's own identifier.
+  '8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|44=12.5|60=20260102-10:15:30.000|10=0|',
+  // Acknowledged under the venue's, which now names the same chain.
+  '8=FIX.4.4|35=8|11=A1|37=O1|17=E1|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=100|14=0|151=100|60=20260102-10:15:30.250|10=0|',
+  // Half of it done.
+  '8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=1|55=AAPL|207=XNAS|15=USD|38=100|14=50|151=50|32=50|31=12.5|60=20260102-10:15:31.000|10=0|',
+  // Replaced: the new client identifier names the old one, and joins.
+  '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|44=12.6|60=20260102-10:15:32.000|10=0|',
+  '8=FIX.4.4|35=8|41=A1|11=A2|37=O1|17=E3|150=5|39=5|55=AAPL|207=XNAS|15=USD|38=120|14=50|151=70|60=20260102-10:15:32.100|10=0|',
+  // Filled under the new identifier alone: the chain ends here.
+  '8=FIX.4.4|35=8|11=A2|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=120|14=120|151=0|32=70|31=12.6|60=20260102-10:15:33.000|10=0|',
+]
+// The three identity columns, by tag.
+const INSTID = 65016
+const ID = 65017
+const PERSISTENTID = 65018
+const PIPE = '|'.charCodeAt(0)
+
+/** The bytes one identity column holds, or null where it holds nothing. */
+function identity(message, tag) {
+  const held = message.getByTag(tag)
+  return held === null ? null : Buffer.from(held.asJs())
+}
+
+test('every message of one order carries the chain identity until it ends', () => {
+  const registry = seed()
+  const reader = new fix.FixCodec(registry)
+  const life = new fix.FixLifecycle(registry)
+  const stamped = []
+  for (const line of LIFE) {
+    stamped.push(life.fill(reader.transformLine(Buffer.from(line))))
+    // Alive from the first message to the fill that ends it.
+    assert.equal(life.alive, stamped.length < LIFE.length ? 1 : 0)
+  }
+
+  // One instrument, one chain, six messages.
+  const instruments = stamped.map((held) => identity(held, INSTID))
+  assert.equal(instruments[0].length, 16)
+  assert.ok(instruments.every((held) => held.equals(instruments[0])))
+  const chains = stamped.map((held) => identity(held, PERSISTENTID))
+  assert.ok(
+    chains.every((held) => held.equals(chains[0])),
+    "the replace's new identifier joined the chain the old one opened",
+  )
+  const ids = stamped.map((held) => identity(held, ID))
+  for (let at = 1; at < ids.length; at += 1) {
+    assert.ok(Buffer.compare(ids[at - 1], ids[at]) < 0, 'ids sort by the impact clock')
+  }
+  // The chain is dated by the order's own transaction time, in microseconds,
+  // and every id after it opens with a later instant.
+  assert.equal(chains[0].readBigInt64BE(0), 1_767_348_930_000_000n)
+  assert.ok(ids[0].subarray(0, 8).equals(chains[0].subarray(0, 8)))
+  // A state a row holds is the ranked spelling, never the wire's code.
+  assert.equal(stamped[1].byTag(39).toJSON(), '20NEW')
+  assert.equal(stamped[5].byTag(39).toJSON(), '80FILLED')
+
+  // Nothing here is an entry: the wire re-emits byte for byte.
+  for (const [at, line] of LIFE.entries()) {
+    assert.equal(stamped[at].toBytes(PIPE).toString(), line)
+  }
+
+  // The identifier a venue reuses tomorrow opens a new chain rather than
+  // joining yesterday's, which ended: dated by its own clock, it is another
+  // identity.
+  const tomorrow = LIFE[0].replaceAll('20260102', '20260103')
+  const again = life.fill(reader.transformLine(Buffer.from(tomorrow)))
+  assert.equal(identity(again, PERSISTENTID).equals(chains[0]), false)
+  assert.equal(life.alive, 1)
+  assert.equal(life.toString(), 'FixLifecycle(1 alive)')
+  life.clear()
+  assert.equal(life.alive, 0)
+  assert.equal(String(life), 'FixLifecycle(0 alive)')
+  // The same line at the same instant is the same chain identity, which is
+  // what makes two reads of one capture agree.
+  const replayed = life.fill(reader.transformLine(Buffer.from(LIFE[0])))
+  assert.ok(identity(replayed, PERSISTENTID).equals(chains[0]))
+  assert.ok(identity(replayed, ID).equals(ids[0]))
+
+  // Over an array, the reader runs one lifecycle for the whole stream, and a
+  // stamped stream read again keeps what it carries.
+  const once = reader.lifecycle(LIFE.map((line) => reader.transformLine(Buffer.from(line))))
+  const twice = reader.lifecycle(once)
+  assert.equal(once.length, LIFE.length)
+  for (const [at, first] of once.entries()) {
+    for (const tag of [INSTID, ID, PERSISTENTID]) {
+      assert.deepEqual(identity(first, tag), identity(twice[at], tag), `tag ${tag}`)
+    }
+    assert.equal(first.arrivals().length, twice[at].arrivals().length)
+  }
+  assert.ok(identity(once[5], PERSISTENTID).equals(chains[0]))
+  assert.deepEqual(reader.lifecycle([]), [])
+})
+
+test('a message naming no order has an id and no chain', () => {
+  const reader = new fix.FixCodec(seed())
+  const [heartbeat] = reader.lifecycle([
+    reader.transformLine(Buffer.from('8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|')),
+  ])
+  const sent = identity(heartbeat, ID)
+  assert.notEqual(sent, null, 'every message has an id')
+  assert.equal(heartbeat.getByTag(PERSISTENTID), null, 'no identifier, no chain')
+  assert.equal(heartbeat.getByTag(INSTID), null, 'no instrument, no identity')
+  // The impact clock is the sending time where no transaction time is
+  // stated, and the epoch where the message states no clock at all.
+  assert.equal(sent.readBigInt64BE(0), 1_767_348_930_000_000n)
+  const [undated] = reader.lifecycle([reader.transformLine(Buffer.from('8=FIX.4.4|35=0|10=0|'))])
+  assert.ok(identity(undated, ID).subarray(0, 8).equals(Buffer.alloc(8)))
+
+  // A lifecycle over the process default is the same pass: the columns are
+  // the crate's own, which every registry holds. It stamps messages, never
+  // lines.
+  const life = new fix.FixLifecycle()
+  assert.equal(life.alive, 0)
+  assert.ok(identity(life.fill(heartbeat), ID).equals(sent))
+  assert.throws(() => life.fill('8=FIX.4.4|35=0|10=0|'))
+})
+
+test('the instrument identity is the same across spellings and venues', () => {
+  const registry = seed()
+  const reader = new fix.FixCodec(registry)
+  const life = new fix.FixLifecycle(registry)
+  const instrument = (line) => identity(life.fill(reader.transformLine(Buffer.from(line))), INSTID)
+  // An ISIN outranks a symbol, so the same security under two symbols is one
+  // instrument, and case is not a difference.
+  const byIsin = instrument('8=FIX.4.4|35=D|11=B1|48=US0378331005|22=4|55=AAPL|207=XNAS|15=USD|10=0|')
+  assert.ok(byIsin.equals(instrument('8=FIX.4.4|35=D|11=B2|48=us0378331005|22=4|55=APPLE|207=xnas|15=usd|10=0|')))
+  // Another market is another instrument identity.
+  assert.equal(byIsin.equals(instrument('8=FIX.4.4|35=D|11=B3|48=US0378331005|22=4|55=AAPL|207=XLON|15=USD|10=0|')), false)
+  // Without an ISIN the symbol stands in, and a stated one wins over a
+  // symbol that would say otherwise.
+  const bySymbol = instrument('8=FIX.4.4|35=D|11=B4|55=AAPL|207=XNAS|15=USD|10=0|')
+  assert.notEqual(bySymbol, null)
+  assert.equal(bySymbol.equals(byIsin), false)
+  // A bridge row names the same facts under its own keys.
+  assert.ok(byIsin.equals(instrument('#ISINCODE=US0378331005|#LASTMKT=XNAS|#CURRENCY=USD|CLORDID=B5|')))
+  // Five orders, none of them ended.
+  assert.equal(life.alive, 5)
+})
+
 test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   const registry = seed()
   const schema = fix.schema(registry, 'FixMessage')
@@ -1078,9 +1222,9 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
   // after them, because no message carries it on the wire.
-  assert.deepEqual(fix.schemaTags().slice(-17), [
-    65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007,
-    65008, 65009, 65010, 65011, 65012, 65013, 65014, 65015, 385,
+  assert.deepEqual(fix.schemaTags().slice(-20), [
+    65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007, 65008, 65009,
+    65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 385,
   ])
 
   // A column is found by its folded name, and nothing else is needed.
@@ -1183,6 +1327,9 @@ test('the crate fields declare their own protocols', () => {
       'isincode',
       'miccode',
       'state',
+      'instid',
+      'id',
+      'persistentid',
     ],
   )
   assert.deepEqual(
@@ -1204,6 +1351,9 @@ test('the crate fields declare their own protocols', () => {
       'ISINCode',
       'MICCode',
       'State',
+      'InstId',
+      'Id',
+      'PersistentId',
     ],
   )
   // In tag order, on the standard branch, from 65000 up: above every tag FIX
@@ -1256,7 +1406,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // And the three facts a row derives from what the message said, typed as
   // the thing they hold rather than as the text a venue spelled it in: the
   // state is ten bytes, two digits of rank then the name, as `40PARTFILL`.
-  const derived = fix.crateFields().slice(13)
+  const derived = fix.crateFields().slice(13, 16)
   assert.deepEqual(
     derived.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
     [
@@ -1266,6 +1416,20 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
     ],
   )
   assert.equal(derived[2].dtype.asciiWidth, 10)
+
+  // And the three identities a lifecycle pass stamps - the instrument, the
+  // message and the order chain - sixteen bytes each, so a monitor joins on
+  // them as it joins on the digest.
+  const identities = fix.crateFields().slice(16)
+  assert.deepEqual(
+    identities.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
+    [
+      ['instid', 'InstId', '65016:', 'fixed_size_binary(16)'],
+      ['id', 'Id', '65017:', 'fixed_size_binary(16)'],
+      ['persistentid', 'PersistentId', '65018:', 'fixed_size_binary(16)'],
+    ],
+  )
+  assert.ok(identities.every((field) => field.description))
 
   // A new registry, a loaded one and a built one answer them alike, by
   // identifier, by name on the standard branch, and by the bare tag or name,
@@ -1286,7 +1450,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   // And each is a column of the fixed row, typed by the crate's own
   // definition and spelled by its folded name.
   const schema = fix.schema(seed(), 'FixMessage')
-  for (const field of [...held, ...derived]) {
+  for (const field of [...held, ...derived, ...identities]) {
     const at = schema.indexOf(field.name)
     assert.notEqual(at, null, field.name)
     assert.equal(schema.fieldAt(at).fix.id, field.fix.id)

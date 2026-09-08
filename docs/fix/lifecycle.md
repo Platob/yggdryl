@@ -16,7 +16,7 @@ A message says what happened; it does not say which order it happened to, beyond
 | Clock | `TransactTime(60)`, else `SendingTime(52)`, else the row's `timestamp`, else the epoch |
 | Stated | a value the message already carries is never overwritten, so a stamped stream read again is a no-op |
 | Entries | untouched: the wire re-emits byte for byte |
-| Bindings | Rust |
+| Bindings | Rust; Python (`FixLifecycle`, `FixCodec.lifecycle`, `parse_arrow_reader(lifecycle=True)`); JavaScript (`FixLifecycle`, `FixCodec.lifecycle`) |
 
 ## Use
 
@@ -68,6 +68,89 @@ One order's life, six messages long, on one persistent identity.
         .lifecycle(lines.iter().map(|line| reader.transform_line(line, false).unwrap()))
         .collect::<yggdryl::Result<_>>()?;
     assert_eq!(again[3].by_tag(PERSISTENTID_TAG)?, chain);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixLifecycle, FixRegistry
+
+    INSTID, ID, PERSISTENTID = 65016, 65017, 65018
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    reader = FixCodec(registry)
+    life = FixLifecycle(registry)
+
+    # The order, its acknowledgement under the venue's own identifier, a
+    # replace naming the old identifier, and the fill under the new one.
+    lines = [
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|60=20260102-10:15:30.000|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|",
+        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|",
+    ]
+    stamped = [life.fill(reader.transform_line(line)) for line in lines]
+
+    # One chain from the order to the fill, whatever identifier each
+    # message chose, and one instrument.
+    chain = stamped[0].by_tag(PERSISTENTID)
+    assert all(held.get_by_tag(PERSISTENTID) == chain for held in stamped)
+    instrument = stamped[0].by_tag(INSTID)
+    assert all(held.get_by_tag(INSTID) == instrument for held in stamped)
+
+    # Ids sort by the market's own clock.
+    ids = [held.by_tag(ID).as_py() for held in stamped]
+    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
+
+    # The fill ended the chain: nothing is alive, and the wire is untouched.
+    assert life.alive() == 0
+    assert stamped[3].to_bytes(ord("|")) == lines[3]
+
+    # Over an iterable, the codec runs one lifecycle for the whole stream.
+    again = reader.lifecycle(reader.transform_line(line) for line in lines)
+    assert again[3].by_tag(PERSISTENTID) == chain
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const reader = new fix.FixCodec(registry)
+    const life = new fix.FixLifecycle(registry)
+
+    // The order, its acknowledgement under the venue's own identifier, a
+    // replace naming the old identifier, and the fill under the new one.
+    const lines = [
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|60=20260102-10:15:30.000|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:30.250|10=0|',
+      '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|',
+      '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|',
+    ]
+    const stamped = lines.map((line) => life.fill(reader.transformLine(Buffer.from(line))))
+
+    // One chain from the order to the fill, whatever identifier each
+    // message chose, and one instrument.
+    const chain = stamped[0].byTag(65018)
+    assert.ok(stamped.every((held) => held.byTag(65018).equals(chain)))
+    const instrument = stamped[0].byTag(65016)
+    assert.ok(stamped.every((held) => held.byTag(65016).equals(instrument)))
+
+    // Ids sort by the market's own clock.
+    const ids = stamped.map((held) => Buffer.from(held.byTag(65017).asJs()))
+    assert.ok(ids.every((id, at) => at === 0 || Buffer.compare(ids[at - 1], id) < 0))
+
+    // The fill ended the chain: nothing is alive, and the wire is untouched.
+    assert.equal(life.alive, 0)
+    assert.equal(stamped[3].toBytes('|'.charCodeAt(0)).toString(), lines[3])
+
+    // Over an array, the reader runs one lifecycle for the whole stream.
+    const again = reader.lifecycle(lines.map((line) => reader.transformLine(Buffer.from(line))))
+    assert.ok(again[3].byTag(65018).equals(chain))
     ```
 
 ## The chain is the identifiers, joined

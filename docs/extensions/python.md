@@ -1180,7 +1180,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
+`yggdryl.fix` carries `FixRegistry`, `FixBranch`, `FixMsg`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `parse_arrow_reader()`, `classify_arrow_array()`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, `STANDARD_BRANCH` (`""`, what an absent `fix:branch` means), `ULBRIDGE_BRANCH` (`"ulbridge"`, the branch a bridge's own fields declare), and `USER_TAG_MIN` (`5000`) and `USER_TAG_MAX` (`40000`), the half-open tag range a non-standard branch may claim. The `fix:` vocabulary is six typed properties on the `field.fix` view: `branch`, `id`, `tag`, `tags`, `aliases`, `description`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1193,6 +1193,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | branch digests | `branch_by_bid` / `get_branch_by_bid` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
 | `FixMsg.entries()` | `(tag, bid, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
+| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a `list` out for the reader, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 

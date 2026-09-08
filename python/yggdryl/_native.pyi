@@ -4275,7 +4275,7 @@ class FixRegistry:
     raises ``ValueError`` while a message or the process default shares it.
 
     Every registry holds this crate's own fields from construction - the
-    sixteen standard fields from tag 65000 that ``fix_crate_fields`` lists, so
+    nineteen standard fields from tag 65000 that ``fix_crate_fields`` lists, so
     ``FixRegistry()`` is those and the standard branch they are on - and
     ``len`` counts them beside whatever was inserted or loaded; a store never
     writes them.
@@ -4474,8 +4474,29 @@ class FixCodec:
     ) -> FixMsg: ...
     def enrich_fixmsg(self, message: FixMsg) -> FixMsg: ...
     def enrich_fixmsgs(self, messages: Sequence[FixMsg]) -> list[FixMsg]: ...
+    def lifecycle(self, messages: Iterable[FixMsg]) -> list[FixMsg]: ...
     def __copy__(self) -> FixCodec: ...
     def __deepcopy__(self, memo: Any) -> FixCodec: ...
+    def __repr__(self) -> str: ...
+
+class FixLifecycle:
+    __hash__: ClassVar[None]  # type: ignore[assignment]
+
+    """The state a stream of messages has reached, one chain per order alive.
+
+    Built once per stream over a registry - the process default when none is
+    given - and fed every message in order through ``fill``, which stamps the
+    crate's ``instid``, ``id`` and ``persistentid`` columns: the instrument,
+    the message and the order chain the message's identifiers reach. A
+    terminal state closes the chain, so ``alive`` counts the orders still
+    open and ``clear`` forgets them all. A stated value is never overwritten
+    and the entries are untouched. Mutable, so unhashable.
+    """
+
+    def __init__(self, registry: FixRegistry | None = None) -> None: ...
+    def fill(self, message: FixMsg) -> FixMsg: ...
+    def alive(self) -> int: ...
+    def clear(self) -> None: ...
     def __repr__(self) -> str: ...
 
 class UlPlugin:
@@ -4552,6 +4573,8 @@ def fix_parse_arrow_reader(
     direction: str | None = None,
     null_values: list[str] | None = None,
     dedup: bool = False,
+    enrich: bool = False,
+    lifecycle: bool = False,
     batch_row_size: int | None = None,
     batch_byte_size: int | None = None,
 ) -> pyarrow.RecordBatchReader: ...
