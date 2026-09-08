@@ -322,6 +322,99 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
 }
 
 #[test]
+fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
+    let reader = reader();
+    // `ORDERID=123|#ORDERID=345` states two keys: dropping the `#` would
+    // merge two values under one name. The bare spelling resolves to the
+    // dictionary's `OrderID`, and the `#` one stays its own column - on
+    // whichever side of its twin it arrived.
+    for row in [
+        b"MSGTYPE=D|ORDERID=123|#ORDERID=345".as_slice(),
+        b"MSGTYPE=D|#ORDERID=345|ORDERID=123".as_slice(),
+    ] {
+        let message = reader.transform_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(
+            message.by_tag(37).unwrap().as_str(),
+            Some("123"),
+            "{spelled}"
+        );
+        assert_eq!(
+            message.by_name("#orderid").unwrap().as_str(),
+            Some("345"),
+            "{spelled}"
+        );
+        // The entries are the wire record, so both arrival spellings stay.
+        let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+        assert!(keys.contains(&"ORDERID"), "{spelled}: {keys:?}");
+        assert!(keys.contains(&"#ORDERID"), "{spelled}: {keys:?}");
+
+        // The wire rebuilds from the entries, `#` included, and re-reading
+        // the emitted line answers the same message: the twin judgment is
+        // idempotent.
+        let emitted = message.into_bytes(b'|');
+        let reread = reader.transform_line(&emitted, false).expect(&spelled);
+        assert_eq!(reread, message, "{spelled}");
+    }
+
+    // Alone, the `#` is the bridge's own marker and drops: the key is the
+    // dictionary field, exactly as a frame of only `#` keys always read.
+    let single = reader
+        .transform_line(b"MSGTYPE=D|#ORDERID=345", false)
+        .unwrap();
+    assert_eq!(single.by_tag(37).unwrap().as_str(), Some("345"));
+    assert!(single.by_name("#orderid").is_err());
+}
+
+#[test]
+fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
+    let reader = reader();
+    // The twin is the identity a key resolves by - case and separators fold
+    // away - and the space-separated row splits into the same judgment.
+    for row in [
+        b"MSGTYPE=D|OrderId=123|#ORDERID=345".as_slice(),
+        b"MSGTYPE=D|ORDER_ID=123|#ORDERID=345".as_slice(),
+        b"MSGTYPE=D ORDERID=123 #ORDERID=345".as_slice(),
+    ] {
+        let message = reader.transform_line(row, false).unwrap();
+        let spelled = String::from_utf8_lossy(row);
+        assert_eq!(
+            message.by_tag(37).unwrap().as_str(),
+            Some("123"),
+            "{spelled}"
+        );
+        assert_eq!(
+            message.by_name("#orderid").unwrap().as_str(),
+            Some("345"),
+            "{spelled}"
+        );
+    }
+
+    // A bare twin that stated an absence was never sent, so the `#` is the
+    // row's sole spelling and drops: the value lands under the dictionary
+    // field exactly as a lone `#` key always did.
+    for spelling in ["", "null", "<null>"] {
+        let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
+        let message = reader.transform_line(row.as_bytes(), false).expect(&row);
+        assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
+        assert!(message.by_name("#orderid").is_err(), "{row}");
+    }
+
+    // A `#` occurrence kept beside its bare twin stays verbatim and whole:
+    // one key, one value, nothing rewritten under a group name no registry
+    // resolves.
+    let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
+    let message = reader.transform_line(row, false).unwrap();
+    let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
+    assert!(keys.contains(&"NOPARTYIDS[0]"), "{keys:?}");
+    assert!(keys.contains(&"#NOPARTYIDS[0]"), "{keys:?}");
+    assert!(
+        !keys.iter().any(|key| key.starts_with("#NOPARTYIDS[0].")),
+        "{keys:?}"
+    );
+}
+
+#[test]
 fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     let reader = reader();
     // Out of order and gapped: `[2]` before `[0]`, with `[1]` absent.
