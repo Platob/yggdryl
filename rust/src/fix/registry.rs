@@ -736,13 +736,13 @@ impl FixRegistry {
     /// people use for it. `aliases` names any others.
     ///
     /// Answers the count added and the count merged. The message roots are
-    /// dropped; take [`Self::from_cfb`] when they matter.
+    /// dropped; take [`Self::from_cfb_file`] when they matter.
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::from_cfb`] and [`Self::merge_with`] return, and
-    /// [`Error::Parse`] when the supplied name, the stem standing in for it,
-    /// or an alias is not a branch.
+    /// Returns what [`Self::from_cfb_file`] and [`Self::merge_with`] return,
+    /// and [`Error::Parse`] when the supplied name, the stem standing in for
+    /// it, or an alias is not a branch.
     pub fn add_cfb_file(
         &mut self,
         handle: &dyn IOBase,
@@ -755,7 +755,7 @@ impl FixRegistry {
             .map(FixBranch::from_str)
             .transpose()?
             .filter(|held| !held.is_standard());
-        let (parsed, _) = Self::from_cfb(handle, dialect.as_ref())?;
+        let (parsed, _) = Self::from_cfb_file(handle, dialect.as_ref())?;
 
         let mut staged = self.clone();
         // The names this file answers to are the caller's, then the file's

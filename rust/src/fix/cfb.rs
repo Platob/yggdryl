@@ -8,7 +8,7 @@
 //!
 //! # Two entry points, one parse
 //!
-//! [`FixRegistry::from_cfb`] answers the whole file: a dictionary of its
+//! [`FixRegistry::from_cfb_file`] answers the whole file: a dictionary of its
 //! vocabulary, the branch record its root element declares, and the message
 //! roots its grammar bindings describe. [`FixField::from_cfb_file`] answers
 //! the vocabulary alone, in declaration order, and takes the branch name from
@@ -43,8 +43,8 @@
 //! `rg-name` beyond naming its group, `condition` and every `expression`,
 //! `regexp`, `domain`, every range and sentinel, every validity element,
 //! `merge-mode` (so a file patching a base configuration is read standalone),
-//! `message-types` and both mapping tables, `history`, `cvs-revision`, the
-//! root's `description`, `normalization-binding`, `reject-binding`,
+//! a `message-type`'s `supported` and `rejection`, `history`, `cvs-revision`,
+//! the root's `description`, `normalization-binding`, `reject-binding`,
 //! `flow-filter-binding`, `options`, `noe-normalization-binding`, and
 //! the root's own `version`, `date` and `logs`.
 //!
@@ -63,14 +63,80 @@
 //! Nothing is inferred from a validity child either: a `regexp` pinning a
 //! length does not become a fixed-width ascii, and a `domain="ranges"` does
 //! not become an enum.
+//!
+//! A description keeps its words and loses its layout. A stored description
+//! holds no control character, and a CBlock wraps a long one over several
+//! indented lines, so every run of whitespace and control characters becomes
+//! one space and the ends are dropped - the file's line breaks are the file's
+//! formatting, and refusing a whole dictionary over one of them would be
+//! refusing a document nothing is wrong with. Only the tag's own
+//! `description` children describe it, escaped or in a CDATA section, and two
+//! of them are two sentences: a sibling's text, and a validity child's own
+//! `description`, are that element's.
+//!
+//! # Every message type the file names
+//!
+//! A CBlock states its message types three ways, and all three are read into
+//! one code set on tag 35: the `message-types` listing states the type and
+//! the wording beside it, the two mapping tables spell the same type the way
+//! UlMessage does, and a `grammar-binding` binds one the listing sometimes
+//! omits. Each becomes one code - the file's own spelling as its name, the
+//! other spellings as aliases, the listing's wording as its description.
+//!
+//! A CBlock spells a type as the wire value and a qualifier, and the value is
+//! the first word: `AR Inbound` and `AR Outbound` are tag 35 `AR` in the two
+//! directions, `J Report` is `J` used as a report, `c SDR` and `c SLR` are
+//! `c` used two ways. A FIX message type is alphanumeric and never holds a
+//! space, so two declarations of one wire type are one code answering to
+//! both spellings - and a message root keeps the whole spelling, because the
+//! qualifier is what says which grammar the file bound. Resolving a root's
+//! name through this code set is what joins the two: `AR Outbound` answers
+//! `AR`. A first word wider than the column is hashed by
+//! [`MsgType::coerce`](crate::types::MsgType), which is what a bridge
+//! writing one key rather than a pair needs.
+//!
+//! A message type is a code of tag 35 and never a field, so a file that
+//! declares no tag 35 keeps its types out of the dictionary rather than
+//! inventing the field to hold them. What the file's own `map` for tag 35
+//! said leads, because a map states a wire value.
+//!
+//! # What a refusal names
+//!
+//! One [`Error::Parse`] with `cfb` as its target, the byte the reader had
+//! reached as its position, and a reason that quotes the document rather than
+//! describing it: what was expected, what arrived, and the element the file
+//! spells it in - `expected a decimal tag, got "MsgType" in
+//! "<vocabulary-tag name=\"MsgType\" type=\"string\">"`. A refusal that comes
+//! from the core rather than from the grammar - a description or a spelling
+//! that cannot be stored, a code set that cannot be rendered, two declarations
+//! of one tag - carries the core's own sentence behind the tag and the wording
+//! that raised it, and a malformed document quotes the bytes just before the
+//! reader stopped, because there is no element to name. Every span quoted
+//! from the document is bounded, the XML reader's own sentence included, and
+//! the core's is bounded by the error contract it is written under - so a
+//! refusal never grows with the file.
+//!
+//! A document that stops inside an element - a partial download, a
+//! half-written file - is a refusal too, naming the element it left open. The
+//! reader answers no error for one, so each loop that reads to its own end
+//! tag says so itself. Only the top-level loop's end of document is an
+//! ending, so a file cut between two of the root's children reads as what it
+//! holds rather than as a defect: nothing was left open but the root.
+//!
+//! The vocabulary is checked against itself after the document is read, and
+//! each declaration keeps the byte it was read at so that refusal names its
+//! own tag's declaration rather than the end of the file.
+
+use std::fmt::Display;
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
-use super::{FixBranch, FixCode, FixId, FixRegistry, occurrence_name};
+use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG, occurrence_name};
 
 /// How deep a grammar may nest before the parse refuses.
 ///
@@ -126,11 +192,17 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] naming the byte position for a document that
-    /// is not well-formed, a `type` outside the eight, a `domain` outside the
-    /// two, a constraint whose tag misses the vocabulary, a nested grammar
-    /// with no counter, or nesting past the guard depth.
-    pub fn from_cfb(handle: &dyn IOBase, branch: Option<&FixBranch>) -> Result<(Self, Vec<Field>)> {
+    /// Returns [`Error::Parse`] naming the byte position and quoting the
+    /// element for a document that is not well-formed or stops with an element
+    /// open, an unreadable `fix-version`, a `type` outside the eight, a
+    /// `domain` outside the two, a constraint whose tag misses the vocabulary,
+    /// a nested grammar with no counter, nesting past the guard depth, and for
+    /// anything the core refuses to store - a spelling, a description, a code
+    /// set, or two declarations of one tag.
+    pub fn from_cfb_file(
+        handle: &dyn IOBase,
+        branch: Option<&FixBranch>,
+    ) -> Result<(Self, Vec<Field>)> {
         let bytes = handle.read_all_bytes()?;
         Parse::new(&bytes, branch).run()
     }
@@ -139,8 +211,8 @@ impl FixRegistry {
 impl FixField<'_> {
     /// Reads an Ullink CBlock configuration for the vocabulary it declares.
     ///
-    /// The dictionary half of [`FixRegistry::from_cfb`], answered on its own
-    /// and in declaration order. Every field carries the `fix:tag` and
+    /// The dictionary half of [`FixRegistry::from_cfb_file`], answered on
+    /// its own and in declaration order. Every field carries the `fix:tag` and
     /// `fix:branch` that key it and whatever code set the file's maps decode
     /// for it, which is what [`FixRegistry::add_fields`] needs to fold one
     /// counterparty's file into a dictionary that already exists.
@@ -158,14 +230,14 @@ impl FixField<'_> {
     /// caller or not at all.
     ///
     /// The grammar bindings are still read and still validated, exactly as
-    /// [`FixRegistry::from_cfb`] reads them, and their roots dropped: one
+    /// [`FixRegistry::from_cfb_file`] reads them, and their roots dropped: one
     /// parse, one set of refusals, whichever entry point a caller takes.
     ///
     /// Two things a registry would hold are therefore not here - the message
     /// roots, and the branch record. A field stores its branch's *name* and
     /// never the version the root element declares, so a dictionary built
     /// from these fields alone knows the dialect by name and nothing else.
-    /// Take [`FixRegistry::from_cfb`] when either matters.
+    /// Take [`FixRegistry::from_cfb_file`] when either matters.
     ///
     /// One difference is not a loss: a dictionary keeps one entry per
     /// identity, so a tag a file declares twice identically arrives twice
@@ -173,9 +245,9 @@ impl FixField<'_> {
     ///
     /// # Errors
     ///
-    /// Returns what [`FixRegistry::from_cfb`] returns, and [`Error::Parse`]
-    /// naming `fix branch` when the supplied name - or the stem standing in
-    /// for it - is not one.
+    /// Returns what [`FixRegistry::from_cfb_file`] returns, and
+    /// [`Error::Parse`] naming `fix branch` when the supplied name - or the
+    /// stem standing in for it - is not one.
     pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>> {
         let dialect = branch
             .or_else(|| handle.url().and_then(Url::stem))
@@ -189,6 +261,12 @@ impl FixField<'_> {
 /// One file being read.
 struct Parse<'doc> {
     reader: Reader<&'doc [u8]>,
+    /// The document itself, for the text a refusal over it quotes.
+    ///
+    /// The reader answers where it stopped and not what it stopped on, and a
+    /// malformed document has no element to name, so the bytes are kept to
+    /// quote the span just before that position.
+    bytes: &'doc [u8],
     /// The dialect as the caller named it, filled in from the root element.
     branch: FixBranch,
     /// The vocabulary in declaration order, and where each tag sits in it.
@@ -196,20 +274,55 @@ struct Parse<'doc> {
     /// Indexed rather than scanned: a binding resolves every constraint it
     /// carries against the whole vocabulary, and both are thousands long in a
     /// real file - so a scan per constraint is the parse squared.
-    vocabulary: Vec<(i32, Field)>,
+    vocabulary: Vec<Declared>,
     positions: std::collections::HashMap<i32, usize>,
+    /// The message types the file declares, in declaration order.
+    ///
+    /// A CBlock states them three ways - a `message-types` listing, the two
+    /// mapping tables that spell them the way UlMessage does, and the
+    /// `grammar-binding` that binds one - and each is a type this dialect
+    /// carries. They are collected rather than written as they arrive because
+    /// the listing precedes the `vocabulary` that declares tag 35.
+    msgtypes: Vec<FixCode>,
+    /// Where each message type sits, by wire value and by folded spelling.
+    ///
+    /// Indexed rather than scanned, for the reason the vocabulary is: a file
+    /// lists a type per message and spells each of them twice more, and a
+    /// scan per declaration is the parse squared.
+    values: std::collections::HashMap<SmolStr, usize>,
+    spellings: std::collections::HashMap<String, usize>,
     roots: Vec<Field>,
+}
+
+/// One `vocabulary-tag` as the file declared it.
+struct Declared {
+    tag: i32,
+    /// The byte the reader had reached when this declaration was read.
+    ///
+    /// Kept because the dictionary is built after the whole document is: a
+    /// refusal over two declarations of one tag names the declaration that
+    /// raised it rather than the end of the file.
+    position: usize,
+    field: Field,
 }
 
 impl<'doc> Parse<'doc> {
     fn new(bytes: &'doc [u8], branch: Option<&FixBranch>) -> Self {
-        let mut reader = Reader::from_reader(bytes);
-        reader.config_mut().trim_text(true);
+        // Text arrives exactly as the file wrote it. The reader's own trimming
+        // is per event, and a description carrying an entity arrives as
+        // several, so it would eat the space in front of `&lt;SOH&gt;` and
+        // join two words. Layout is [`single_line`]'s question, and the only
+        // text this reads is a description's.
+        let reader = Reader::from_reader(bytes);
         Self {
             reader,
+            bytes,
             branch: branch.cloned().unwrap_or(FixBranch::STANDARD),
             vocabulary: Vec::new(),
             positions: std::collections::HashMap::new(),
+            msgtypes: Vec::new(),
+            values: std::collections::HashMap::new(),
+            spellings: std::collections::HashMap::new(),
             roots: Vec::new(),
         }
     }
@@ -239,7 +352,7 @@ impl<'doc> Parse<'doc> {
         let ordered: Vec<Field> = self
             .vocabulary
             .iter()
-            .map(|(_, field)| field.clone())
+            .map(|held| held.field.clone())
             .collect();
         self.dictionary()?;
         Ok(ordered)
@@ -258,10 +371,39 @@ impl<'doc> Parse<'doc> {
         // element was read for. The standard branch declares no dialect, so a
         // file parsed without a name registers nothing.
         if !self.branch.is_standard() {
-            registry.set_branch(self.branch.clone())?;
+            let branch = self.branch.clone();
+            registry.set_branch(branch).map_err(|error| {
+                // Located at the start, where the root element that declared
+                // this branch is: it is the document's first element, and the
+                // reader is at the end of the file by the time this runs.
+                refusal(
+                    0,
+                    format_smolstr!(
+                        "branch {} at FIX {}: {error}",
+                        self.branch,
+                        self.branch.version()
+                    ),
+                )
+            })?;
         }
-        for (_, field) in self.vocabulary {
-            registry.insert(field)?;
+        for held in self.vocabulary {
+            let Declared {
+                tag,
+                position,
+                field,
+            } = held;
+            // Read before the field moves: the refusal names the entry the
+            // file declared, which the registry no longer has to hand.
+            let named = SmolStr::new(field.name());
+            registry.insert(field).map_err(|error| {
+                refusal(
+                    position,
+                    format_smolstr!(
+                        "tag {tag} {:?}: {error}",
+                        elide_to(&named, ERROR_TEXT_LIMIT)
+                    ),
+                )
+            })?;
         }
         Ok(registry)
     }
@@ -282,6 +424,13 @@ impl<'doc> Parse<'doc> {
                         self.read_binding(&element)?;
                     } else if is_named(&element, b"maps") {
                         self.read_maps()?;
+                    } else if is_named(&element, b"message-types") {
+                        self.read_message_types()?;
+                    } else if is_named(&element, b"inbound-message-type-mappings")
+                        || is_named(&element, b"outbound-message-type-mappings")
+                    {
+                        let name = local_name(&element);
+                        self.read_msgtype_mappings(&name)?;
                     } else {
                         // Skipped siblings are routinely deep and text-bearing,
                         // so this counts depth rather than assuming a child set.
@@ -298,7 +447,7 @@ impl<'doc> Parse<'doc> {
             }
             buffer.clear();
         }
-        Ok(())
+        self.attach_msgtypes()
     }
 
     /// Reads the branch record the root element carries.
@@ -314,11 +463,30 @@ impl<'doc> Parse<'doc> {
     /// than about a vocabulary - the same file written from the other side
     /// declares the pair reversed and describes the same dialect.
     fn read_root(&mut self, element: &BytesStart<'_>) -> Result<()> {
-        let version = self
-            .attribute(element, "fix-version")?
-            .and_then(|held| held.parse::<Version>().ok())
-            .unwrap_or(self.branch.version());
-        self.branch = FixBranch::from_parts(self.branch.name(), version)?;
+        // An absent `fix-version` is the file saying nothing about the
+        // dialect and keeps the caller's; one the version grammar cannot read
+        // is the file saying something this cannot, and is refused rather than
+        // replaced by a default that would then be recorded as the dialect.
+        let version = match self.attribute(element, "fix-version")? {
+            // Trimmed, because attribute-value normalization turns a wrapped
+            // line into a space and never drops one; quoted as the file wrote
+            // it, because that is what a refusal is for.
+            Some(held) => held.trim().parse::<Version>().map_err(|error| {
+                self.refused_in(
+                    element,
+                    "a FIX version",
+                    format_args!("{:?}: {error}", elide_to(&held, ERROR_TEXT_LIMIT)),
+                )
+            })?,
+            None => self.branch.version(),
+        };
+        let branch = FixBranch::from_parts(self.branch.name(), version).map_err(|error| {
+            self.refused_by(
+                format_args!("branch {} at FIX {version}", self.branch),
+                &error,
+            )
+        })?;
+        self.branch = branch;
         Ok(())
     }
 
@@ -352,7 +520,7 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("vocabulary")),
                 Event::Start(element) if is_named(&element, b"vocabulary-tag") => {
                     let element = element.into_owned();
                     let described = self.read_description()?;
@@ -380,56 +548,94 @@ impl<'doc> Parse<'doc> {
     ///
     /// `<description />` contributes no key rather than an empty one: an empty
     /// description is the file saying nothing, and a stored empty string would
-    /// be this parser saying something.
+    /// be this parser saying something. A description of nothing but layout -
+    /// a line break and an indent - says the same nothing.
+    ///
+    /// Only the text inside `description` is taken. A `vocabulary-tag` may
+    /// carry other text-bearing children, and folding their words into the
+    /// description would be this parser inventing a sentence the file never
+    /// wrote.
     fn read_description(&mut self) -> Result<Option<String>> {
         let mut buffer = Vec::new();
         // Accumulated rather than assigned: a reader splits text at every
         // entity boundary, so one description carrying `&lt;SOH&gt;` arrives
         // as several events and keeping the last would keep a fragment.
         let mut described = String::new();
+        // The tag's own children, counted, because `description` is a name a
+        // validity child may carry too: only the tag's own is the tag's, and a
+        // deeper one describes whatever declared it.
+        let mut depth = 0_usize;
+        let mut describing = false;
         loop {
             let event = self
                 .reader
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
-                Event::Text(text) => {
+                Event::Eof => return Err(self.unclosed("vocabulary-tag")),
+                Event::Start(element) => {
+                    if depth == 0 && is_named(&element, b"description") {
+                        // A second description is a second sentence rather
+                        // than a longer word.
+                        described.push(' ');
+                        describing = true;
+                    }
+                    depth += 1;
+                }
+                Event::End(_) if depth == 0 => break,
+                Event::End(_) => {
+                    depth -= 1;
+                    describing &= depth > 0;
+                }
+                Event::Text(text) if describing => {
                     let raw = String::from_utf8_lossy(text.as_ref()).into_owned();
                     let held = quick_xml::escape::unescape(&raw)
                         .map_err(|error| self.malformed(&error.to_string()))?;
                     described.push_str(&held);
                 }
-                Event::GeneralRef(held) => {
+                Event::GeneralRef(held) if describing => {
                     let raw = format!("&{};", String::from_utf8_lossy(held.as_ref()));
                     let held = quick_xml::escape::unescape(&raw)
                         .map_err(|error| self.malformed(&error.to_string()))?;
                     described.push_str(&held);
                 }
-                Event::End(element) if is_named(&element, b"vocabulary-tag") => break,
+                // A CDATA section is how a description holds a `<` or an `&`
+                // without escaping one, so it is content and never unescaped.
+                Event::CData(text) if describing => {
+                    described.push_str(&String::from_utf8_lossy(text.as_ref()));
+                }
                 _ => {}
             }
             buffer.clear();
         }
-        Ok(Some(described).filter(|held| !held.trim().is_empty()))
+        Ok(Some(single_line(&described)).filter(|held| !held.is_empty()))
     }
 
     /// One `vocabulary-tag` as a dictionary field.
     fn push_tag(&mut self, element: &BytesStart<'_>, described: Option<&str>) -> Result<()> {
         let Some(name) = self.attribute(element, "name")? else {
-            return Err(self.refused("a vocabulary-tag with a name", "one without"));
+            return Err(self.refused_in(element, "a vocabulary-tag naming its tag", "one without"));
         };
-        let tag: i32 = name
-            .parse()
-            .map_err(|_| self.refused("a decimal tag", &name))?;
+        let tag: i32 = name.parse().map_err(|_| {
+            self.refused_in(
+                element,
+                "a decimal tag",
+                format_args!("{:?}", elide_to(&name, ERROR_TEXT_LIMIT)),
+            )
+        })?;
         let declared = self
             .attribute(element, "type")?
             .unwrap_or_else(|| "string".to_owned());
         if !TYPES.contains(&declared.as_str()) {
-            return Err(self.refused("one of the eight CBlock types", &declared));
+            return Err(self.refused_in(
+                element,
+                format_args!("one of the eight CBlock types ({})", TYPES.join(", ")),
+                format_args!("{:?}", elide_to(&declared, ERROR_TEXT_LIMIT)),
+            ));
         }
-        let dtype = DataType::from_str(&declared)
-            .map_err(|_| self.refused("a resolvable CBlock type", &declared))?;
+        let dtype = DataType::from_str(&declared).map_err(|error| {
+            self.refused_by(format_args!("tag {tag} type {declared:?}"), &error)
+        })?;
 
         // The FIX name case-folded and nothing else, with the file's own
         // spelling kept beside it: name resolution folds ASCII case, so a
@@ -441,14 +647,39 @@ impl<'doc> Parse<'doc> {
         // snapshot, so anything written into the `fix:` namespace before it
         // would be replaced away.
         if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase()) {
-            field.set_metadata([("display", alt.as_str())])?;
+            field
+                .set_metadata([("display", alt.as_str())])
+                .map_err(|error| {
+                    self.refused_by(
+                        format_args!("tag {tag} spelling {:?}", elide_to(&alt, ERROR_TEXT_LIMIT)),
+                        &error,
+                    )
+                })?;
         }
-        field.as_fix_mut().set_id(&self.owner(tag), tag)?;
-        if let Some(described) = described.filter(|held| !held.trim().is_empty()) {
-            field.as_fix_mut().set_description(described)?;
+        let owner = self.owner(tag);
+        field.as_fix_mut().set_id(&owner, tag).map_err(|error| {
+            self.refused_by(format_args!("tag {tag} on branch {owner}"), &error)
+        })?;
+        if let Some(described) = described {
+            field
+                .as_fix_mut()
+                .set_description(described)
+                .map_err(|error| {
+                    self.refused_by(
+                        format_args!(
+                            "tag {tag} description {:?}",
+                            elide_to(described, ERROR_TEXT_LIMIT)
+                        ),
+                        &error,
+                    )
+                })?;
         }
         self.positions.insert(tag, self.vocabulary.len());
-        self.vocabulary.push((tag, field));
+        self.vocabulary.push(Declared {
+            tag,
+            position: self.position(),
+            field,
+        });
         Ok(())
     }
 
@@ -470,15 +701,17 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("maps")),
                 Event::Start(element) if is_named(&element, b"map") => {
                     let named = self.attribute(&element, "name")?;
                     let decodes = named.as_deref().and_then(|named| self.decodes(named));
                     // A map naming no tag is still read to its end: skipping
                     // the entries would leave the reader inside them.
                     let codes = self.read_map_entries(decodes.is_some_and(|(_, fix)| fix))?;
-                    if let Some((at, _)) = decodes {
-                        self.attach_codes(at, &codes)?;
+                    // The name is what resolved the tag, so a map that
+                    // decodes one has one to quote in a refusal.
+                    if let Some(((at, _), named)) = decodes.zip(named.as_deref()) {
+                        self.attach_codes(at, &codes, named)?;
                     }
                 }
                 Event::Start(_) => depth += 1,
@@ -509,7 +742,7 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("map")),
                 Event::Empty(element) if is_named(&element, b"entry") => {
                     self.push_entry(&element, fix, &mut codes)?;
                 }
@@ -604,14 +837,14 @@ impl<'doc> Parse<'doc> {
         if let Some(at) = self
             .vocabulary
             .iter()
-            .rposition(|(_, field)| spelled(field) == named)
+            .rposition(|held| spelled(&held.field) == named)
         {
             return Some((at, true));
         }
         let at = self
             .vocabulary
             .iter()
-            .rposition(|(_, field)| crate::types::folds_equal(field.name(), named))?;
+            .rposition(|held| crate::types::folds_equal(held.field.name(), named))?;
         Some((at, false))
     }
 
@@ -620,11 +853,207 @@ impl<'doc> Parse<'doc> {
     /// An empty set is dropped rather than written: `set_codes` reads an empty
     /// slice as a removal, and a map declaring no entries is not the file
     /// saying the field has no codes.
-    fn attach_codes(&mut self, at: usize, codes: &[FixCode]) -> Result<()> {
+    fn attach_codes(&mut self, at: usize, codes: &[FixCode], named: &str) -> Result<()> {
         if codes.is_empty() {
             return Ok(());
         }
-        self.vocabulary[at].1.as_fix_mut().set_codes(codes)
+        let tag = self.vocabulary[at].tag;
+        let attached = self.vocabulary[at].field.as_fix_mut().set_codes(codes);
+        attached.map_err(|error| {
+            self.refused_by(
+                format_args!("map {:?} on tag {tag}", elide_to(named, ERROR_TEXT_LIMIT)),
+                &error,
+            )
+        })
+    }
+
+    /// Reads every `message-type` the file lists.
+    ///
+    /// `value` is what the bridge calls the type - `7`, `P Report Ack` - and
+    /// `description` is the wording beside it. Neither `supported` nor
+    /// `rejection` is read: a type this dialect refuses is still a type it
+    /// names, and a dictionary that dropped it would answer nothing for the
+    /// traffic someone is reading a rejection over.
+    fn read_message_types(&mut self) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => return Err(self.unclosed("message-types")),
+                Event::Start(element) | Event::Empty(element)
+                    if is_named(&element, b"message-type") =>
+                {
+                    let spelling = self.attribute(&element, "value")?;
+                    let described = self.attribute(&element, "description")?;
+                    if let Some(spelling) = spelling.filter(|held| !held.trim().is_empty()) {
+                        self.push_msgtype(&spelling, described.as_deref())?;
+                    }
+                }
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if is_named(&element, b"message-types") && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    /// Reads one mapping table for the spellings it gives a message type.
+    ///
+    /// `<entry key="allocationreportack" value="P Report Ack" />` is one
+    /// message type under two spellings: the value is the type as the rest of
+    /// the file spells it, and the key is the name UlMessage uses. The pair is
+    /// an alias and never a second type, so a table naming a type the file
+    /// never listed still declares that type.
+    fn read_msgtype_mappings(&mut self, name: &[u8]) -> Result<()> {
+        let mut buffer = Vec::new();
+        let mut depth = 0_usize;
+        loop {
+            let event = self
+                .reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| self.malformed(&error.to_string()))?;
+            match event {
+                Event::Eof => return Err(self.unclosed(&String::from_utf8_lossy(name))),
+                Event::Start(element) | Event::Empty(element) if is_named(&element, b"entry") => {
+                    let key = self.attribute(&element, "key")?;
+                    let spelling = self.attribute(&element, "value")?;
+                    if let Some(spelling) = spelling.filter(|held| !held.trim().is_empty()) {
+                        let at = self.push_msgtype(&spelling, None)?;
+                        if let Some(key) = key.filter(|held| !held.trim().is_empty()) {
+                            self.alias_msgtype(at, &key);
+                        }
+                    }
+                }
+                Event::Start(_) => depth += 1,
+                Event::End(element) => {
+                    if element.local().as_ref() == name && depth == 0 {
+                        break;
+                    }
+                    depth = depth.saturating_sub(1);
+                }
+                _ => {}
+            }
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    /// One message type as a code of tag 35, answering where it sits.
+    ///
+    /// The value is [`msgtype_value`]'s and the name is the file's whole
+    /// spelling, so two declarations of one wire type - `AR Inbound` and
+    /// `AR Outbound` - are one code answering to both. A spelling the file
+    /// states twice is one code, and the first wording it gave is the one it
+    /// keeps.
+    fn push_msgtype(&mut self, spelling: &str, described: Option<&str>) -> Result<usize> {
+        let spelling = spelling.trim();
+        let value = msgtype_value(spelling);
+        let described = described.map(single_line).filter(|held| !held.is_empty());
+        if let Some(at) = self.values.get(value.as_str()).copied() {
+            if self.msgtypes[at].description().is_none() {
+                if let Some(described) = described {
+                    self.msgtypes[at] = self.msgtypes[at].clone().with_description(described);
+                }
+            }
+            self.alias_msgtype(at, spelling);
+            return Ok(at);
+        }
+        // Two spellings hashing to one value is a collision and not something
+        // to resolve by picking one, exactly as a registration refuses it.
+        if let Some(taken) = self
+            .spellings
+            .get(&crate::types::normalized(spelling))
+            .copied()
+        {
+            return Err(self.refused(
+                "a free message type value",
+                format_args!(
+                    "{:?} at {:?}, which {:?} holds",
+                    elide_to(spelling, ERROR_TEXT_LIMIT),
+                    value.as_str(),
+                    elide_to(self.msgtypes[taken].name(), ERROR_TEXT_LIMIT)
+                ),
+            ));
+        }
+        let mut code = FixCode::new(spelling, value.as_str());
+        if let Some(described) = described {
+            code = code.with_description(described);
+        }
+        self.msgtypes.push(code);
+        let at = self.msgtypes.len() - 1;
+        self.values.insert(SmolStr::new(value.as_str()), at);
+        self.spellings
+            .insert(crate::types::normalized(spelling), at);
+        Ok(at)
+    }
+
+    /// Adds one more spelling that reaches the message type at `at`.
+    ///
+    /// A spelling another code already answers to is dropped rather than
+    /// added, because two codes one spelling reaches resolve to neither -
+    /// the rule a map's entries are read under.
+    fn alias_msgtype(&mut self, at: usize, spelling: &str) {
+        let spelling = spelling.trim();
+        if spelling.is_empty() {
+            return;
+        }
+        let key = crate::types::normalized(spelling);
+        if self.spellings.contains_key(&key) {
+            return;
+        }
+        self.msgtypes[at].push_alias(spelling);
+        self.spellings.insert(key, at);
+    }
+
+    /// Puts the message types the file declared on its own tag 35.
+    ///
+    /// A CBlock states its types beside its vocabulary rather than inside it,
+    /// so this is the one write that crosses the two. A file declaring no tag
+    /// 35 has nowhere to put them and keeps them out of the dictionary rather
+    /// than inventing the field: a message type is a code of tag 35 and never
+    /// a field of its own.
+    fn attach_msgtypes(&mut self) -> Result<()> {
+        if self.msgtypes.is_empty() {
+            return Ok(());
+        }
+        let Some(at) = self.positions.get(&MSGTYPE_TAG).copied() else {
+            return Ok(());
+        };
+        let mut codes = std::mem::take(&mut self.msgtypes);
+        // What the file already said about tag 35 - a `map` naming it - leads,
+        // because a map states the wire value and a message type is named by
+        // the bridge; a spelling either already holds is not added twice.
+        let held: Vec<FixCode> = self.vocabulary[at]
+            .field
+            .as_fix()
+            .codes()
+            .filter_map(std::result::Result::ok)
+            .map(FixCode::from)
+            .collect();
+        codes.retain(|code| {
+            !held
+                .iter()
+                .any(|kept| kept.value() == code.value() || kept.is_spelled(code.name()))
+        });
+        codes.splice(0..0, held);
+        let position = self.vocabulary[at].position;
+        let attached = self.vocabulary[at].field.as_fix_mut().set_codes(&codes);
+        attached.map_err(|error| {
+            refusal(
+                position,
+                format_smolstr!("the message types tag {MSGTYPE_TAG} carries: {error}"),
+            )
+        })
     }
 
     /// Reads one `grammar-binding` into one message root.
@@ -635,9 +1064,15 @@ impl<'doc> Parse<'doc> {
     /// MsgType is case-bearing, `A` is Logon and `a` is QuoteStatusRequest, so
     /// folding a root name would merge two messages.
     fn read_binding(&mut self, element: &BytesStart<'_>) -> Result<()> {
-        let msgtype = self
-            .attribute(element, "type")?
-            .unwrap_or_else(|| super::build::UNKNOWN_MSGTYPE.to_owned());
+        let declared = self.attribute(element, "type")?;
+        // A file binds types its own listing sometimes omits, and a bound type
+        // is one this dialect carries: the binding declares it too. The
+        // unknown root is this crate's word for a binding that named nothing,
+        // so it is not one of them.
+        if let Some(declared) = declared.as_deref().filter(|held| !held.trim().is_empty()) {
+            self.push_msgtype(declared, None)?;
+        }
+        let msgtype = declared.unwrap_or_else(|| super::build::UNKNOWN_MSGTYPE.to_owned());
         let mut buffer = Vec::new();
         loop {
             let event = self
@@ -645,10 +1080,17 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("grammar-binding")),
                 Event::Start(element) if is_named(&element, b"grammar") => {
-                    let children = self.read_grammar(1)?;
-                    let root = DataType::from_fields(children)?.required_field(msgtype.clone());
+                    let children = self.read_grammar(1, &msgtype)?;
+                    let root = DataType::from_fields(children)
+                        .map_err(|error| {
+                            self.refused_by(
+                                format_args!("message {:?}", elide_to(&msgtype, ERROR_TEXT_LIMIT)),
+                                &error,
+                            )
+                        })?
+                        .required_field(msgtype.clone());
                     self.roots.push(root);
                 }
                 // An empty root grammar is an empty non-null struct rather
@@ -671,11 +1113,14 @@ impl<'doc> Parse<'doc> {
     /// One recursive function, because a nested grammar is a sibling as often
     /// as a child: a grammar routinely holds several, separated by plain
     /// constraints, so a two-level special case would read the file wrongly.
-    fn read_grammar(&mut self, depth: usize) -> Result<Vec<Field>> {
+    fn read_grammar(&mut self, depth: usize, msgtype: &str) -> Result<Vec<Field>> {
         if depth > MAX_DEPTH {
             return Err(self.refused(
                 format_args!("a grammar nested at most {MAX_DEPTH} deep"),
-                "a deeper one",
+                format_args!(
+                    "a deeper one in message {:?}",
+                    elide_to(msgtype, ERROR_TEXT_LIMIT)
+                ),
             ));
         }
         let mut children: Vec<Field> = Vec::new();
@@ -686,24 +1131,24 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("grammar")),
                 Event::Start(element) if is_named(&element, b"tag-constraint") => {
-                    let field = self.read_constraint(&element, false)?;
+                    let field = self.read_constraint(&element, false, msgtype)?;
                     push_child(&mut children, field);
                 }
                 Event::Empty(element) if is_named(&element, b"tag-constraint") => {
-                    let field = self.read_constraint(&element, true)?;
+                    let field = self.read_constraint(&element, true, msgtype)?;
                     push_child(&mut children, field);
                 }
                 Event::Start(element) if is_named(&element, b"grammar") => {
-                    let nested = self.read_grammar(depth + 1)?;
-                    if let Some(group) = self.grouped(nested)? {
+                    let nested = self.read_grammar(depth + 1, msgtype)?;
+                    if let Some(group) = self.grouped(nested, msgtype)? {
                         push_child(&mut children, group);
                     }
                 }
                 // A nested grammar with no children has no counter to name it.
                 Event::Empty(element) if is_named(&element, b"grammar") => {
-                    return Err(self.refused("a nested grammar with a counter", "an empty one"));
+                    return Err(self.counterless(msgtype));
                 }
                 Event::End(element) if is_named(&element, b"grammar") => break,
                 _ => {}
@@ -719,9 +1164,9 @@ impl<'doc> Parse<'doc> {
     /// group takes that counter's name, tag and description, while the
     /// counter's own integer type is discarded because a list's length already
     /// carries it. The item struct holds everything after it.
-    fn grouped(&mut self, mut children: Vec<Field>) -> Result<Option<Field>> {
+    fn grouped(&mut self, mut children: Vec<Field>, msgtype: &str) -> Result<Option<Field>> {
         if children.is_empty() {
-            return Err(self.refused("a nested grammar with a counter", "an empty one"));
+            return Err(self.counterless(msgtype));
         }
         let counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
@@ -729,13 +1174,39 @@ impl<'doc> Parse<'doc> {
         if matches!(counter.dtype(), DataType::List(_) | DataType::LargeList(_)) {
             return Err(self.refused(
                 "a nested grammar opening with its counter",
-                "one opening with another grammar",
+                format_args!(
+                    "one opening with the group {:?} in message {:?}",
+                    elide_to(counter.name(), ERROR_TEXT_LIMIT),
+                    elide_to(msgtype, ERROR_TEXT_LIMIT)
+                ),
             ));
         }
-        let item = DataType::from_fields(children)?.required_field(occurrence_name(&counter));
+        let item = DataType::from_fields(children)
+            .map_err(|error| {
+                self.refused_by(
+                    format_args!(
+                        "group {:?} in message {:?}",
+                        elide_to(counter.name(), ERROR_TEXT_LIMIT),
+                        elide_to(msgtype, ERROR_TEXT_LIMIT)
+                    ),
+                    &error,
+                )
+            })?
+            .required_field(occurrence_name(&counter));
         let mut group = DataType::list(item).nullable_field(counter.name());
         group.set_nullable(counter.is_nullable());
-        group.set_metadata(counter.as_metadata().iter())?;
+        group
+            .set_metadata(counter.as_metadata().iter())
+            .map_err(|error| {
+                self.refused_by(
+                    format_args!(
+                        "group {:?} in message {:?}",
+                        elide_to(counter.name(), ERROR_TEXT_LIMIT),
+                        elide_to(msgtype, ERROR_TEXT_LIMIT)
+                    ),
+                    &error,
+                )
+            })?;
         Ok(Some(group))
     }
 
@@ -744,22 +1215,46 @@ impl<'doc> Parse<'doc> {
     /// It resolves its tag in this file's own vocabulary, clones that entry
     /// and overrides only the clone's nullability - so the dictionary stays
     /// immutable and one entry serves every message that binds it.
-    fn read_constraint(&mut self, element: &BytesStart<'_>, closed: bool) -> Result<Field> {
+    fn read_constraint(
+        &mut self,
+        element: &BytesStart<'_>,
+        closed: bool,
+        msgtype: &str,
+    ) -> Result<Field> {
         let Some(name) = self.attribute(element, "name")? else {
-            return Err(self.refused("a tag-constraint with a name", "one without"));
+            return Err(self.refused_in(
+                element,
+                "a tag-constraint naming its tag",
+                format_args!(
+                    "one without in message {:?}",
+                    elide_to(msgtype, ERROR_TEXT_LIMIT)
+                ),
+            ));
         };
-        let tag: i32 = name
-            .parse()
-            .map_err(|_| self.refused("a decimal tag", &name))?;
+        let tag: i32 = name.parse().map_err(|_| {
+            self.refused_in(
+                element,
+                "a decimal tag",
+                format_args!(
+                    "{:?} in message {:?}",
+                    elide_to(&name, ERROR_TEXT_LIMIT),
+                    elide_to(msgtype, ERROR_TEXT_LIMIT)
+                ),
+            )
+        })?;
         let Some(held) = self
             .positions
             .get(&tag)
             .and_then(|at| self.vocabulary.get(*at))
-            .map(|(_, field)| field.clone())
+            .map(|held| held.field.clone())
         else {
-            return Err(self.refused(
+            return Err(self.refused_in(
+                element,
                 "a tag this file's vocabulary declares",
-                format_args!("tag {tag}"),
+                format_args!(
+                    "tag {tag} in message {:?}",
+                    elide_to(msgtype, ERROR_TEXT_LIMIT)
+                ),
             ));
         };
         // `required` is usually a flag but is sometimes a condition such as
@@ -792,7 +1287,7 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => return Err(self.unclosed("tag-constraint")),
                 Event::Start(held) => {
                     self.check_domain(&held)?;
                     depth += 1;
@@ -819,7 +1314,11 @@ impl<'doc> Parse<'doc> {
         if DOMAINS.contains(&domain.as_str()) {
             return Ok(());
         }
-        Err(self.refused("a domain of all-values or ranges", &domain))
+        Err(self.refused_in(
+            element,
+            format_args!("a domain of {} or {}", DOMAINS[0], DOMAINS[1]),
+            format_args!("{:?}", elide_to(&domain, ERROR_TEXT_LIMIT)),
+        ))
     }
 
     /// Skips one element and everything under it, by counting depth.
@@ -832,7 +1331,9 @@ impl<'doc> Parse<'doc> {
                 .read_event_into(&mut buffer)
                 .map_err(|error| self.malformed(&error.to_string()))?;
             match event {
-                Event::Eof => break,
+                Event::Eof => {
+                    return Err(self.unclosed(&String::from_utf8_lossy(name)));
+                }
                 Event::Start(_) => depth += 1,
                 Event::End(held) => {
                     if depth == 0 && held.local_name().as_ref() == name {
@@ -868,23 +1369,156 @@ impl<'doc> Parse<'doc> {
         Ok(None)
     }
 
-    /// A refusal naming the byte position the reader has reached.
+    /// The byte the reader has reached, which every refusal is located at.
+    fn position(&self) -> usize {
+        self.reader.buffer_position() as usize
+    }
+
+    /// The document text just before that position, bounded.
+    ///
+    /// What a malformed document has instead of an element: the reader stopped
+    /// before it had one, so a refusal quotes what it was reading. Lossy,
+    /// because those are the bytes a refusal exists to show.
+    fn reading(&self) -> String {
+        let end = self.position().min(self.bytes.len());
+        let start = end.saturating_sub(ERROR_TEXT_LIMIT);
+        String::from_utf8_lossy(&self.bytes[start..end]).into_owned()
+    }
+
+    /// A refusal over a document the XML reader itself could not read.
+    ///
+    /// The reader's own sentence quotes the document too - an unmatched end
+    /// tag names both spellings, an unrecognized entity names it - so it
+    /// crosses the same budget every other span does.
     fn malformed(&self, reason: &str) -> Error {
-        Error::Parse {
-            target: TARGET,
-            position: self.reader.buffer_position() as usize,
-            reason: SmolStr::new(reason),
-        }
+        let reading = self.reading();
+        self.refused(
+            "a well-formed CBlock",
+            format_args!(
+                "{}, reading {:?}",
+                elide_to(reason, ERROR_TEXT_LIMIT),
+                elide_to(&reading, ERROR_TEXT_LIMIT)
+            ),
+        )
     }
 
     /// A refusal naming what was expected and what arrived.
-    fn refused(&self, expected: impl std::fmt::Display, got: impl std::fmt::Display) -> Error {
-        Error::Parse {
-            target: TARGET,
-            position: self.reader.buffer_position() as usize,
-            reason: format_smolstr!("expected {expected}, got {got}"),
-        }
+    fn refused(&self, expected: impl Display, got: impl Display) -> Error {
+        refusal(self.position(), expected_got(expected, got))
     }
+
+    /// The same refusal, quoting the element the file spells it in.
+    fn refused_in(
+        &self,
+        element: &BytesStart<'_>,
+        expected: impl Display,
+        got: impl Display,
+    ) -> Error {
+        let spelling = spelling(element);
+        self.refused(
+            expected,
+            format_args!("{got} in {:?}", elide_to(&spelling, ERROR_TEXT_LIMIT)),
+        )
+    }
+
+    /// A refusal over an element the document never closed.
+    ///
+    /// Every loop below reads to its own end tag, and a reader answers no
+    /// error for an element left open, so a document cut short - a partial
+    /// download, a half-written file - would otherwise read as a smaller
+    /// dictionary than the file it came from.
+    fn unclosed(&self, name: &str) -> Error {
+        self.refused(
+            format_args!("a closed <{name}>"),
+            format_args!(
+                "the end of the document, reading {:?}",
+                elide_to(&self.reading(), ERROR_TEXT_LIMIT)
+            ),
+        )
+    }
+
+    /// The one refusal a nested grammar with no counter raises.
+    ///
+    /// Two arms reach it - a grammar the file closed empty, and one whose
+    /// children were all read before the grouping asked for the first - and
+    /// they are the same statement about the same file.
+    fn counterless(&self, msgtype: &str) -> Error {
+        self.refused(
+            "a nested grammar with a counter",
+            format_args!(
+                "an empty one in message {:?}",
+                elide_to(msgtype, ERROR_TEXT_LIMIT)
+            ),
+        )
+    }
+
+    /// A refusal the core raised, behind what this file was reading.
+    ///
+    /// The core states what it would not store and this states which of the
+    /// file's declarations asked it to, so neither half has to be guessed at.
+    /// The core's own sentence crosses whole: it bounds the caller text it
+    /// interpolates itself, so it says what it would not store rather than
+    /// half of it.
+    fn refused_by(&self, reading: impl Display, error: &Error) -> Error {
+        refusal(self.position(), format_smolstr!("{reading}: {error}"))
+    }
+}
+
+/// A refusal at one byte of the document.
+fn refusal(position: usize, reason: SmolStr) -> Error {
+    Error::Parse {
+        target: TARGET,
+        position,
+        reason,
+    }
+}
+
+/// One element as the file spells it: its name and every attribute.
+///
+/// A refusal quotes the source rather than describing it, so the declaration
+/// it names is one search away in a file that is megabytes of them. The
+/// closing form is this parser's, because an empty element's own `/` is not
+/// in what the reader answers - only the space in front of it, which goes.
+fn spelling(element: &BytesStart<'_>) -> String {
+    format!("<{}>", String::from_utf8_lossy(element).trim_end())
+}
+
+/// The wire value one declared message type carries.
+///
+/// A CBlock spells a message type as the wire value and a qualifier: `AR
+/// Inbound` and `AR Outbound` are tag 35 `AR` in the two directions, `J
+/// Report` is `J` used as a report, `c SDR` and `c SLR` are `c` used two
+/// ways. The wire value is the first word - a FIX message type is
+/// alphanumeric and never holds a space - and the qualifier says which
+/// grammar the file binds under it, which is why a message root keeps the
+/// whole spelling while the code takes the value and answers to both.
+///
+/// A first word wider than the column is still hashed by
+/// [`MsgType::coerce`](crate::types::MsgType), because a bridge writing one
+/// key rather than a pair is the case that mapping exists for.
+fn msgtype_value(spelling: &str) -> crate::types::MsgType {
+    let wire = spelling.split_whitespace().next().unwrap_or(spelling);
+    crate::types::MsgType::coerce(wire)
+}
+
+/// One description as a single line of prose.
+///
+/// A stored description holds no control character, and a CBlock wraps a long
+/// one over several indented lines, so every run of whitespace and control
+/// characters becomes one space and the ends are dropped. What the file wrote
+/// as layout was layout; every word it wrote survives.
+fn single_line(text: &str) -> String {
+    let mut held = String::with_capacity(text.len());
+    for word in text.split(|character: char| character.is_whitespace() || character.is_control()) {
+        if word.is_empty() {
+            continue;
+        }
+        if !held.is_empty() {
+            held.push(' ');
+        }
+        held.push_str(word);
+    }
+    held
 }
 
 /// Adds one child, disambiguating a name a sibling already took.

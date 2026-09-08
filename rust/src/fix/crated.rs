@@ -306,19 +306,29 @@ impl super::FixRegistry {
     /// [`MsgType::coerce`](crate::types::MsgType::coerce)'s - itself where it
     /// fits, a stable synthesized value where it does not.
     ///
+    /// `spelling` is what the wire, the bridge or the configuration calls it.
+    /// `name` is the symbolic name the set files it under, and the spelling
+    /// becomes an alias of it when the two differ, so both still reach the
+    /// value; with none named the spelling is the name. `description` is the
+    /// source's own wording for it.
+    ///
     /// Nothing is hard-coded: the vocabulary is the dictionary's own code set
     /// on tag 35, and this adds to it exactly as a generator would.
     ///
-    /// Idempotent. Registering a type the dictionary already spells answers
-    /// its existing value and changes nothing, so a reader may call it per
-    /// row without growing the code set per row.
+    /// Idempotent, and enriching rather than replacing: registering a type the
+    /// dictionary already spells answers its existing value, adds a spelling
+    /// the set did not answer to, and fills a description it did not have -
+    /// but never rewrites a name or a wording a source already gave it. A
+    /// reader may call it per row without growing the code set per row.
     ///
     /// # Errors
     ///
     /// Returns the registry's own refusal when tag 35 is absent, when its
-    /// code set will not read, or when the synthesized value collides with a
+    /// code set will not read, when the synthesized value collides with a
     /// different spelling - which is a real conflict and not something to
-    /// resolve by picking one.
+    /// resolve by picking one - or when a name or spelling another code
+    /// already answers to would be added, because a spelling two codes reach
+    /// resolves to neither.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -328,39 +338,94 @@ impl super::FixRegistry {
     /// let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     ///
     /// // One the specification publishes is already there.
-    /// assert_eq!(registry.register_msgtype("NewOrderSingle")?.as_str(), "D");
+    /// assert_eq!(registry.register_msgtype("NewOrderSingle", None, None)?.as_str(), "D");
     ///
     /// // One a bridge invents is added, and stays put.
-    /// let held = registry.register_msgtype("P Report Ack")?;
+    /// let held = registry.register_msgtype("P Report Ack", None, None)?;
     /// assert!(held.is_synthetic());
-    /// assert_eq!(registry.register_msgtype("P Report Ack")?, held);
+    /// assert_eq!(registry.register_msgtype("P Report Ack", None, None)?, held);
+    ///
+    /// // A later source describing the same type fills what it was missing.
+    /// registry.register_msgtype("P Report Ack", None, Some("Allocation Report ACK"))?;
+    /// let field = registry.field_by_tag(35)?;
+    /// assert_eq!(
+    ///     field
+    ///         .as_fix()
+    ///         .code_by_name("P Report Ack")
+    ///         .and_then(|code| code.parse_doc().ok().flatten()),
+    ///     Some("Allocation Report ACK".to_owned()),
+    /// );
     /// # Ok(())
     /// # }
     /// ```
-    pub fn register_msgtype(&mut self, spelling: &str) -> Result<crate::types::MsgType> {
+    pub fn register_msgtype(
+        &mut self,
+        spelling: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> Result<crate::types::MsgType> {
         let field = self.field_by_tag(MSGTYPE_TAG)?;
         let view = field.as_fix();
-        // Already spelled, by name or by value: answer what it already is.
-        if let Some(held) = view.code_value(spelling) {
-            return crate::types::MsgType::new(held);
-        }
-        let value = crate::types::MsgType::coerce(spelling);
-        if let Some(taken) = view.code_name(value.as_str()) {
-            return Err(crate::Error::Conflict {
-                expected: "a free message type value",
-                actual: "one another spelling holds",
-                path: crate::text::expected_got(
-                    format_args!("{spelling:?} at {:?}", value.as_str()),
-                    format_args!("{taken:?}"),
-                ),
-            });
-        }
         let mut codes: Vec<super::FixCode> = view
             .codes()
             .filter_map(std::result::Result::ok)
             .map(super::FixCode::from)
             .collect();
-        codes.push(super::FixCode::new(spelling, value.as_str()));
+        // Every spelling this registration states, the value's own first.
+        let named = name.unwrap_or(spelling);
+        let (value, at) = match view.code_value(spelling) {
+            // Already spelled, by name, alias or wire value: the set answers,
+            // and this states whatever it did not already hold.
+            Some(held) => {
+                let value = crate::types::MsgType::new(held)?;
+                let at = codes
+                    .iter()
+                    .position(|code| code.value() == value.as_str())
+                    .ok_or_else(|| {
+                        crate::Error::absent("fix code", format_args!("value {held:?} on tag 35"))
+                    })?;
+                (value, at)
+            }
+            None => {
+                let value = crate::types::MsgType::coerce(spelling);
+                if let Some(taken) = view.code_name(value.as_str()) {
+                    return Err(crate::Error::Conflict {
+                        expected: "a free message type value",
+                        actual: "one another spelling holds",
+                        path: crate::text::expected_got(
+                            format_args!("{spelling:?} at {:?}", value.as_str()),
+                            format_args!("{taken:?}"),
+                        ),
+                    });
+                }
+                codes.push(super::FixCode::new(named, value.as_str()));
+                (value, codes.len() - 1)
+            }
+        };
+        // A spelling another code already answers to is refused rather than
+        // added: two codes one spelling reaches resolve to neither.
+        for spelling in [named, spelling] {
+            if let Some(taken) = view.code_value(spelling) {
+                if taken != value.as_str() {
+                    return Err(crate::Error::Conflict {
+                        expected: "a free message type spelling",
+                        actual: "one another code answers to",
+                        path: crate::text::expected_got(
+                            format_args!("{spelling:?} at {:?}", value.as_str()),
+                            format_args!("{taken:?}"),
+                        ),
+                    });
+                }
+            }
+            if !codes[at].is_spelled(spelling) {
+                codes[at].push_alias(spelling);
+            }
+        }
+        if codes[at].description().is_none() {
+            if let Some(description) = description {
+                codes[at] = codes[at].clone().with_description(description);
+            }
+        }
         let mut field = field.clone();
         field.as_fix_mut().set_codes(&codes)?;
         self.update(field)?;

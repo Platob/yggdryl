@@ -90,7 +90,7 @@ pub use nested::{
     DictionaryScalar, FixedSizeListScalar, LargeListScalar, LargeListViewScalar, ListScalar,
     ListViewScalar, MapScalar, RunEndEncodedScalar, StructScalar, UnionScalar, VariantScalar,
 };
-pub(crate) use parser::folds_equal;
+pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use scalar::{Scalar, ScalarFamily, ScalarValue};
 pub use temporal::scalars::{

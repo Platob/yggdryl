@@ -368,6 +368,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     // The two FIX facts a caller spells rather than derives: what an absent
     // `fix:branch` means, and where the FIX specification's own tag range ends.
     module.add("STANDARD_BRANCH", yggdryl::FixBranch::STANDARD.name())?;
+    module.add("ULBRIDGE_BRANCH", yggdryl::ULBRIDGE_BRANCH)?;
     module.add("USER_TAG_MIN", yggdryl::FixId::USER_TAG_MIN)?;
     module.add("USER_TAG_MAX", yggdryl::FixId::USER_TAG_MAX)?;
     // The reserved Arrow schema metadata key that carries per-field dictionary
@@ -424,6 +425,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
+    module.add_class::<fix::PyUlPlugin>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -491,6 +493,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_classify_arrow_array, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_cfb_fields, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_ulbridge_fields, module)?)?;
     module.add_function(wrap_pyfunction!(
         media::iceberg::iceberg_assign_field_ids,
         module

@@ -24,7 +24,7 @@ use yggdryl::{
     FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
-use crate::iobase::{LocationInput, folder_from_input};
+use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
@@ -190,21 +190,27 @@ impl JsFixRegistry {
             .map_err(napi_error)
     }
 
-    /// Write every populated shard under `<location>/<tree>/<branch>`, removing
     /// Read an Ullink `CBlock` into a dictionary, with what it declared.
     ///
     /// Answers the dictionary and the message roots the file spelled out, in
     /// the order it spelled them. `branch` is the dialect its user-range tags
     /// belong to; with none named they stay on the standard branch.
+    ///
+    /// A file this cannot be read from throws the native sentence whole: the
+    /// byte the reader stopped at, what was expected, what arrived, and the
+    /// element the file spells it in.
     #[napi(ts_return_type = "[FixRegistry, Array<Field>]")]
-    pub fn from_cfb(
+    pub fn from_cfb_file(
         location: LocationInput<'_>,
         branch: Option<String>,
     ) -> Result<(Self, Vec<JsField>)> {
-        let handle = folder_from_input(location)?;
+        // A CBlock is a file, so the location is held as whichever role it
+        // actually is: a container handle reads no bytes, and a reader handed
+        // one answers an empty vocabulary instead of a refusal.
+        let handle = located_from_input(location)?;
         let branch = branch.map(|held| branch_from_js(&held)).transpose()?;
         let (registry, roots) =
-            CoreFixRegistry::from_cfb(&handle, branch.as_ref()).map_err(napi_error)?;
+            CoreFixRegistry::from_cfb_file(handle.as_io(), branch.as_ref()).map_err(napi_error)?;
         Ok((
             Self::from_arc(Arc::new(registry)),
             roots.into_iter().map(JsField::from_core).collect(),
@@ -232,11 +238,21 @@ impl JsFixRegistry {
     ///
     /// A type the code set does not have is added to it rather than rejected,
     /// and the value it takes is the core's: itself where it fits, a stable
-    /// synthesized value where it does not. Idempotent.
+    /// synthesized value where it does not. `name` is the symbolic name the
+    /// set files it under, with the spelling kept as an alias when the two
+    /// differ, and `description` is the source's own wording. Idempotent and
+    /// enriching: a type already spelled answers its value, gains a spelling
+    /// the set did not answer to and a description it did not have, and keeps
+    /// everything it already held.
     #[napi]
-    pub fn register_msgtype(&mut self, spelling: String) -> Result<String> {
+    pub fn register_msgtype(
+        &mut self,
+        spelling: String,
+        name: Option<String>,
+        description: Option<String>,
+    ) -> Result<String> {
         self.inner_mut()?
-            .register_msgtype(&spelling)
+            .register_msgtype(&spelling, name.as_deref(), description.as_deref())
             .map(|held| held.as_str().to_owned())
             .map_err(napi_error)
     }

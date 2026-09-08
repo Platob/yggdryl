@@ -1108,7 +1108,7 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
     ].join('\n'),
     'utf8',
   )
-  const [registry] = fix.FixRegistry.fromCfb(file, 'bloomberg')
+  const [registry] = fix.FixRegistry.fromCfbFile(file, 'bloomberg')
 
   // The dialect is declared by the file, so a capture read under it carries a
   // digest the registry turns back into the branch. Without that table an
@@ -1125,4 +1125,55 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   assert.equal(registry.getBranchByDigest(0), null)
   assert.equal(registry.getBranchByDigest(-1), null)
   assert.throws(() => registry.branchByDigest(-1))
+})
+
+test('a message type registers under the name and wording it is given', () => {
+  const registry = new fix.FixRegistry()
+  registry.insert(fixField('msgtype', 'utf8', 35))
+
+  // What fits the column is itself; a bridge's composite key is hashed into
+  // what fits, under the name and the wording the caller gives it.
+  assert.equal(registry.registerMsgtype('D'), 'D')
+  const value = registry.registerMsgtype(
+    'P Report Ack',
+    'AllocationReportAck',
+    'Allocation Report ACK',
+  )
+  assert.match(value, /^~/)
+  const codes = registry.fieldByTag(35).get('fix:codes')
+  assert.match(codes, /"name":"AllocationReportAck"/)
+  assert.match(codes, /P Report Ack/)
+  assert.match(codes, /Allocation Report ACK/)
+
+  // Idempotent: registering it again answers the same value.
+  assert.equal(registry.registerMsgtype('P Report Ack'), value)
+})
+
+test('a CBlock refusal crosses with the byte, the content and the element', () => {
+  const root = scratch()
+  const file = path.join(root, 'broken.cfb')
+  fs.writeFileSync(
+    file,
+    [
+      '<?xml version="1.0"?>',
+      '<cplugin-configuration fix-version="4.4">',
+      '<vocabulary><vocabulary-tag name="35" alt="MsgType" type="decimal" /></vocabulary>',
+      '</cplugin-configuration>',
+    ].join('\n'),
+    'utf8',
+  )
+
+  // The native sentence crosses whole rather than as a bare "invalid file":
+  // the byte the reader stopped at, the eight types it wanted, the ninth it
+  // got, and the element the file declared it in.
+  assert.throws(
+    () => fix.FixRegistry.fromCfbFile(file, 'bloomberg'),
+    (error) => {
+      assert.match(error.message, /invalid cfb expression at byte \d+/)
+      assert.match(error.message, /utc-time-only/)
+      assert.match(error.message, /"decimal"/)
+      assert.match(error.message, /<vocabulary-tag name=\\"35\\"/)
+      return true
+    },
+  )
 })

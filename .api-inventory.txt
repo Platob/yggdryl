@@ -454,6 +454,12 @@ pub fn from_json(input: &str) -> Result<Self>
 pub fn field(&self, schema: &Field) -> Result<Field>
   pub fn is_predicate(&self, schema: &Field) -> Result<bool>
 
+### yggdryl::fix::cfb  [rust\src\fix\cfb.rs]
+impl FixRegistry
+  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&FixBranch>) -> Result<(Self, Vec<Field>)>
+impl FixField<'_>
+  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>>
+
 ### yggdryl::fix::field  [rust\src\fix\field.rs]
 impl<'field> FixField<'field>
   pub fn branch(&self) -> Result<FixBranch>
@@ -527,6 +533,27 @@ pub struct FixMsg
   pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar>
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
+
+### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
+pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulbridge_fields)
+  pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self
+  pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins>
+  pub fn from_json_scalar(document: &Scalar) -> UlPlugins
+  pub fn from_fixmsg(message: &FixMsg) -> UlPlugins
+  pub fn into_fixmsg(&self, codec: &FixCodec, enrich: bool) -> Result<FixMsg>
+  pub fn mbean(&self) -> Option<&str>
+  pub fn mbean_type(&self) -> Option<&str>
+  pub fn plugin_type(&self) -> Option<&str>
+  pub fn name(&self) -> Option<&str>
+  pub fn version(&self) -> Option<&str>
+  pub fn category(&self) -> Option<&str>
+  pub fn state(&self) -> Option<&str>
+  pub fn get(&self, attribute: &str) -> Option<&Scalar>
+  pub fn as_attributes(&self) -> &Scalar
+  pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
+  impl Clone, Debug, PartialEq, Eq, Hash for UlPlugin
+  pub struct UlPlugins
+  impl Iterator for UlPlugins  (Item = UlPlugin; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry

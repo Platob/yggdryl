@@ -1345,14 +1345,17 @@ export declare class FixRegistry {
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
-   * Write every populated shard under `<location>/<tree>/<branch>`, removing
    * Read an Ullink `CBlock` into a dictionary, with what it declared.
    *
    * Answers the dictionary and the message roots the file spelled out, in
    * the order it spelled them. `branch` is the dialect its user-range tags
    * belong to; with none named they stay on the standard branch.
+   *
+   * A file this cannot be read from throws the native sentence whole: the
+   * byte the reader stopped at, what was expected, what arrived, and the
+   * element the file spells it in.
    */
-  static fromCfb(location: LocationInput, branch?: string | undefined | null): [FixRegistry, Array<Field>]
+  static fromCfbFile(location: LocationInput, branch?: string | undefined | null): [FixRegistry, Array<Field>]
   /**
    * Add the fields this crate defines on its own branch.
    *
@@ -1367,9 +1370,14 @@ export declare class FixRegistry {
    *
    * A type the code set does not have is added to it rather than rejected,
    * and the value it takes is the core's: itself where it fits, a stable
-   * synthesized value where it does not. Idempotent.
+   * synthesized value where it does not. `name` is the symbolic name the
+   * set files it under, with the spelling kept as an alias when the two
+   * differ, and `description` is the source's own wording. Idempotent and
+   * enriching: a type already spelled answers its value, gains a spelling
+   * the set did not answer to and a description it did not have, and keeps
+   * everything it already held.
    */
-  registerMsgtype(spelling: string): string
+  registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): string
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
    * the shards, branch folders and trees no field populates any more.
