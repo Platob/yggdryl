@@ -12,6 +12,13 @@ use crate::{Codec, Error, IOBase, Level, Result, Url};
 
 use super::{Entry, Node, format, name};
 
+/// What separates one archive's member from the archive inside it.
+///
+/// A canonical member path never holds an empty segment - `name::resolve`
+/// drops them - so a doubled separator is a spelling no member can claim, and
+/// a fragment that holds one is naming a member of a member.
+pub(super) const NESTED: &str = "//";
+
 /// The bytes of evidence a restart point is proven by, on either side of it.
 ///
 /// Both spellings are four bytes - the empty stored block a DEFLATE full flush
@@ -197,11 +204,12 @@ struct Index {
 
 impl Archive {
     /// Mount `handle` as an archive without touching it.
+    ///
+    /// The archive's location is the handle's own, fragment included: an
+    /// archive mounted over a member of another archive is that member, and
+    /// its own members are named below it.
     pub fn new(handle: Holder) -> Self {
-        let mut url = handle.url().cloned().unwrap_or_else(|| unlocated().clone());
-        // The archive is the whole resource; a fragment addresses one member
-        // of it, so an archive mounted from a member URL is still the archive.
-        let _ = url.set_fragment(None);
+        let url = handle.url().cloned().unwrap_or_else(|| unlocated().clone());
         Self {
             url,
             inner: Mutex::new(Inner {
@@ -692,18 +700,32 @@ impl Archive {
     /// something lives below a name that happens to end in `.zip`, and would
     /// read identically to a real directory of that name.
     ///
+    /// An archive inside an archive continues the same fragment, one level per
+    /// [`NESTED`] separator: `day.zip#inner.zip//trades/eu.csv` is that member
+    /// of that inner archive. The separator cannot collide with a name,
+    /// because a canonical member path never holds an empty segment.
+    ///
     /// It also makes the location a round trip: [`zip::from_url`](super::from_url)
-    /// mounts the archive the base names and resolves the member the fragment
-    /// names, so a member URL that was written down opens the member again.
+    /// mounts the archive the base names, descends every level the fragment
+    /// spells, and resolves the member at the end, so a member URL that was
+    /// written down opens the member again however deeply it was nested.
     pub(super) fn member_url(&self, member: &str) -> Url {
         let member = member.trim_end_matches('/');
         if member.is_empty() {
             return self.url.clone();
         }
+        let held = match self.url.fragment(true) {
+            Ok(held) => held,
+            Err(_) => return self.url.clone(),
+        };
+        let fragment = match held {
+            Some(outer) if !outer.is_empty() => format_smolstr!("{outer}{NESTED}{member}"),
+            _ => SmolStr::new(member),
+        };
         let mut url = self.url.clone();
         // A member path is not URI text, so the fragment carries it encoded.
         // A name no fragment can state leaves the archive as the location.
-        if url.set_fragment(Some(member)).is_err() {
+        if url.set_fragment(Some(&fragment)).is_err() {
             return self.url.clone();
         }
         url

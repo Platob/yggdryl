@@ -922,6 +922,125 @@ fn a_member_url_opens_the_member_again() {
 }
 
 #[test]
+fn an_archive_inside_an_archive_names_its_own_members() {
+    let outer = root();
+    let mut inner_bytes = {
+        let staged = root();
+        staged
+            .archive()
+            .write_member("trades/eu.csv", b"symbol,price\nAAPL,187.23\n")
+            .expect("writes");
+        bytes(staged.archive())
+    };
+    outer
+        .archive()
+        .write_member_with("inner.zip", &inner_bytes, Codec::Deflate)
+        .expect("writes");
+    outer.archive().flush().expect("publishes");
+    inner_bytes.clear();
+
+    // The inner archive is one member of the outer one, and mounting it
+    // keeps that identity rather than claiming the outer archive's.
+    let inner = Holder::zip(outer.child_by_path("inner.zip").expect("the member"));
+    assert_eq!(
+        inner.url().expect("the inner archive url").to_string(),
+        format!("{}#inner.zip", outer.archive().url())
+    );
+
+    let member = inner.child_by_path("trades/eu.csv").expect("the member");
+    assert_eq!(
+        member.url().expect("a member url").to_string(),
+        format!("{}#inner.zip//trades/eu.csv", outer.archive().url())
+    );
+    assert_eq!(
+        member.read_all_bytes().expect("the member"),
+        b"symbol,price\nAAPL,187.23\n"
+    );
+    // And an outer member of the same name is a different resource.
+    assert_ne!(
+        member.url().expect("a member url"),
+        outer
+            .child_by_path("trades/eu.csv")
+            .expect("the outer name")
+            .url()
+            .expect("a member url")
+    );
+}
+
+#[test]
+fn a_nested_member_url_opens_the_member_again() {
+    let path = std::env::temp_dir().join(format!("yggdryl-zip-nested-{}.zip", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let inner = {
+        let staged = root();
+        staged
+            .archive()
+            .write_member("deep/notes.txt", b"symbol")
+            .expect("writes");
+        bytes(staged.archive())
+    };
+    let outer = zip_mount(&path);
+    outer
+        .child_by_path("inner.zip")
+        .expect("the member")
+        .write_all_bytes(&inner)
+        .expect("writes");
+
+    let mounted = Holder::zip(outer.child_by_path("inner.zip").expect("the member"));
+    let member = mounted.child_by_path("deep/notes.txt").expect("the member");
+    let located = super::from_url(member.url().expect("a member url")).expect("the same member");
+    assert_eq!(located.read_all_bytes().expect("the member"), b"symbol");
+
+    // The level above it opens as the inner archive's own root.
+    let inner_root = super::from_url(
+        &Url::from_str(&format!("{}#inner.zip", outer.url().expect("the archive url")))
+            .expect("a url"),
+    )
+    .expect("the inner member");
+    assert_eq!(inner_root.read_all_bytes().expect("the member"), inner);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn a_nested_archive_is_written_through_and_read_back() {
+    let outer = root();
+    outer
+        .child_by_path("inner.zip")
+        .expect("the member")
+        .write_all_bytes(&{
+            let staged = root();
+            staged.archive().create_directory("").expect("an empty archive");
+            bytes(staged.archive())
+        })
+        .expect("writes");
+
+    // Writing into the inner archive republishes the outer member that holds
+    // it, so the change survives a fresh mount of the outer archive.
+    {
+        let inner = Holder::zip(outer.child_by_path("inner.zip").expect("the member"));
+        inner
+            .child_by_path("trades/eu.csv")
+            .expect("the member")
+            .write_all_bytes(b"symbol,price")
+            .expect("writes");
+    }
+    outer.archive().flush().expect("publishes");
+
+    let remounted = mounted(bytes(outer.archive()));
+    let inner = Holder::zip(remounted.child_by_path("inner.zip").expect("the member"));
+    assert_eq!(
+        inner
+            .child_by_path("trades/eu.csv")
+            .expect("the member")
+            .read_all_bytes()
+            .expect("the member"),
+        b"symbol,price"
+    );
+    assert_eq!(inner.ls(true, false).count(), 2);
+}
+
+#[test]
 fn a_member_url_from_a_scheme_this_backend_cannot_hold_is_refused() {
     let url = Url::from_str("s3://lake/day.zip#trades/eu.csv").expect("a url");
     let error = super::from_url(&url).expect_err("a remote archive");

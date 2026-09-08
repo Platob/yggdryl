@@ -87,6 +87,10 @@ pub fn mount(handle: Holder) -> Holder {
 /// `file:///lake/day.zip#trades/eu.csv` opens that member, and the same URL
 /// without a fragment opens the archive root.
 ///
+/// A fragment that spells more than one level - `#inner.zip//trades/eu.csv` -
+/// descends one archive per level, mounting each member it names as the
+/// archive the next level is a member of.
+///
 /// ```
 /// use yggdryl::{IOBase, Url, holder::zip};
 ///
@@ -122,11 +126,24 @@ pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
             base.scheme().as_str(),
         ));
     }
-    let root = Archive::new(Holder::Path(crate::holder::local::Path::from_url(base)?)).mount();
-    match member.as_deref() {
-        Some(member) if !member.is_empty() => root.child_by_path(member),
-        _ => Ok(Holder::ZipNode(root)),
+    let mut held = Holder::ZipNode(
+        Archive::new(Holder::Path(crate::holder::local::Path::from_url(base)?)).mount(),
+    );
+    let member = member.unwrap_or_default();
+    let mut levels = member
+        .split(archive::NESTED)
+        .filter(|level| !level.is_empty())
+        .peekable();
+    while let Some(level) = levels.next() {
+        let child = held.child_by_path(level)?;
+        // Every level but the last names the archive the next one is inside.
+        held = if levels.peek().is_some() {
+            mount(child)
+        } else {
+            child
+        };
     }
+    Ok(held)
 }
 
 /// The member name a holder inside an archive addresses.
