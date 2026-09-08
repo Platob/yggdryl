@@ -1012,7 +1012,8 @@ fn require(valid: bool, reason: &'static str) -> Result<()> {
     if valid { Ok(()) } else { Err(invalid(reason)) }
 }
 
-const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
+/// Nanoseconds in one count of a fixed-length unit; an interval layout has none.
+pub(crate) const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     match unit {
         TimeUnit::Day => Some(86_400_000_000_000),
         TimeUnit::Second => Some(1_000_000_000),

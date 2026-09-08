@@ -66,7 +66,7 @@ const CONTENT_REFUSAL: &str =
 /// is the object's own storage. Everything else goes through the buffer
 /// protocol one window at a time: the payload is never copied whole, so
 /// hashing a gigabyte `memoryview` costs one 64 KiB window.
-fn feed_content(value: &Bound<'_, PyAny>, sink: &mut impl FnMut(&[u8])) -> PyResult<()> {
+pub(crate) fn feed_content(value: &Bound<'_, PyAny>, sink: &mut impl FnMut(&[u8])) -> PyResult<()> {
     if let Ok(text) = value.cast::<PyString>() {
         sink(text.to_str()?.as_bytes());
         return Ok(());
@@ -202,6 +202,11 @@ impl PyDigest {
     pub(crate) const fn from_core(inner: Digest) -> Self {
         Self { inner }
     }
+
+    /// The native digest this wrapper carries.
+    pub(crate) const fn inner(&self) -> Digest {
+        self.inner
+    }
 }
 
 #[pymethods]
@@ -335,6 +340,14 @@ macro_rules! state {
         #[derive(Clone)]
         pub(crate) struct $class {
             inner: $core,
+        }
+
+        impl $class {
+            /// This state as the runtime dispatcher, seed, secret, and fed
+            /// bytes included.
+            pub(crate) fn digester(&self) -> yggdryl::Digester {
+                self.inner.clone().into()
+            }
         }
 
         #[pymethods]
@@ -548,6 +561,13 @@ state!(
 #[derive(Clone)]
 pub(crate) struct PyDigester {
     inner: yggdryl::Digester,
+}
+
+impl PyDigester {
+    /// The native dispatcher this wrapper carries.
+    pub(crate) fn digester(&self) -> yggdryl::Digester {
+        self.inner.clone()
+    }
 }
 
 #[pymethods]

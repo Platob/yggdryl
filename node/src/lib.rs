@@ -28,6 +28,8 @@ mod types;
 mod uri;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
+mod txhash;
+#[allow(dead_code)]
 mod xxhash;
 
 use std::cmp::Ordering;

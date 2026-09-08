@@ -232,6 +232,7 @@ pub enum DigestAlgorithm
   pub fn as_digest(&self) -> Digest
   pub fn clear(&mut self)
   pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
+  impl From<Xxh32>, From<Xxh64>, From<Xxh3>, From<Xxh128> for Digester  (a concrete state, fed bytes included, becomes the dispatcher)
 
 ### yggdryl::root::edge_algorithm  [rust\src\edge_algorithm.rs]
 pub enum EdgeAlgorithm
@@ -1934,6 +1935,83 @@ pub struct Timezone
   pub fn aliases() -> impl ExactSizeIterator<Item = (&'static str, &'static str)>
   pub fn stable_hash(&self) -> u64
   pub fn from_smol_str(value: SmolStr) -> Result<Self>
+
+### yggdryl::txhash::arrow  [rust\src\txhash\arrow.rs]
+pub fn unix_array(array: &dyn Array, unit: TimeUnit) -> Result<Int64Array>
+  pub fn row_txhashes(batch: &RecordBatch, times: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn column_txhashes(times: &dyn Array, values: ArrayRef, field: &Field, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn compose(times: &dyn Array, digests: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<ArrayRef>
+  pub fn decompose(array: &dyn Array, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<(ArrayRef, ArrayRef)>
+
+### yggdryl::txhash::field  [rust\src\txhash\field.rs]
+impl DigestField<'_>
+  pub fn time(&self) -> Option<&str>
+  pub fn unit(&self) -> Result<Option<TimeUnit>>
+  pub fn is_coupled(&self) -> bool
+  pub fn coupled_unit(&self) -> Result<TimeUnit>
+  impl DigestFieldMut<'_>
+  pub fn set_time(&mut self, path: &str) -> Result<()>
+  pub fn remove_time(&mut self) -> Result<Option<String>>
+  pub fn set_unit(&mut self, unit: TimeUnit) -> Result<()>
+  pub fn remove_unit(&mut self) -> Option<String>
+
+### yggdryl::txhash::hasher  [rust\src\txhash\hasher.rs]
+pub struct TxHasher
+  pub fn new(algorithm: DigestAlgorithm) -> Self
+  pub fn new_in(unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<Self>
+  pub fn from_digester(unit: TimeUnit, digester: Digester) -> Result<Self>
+  pub fn with_seed(self, seed: u64) -> Self
+  pub const fn unit(&self) -> TimeUnit
+  pub const fn algorithm(&self) -> DigestAlgorithm
+  pub const fn width(&self) -> usize
+  pub const fn dtype(&self) -> DataType
+  pub const fn digester(&self) -> &Digester
+  pub fn digest(&self, input: &[u8], unix: i64) -> TxHash
+  pub fn digest_scalar(&self, value: &Scalar, unix: i64) -> TxHash
+  pub fn unix_of(&self, time: &Scalar) -> Result<i64>
+  pub fn apply_arrow_batch(&self, root: &crate::Field, batch: arrow_array::RecordBatch, force: bool) -> crate::arrow::Result<arrow_array::RecordBatch>
+  pub fn row_txhashes(&self, batch: &arrow_array::RecordBatch, times: &dyn arrow_array::Array) -> crate::arrow::Result<arrow_array::ArrayRef>
+  pub fn column_txhashes(&self, times: &dyn arrow_array::Array, values: arrow_array::ArrayRef, field: &crate::Field) -> crate::arrow::Result<arrow_array::ArrayRef>
+
+### yggdryl::txhash  [rust\src\txhash\mod.rs]
+pub fn txh32(input: &[u8], unix: i64) -> TxHash
+  pub fn txh64(input: &[u8], unix: i64) -> TxHash
+  pub fn txh3(input: &[u8], unix: i64) -> TxHash
+  pub fn txh128(input: &[u8], unix: i64) -> TxHash
+  pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash
+
+### yggdryl::txhash::scalar  [rust\src\txhash\scalar.rs]
+pub fn txhash(&self, unix: i64, algorithm: DigestAlgorithm) -> TxHash  (on Scalar and on TypedScalar<K>)
+
+### yggdryl::txhash::time  [rust\src\txhash\time.rs]
+pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
+  pub fn restate_unix(count: i64, from: TimeUnit, into: TimeUnit) -> Result<i64>
+  pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64>
+  pub fn unix_now(unit: TimeUnit) -> Result<i64>
+
+### yggdryl::txhash::value  [rust\src\txhash\value.rs]
+pub const UNIX_WIDTH: usize = 8;
+  pub const fn width(algorithm: DigestAlgorithm) -> usize
+  pub const fn dtype(algorithm: DigestAlgorithm) -> DataType
+  pub struct TxHash
+  pub const fn new(unix: i64, digest: Digest) -> Self
+  pub fn new_in(unix: i64, unit: TimeUnit, digest: Digest) -> Result<Self>
+  pub const fn unix(&self) -> i64
+  pub const fn unit(&self) -> TimeUnit
+  pub const fn digest(&self) -> Digest
+  pub const fn algorithm(&self) -> DigestAlgorithm
+  pub const fn width(&self) -> usize
+  pub const fn dtype(&self) -> DataType
+  pub fn with_unit(self, unit: TimeUnit) -> Result<Self>
+  pub fn into_bytes(self) -> TxHashBytes
+  pub fn from_bytes(unit: TimeUnit, algorithm: DigestAlgorithm, bytes: &[u8]) -> Result<Self>
+  pub fn from_str(value: &str) -> Result<Self>
+  pub fn into_datetime(self) -> Scalar
+  pub fn into_scalar(self) -> Scalar
+  pub fn from_scalar(unit: TimeUnit, algorithm: DigestAlgorithm, value: &Scalar) -> Result<Self>
+  pub fn stable_hash(&self) -> u64
+  pub struct TxHashBytes
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromStr, Serialize, Deserialize for TxHash  (Ord is unit-major, then the instant, then the digest)
 
 ### yggdryl::types::arrow  [rust\src\types\arrow.rs]
 pub fn from_arrow(value: &ArrowDataType) -> Result<Self>

@@ -19,7 +19,7 @@
   Xxh128: algorithm, apply_arrow_batch, as_digest, as_int, clear, secret, seed, write_bytes, write_reader, write_scalar
   Digest: __bytes__, __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __index__, __int__, __le__, __len__, __lt__, __ne__, __reduce__, __repr__, __str__, algorithm, bits, from_bytes, from_int, stable_hash, width
   MediaType: base, clear_encodings, encoding, encodings, extension, extensions, from_content_headers, from_extension, from_extensions, from_file_name, from_json, from_parts, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_encoded, is_encoding, is_font, is_haptics, is_image, is_io, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, push_encoding, set_base, set_encodings, stable_hash
-  ProtocolField: __contains__, __iter__, __len__, algorithm, aliases, apply_arrow_batch, branch, clear, comment, description, display, expression, get, id, is_holder, items, key, keys, merge_with, prefix, remove_algorithm, remove_role, remove_sources, scheme, set, set_holder, sources, tag, tags, transform, update, values
+  ProtocolField: __contains__, __iter__, __len__, algorithm, aliases, apply_arrow_batch, branch, clear, comment, description, display, expression, get, id, is_coupled, is_holder, items, key, keys, merge_with, prefix, remove_algorithm, remove_role, remove_sources, remove_time, remove_unit, scheme, set, set_holder, sources, tag, tags, time, transform, unit, update, values
   MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DIRECTORY, DOC, DOCX, FILE, FIX, FIXML, FIXUL, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, PUFFIN, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, ULCONFIG, ULLINK, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_local_path, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_directory, is_encoding, is_filesystem, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, top_level
   RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, dtype, field, filter_partitions, for_media_type, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by_names, metadata, mime_type, name, partition_filter, partition_predicate, remove_field, require_field, safe, select_by_names, stable_hash, sync_marker, timezone, write_batch_row_size
   Statement: all, bind, from_json, into_json, is_all, limit, ordering, predicate, projections, select, stable_hash, with_limit, with_ordering, with_predicate
@@ -32,6 +32,8 @@
   ArrowCastPlan: apply, field, nullability, preflight, representation, safe, schema, source_schema
   Bounds: attribute, column, from_partitions, with_attribute, with_column
   Digester: algorithm, apply_arrow_batch, as_digest, as_int, clear, write_bytes, write_reader, write_scalar
+  TxHash: __bytes__, __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __le__, __len__, __lt__, __ne__, __reduce__, __repr__, __str__, algorithm, digest, dtype, from_bytes, from_parts, into_datetime, into_scalar, stable_hash, unit, unix, width, with_unit
+  TxHasher: algorithm, apply_arrow_batch, column_txhashes, digest, digest_scalar, dtype, from_state, row_txhashes, unit, unix_of, width
   FixBranch: MAX_LENGTH, STANDARD, digest, from_str, from_value, is_standard, name, sender_comp_id, stable_hash, target_comp_id, version
   expression: COMPARISONS, FUNCTIONS, HOLDER_ATTRIBUTES, Bound, Bounds, BoundStatement, Expression, Statement, needs_quoting
   media.partition: NULL_PARTITION, DEFAULT_RECORD_BATCH_ROW_SIZE, AVRO_MAX_SCHEMA_DEPTH, partition_text, with_partitions, without_partitions
@@ -142,6 +144,12 @@
     one-shot: xxh32(data, seed=0), xxh64(data, seed=0), xxh3(data, seed=0, secret=None), xxh128(data, seed=0, secret=None) -> int
     redirects: IOBase.read_digest / read_range_digest and Scalar.digest, algorithm defaulting to "xxh3-64"
     Rust-only: the reader/writer pair and the Hashed<H> handle
+  txhash
+    exports: DEFAULT_UNIT, UNIX_WIDTH, TxHash, TxHasher, column_txhashes, compose, decompose, digest, dtype, restate_unix, row_txhashes, txh32, txh64, txh3, txh128, unix_array, unix_now, unix_of, width
+    instant: every unix argument is int | datetime | date | str | Scalar; an int is the count already, everything else crosses into a Scalar and takes the core's one intake, so a zoned datetime already counts from the epoch and a naive one reads as UTC
+    one-shot: txh32(data, unix, seed=0), txh64(data, unix, seed=0), txh3(data, unix, seed=0, secret=None), txh128(data, unix, seed=0, secret=None) -> TxHash at microseconds
+    columns: row_txhashes / column_txhashes / compose / decompose / unix_array take and answer pyarrow arrays, unit defaulting to "us" and the algorithm to "xxh3-64"
+    redirects: field.digest.time / unit / is_coupled / remove_time / remove_unit on the digest view; TxHasher.apply_arrow_batch is Digester.apply_arrow_batch under the hasher's state
 ### javascript: yggdryl
   top-level
     statics: intoField
@@ -219,6 +227,17 @@
   xxhash namespace
     values: SECRET_MINIMUM_LENGTH, Digest, Xxh32, Xxh64, Xxh3, Xxh128
     functions: digest, xxh32, xxh64, xxh3, xxh128
+  TxHash
+    statics: from, fromBytes, fromParts
+    instance: algorithm, bytes, clone, compare, digest, dtype, equals, intoDatetime, intoScalar, stableHash, toJSON, toString, unit, unix, width, withUnit
+  TxHasher
+    statics: fromState
+    instance: algorithm, applyArrowBatch, digest, digestScalar, dtype, unit, unixOf, width, clone
+  txhash namespace
+    values: DEFAULT_UNIT, UNIX_WIDTH, TxHash, TxHasher
+    functions: digest, dtype, restateUnix, txh32, txh64, txh3, txh128, unixNow, unixOf, width
+    instant: every unix argument is bigint | number | Date | string | Scalar; a bigint or an integer number is the count already, a Date is its UTC millisecond instant, a string is timestamp text, and a Scalar holds any of those
+    Rust and Python only: the coupled columns (row_txhashes, column_txhashes, compose, decompose, unix_array)
   AvroSchema
     statics: from
     instance: canonicalForm, clone, compare, equals, fingerprint, fromSingleObject, intoCanonicalForm, intoJSON, intoSingleObject, kind, stableHash, toJSON, toString

@@ -42,6 +42,7 @@ Run the checks for what you changed; code, tests, and documentation agree before
 | `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | `rust/src/expression/tests.rs` | [Expression](expression/index.md) |
 | `rust/src/xxhash/` | `rust/src/xxhash/tests.rs` | [xxHash](xxhash/index.md) |
+| `rust/src/txhash/` | `rust/src/txhash/tests.rs` | [TxHash](txhash/index.md) |
 | `rust/src/fix/` | `rust/tests/fix/` | [FIX](fix/index.md) |
 
 Each shared trait, enum, or value owns one root `rust/src/<name>.rs`; each layer owns one folder. Python and Node mirror the layer names without reimplementing core behavior. Runnable examples live in the documentation, never in an `examples/` directory.

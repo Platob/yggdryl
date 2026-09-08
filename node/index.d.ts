@@ -3698,6 +3698,90 @@ export declare class Timezone {
 }
 export type JsTimezone = Timezone
 
+/**
+ * One instant coupled with one digest.
+ *
+ * `bytes()` is the canonical layout - the instant big-endian, then the
+ * digest - and `toString()` the `<unix>@<unit>:<algorithm>:<hex>` spelling
+ * `TxHash.from` reads back. Values order by unit, instant, then digest,
+ * which is the order their bytes sort in from the epoch on.
+ */
+export declare class TxHash {
+  /** Parse the canonical `<unix>@<unit>:<algorithm>:<hex>` spelling. */
+  constructor(value: string)
+  /** Parse the canonical spelling, or clone a native value. */
+  static from(value: string | TxHash): TxHash
+  /** Rebuild a value from its canonical bytes. */
+  static fromBytes(unit: string, algorithm: string, data: Uint8Array): TxHash
+  /** The instant as a unix count of `unit`. */
+  get unix(): bigint
+  /** The clock resolution the instant is counted in. */
+  get unit(): string
+  /** The canonical algorithm token of the digest half. */
+  get algorithm(): string
+  /** The width of the canonical bytes. */
+  get width(): number
+  /** The digest half, carrying its algorithm. */
+  get digest(): JsDigest
+  /** The datatype a column of values like this one is stored under. */
+  get dtype(): DataType
+  /** Restate the instant at another clock resolution, keeping the digest. */
+  withUnit(unit: string): TxHash
+  /** The canonical bytes: the instant big-endian, then the digest. */
+  bytes(): Uint8Array
+  /** The instant as a UTC datetime `Scalar` at this value's resolution. */
+  intoDatetime(): Scalar
+  /** The canonical bytes as a fixed-width byte `Scalar`. */
+  intoScalar(): Scalar
+  /** Exact equality: another unit or algorithm is another value. */
+  equals(other: TxHash): boolean
+  /** Total native ordering: `-1`, `0`, or `1`. */
+  compare(other: TxHash): number
+  /** A deterministic cross-language hash of this value. */
+  stableHash(): bigint
+  /** Make a cheap native clone. */
+  clone(): TxHash
+  /** Return the canonical spelling, accepted losslessly by `TxHash.from`. */
+  toString(): string
+  /**
+   * Serialize as the canonical spelling, so a value survives
+   * `JSON.stringify`.
+   */
+  toJSON(): string
+}
+export type JsTxHash = TxHash
+
+/**
+ * One resolution and one digest configuration, applied to many values.
+ *
+ * The one-shot functions answer at microseconds with the default seed; this
+ * is the form for another resolution, a seed, an XXH3 secret carried in
+ * through a configured state, or an algorithm read from configuration.
+ */
+export declare class TxHasher {
+  /** Start a hasher for one algorithm at one resolution, optionally seeded. */
+  constructor(algorithm?: string | undefined | null, unit?: string | undefined | null, seed?: bigint | undefined | null)
+  /**
+   * Start from a configured state, keeping its algorithm, seed, and secret.
+   *
+   * This is how a custom XXH3 secret reaches a hasher: build `Xxh3` or
+   * `Xxh128` with it and hand it over. Bytes already fed to the state are
+   * discarded.
+   */
+  static fromState(state: JsXxh32 | JsXxh64 | JsXxh3 | JsXxh128, unit?: string | undefined | null): TxHasher
+  /** The clock resolution every answer counts its instant in. */
+  get unit(): string
+  /** The canonical algorithm token every answer's digest half computes. */
+  get algorithm(): string
+  /** The width of every answer's canonical bytes. */
+  get width(): number
+  /** The datatype a column of answers is stored under. */
+  get dtype(): DataType
+  /** Make a cheap native clone. */
+  clone(): TxHasher
+}
+export type JsTxHasher = TxHasher
+
 /** A normalized URI backed by the validated Rust core. */
 export declare class Uri {
   /** Parse a URI expression or cheaply clone another native `Uri`. */

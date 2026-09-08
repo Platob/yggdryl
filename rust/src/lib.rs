@@ -42,6 +42,10 @@ mod scheme;
 pub mod text;
 mod time_unit;
 mod timezone;
+// An instant coupled with a digest. The value and its protocol vocabulary
+// need no Arrow, like the digest vocabulary they extend; only
+// `txhash/arrow.rs` is gated.
+pub mod txhash;
 pub mod types;
 mod union_mode;
 mod uri;

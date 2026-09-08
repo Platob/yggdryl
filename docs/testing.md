@@ -58,6 +58,7 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     cargo test --features "parquet iceberg" -p yggdryl --lib text::
     cargo test --features "parquet iceberg" -p yggdryl --lib expression::
     cargo test --features "parquet iceberg" -p yggdryl --lib xxhash::
+    cargo test --features "parquet iceberg" -p yggdryl --lib txhash::
     ```
 
 === "Python"
@@ -70,6 +71,8 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     python/.venv/bin/python -m pytest python/tests/text
     python/.venv/bin/python -m pytest python/tests/expression
     python/.venv/bin/python -m pytest python/tests/fix
+    python/.venv/bin/python -m pytest python/tests/xxhash
+    python/.venv/bin/python -m pytest python/tests/txhash
     ```
 
 === "JavaScript"
@@ -82,6 +85,7 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     node --test "node/tests/uri/*.test.js"
     node --test "node/tests/expression/*.test.js"
     node --test "node/tests/xxhash/*.test.js"
+    node --test "node/tests/txhash/*.test.js"
     node --test "node/tests/fix/*.test.js"
     ```
 

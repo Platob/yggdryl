@@ -10,7 +10,7 @@ reported per row, per batch, or per file. A level changed after import reaches
 the bridge through `refresh_logging`.
 """
 
-from . import arrow, coding, enums, expression, fix, holder, media, text, types, uri, xxhash
+from . import arrow, coding, enums, expression, fix, holder, media, text, txhash, types, uri, xxhash
 from ._native import (
     DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE,
@@ -78,5 +78,6 @@ __all__ = [
     "text",
     "types",
     "uri",
+    "txhash",
     "xxhash",
 ]
