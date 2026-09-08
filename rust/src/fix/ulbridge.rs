@@ -38,6 +38,15 @@
 //! a session interface always carries are declared, so each has a name and a
 //! tag; anything else keeps its own folded spelling.
 //!
+//! # One plugin at a time
+//!
+//! A row is one exchange and a wildcard read answers fifty plugins in one, so
+//! [`UlPlugin`] is one of those answers on its own: the ObjectName the bridge
+//! holds it under, beside the attributes it stated. It reads out of the bytes
+//! a line carries, out of a parsed document, or out of a typed message, and
+//! crosses back to one - which is what a reader walking a hundred plugins
+//! wants before it types any of them.
+//!
 //! ```
 //! # fn main() -> yggdryl::Result<()> {
 //! let held = yggdryl::fix_ulbridge_fields()?;
@@ -84,6 +93,12 @@ pub const ERROR_TAG: i32 = 20_004;
 /// FIX group's is.
 pub const SESSIONINTERFACES_TAG: i32 = 20_005;
 
+/// The name the session-interface group carries.
+const SESSIONINTERFACES_NAME: &str = "SessionInterfaces";
+
+/// The name one occurrence's own ObjectName member carries.
+const SESSIONINTERFACE_NAME: &str = "SessionInterface";
+
 /// This dictionary, built once.
 fn branch() -> Result<FixBranch> {
     FixBranch::from_str(ULBRIDGE_BRANCH)
@@ -116,7 +131,7 @@ fn build() -> Result<Vec<Field>> {
     // tag 49 and its `CurrentPort` is still 20027.
     let members: Vec<Field> = [
         (
-            "SessionInterface",
+            SESSIONINTERFACE_NAME,
             20_010,
             DataType::Utf8,
             "The ObjectName of the MBean this occurrence answers for.",
@@ -322,12 +337,39 @@ fn build() -> Result<Vec<Field>> {
             DataType::Utf8,
             "The extensions this session interface declares, as the JSON array it is.",
         ),
+        // What a plugin says about the configuration it was built from. A
+        // bridge states these beside the session's own facts, and a reader
+        // asking which CBlock a session runs asks here.
+        (
+            "NeedCFBReload",
+            20_044,
+            DataType::Boolean,
+            "Whether the session's CBlock has changed under it since it loaded.",
+        ),
+        (
+            "CFBInfos",
+            20_045,
+            DataType::Utf8,
+            "The CBlocks this session interface loaded and their revisions, as the JSON array it is.",
+        ),
+        (
+            "targetProducts",
+            20_046,
+            DataType::Utf8,
+            "The products this plugin is built for, as the JSON array it is.",
+        ),
+        (
+            "cm-extension",
+            20_047,
+            DataType::Utf8,
+            "The configuration-manager extension version this plugin declares.",
+        ),
     ]
     .into_iter()
     .map(|(name, tag, dtype, description)| attribute(name, tag, dtype, description))
     .collect::<Result<_>>()?;
 
-    let occurrence = DataType::from_fields(members.clone())?.required_field("SessionInterface");
+    let occurrence = DataType::from_fields(members.clone())?.required_field(SESSIONINTERFACE_NAME);
     let mut fields = vec![
         attribute(
             "MBean",
@@ -354,7 +396,7 @@ fn build() -> Result<Vec<Field>> {
             "What the answer failed with, where it failed.",
         )?,
         attribute(
-            "SessionInterfaces",
+            SESSIONINTERFACES_NAME,
             SESSIONINTERFACES_TAG,
             DataType::list(occurrence),
             "The MBeans this document answered for, one occurrence each.",
@@ -497,14 +539,15 @@ fn push_occurrence(
 ) {
     let mut push = |member: &[u8], value: Vec<u8>| {
         let mut key = Vec::with_capacity(member.len() + 24);
-        key.extend_from_slice(b"SessionInterfaces[");
+        key.extend_from_slice(SESSIONINTERFACES_NAME.as_bytes());
+        key.push(b'[');
         key.extend_from_slice(occurrence.to_string().as_bytes());
         key.extend_from_slice(b"].");
         key.extend_from_slice(member);
         pairs.push((key, value));
     };
     if let Some(name) = name {
-        push(b"SessionInterface", name.as_bytes().to_vec());
+        push(SESSIONINTERFACE_NAME.as_bytes(), name.as_bytes().to_vec());
         // The ObjectName's own properties, read where the classifier reads
         // them so one spelling answers for both.
         for (member, property) in [
@@ -553,6 +596,311 @@ fn rendered(value: &Scalar) -> Option<Vec<u8>> {
     }
 }
 
+/// One plugin a bridge configuration document answers for.
+///
+/// A Jolokia read answers one MBean's attributes or a map of them keyed by
+/// ObjectName, and both are the same statement made once or many times. This
+/// is one of those statements: the ObjectName the bridge holds the plugin
+/// under, beside the attributes it stated, exactly as the document wrote
+/// them. [`FixMsg`](super::FixMsg) is the same facts typed against a
+/// dictionary - [`Self::into_fixmsg`] crosses to it and [`Self::from_fixmsg`]
+/// crosses back - and this is what a reader walking a hundred plugins holds
+/// before it types any of them.
+///
+/// ```
+/// # fn main() -> yggdryl::Result<()> {
+/// use yggdryl::UlPlugin;
+///
+/// // A log line: prose in front of the document, prose behind it.
+/// let line = br#"12:00:00 [Jolokia] Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=OrderRouting,plugin-type=FIX,type=Plugin":{"Name":"OrderRouting","Version":"4.7.0","State":"logged"}},"status":200} (12 ms)"#;
+///
+/// let held: Vec<UlPlugin> = UlPlugin::from_json_bytes(line)?.collect();
+/// assert_eq!(held.len(), 1);
+/// assert_eq!(held[0].name(), Some("OrderRouting"));
+/// assert_eq!(held[0].version(), Some("4.7.0"));
+/// assert_eq!(held[0].plugin_type(), Some("FIX"));
+/// assert_eq!(held[0].mbean_type(), Some("Plugin"));
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct UlPlugin {
+    /// The ObjectName the document answered under, where it named one.
+    ///
+    /// A single read states its MBean in the request rather than beside the
+    /// attributes, and a document that states neither answers a plugin whose
+    /// name is whatever its `Name` attribute says.
+    mbean: Option<SmolStr>,
+    /// The attributes as the document stated them, sorted by name.
+    attributes: Scalar,
+}
+
+impl UlPlugin {
+    /// One plugin from the parts a document states.
+    ///
+    /// The ObjectName where the document named one, and the attributes it
+    /// stated - which is what a caller already holding both has: a binding
+    /// rebuilding one, a reader that pulled a `value` out itself.
+    #[must_use]
+    pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self {
+        Self {
+            mbean: mbean.map(SmolStr::new),
+            attributes,
+        }
+    }
+
+    /// Every plugin one document answers for, from the bytes a line carries.
+    ///
+    /// The document is found inside the line the way the classifier finds it:
+    /// a transport writes a timestamp in front of one and sometimes a duration
+    /// behind it, and both are prose. Bytes that name no MBean are read whole,
+    /// because a caller handing the document straight in is handing the
+    /// document.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Codec`](crate::Error) naming the byte position when
+    /// what is there is not JSON.
+    pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins> {
+        let document = crate::from_json_scalar(
+            crate::mime_type::line::ulconfig_span(body).map_or(body, |span| &body[span]),
+        )?;
+        Ok(Self::from_json_scalar(&document))
+    }
+
+    /// Every plugin one parsed document answers for, in the order it answered.
+    ///
+    /// The envelope is optional: a `value` under a Jolokia answer, an array of
+    /// those answers for a bulk read, or a bare attribute map a caller pulled
+    /// out itself. A document that answers nothing answers no plugins rather
+    /// than a refusal - a Jolokia error is a document too.
+    #[must_use]
+    pub fn from_json_scalar(document: &Scalar) -> UlPlugins {
+        let mut held = Vec::new();
+        for answer in document.as_sequence().map_or_else(
+            || vec![document],
+            |bulk| bulk.iter().collect::<Vec<&Scalar>>(),
+        ) {
+            let Some(root) = answer.as_record() else {
+                continue;
+            };
+            let request = root
+                .get("request")
+                .and_then(Scalar::as_record)
+                .unwrap_or(root);
+            let value = root.get("value").unwrap_or(answer);
+            for (mbean, attributes) in entries(value, request.get("mbean")) {
+                held.push(Self {
+                    mbean,
+                    attributes: attributes.clone(),
+                });
+            }
+        }
+        UlPlugins {
+            held: held.into_iter(),
+        }
+    }
+
+    /// Every plugin one typed message carries.
+    ///
+    /// The reverse of [`Self::into_fixmsg`], over the occurrences of the
+    /// [`SESSIONINTERFACES_TAG`] group: each occurrence is one plugin, its
+    /// `SessionInterface` member is the ObjectName, and every other member is
+    /// an attribute under the name the dictionary gave it. The two properties
+    /// the ObjectName itself states - `MBeanType` and `PluginType` - are read
+    /// back off the name rather than kept twice.
+    #[must_use]
+    pub fn from_fixmsg(message: &super::FixMsg) -> UlPlugins {
+        let mut held = Vec::new();
+        let occurrences = message
+            .get_by_tag(SESSIONINTERFACES_TAG)
+            .and_then(Scalar::as_sequence);
+        // The member names are the item's, in declaration order, which is the
+        // order the values arrive in: a row is an ordered sequence.
+        let item = message
+            .as_field()
+            .dtype()
+            .get_field_by_path(SESSIONINTERFACES_NAME)
+            .and_then(|group| group.dtype().get_field_at(0));
+        if let (Some(occurrences), Some(item)) = (occurrences, item) {
+            let names: Vec<&str> = item
+                .dtype()
+                .as_fields()
+                .map(|fields| fields.iter().map(Field::name).collect())
+                .unwrap_or_default();
+            for occurrence in occurrences {
+                let Some(values) = occurrence.as_sequence() else {
+                    continue;
+                };
+                let mut mbean = None;
+                let mut attributes: Vec<(SmolStr, Scalar)> = Vec::new();
+                for (name, value) in names.iter().zip(values) {
+                    if value.is_null() {
+                        continue;
+                    }
+                    match *name {
+                        SESSIONINTERFACE_NAME => {
+                            mbean = value.as_str().map(SmolStr::new);
+                        }
+                        // Both are the ObjectName's own properties, and the
+                        // name is kept: storing them twice would give one fact
+                        // two owners.
+                        "MBeanType" | "PluginType" => {}
+                        held => attributes.push((SmolStr::new(held), value.clone())),
+                    }
+                }
+                // A duplicate member name cannot happen: the item's names are
+                // a Struct's, which the schema grammar already made unique.
+                let Ok(attributes) = Scalar::from_record(attributes) else {
+                    continue;
+                };
+                held.push(Self { mbean, attributes });
+            }
+        }
+        UlPlugins {
+            held: held.into_iter(),
+        }
+    }
+
+    /// This plugin as a message typed against `codec`'s dictionary.
+    ///
+    /// The same build every other reader funnels into, over the pairs this
+    /// plugin states: one occurrence of the session-interface group, and the
+    /// MBean the document answered under. Nothing is rendered twice - an
+    /// attribute that is an object or an array crosses as the JSON it is,
+    /// exactly as it does when the line itself is read.
+    ///
+    /// # Errors
+    ///
+    /// Returns the builder's refusal.
+    pub fn into_fixmsg(&self, codec: &super::FixCodec, enrich: bool) -> Result<super::FixMsg> {
+        let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        let named = self.mbean.as_deref().map(Scalar::from);
+        push_leaf(&mut pairs, b"MBean", named.as_ref());
+        push_occurrence(&mut pairs, 0, self.mbean.as_deref(), &self.attributes);
+        let borrowed: Vec<(&[u8], &[u8])> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_slice(), value.as_slice()))
+            .collect();
+        codec.transform_pairs(borrowed, enrich)
+    }
+
+    /// The ObjectName the bridge holds this plugin under.
+    #[must_use]
+    pub fn mbean(&self) -> Option<&str> {
+        self.mbean.as_deref()
+    }
+
+    /// What the ObjectName says this MBean is: `Plugin`, `ConfigurationPlugin`.
+    #[must_use]
+    pub fn mbean_type(&self) -> Option<&str> {
+        self.property(crate::mime_type::line::OBJECT_NAME_TYPE)
+    }
+
+    /// The protocol the ObjectName says this plugin speaks.
+    #[must_use]
+    pub fn plugin_type(&self) -> Option<&str> {
+        self.property(b"plugin-type")
+    }
+
+    /// The name the bridge knows this plugin by.
+    ///
+    /// The attribute where the document stated one, and the ObjectName's own
+    /// `name` property where it did not: a wildcard read names every plugin in
+    /// the key it answers under.
+    #[must_use]
+    pub fn name(&self) -> Option<&str> {
+        self.text("Name").or_else(|| self.property(b"name"))
+    }
+
+    /// The plugin version this session interface runs.
+    #[must_use]
+    pub fn version(&self) -> Option<&str> {
+        self.text("Version")
+    }
+
+    /// The category the bridge files this plugin under.
+    #[must_use]
+    pub fn category(&self) -> Option<&str> {
+        self.text("Category")
+    }
+
+    /// What the session is doing now, where the document says.
+    #[must_use]
+    pub fn state(&self) -> Option<&str> {
+        self.text("State")
+    }
+
+    /// One attribute as the document stated it.
+    ///
+    /// The spelling is the document's own, folded the way every other name in
+    /// this crate is, so `PrimaryHost`, `primaryhost` and `primary_host` are
+    /// one attribute.
+    #[must_use]
+    pub fn get(&self, attribute: &str) -> Option<&Scalar> {
+        let held = self.attributes.as_record()?;
+        held.get(attribute).or_else(|| {
+            held.iter()
+                .find(|(name, _)| crate::types::folds_equal(name, attribute))
+                .map(|(_, value)| value)
+        })
+    }
+
+    /// The attributes as the one value they are.
+    #[must_use]
+    pub const fn as_attributes(&self) -> &Scalar {
+        &self.attributes
+    }
+
+    /// Every attribute this plugin states, by name.
+    pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)> {
+        self.attributes
+            .as_record()
+            .into_iter()
+            .flat_map(|held| held.iter().map(|(name, value)| (name.as_str(), value)))
+    }
+
+    /// One attribute as text, where it is text.
+    fn text(&self, attribute: &str) -> Option<&str> {
+        self.get(attribute)?.as_str()
+    }
+
+    /// One property of the ObjectName, where the document named one.
+    fn property(&self, property: &[u8]) -> Option<&str> {
+        let mbean = self.mbean.as_deref()?;
+        let held = crate::mime_type::line::object_name_property(mbean.as_bytes(), property)?;
+        std::str::from_utf8(held).ok()
+    }
+}
+
+/// Every plugin one document answers for, in the order it answered.
+#[derive(Clone, Debug)]
+pub struct UlPlugins {
+    held: std::vec::IntoIter<UlPlugin>,
+}
+
+impl Iterator for UlPlugins {
+    type Item = UlPlugin;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.held.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.held.size_hint()
+    }
+}
+
+impl DoubleEndedIterator for UlPlugins {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.held.next_back()
+    }
+}
+
+impl ExactSizeIterator for UlPlugins {}
+
+impl std::iter::FusedIterator for UlPlugins {}
+
 impl super::FixCodec {
     /// Reads one ULBridge configuration document.
     ///
@@ -570,7 +918,14 @@ impl super::FixCodec {
     /// Returns [`Error::Parse`](crate::Error) naming the byte position when
     /// the document is not JSON, and the builder's refusal otherwise.
     pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<super::FixMsg> {
-        let document = crate::from_json_scalar(body)?;
+        // The document as the line carries it: a transport writes a timestamp
+        // in front of one and sometimes a duration behind it, and the reader
+        // that classified the line already knows where both stop. A body that
+        // names no MBean is read whole, because a caller handing one straight
+        // in is handing the document itself.
+        let document = crate::from_json_scalar(
+            crate::mime_type::line::ulconfig_span(body).map_or(body, |span| &body[span]),
+        )?;
         let owned = ulconfig_pairs(&document);
         let pairs: Vec<(&[u8], &[u8])> = owned
             .iter()

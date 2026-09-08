@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import decimal
+import json
 import pathlib
 import pickle
 import subprocess
@@ -27,13 +28,16 @@ from yggdryl.fix import (
     FixCodec,
     FixRegistry,
     STANDARD_BRANCH,
+    ULBRIDGE_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
+    UlPlugin,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
+    fix_ulbridge_fields,
     global_registry,
     install_global_registry,
     parse_arrow_reader,
@@ -830,7 +834,7 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
 
     # The registry form is the same file read whole: the same vocabulary, plus
     # the message roots its grammar bindings describe.
-    registry, roots = FixRegistry.from_cfb(path, "bloomberg")
+    registry, roots = FixRegistry.from_cfb_file(path, "bloomberg")
     assert len(registry) == len(fields)
     assert [root.name for root in roots] == ["7"]
 
@@ -845,6 +849,86 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     unnamed.write_text(CBLOCK, encoding="utf-8")
     with pytest.raises(ValueError, match="ASCII letter"):
         fix_cfb_fields(unnamed)
+
+
+def test_registering_a_message_type_names_it_and_describes_it(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bloomberg.cfb"
+    path.write_text(
+        """<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration version="1.2" fix-version="4.4">
+	<message-types>
+		<message-type value="7" description="Advertisement" supported="false" />
+	</message-types>
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
+</cplugin-configuration>
+""",
+        encoding="utf-8",
+    )
+    registry, _ = FixRegistry.from_cfb_file(path, "bloomberg")
+
+    # The file's own message types arrived with it, valued the way the column
+    # takes them: `7` fits and is itself, described as the file described it.
+    codes = registry.field_by_tag(35).metadata["fix:codes"]
+    assert '"value":"7"' in codes
+    assert "Advertisement" in codes
+
+    # A type a bridge invents is added under the name and wording it is given,
+    # and the spelling stays a spelling of it.
+    value = registry.register_msgtype(
+        "P Report Ack", "AllocationReportAck", "Allocation Report ACK"
+    )
+    assert value.startswith("~")
+    codes = registry.field_by_tag(35).metadata["fix:codes"]
+    assert f'"value":"{value}"' in codes
+    assert '"name":"AllocationReportAck"' in codes
+    assert '"P Report Ack"' in codes
+    assert '"Allocation Report ACK"' in codes
+
+    # Idempotent: registering it again answers the same value.
+    assert registry.register_msgtype("P Report Ack") == value
+
+
+def test_a_cblock_refusal_quotes_the_declaration_it_read(
+    tmp_path: pathlib.Path,
+) -> None:
+    # The native sentence crosses whole: a `ValueError` naming the byte, what
+    # was expected, what arrived, and the element the file spells it in.
+    broken = tmp_path / "bloomberg.cfb"
+    broken.write_text(
+        CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="decimal"'),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as refused:
+        FixRegistry.from_cfb_file(broken, "bloomberg")
+    rendered = str(refused.value)
+    assert "invalid cfb expression at byte" in rendered
+    assert '"decimal"' in rendered
+    assert 'vocabulary-tag name=\\"55\\"' in rendered
+
+    # Both doors refuse it with the same sentence.
+    with pytest.raises(ValueError) as also:
+        fix_cfb_fields(broken)
+    assert str(also.value) == rendered
+
+
+def test_a_cblock_description_keeps_its_words_and_loses_its_layout(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bloomberg.cfb"
+    path.write_text(
+        CBLOCK.replace(
+            "<description>Ticker symbol.</description>",
+            "<description>Ticker symbol.\n\t\t\tOne per instrument, and never a &lt;SOH&gt;.</description>",
+        ),
+        encoding="utf-8",
+    )
+    fields = fix_cfb_fields(path)
+    assert (
+        fields[0].description
+        == "Ticker symbol. One per instrument, and never a <SOH>."
+    )
 
 
 def test_registry_mutation_refuses_while_something_shares_it(
@@ -1202,6 +1286,154 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
 
     with pytest.raises(ValueError):
         FixCodec(seed, branch="not a branch")
+
+
+# A Jolokia answer as a log line writes it: a timestamp and a reader in front
+# of the document, the duration the call took behind it. Both are prose.
+LOGGED = (
+    '2026-08-14 06:46:22.150 [Jolokia] (DEBUG) Response: {"request":{"mbean":'
+    '"com.ullink.ulbridge.sessioninterfaces.plugins:name=SmartTrade_OrderRouting,'
+    'plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"SmartTrade_OrderRouting",'
+    '"Version":"4.7.0","Category":"Fix BuySide","SenderCompID":"PIC.PROD.TRD",'
+    '"TargetCompID":"ST.PROD","BeginString":"FIX.4.4","PrimaryHost":"172.97.127.90",'
+    '"CurrentPort":9726,"State":"logged","Type":"I","NeedCFBReload":false,'
+    '"cm-extension":"4.7.0","IncomingMsgSeqNum":18336},"status":200} (12 ms)'
+).encode()
+
+# A wildcard read: one answer, a plugin per key, each named by its ObjectName.
+WILDCARD = (
+    '{"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"},'
+    ' "value": {"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,'
+    'plugin-type=FIX,type=ConfigurationPlugin": {"Comment": "", "Category": "InterBridge",'
+    ' "Prefix": "", "Name": "ULMSG_BROKER_BDG_DMZ_PCO", "LoadIsolation": 0, "Suffix": "",'
+    ' "PriorityLevel": 5, "Version": "2.0.3"},'
+    ' "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,'
+    'plugin-type=FIX,type=Plugin": {"Name": "ULMSG_BROKER_TO_DMZ", "Version": "4.7.0"}},'
+    ' "status": 200}'
+).encode()
+
+
+@pytest.fixture
+def bridge() -> FixRegistry:
+    """The committed dictionary, plus the bridge's own vocabulary."""
+    registry = FixRegistry.from_handle(SEED)
+    registry.with_ulbridge_fields()
+    return registry
+
+
+def test_the_bridge_vocabulary_is_a_caller_s_choice(bridge: FixRegistry) -> None:
+    """Registering ULBridge's fields is the one thing that types its answers."""
+    fields = fix_ulbridge_fields()
+    assert fields, "the bridge publishes its own vocabulary"
+    assert all(field.fix.branch == ULBRIDGE_BRANCH for field in fields)
+    # Every one of them is in the dictionary that folded them, under the
+    # branch they declare and nowhere else.
+    for field in fields:
+        assert bridge.field_by_name(field.name, ULBRIDGE_BRANCH).fix.tag == field.fix.tag
+    assert FixRegistry.from_handle(SEED).get_field_by_name(
+        fields[0].name, ULBRIDGE_BRANCH
+    ) is None
+
+
+def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
+    bridge: FixRegistry,
+) -> None:
+    """The reader reads to the document's own close, not to the line's end."""
+    assert MimeType.infer_bytes(LOGGED) == MimeType.ULCONFIG
+    assert MimeType.infer_bytes_msgtype(LOGGED) == b"Plugin"
+
+    reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
+    message = reader.transform_ulconfig_line(LOGGED)
+    # FIX's own names stay FIX's and the bridge's own are the bridge's, both
+    # inside the occurrence the document answered for.
+    assert message.by_path("SessionInterfaces.0.SenderCompID").as_py() == "PIC.PROD.TRD"
+    assert message.by_path("SessionInterfaces.0.Version").as_py() == "4.7.0"
+    # The registered vocabulary types a port as a number and a flag as a flag.
+    assert message.by_path("SessionInterfaces.0.CurrentPort").as_py() == 9726
+    assert message.by_path("SessionInterfaces.0.NeedCFBReload").as_py() is False
+    # `transform_line` finds the same document behind the same prose.
+    assert reader.transform_line(LOGGED) == message
+
+
+def test_every_plugin_a_document_answers_for_crosses_both_ways(
+    bridge: FixRegistry,
+) -> None:
+    """A wildcard read, a single read, and the message each crosses to."""
+    held = UlPlugin.from_json_bytes(WILDCARD)
+    assert len(held) == 2
+    assert held[0].name == "ULMSG_BROKER_BDG_DMZ_PCO"
+    assert held[0].mbean_type == "ConfigurationPlugin"
+    assert held[0].plugin_type == "FIX"
+    assert held[0].category == "InterBridge"
+    assert held[0].version == "2.0.3"
+    assert held[1].name == "ULMSG_BROKER_TO_DMZ"
+    assert held[1].mbean_type == "Plugin"
+
+    # The spelling is folded the way every other name in this crate is, and
+    # `in` answers on the same fold as `get`.
+    assert held[0].get("priority_level").as_py() == 5
+    assert "PriorityLevel" in held[0]
+    assert "priority_level" in held[0]
+    assert "nothing_stated" not in held[0]
+    # `attributes` keeps the document's own spelling; the fold is what `get`
+    # and `in` are for.
+    assert len(held[0]) == len(held[0].attributes)
+    assert held[0].attributes["Version"].as_py() == "2.0.3"
+
+    single = UlPlugin.from_json_bytes(LOGGED)
+    assert len(single) == 1
+    assert single[0].name == "SmartTrade_OrderRouting"
+    assert single[0].state == "logged"
+    assert single[0].mbean is not None and "SmartTrade_OrderRouting" in single[0].mbean
+
+    # A parsed document is the same walk as the bytes it was parsed from, and
+    # anything the Scalar boundary reads is a parsed document.
+    assert UlPlugin.from_json_scalar(json.loads(WILDCARD)) == held
+
+    # And back to a typed message, and out of one again: the crossing keeps
+    # the ObjectName, the attributes and their types.
+    reader = FixCodec(bridge, branch=ULBRIDGE_BRANCH)
+    message = held[0].into_fixmsg(reader)
+    assert message.by_path("SessionInterfaces.0.PriorityLevel").as_py() == 5
+    back = UlPlugin.from_fixmsg(message)
+    assert len(back) == 1
+    assert back[0].mbean == held[0].mbean
+    assert back[0].name == held[0].name
+    assert back[0].version == held[0].version
+
+
+def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
+    """Equality, hash, copy and pickle, the way every other value here is."""
+    plugin = UlPlugin.from_json_bytes(LOGGED)[0]
+    same = UlPlugin.from_json_bytes(LOGGED)[0]
+    assert plugin == same
+    assert hash(plugin) == hash(same)
+    assert plugin.stable_hash() == same.stable_hash()
+    assert len({plugin, same}) == 1
+    assert plugin != UlPlugin.from_json_bytes(WILDCARD)[0]
+    assert plugin != object()
+
+    assert copy.copy(plugin) == plugin
+    assert copy.deepcopy(plugin) == plugin
+    assert pickle.loads(pickle.dumps(plugin)) == plugin
+    assert "SmartTrade_OrderRouting" in repr(plugin)
+
+    # Built from the parts a caller has, rather than from a document.
+    built = UlPlugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
+    assert built.name == "Local"
+    assert built.mbean == plugin.mbean
+    assert built != plugin
+    # A mapping is folded into the record a document would have made, so a
+    # hand-built plugin answers the way a read one does.
+    assert built.get("name").as_py() == "Local"
+    assert built.attributes.keys() == {"Name", "Version"}
+    with pytest.raises(TypeError):
+        UlPlugin({1: "not a name"})
+
+    # A document answering nothing answers no plugins rather than raising.
+    assert UlPlugin.from_json_bytes(b"[]") == []
+    with pytest.raises(ValueError):
+        UlPlugin.from_json_bytes(b"no document here at all")
 
 
 def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:

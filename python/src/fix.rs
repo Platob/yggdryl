@@ -26,7 +26,8 @@ use yggdryl::{
     FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec,
     FixField as CoreFixField, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
     FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar,
-    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
+    UlPlugin as CoreUlPlugin, Version as CoreVersion, from_json_scalar_with_field,
+    into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -253,15 +254,19 @@ impl PyFixRegistry {
     /// user-range tags belong to; the standard tags always land in the
     /// standard branch, because a dialect redefines its own tags and never
     /// FIX's.
+    ///
+    /// A file this cannot be read from is a `ValueError` carrying the native
+    /// sentence whole: the byte the reader stopped at, what was expected, what
+    /// arrived, and the element the file spells it in.
     #[staticmethod]
     #[pyo3(signature = (location, branch=None))]
-    fn from_cfb(
+    fn from_cfb_file(
         location: &Bound<'_, PyAny>,
         branch: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
         let dialect = branch.map(branch_from_py).transpose()?;
         let (registry, roots) = read_cfb(location, |handle| {
-            CoreFixRegistry::from_cfb(handle, dialect.as_ref())
+            CoreFixRegistry::from_cfb_file(handle, dialect.as_ref())
         })?;
         Ok((
             Self::from_arc(Arc::new(registry)),
@@ -343,14 +348,36 @@ impl PyFixRegistry {
         Ok(())
     }
 
+    /// Add `ULBridge`'s own fields, so a bridge configuration document types.
+    ///
+    /// A dictionary that has them reads a document's attributes as the ports,
+    /// sequence numbers and flags they are; one that does not reads them as
+    /// the text they arrived as, because a key no dictionary explains is kept
+    /// rather than dropped.
+    fn with_ulbridge_fields(&mut self) -> PyResult<()> {
+        let held = std::mem::take(self.inner_mut()?);
+        *self.inner_mut()? = held.with_ulbridge_fields().map_err(value_error)?;
+        Ok(())
+    }
+
     /// Register one message type, answering the value it takes.
     ///
     /// A type the code set does not have is added rather than refused, and a
     /// spelling too long for the datatype takes a stable synthesized value.
-    /// Idempotent, so a reader may call it per row.
-    fn register_msgtype(&mut self, spelling: &str) -> PyResult<String> {
+    /// `name` is the symbolic name the set files it under, with the spelling
+    /// kept as an alias when the two differ, and `description` is the source's
+    /// own wording. Idempotent and enriching: a type already spelled answers
+    /// its value, gains a spelling the set did not answer to and a description
+    /// it did not have, and keeps everything it already held.
+    #[pyo3(signature = (spelling, name=None, description=None))]
+    fn register_msgtype(
+        &mut self,
+        spelling: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> PyResult<String> {
         self.inner_mut()?
-            .register_msgtype(spelling)
+            .register_msgtype(spelling, name, description)
             .map(|held| held.as_str().to_owned())
             .map_err(value_error)
     }
@@ -776,6 +803,11 @@ impl PyFixMsg {
         Self { inner }
     }
 
+    /// Borrow the message the core holds.
+    pub(crate) const fn as_inner(&self) -> &CoreFixMsg {
+        &self.inner
+    }
+
     /// The value both the hash and the equality read.
     fn identity_value(&self) -> Scalar {
         Scalar::from_sequence([
@@ -1138,6 +1170,13 @@ pub(crate) struct PyFixCodec {
     registry: Arc<CoreFixRegistry>,
 }
 
+impl PyFixCodec {
+    /// Borrow the reader the core holds.
+    pub(crate) const fn as_inner(&self) -> &CoreFixCodec {
+        &self.inner
+    }
+}
+
 #[pymethods]
 impl PyFixCodec {
     /// Open a reader over one dictionary, or over the process default.
@@ -1213,6 +1252,19 @@ impl PyFixCodec {
     fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
         self.inner
             .transform_fixml_line(body, enrich)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// One bridge configuration document, as a Jolokia answer states it.
+    ///
+    /// The document is read out of the line it arrived on: a transport writes
+    /// a timestamp in front of one and sometimes a duration behind it, and
+    /// both are prose.
+    #[pyo3(signature = (body, enrich=false))]
+    fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
+        self.inner
+            .transform_ulconfig_line(body, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -1461,9 +1513,301 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
         .map_err(value_error)
 }
 
-/// The vocabulary one Ullink `CBlock` declares, in declaration order.
+/// One text-keyed mapping as the record a parsed document holds there.
+fn folded_record(value: &Scalar) -> Option<Scalar> {
+    let entries = value.as_mapping()?;
+    let mut named = Vec::with_capacity(entries.len());
+    for (name, held) in entries {
+        named.push((name.as_str()?.to_owned(), stated_document(held.clone())));
+    }
+    Scalar::from_record(named).ok()
+}
+
+/// The document Python stated, as the records a parsed one is made of.
 ///
-/// The dictionary half of `FixRegistry.from_cfb`, answered on its own: every
+/// A Python mapping crosses as a mapping - its keys are values rather than
+/// names - and every reader here resolves an attribute by name, so a `dict`
+/// would answer nothing. Folding a text-keyed mapping into a record at every
+/// depth is what makes a `dict` the same document the equivalent bytes parse
+/// to. Anything else crosses as itself: a value the core already built is
+/// already records, and a mapping keyed by something other than text is not a
+/// document.
+fn stated_document(value: Scalar) -> Scalar {
+    if let Some(folded) = folded_record(&value) {
+        return folded;
+    }
+    if let Some(items) = value.as_sequence() {
+        return Scalar::from_sequence(items.iter().cloned().map(stated_document));
+    }
+    value
+}
+
+/// The attributes a caller stated, as the record a document would have made.
+///
+/// The same fold, refusing what it could not make a record of: a caller
+/// stating attributes states their names, and a mapping keyed by anything
+/// else would build a plugin that answers nothing.
+fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
+    let held = stated_document(value);
+    if let Some(entries) = held.as_mapping() {
+        let unnamed = entries
+            .iter()
+            .find(|(name, _)| name.as_str().is_none())
+            .map_or("value", |(name, _)| name.kind());
+        return Err(PyTypeError::new_err(format!(
+            "expected an attribute name, got {unnamed}"
+        )));
+    }
+    Ok(held)
+}
+
+/// What [`PyUlPlugin::__reduce__`] hands pickle: the rebuilder and the two
+/// parts it needs - the attributes as a document, and the `ObjectName`.
+type PluginPickle = (Py<PyAny>, (String, Option<String>));
+
+/// One plugin a bridge configuration document answers for.
+///
+/// A Jolokia read answers one `MBean`'s attributes or a map of them keyed by
+/// `ObjectName`, and both are the same statement made once or many times. This
+/// is one of those statements - the `ObjectName` the bridge holds the plugin
+/// under, beside the attributes it stated - which is what a monitor walking a
+/// hundred of them holds before it types any of them. `FixMsg` is the same
+/// facts typed against a dictionary, and the two cross both ways.
+///
+/// A mapping crossing the boundary is folded into the record a parsed document
+/// holds, so a `dict` states one as well as bytes do.
+///
+/// Immutable, so it hashes, copies and pickles like every other value here.
+#[pyclass(
+    name = "UlPlugin",
+    module = "yggdryl._native",
+    frozen,
+    skip_from_py_object
+)]
+pub(crate) struct PyUlPlugin {
+    inner: CoreUlPlugin,
+}
+
+impl PyUlPlugin {
+    /// Wrap a plugin the core answered.
+    const fn from_inner(inner: CoreUlPlugin) -> Self {
+        Self { inner }
+    }
+
+    /// The value both the hash and the pickle read.
+    fn identity_value(&self) -> Scalar {
+        Scalar::from_sequence([
+            self.inner.mbean().map_or(Scalar::Null, Scalar::from),
+            self.inner.as_attributes().clone(),
+        ])
+    }
+}
+
+#[pymethods]
+impl PyUlPlugin {
+    /// Build one plugin from the parts a document states.
+    ///
+    /// `attributes` is anything the `Scalar` boundary reads - a mapping of
+    /// names, a native `Scalar`, a parsed document - and `mbean` is the
+    /// `ObjectName` the bridge holds the plugin under, where one is known.
+    #[new]
+    #[pyo3(signature = (attributes, mbean=None))]
+    fn new(attributes: &Bound<'_, PyAny>, mbean: Option<&str>) -> PyResult<Self> {
+        Ok(Self::from_inner(CoreUlPlugin::new(
+            mbean,
+            stated_attributes(from_py(attributes)?)?,
+        )))
+    }
+
+    /// Every plugin the document a line carries answers for.
+    ///
+    /// The document is found inside the line the way the classifier finds it:
+    /// a transport writes a timestamp in front of one and sometimes a duration
+    /// behind it, and both are prose. Bytes that name no `MBean` are read whole.
+    #[staticmethod]
+    fn from_json_bytes(body: &[u8]) -> PyResult<Vec<Self>> {
+        CoreUlPlugin::from_json_bytes(body)
+            .map(|held| held.map(Self::from_inner).collect())
+            .map_err(value_error)
+    }
+
+    /// The same, over a document a caller already parsed.
+    ///
+    /// The envelope is optional: a `value` under a Jolokia answer, an array of
+    /// those answers for a bulk read, or a bare attribute map. A document that
+    /// answers nothing answers no plugins rather than raising - a Jolokia
+    /// error is a document too.
+    #[staticmethod]
+    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<Vec<Self>> {
+        let document = stated_document(from_py(document)?);
+        Ok(CoreUlPlugin::from_json_scalar(&document)
+            .map(Self::from_inner)
+            .collect())
+    }
+
+    /// Every plugin one typed message carries, one per occurrence.
+    #[staticmethod]
+    fn from_fixmsg(message: &PyFixMsg) -> Vec<Self> {
+        CoreUlPlugin::from_fixmsg(message.as_inner())
+            .map(Self::from_inner)
+            .collect()
+    }
+
+    /// This plugin as a message typed against `codec`'s dictionary.
+    ///
+    /// The same build every other reader funnels into, so a dictionary
+    /// carrying `ULBridge`'s fields types a port as a number and a flag as a
+    /// boolean, and one that does not keeps every attribute as the text it
+    /// arrived as.
+    #[pyo3(signature = (codec, enrich=false))]
+    #[allow(clippy::wrong_self_convention)]
+    fn into_fixmsg(&self, codec: &PyFixCodec, enrich: bool) -> PyResult<PyFixMsg> {
+        self.inner
+            .into_fixmsg(codec.as_inner(), enrich)
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// The `ObjectName` the bridge holds this plugin under.
+    #[getter]
+    fn mbean(&self) -> Option<&str> {
+        self.inner.mbean()
+    }
+
+    /// What the `ObjectName` says this `MBean` is: `Plugin`, `ConfigurationPlugin`.
+    #[getter]
+    fn mbean_type(&self) -> Option<&str> {
+        self.inner.mbean_type()
+    }
+
+    /// The protocol the `ObjectName` says this plugin speaks.
+    #[getter]
+    fn plugin_type(&self) -> Option<&str> {
+        self.inner.plugin_type()
+    }
+
+    /// The name the bridge knows this plugin by.
+    #[getter]
+    fn name(&self) -> Option<&str> {
+        self.inner.name()
+    }
+
+    /// The plugin version this session interface runs.
+    #[getter]
+    fn version(&self) -> Option<&str> {
+        self.inner.version()
+    }
+
+    /// The category the bridge files this plugin under.
+    #[getter]
+    fn category(&self) -> Option<&str> {
+        self.inner.category()
+    }
+
+    /// What the session is doing now, where the document says.
+    #[getter]
+    fn state(&self) -> Option<&str> {
+        self.inner.state()
+    }
+
+    /// Every attribute this plugin states, by name.
+    #[getter]
+    fn attributes(&self) -> std::collections::BTreeMap<String, PyScalar> {
+        self.inner
+            .attributes()
+            .map(|(name, value)| (name.to_owned(), PyScalar::from_inner(value.clone())))
+            .collect()
+    }
+
+    /// One attribute as the document stated it, or `None`.
+    ///
+    /// The spelling is folded the way every other name in this crate is, so
+    /// `PrimaryHost`, `primaryhost` and `primary_host` are one attribute.
+    fn get(&self, attribute: &str) -> Option<PyScalar> {
+        self.inner.get(attribute).cloned().map(PyScalar::from_inner)
+    }
+
+    /// The stable digest of this plugin, the same in every process.
+    fn stable_hash(&self) -> u64 {
+        self.identity_value().stable_hash()
+    }
+
+    fn __hash__(&self) -> isize {
+        crate::python_hash(self.stable_hash())
+    }
+
+    /// Two plugins are equal with the same `ObjectName` and attributes.
+    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
+        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
+            return py.NotImplemented();
+        };
+        pyo3::types::PyBool::new(py, self.inner == other.inner)
+            .to_owned()
+            .into_any()
+            .unbind()
+    }
+
+    fn __contains__(&self, attribute: &str) -> bool {
+        self.inner.get(attribute).is_some()
+    }
+
+    fn __len__(&self) -> usize {
+        self.inner.attributes().count()
+    }
+
+    /// Rebuild a plugin from the two parts pickle carried.
+    #[staticmethod]
+    fn _from_pickle(attributes: &str, mbean: Option<&str>) -> PyResult<Self> {
+        let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
+        Ok(Self::from_inner(CoreUlPlugin::new(mbean, attributes)))
+    }
+
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<PluginPickle> {
+        let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
+        let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
+        Ok((
+            callable,
+            (attributes, self.inner.mbean().map(str::to_owned)),
+        ))
+    }
+
+    fn __copy__(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
+        self.__copy__()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "UlPlugin({:?}, {} attributes)",
+            self.inner.name().unwrap_or_default(),
+            self.inner.attributes().count()
+        )
+    }
+}
+
+/// The fields `ULBridge`'s own dictionary defines, in tag order.
+///
+/// What a bridge configuration document states about a session interface -
+/// the venue it talks to, the host and port, the sequence numbers, the state -
+/// on the `ulbridge` branch rather than FIX's, because the specification
+/// publishes none of it. Registering them is a caller's choice, which is what
+/// `FixRegistry.with_ulbridge_fields` is for.
+#[pyfunction]
+#[pyo3(name = "fix_ulbridge_fields")]
+pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
+    yggdryl::fix_ulbridge_fields()
+        .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
+        .map_err(value_error)
+}
+
+/// The vocabulary one Ullink `CBlock` declares, in declaration order./// The vocabulary one Ullink `CBlock` declares, in declaration order.
+///
+/// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
 /// field carries the `fix:tag` and `fix:branch` that key it and whatever code
 /// set the file's maps decode for it, which is what `FixRegistry.add_fields`
 /// needs to fold one counterparty's file into a dictionary that exists. The

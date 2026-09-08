@@ -62,15 +62,22 @@
   text: codec, json, toml, yaml
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
   types: AsciiField, BinaryField, BinaryViewField, BooleanField, Date32Field, Date64Field, Decimal32Field, Decimal64Field, Decimal128Field, Decimal256Field, DecimalField, DenseUnionField, DictionaryField, Duration32Field, Duration64Field, FixedAsciiField, FixedSizeBinaryField, FixedSizeListField, Float16Field, Float32Field, Float64Field, CfiField, CountryField, CurrencyField, GeographyField, GeometryField, UuidField, Int8Field, MicField, Int16Field, Int32Field, Int64Field, IntervalField, LargeBinaryField, LargeListField, LargeListViewField, LargeUtf8Field, ListField, ListViewField, MapField, NullField, RunEndEncodedField, StructField, Time32Field, Time64Field, TimeField, DateTime64Field, TypedDataType, TypedField, UInt8Field, UInt16Field, UInt32Field, UInt64Field, UnionField, VariantField, Utf8Field, Utf8ViewField, ascii, binary, binary_view, boolean, cfi, country, currency, date32, date64, datetime64, decimal, decimal32, decimal64, decimal128, decimal256, dense_union, dictionary, duration32, duration64, field, fixed_ascii, fixed_size_binary, fixed_size_list, float16, float32, float64, geography, geometry, uuid, int8, int16, int32, int64, interval, large_binary, large_list, large_list_view, large_utf8, list, list_view, map, map_of, mic, null, run_end_encoded, struct, time, time32, time64, uint8, uint16, uint32, uint64, union, utf8, utf8_view, variant
-  fix: FixBranch, FixMsg, FixRegistry, STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, fix_schema, fix_schema_carrying, fix_schema_tags, global_registry, install_global_registry
+  fix: FixBranch, FixCodec, FixMsg, FixRegistry, UlPlugin, STANDARD_BRANCH, ULBRIDGE_BRANCH, USER_TAG_MAX, USER_TAG_MIN, classify_arrow_array, fix_cfb_fields, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields, global_registry, install_global_registry, parse_arrow_reader
   fix.FixRegistry
-    statics: from_fields, from_handle
-    instance: field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, remove, remove_by_id, update, write_into
+    statics: from_cfb_file, from_fields, from_handle
+    instance: add_cfb_file, field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, register_msgtype, remove, remove_by_id, update, with_crate_fields, with_ulbridge_fields, write_into
     keys: an int tag (never bool, must fit i32) or a str name/dotted path, both meaning the standard branch - a colon-bearing str is a name, never an identifier; a branch and an identifier are str parsed at the boundary, so field_by_name/field_by_path take the branch first and field_by_id takes "branch:tag"; a malformed one is ValueError, a non-str TypeError; locations take IOBase | Url | str | PathLike
     protocol: mutable, so unhashable; equality by fields; __len__/__bool__/__contains__/__getitem__/__iter__ over Field, lazily in ascending identifier order (branch-major, then tag); insert/update/remove refuse while a message or the process default shares it
   fix.FixMsg
     instance: __len__, branch, by_id, by_name, by_path, by_tag, field, get, get_by_id, get_by_name, get_by_path, get_by_tag, registry, stable_hash, value
     protocol: immutable value - stable equality/hash, copy, and pickle carrying the schema, value and registry documents; __iter__ yields (name, Scalar) pairs in root order; branch is derived from the root field, and a bare tag or name resolves in it before the standard one
+  fix.FixCodec
+    instance: enrich_fixmsg, enrich_fixmsgs, registry, transform_fix_line, transform_fixml_line, transform_line, transform_pairs, transform_ulconfig_line, transform_ullink_line
+    protocol: a reader opened once over (registry=None, *, branch=None, version=None, null_values=None) and shared by identity - copy answers a reader over the same dictionary; every transform_* answers a FixMsg typed against it, and transform_ulconfig_line reads a bridge document out of whatever prefix and suffix the line carries
+  fix.UlPlugin
+    statics: from_fixmsg, from_json_bytes, from_json_scalar
+    instance: attributes, category, get, into_fixmsg, mbean, mbean_type, name, plugin_type, stable_hash, state, version
+    protocol: immutable value - stable equality/hash, copy, and pickle carrying the attributes document and the ObjectName; __len__ counts the attributes stated and __contains__ answers whether one was, both by the folded name every reader here uses; the constructor and from_json_scalar take (attributes, mbean=None) / (document) through Scalar, folding a mapping into the record a parsed document holds at every depth, and the constructor refuses a key that is not a name
   media.iceberg: Catalog, Compaction, DataFile, IcebergOptions, ManifestFile, Namespace, Namespaces, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table, Tables, assign_field_ids, can_promote, schema_from_json, schema_into_json
   scalar: decorator installing cached static field()
   media.avro
@@ -229,8 +236,8 @@
   fix
     statics: STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixRegistry, FixMsg, globalRegistry, installGlobalRegistry, schema, schemaCarrying, schemaTags
   fix.FixRegistry
-    statics: fromFields, fromHandle
-    instance: clone, equals, field, fieldById, fieldByName, fieldByPath, fieldByTag, get, getField, getFieldById, getFieldByName, getFieldByPath, getFieldByTag, has, insert, keys, remove, removeById, size, stableHash, toJSON, toString, update, writeInto, Symbol.iterator
+    statics: fromCfbFile, fromFields, fromHandle
+    instance: clone, equals, field, fieldById, fieldByName, fieldByPath, fieldByTag, get, getField, getFieldById, getFieldByName, getFieldByPath, getFieldByTag, has, insert, keys, registerMsgtype, remove, removeById, size, stableHash, toJSON, toString, update, writeInto, Symbol.iterator
     keys: a number tag (must be an exact i32) or a string name/dotted path, both meaning the standard branch - a colon-bearing string is a name, never an identifier; a branch and an identifier are strings parsed at the boundary, so fieldByName/fieldByPath take the branch first and fieldById/removeById take "branch:tag"; a malformed one throws the native parse failure, a non-string the Node-API conversion error; locations take IOBase | Url | string
     protocol: mutable; equality by fields; `keys()` is a lazy Generator<Field> and `Symbol.iterator` walks it in ascending identifier order (branch-major, then tag); insert/update/remove/removeById refuse while a message, the process default, or an unfinished walk shares it
   fix.FixMsg

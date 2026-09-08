@@ -130,6 +130,22 @@ pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     Some(Holder::FsFolder(folder))
 }
 
+/// Build a handle for the location `value` names, in the role it is.
+///
+/// What [`folder_from_input`] is for a container, this is for a leaf: a
+/// `.cfb` is a file, and a location held as a container reads no bytes at
+/// all, so a reader handed one answers an empty document rather than a
+/// refusal.
+pub(crate) fn located_from_input(value: LocationInput<'_>) -> Result<Holder> {
+    match value {
+        Either3::A(handle) => handle.rebuilt().map(|held| held.inner),
+        Either3::B(url) => local_holder(&url.inner),
+        // The core already reads a Windows drive, a UNC share, and a
+        // scheme-less path as a `file:` URL, so there is nothing to sniff here.
+        Either3::C(value) => local_holder(&yggdryl::Url::from_str(&value).map_err(napi_error)?),
+    }
+}
+
 /// Build a container handle for the location `value` names.
 ///
 /// A folder is asked for by name rather than discovered, because a location

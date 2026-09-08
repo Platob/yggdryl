@@ -269,7 +269,7 @@ fn ingest(
         .unwrap_or_default();
     let handle = yggdryl::IOBase::child_by_path(&held, name)?;
     let dialect = branch.map(FixBranch::from_str).transpose()?;
-    let (parsed, roots) = FixRegistry::from_cfb(&handle, dialect.as_ref())?;
+    let (parsed, roots) = FixRegistry::from_cfb_file(&handle, dialect.as_ref())?;
     progress.tick();
 
     let (added, folded) = if merge {

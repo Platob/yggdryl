@@ -72,7 +72,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // build the vocabulary, then bind the grammar out of it.
     group.bench_function("parse", |bencher| {
         bencher.iter(|| {
-            FixRegistry::from_cfb(black_box(&handle), Some(black_box(&branch)))
+            FixRegistry::from_cfb_file(black_box(&handle), Some(black_box(&branch)))
                 .expect("a readable CBlock")
         });
     });
