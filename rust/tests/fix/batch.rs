@@ -406,7 +406,9 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
     assert_eq!(message.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
 
     // A column speaks per row and outranks the option, which speaks per
-    // stream: tag 32 is `lastshares` at 4.2 whatever the stream was pinned to.
+    // stream. What a version settles is how a value is read - which dated
+    // code spelling answers - and never what a field is called: tag 32 is the
+    // dictionary's own column whatever version the row states.
     let dated = Scalar::from_record([
         (
             "body",
@@ -416,7 +418,11 @@ fn a_record_is_read_by_its_columns_and_a_bare_payload_reads_as_the_byte_reader_d
     ])
     .unwrap();
     let old = FixMsg::from_record(Arc::clone(&registry), &dated, &options).unwrap();
-    assert!(old.get_by_name("lastshares").is_some());
+    assert!(old.as_field().index_of("lastqty").is_some());
+    assert!(
+        old.get_by_name("lastshares").is_some(),
+        "the 4.2 spelling reaches it"
+    );
 
     // A column absent, null or empty is silence, never an instruction and
     // never an error.

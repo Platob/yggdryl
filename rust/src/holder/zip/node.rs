@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOFolder, IOKind, Listing, MediaType, Result, Url};
 
-use super::{Archive, File, Path, name};
+use super::{Archive, Leaf, Path, name};
 
 /// A directory of archive members, addressed by the prefix its members share.
 ///
@@ -38,7 +38,7 @@ use super::{Archive, File, Path, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct Folder {
+pub struct Node {
     archive: Arc<Archive>,
     /// The prefix this directory holds, empty at the archive root.
     base: SmolStr,
@@ -47,7 +47,7 @@ pub struct Folder {
     url: Url,
 }
 
-impl Folder {
+impl Node {
     /// Address one directory of `archive` without touching it.
     pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self {
         Self {
@@ -82,8 +82,8 @@ impl Folder {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when the path climbs above the archive root.
-    pub fn as_file(&self, path: &str) -> Result<File> {
-        Ok(File::new(
+    pub fn as_leaf(&self, path: &str) -> Result<Leaf> {
+        Ok(Leaf::new(
             Arc::clone(&self.archive),
             name::resolve(&self.base, path)?,
         ))
@@ -94,7 +94,7 @@ impl Folder {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when the path climbs above the archive root.
-    pub fn as_directory(&self, path: &str) -> Result<Self> {
+    pub fn as_node(&self, path: &str) -> Result<Self> {
         Ok(Self::new(
             Arc::clone(&self.archive),
             name::resolve(&self.base, path)?,
@@ -109,15 +109,15 @@ impl Folder {
         };
         Listing::new(names.into_iter().map(move |(name, is_folder)| {
             Ok(if is_folder {
-                Holder::ZipFolder(Self::new(Arc::clone(&archive), name))
+                Holder::ZipNode(Self::new(Arc::clone(&archive), name))
             } else {
-                Holder::ZipFile(File::new(Arc::clone(&archive), name))
+                Holder::ZipLeaf(Leaf::new(Arc::clone(&archive), name))
             })
         }))
     }
 }
 
-impl IOFolder for Folder {
+impl IOFolder for Node {
     fn folder_url(&self) -> &Url {
         &self.url
     }
@@ -183,11 +183,11 @@ impl IOFolder for Folder {
     }
 }
 
-impl crate::IOMedia for Folder {
+impl crate::IOMedia for Node {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for Folder {
+impl IOBase for Node {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         self.folder_pread()
     }
@@ -248,7 +248,7 @@ impl IOBase for Folder {
         if self.is_root() {
             return self.archive.archive_parent();
         }
-        Some(Holder::ZipFolder(Self::new(
+        Some(Holder::ZipNode(Self::new(
             Arc::clone(&self.archive),
             SmolStr::new(name::parent(&self.base).unwrap_or_default()),
         )))

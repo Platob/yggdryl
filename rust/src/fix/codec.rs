@@ -39,6 +39,7 @@
 //! and the stream continues, because one corrupt line must not end a run over
 //! ten million.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use quick_xml::events::Event;
@@ -48,7 +49,6 @@ use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, root_name};
-use super::project::Projections;
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
@@ -73,34 +73,14 @@ pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 /// re-does per message what is constant for the whole run. Pinning a branch
 /// and the two versions skips inference for every row - and a capture is one
 /// session, so pinning is the normal case rather than an optimization.
+#[derive(Clone)]
 pub struct FixCodec {
     registry: Arc<FixRegistry>,
-    projections: Arc<Projections>,
     branch: Option<FixBranch>,
     version: Option<Version>,
     separator: Option<u8>,
     payload_column: SmolStr,
     null_values: Vec<String>,
-}
-
-/// A clone is a new reader, so it starts with a cache of its own.
-///
-/// The cache holds one version's projections, and two readers differing in
-/// version - which is why a reader is usually cloned - would otherwise clear
-/// each other's every row. Sharing the work across threads is `Arc<FixCodec>`
-/// instead, which shares the cache as well.
-impl Clone for FixCodec {
-    fn clone(&self) -> Self {
-        Self {
-            registry: Arc::clone(&self.registry),
-            projections: Arc::default(),
-            branch: self.branch.clone(),
-            version: self.version,
-            separator: self.separator,
-            payload_column: self.payload_column.clone(),
-            null_values: self.null_values.clone(),
-        }
-    }
 }
 
 impl FixCodec {
@@ -109,7 +89,6 @@ impl FixCodec {
     pub fn new(registry: Arc<FixRegistry>) -> Self {
         Self {
             registry,
-            projections: Arc::default(),
             branch: None,
             version: None,
             separator: None,
@@ -146,10 +125,12 @@ impl FixCodec {
         self
     }
 
-    /// Pins the version the built messages are expressed in.
+    /// Pins the version the built messages are read at.
     ///
-    /// A field is renamed and retyped to what that version called it, so this
-    /// is what a message *is*. Unpinned, each row answers for itself:
+    /// A value is translated through the code spellings that version declares,
+    /// and nothing else changes: a tag is one column under the name the
+    /// dictionary holds it by, whatever version read it. Unpinned, each row
+    /// answers for itself:
     /// `ApplVerID(1128)` first, then `BeginString(8)`, then the dialect's own
     /// default, then the dictionary's newest - which is what a capture
     /// carrying more than one application version needs.
@@ -289,8 +270,15 @@ impl FixCodec {
     ///
     /// A key opening with `#` names a group: `#NOPARTYIDS=1` is the counter
     /// and `#NOPARTYIDS[0]=…` is one occurrence whose *value* is a run of
-    /// member pairs. Residue that will not split stays as one unknown key,
-    /// verbatim: never dropped, never fatal.
+    /// member pairs. The `#` is dropped only where it is the row's sole
+    /// spelling of that key: `ORDERID=123|#ORDERID=345` states two keys, and
+    /// collapsing them would merge two values under one name, so there the
+    /// `#` key stays verbatim, whichever of the two arrived first. The twin
+    /// is matched under the FIX name fold - the identity every key resolves
+    /// by - and a bare pair whose value is a stated absence is no twin,
+    /// because a key that said nothing was sent is not a key that was sent.
+    /// Residue that will not split stays as one unknown key, verbatim: never
+    /// dropped, never fatal.
     ///
     /// # Errors
     ///
@@ -301,31 +289,73 @@ impl FixCodec {
         } else {
             b' '
         };
-        let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        for segment in split(body, separator) {
-            let Some((key, value)) = split_pair(segment) else {
-                continue;
+        // The whole row is split before any `#` is judged, because the bare
+        // twin that keeps one may arrive on either side of it. The segments
+        // are slices of the body, so this pass allocates only the list.
+        let mut arrived: Vec<(&[u8], &[u8])> = Vec::new();
+        let mut hashed = false;
+        for pair in split(body, separator).filter_map(split_pair) {
+            hashed |= pair.0.first() == Some(&b'#');
+            arrived.push(pair);
+        }
+        // Each `#` key is judged against the row's bare spellings, gathered
+        // once: a bridge row is mostly `#` keys, so the probed list stays
+        // short, and a row with no `#` at all gathers nothing. A twin that
+        // itself opens with `#` - a `##` key's bare - is not in it, so that
+        // one probe falls back to the whole row.
+        let bare_keys: Vec<&[u8]> = if hashed {
+            arrived
+                .iter()
+                .filter(|(key, value)| key.first() != Some(&b'#') && !self.is_absent(value))
+                .map(|(key, _)| *key)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut resolved: Vec<(Cow<'_, [u8]>, &[u8])> = Vec::with_capacity(arrived.len());
+        for &(key, value) in &arrived {
+            let key = match key.strip_prefix(b"#") {
+                Some(bare) => {
+                    let bare = line::trim_ascii(bare);
+                    let twinned = if bare.first() == Some(&b'#') {
+                        arrived.iter().any(|(held, held_value)| {
+                            folds_twin(held, bare) && !self.is_absent(held_value)
+                        })
+                    } else {
+                        bare_keys.iter().any(|held| folds_twin(held, bare))
+                    };
+                    if twinned {
+                        // Verbatim means whole: the twinned `#` key is its
+                        // own key and the packed value is its value, so no
+                        // group rendering rewrites either - a group name
+                        // opening with `#` resolves in no dictionary anyway.
+                        resolved.push((Cow::Borrowed(key), value));
+                        continue;
+                    }
+                    bare
+                }
+                None => key,
             };
-            let bare = key.strip_prefix(b"#").unwrap_or(key);
-            match group_index(bare) {
+            match group_index(key) {
                 Some((group, occurrence)) if memchr::memchr(b'=', value).is_some() => {
                     let declared = self.group_members(group);
+                    let occurrence = occurrence.to_string();
                     for (member, held) in members(value, declared) {
                         let mut rendered = Vec::with_capacity(group.len() + member.len() + 8);
                         rendered.extend_from_slice(group);
                         rendered.extend_from_slice(b"[");
-                        rendered.extend_from_slice(occurrence.to_string().as_bytes());
+                        rendered.extend_from_slice(occurrence.as_bytes());
                         rendered.extend_from_slice(b"].");
                         rendered.extend_from_slice(member);
-                        owned.push((rendered, held.to_vec()));
+                        resolved.push((Cow::Owned(rendered), held));
                     }
                 }
-                _ => owned.push((bare.to_vec(), value.to_vec())),
+                _ => resolved.push((Cow::Borrowed(key), value)),
             }
         }
-        let pairs: Vec<(&[u8], &[u8])> = owned
+        let pairs: Vec<(&[u8], &[u8])> = resolved
             .iter()
-            .map(|(key, value)| (key.as_slice(), value.as_slice()))
+            .map(|(key, value)| (key.as_ref(), *value))
             .collect();
         self.build(&pairs, enrich)
     }
@@ -593,13 +623,7 @@ impl FixCodec {
         let version = self.version.or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
-        let mut builder = Builder::new(
-            &self.registry,
-            &self.projections,
-            branch.clone(),
-            version,
-            pairs.len(),
-        );
+        let mut builder = Builder::new(&self.registry, branch.clone(), version, pairs.len());
         for (key, value) in pairs {
             // A stated absence produces no field and no entry: the key is read
             // as never having been sent. Filtering happens before typing, so
@@ -874,4 +898,21 @@ fn folded_name_prefix(value: &[u8], name: &str) -> Option<usize> {
 /// One ASCII separator ignored by the FIX name fold.
 const fn name_separator(byte: u8) -> bool {
     matches!(byte, b'_' | b'-' | b' ')
+}
+
+/// Whether two key spellings name one field under the FIX name fold.
+///
+/// The twin that keeps a `#` is judged by the identity every key resolves
+/// by - case and separators fold away - because `OrderId=1|#ORDERID=2` merges
+/// under one name exactly as the same-cased pair would.
+fn folds_twin(left: &[u8], right: &[u8]) -> bool {
+    let mut left = left.iter().filter(|byte| !name_separator(**byte));
+    let mut right = right.iter().filter(|byte| !name_separator(**byte));
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return true,
+            (Some(one), Some(other)) if one.eq_ignore_ascii_case(other) => {}
+            _ => return false,
+        }
+    }
 }

@@ -1244,24 +1244,9 @@ fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry
 fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
 )
-fix_projection: fix.FixProjection = fix.FixProjection(
-    fix_registry_from_fields, "FixMessage"
-)
-fix_projection_carried: fix.FixProjection = fix.FixProjection(
-    fix_registry_from_fields, "FixMessage", fix_root
-)
-fix_projection_wrapped: fix.FixProjection = fix.FixProjection.from_field(
-    fix_fixed_schema
-)
-fix_projection_field: Field = fix_projection.field
-fix_projection_tags: list[int] = fix_projection.tags
-fix_projection_carry: int = fix_projection.carried
-fix_projection_positions: list[int] = fix_projection.carried_positions
-fix_projection_values: int = fix_projection.value_columns
-fix_projection_column: Field | None = fix_projection.column(0)
-fix_projection_at: int | None = fix_projection.position_of(35)
-fix_projection_len: int = len(fix_projection)
-fix_fixed_row: Scalar = fix_read_text.to_row(fix_projection)
+fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
+fix_column_at: int | None = fix_fixed_schema.index_of("35")
+fix_fixed_row: Scalar = fix_read_text.to_row(fix_fixed_schema)
 
 fix_global: fix.FixRegistry = fix.global_registry()
 fix.install_global_registry(fix_registry_from_fields)
@@ -1294,11 +1279,7 @@ assert fix_reader_registry is not None and fix_reader_pinned is not None
 assert fix_read_text and fix_read_bytes and fix_read_frame
 assert fix_read_bridge is not None and fix_read_pairs is not None
 assert fix_fixed_schema and fix_fixed_tags and fix_crated
-assert fix_projection_field and fix_projection_tags
-assert fix_projection_carry == 0 and fix_projection_positions == []
-assert fix_projection_values and fix_projection_len
-assert fix_projection_column is not None and fix_projection_at is not None
-assert fix_projection_carried is not None and fix_projection_wrapped is not None
+assert fix_carried_schema is not None and fix_column_at is not None
 assert fix_fixed_row is not None
 assert fix_removed is None or fix_removed
 assert fix_removed_by_id is None or fix_removed_by_id

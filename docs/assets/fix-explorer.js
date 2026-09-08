@@ -1121,32 +1121,32 @@
   }
 
   /** The fixed row a capture lands in, filtered as you type. */
-  function renderProjection(root, held) {
-    const projection = held.data.projection
+  function renderRow(root, held) {
+    const row = held.data.row
     const controls = make('div', 'ygg-fx__controls')
     const box = make('input', 'ygg-fx__input ygg-fx__input--wide')
     box.type = 'search'
     box.placeholder = 'symbol, 55, price…'
     box.autocomplete = 'off'
-    controls.append(control('ygg-fx-projection', 'Filter', box))
+    controls.append(control('ygg-fx-row', 'Filter', box))
     const counter = make('p', 'ygg-fx__counter')
     counter.setAttribute('aria-live', 'polite')
     const view = make('div')
 
     const show = () => {
       const wanted = box.value.trim().toLowerCase()
-      const kept = projection.columns.filter(
+      const kept = row.columns.filter(
         (column) =>
           wanted === '' ||
           column.c.includes(wanted) ||
           column.n.toLowerCase().includes(wanted) ||
           column.x.toLowerCase().includes(wanted),
       )
-      const own = projection.columns.filter(
+      const own = row.columns.filter(
         (column) => (held.byTag.get(column.t)?.b ?? '') !== '',
       ).length
       counter.textContent =
-        `${kept.length} of ${projection.columns.length} columns` +
+        `${kept.length} of ${row.columns.length} columns` +
         `, ${own} of them the capture's own`
       view.textContent = ''
       view.append(
@@ -1162,7 +1162,7 @@
       )
     }
     box.addEventListener('input', show)
-    root.append(controls, counter, view, call(projection.call))
+    root.append(controls, counter, view, call(row.call))
     show()
   }
 
@@ -1704,7 +1704,7 @@
     sources: renderSources,
     fields: renderFields,
     messages: renderMessages,
-    projection: renderProjection,
+    row: renderRow,
     decode: renderDecode,
     frames: renderFrames,
     encode: renderEncode,

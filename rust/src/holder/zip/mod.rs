@@ -3,14 +3,19 @@
 //! An archive is a file system that happens to live inside one file, so it is
 //! a storage backend like any other and supplies the same three roles:
 //!
-//! - [`Folder`] is the container: the archive root, or any prefix its members
+//! - [`Node`] is the container: the archive root, or any prefix its members
 //!   share. It lists and resolves members out of the archive's own directory,
 //!   reading no member byte to do it.
-//! - [`File`] is the leaf: one member, addressed positionally. A stored member
-//!   reads straight out of the archive at an offset; a compressed one decodes
-//!   through one bounded window.
+//! - [`Leaf`] is one member, addressed positionally. A stored member reads
+//!   straight out of the archive at an offset; a compressed one decodes from
+//!   the nearest restart point through one bounded window.
 //! - [`Path`] is the generic location, which resolves to whichever of the two
 //!   is actually there.
+//!
+//! A member is neither a directory nor a file of the host: it is a name in one
+//! archive's index. The roles are named for what they are - a node of that
+//! index and a leaf of it - so nothing here reads as a promise the format does
+//! not make.
 //!
 //! [`Archive`] is what the three share: one byte handle plus the central
 //! directory that indexes it. [`Entry`] is what that directory says about one
@@ -51,16 +56,16 @@
 
 mod archive;
 mod entry;
-mod file;
-mod folder;
 mod format;
+mod leaf;
 mod name;
+mod node;
 mod path;
 
 pub use archive::Archive;
 pub use entry::Entry;
-pub use file::File;
-pub use folder::Folder;
+pub use leaf::Leaf;
+pub use node::Node;
 pub use path::Path;
 
 use crate::holder::Holder;
@@ -72,7 +77,7 @@ use crate::holder::Holder;
 /// does not exist yet is an empty one that the first write creates.
 #[must_use]
 pub fn mount(handle: Holder) -> Holder {
-    Holder::ZipFolder(Archive::new(handle).mount())
+    Holder::ZipNode(Archive::new(handle).mount())
 }
 
 /// Resolve the archive and member a location names, without touching either.
@@ -81,6 +86,10 @@ pub fn mount(handle: Holder) -> Holder {
 /// fragment, so this is the exact inverse of what a member handle reports:
 /// `file:///lake/day.zip#trades/eu.csv` opens that member, and the same URL
 /// without a fragment opens the archive root.
+///
+/// A fragment that spells more than one level - `#inner.zip//trades/eu.csv` -
+/// descends one archive per level, mounting each member it names as the
+/// archive the next level is a member of.
 ///
 /// ```
 /// use yggdryl::{IOBase, Url, holder::zip};
@@ -117,19 +126,34 @@ pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
             base.scheme().as_str(),
         ));
     }
-    let root = Archive::new(Holder::Path(crate::holder::local::Path::from_url(base)?)).mount();
-    match member.as_deref() {
-        Some(member) if !member.is_empty() => root.child_by_path(member),
-        _ => Ok(Holder::ZipFolder(root)),
+    let mut held = Holder::ZipNode(
+        Archive::new(Holder::Path(crate::holder::local::Path::from_url(base)?)).mount(),
+    );
+    let member = member.unwrap_or_default();
+    let mut levels = member.split(archive::NESTED).peekable();
+    while let Some(level) = levels.next() {
+        // A level with nothing in it is the marker at the end, which names the
+        // archive mounted over the member the level before it resolved.
+        if level.is_empty() {
+            continue;
+        }
+        let child = held.child_by_path(level)?;
+        // Every level but the last names the archive the next one is inside.
+        held = if levels.peek().is_some() {
+            mount(child)
+        } else {
+            child
+        };
     }
+    Ok(held)
 }
 
 /// The member name a holder inside an archive addresses.
 fn member_name(holder: &Holder) -> Option<&str> {
     match holder {
-        Holder::ZipFolder(folder) => Some(folder.name()),
+        Holder::ZipNode(node) => Some(node.name()),
         Holder::ZipPath(path) => Some(path.name()),
-        Holder::ZipFile(file) => Some(file.name()),
+        Holder::ZipLeaf(leaf) => Some(leaf.name()),
         _ => None,
     }
 }
@@ -140,6 +164,12 @@ fn member_name(holder: &Holder) -> Option<&str> {
 /// partition again inside one, and a member carries whichever it is under.
 fn member_partitions(archive: &Archive, member: &str) -> Vec<(String, String)> {
     let mut pairs = archive.url().hive_partitions();
+    // An archive inside an archive spells its own chain in the fragment, and
+    // every link of it can partition too; the empty segment a level marker
+    // leaves behind is not a pair, so the split needs no special case.
+    if let Ok(Some(chain)) = archive.url().fragment(true) {
+        pairs.extend(crate::uri::hive_partitions_of(chain.split('/')));
+    }
     pairs.extend(crate::uri::hive_partitions_of(member.split('/')));
     pairs
 }

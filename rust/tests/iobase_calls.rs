@@ -537,3 +537,166 @@ fn a_write_to_a_cold_cache_does_not_ask_for_a_length_first() {
     });
     assert_eq!(cached.read_all_bytes().expect("a read"), b"onetwo");
 }
+
+/// What an archive asks of the handle its members live in.
+///
+/// [`Counted`] cannot be the instrument here: an archive holds a `Holder`, and
+/// the enum has no variant for a counted handle to arrive as. The archive
+/// counts its own calls instead - `Archive::handle_reads` and `handle_writes`
+/// tally every crossing it makes - which is the same measurement taken one
+/// layer in, and the one its docs publish.
+mod zip {
+    use yggdryl::holder::zip::{Archive, Node};
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::{Codec, IOBase};
+
+    /// A payload long enough to hold several restart strides.
+    fn payload(size: usize) -> Vec<u8> {
+        b"symbol,price,venue\nAAPL,187.23,XNAS\n"
+            .iter()
+            .copied()
+            .cycle()
+            .take(size)
+            .collect()
+    }
+
+    /// An archive of one member, published, under `codec` and `stride`.
+    fn archive(codec: Codec, stride: u64, size: usize) -> Node {
+        let root = Archive::new(Holder::buffer(Buffer::new()))
+            .with_restart_stride(stride)
+            .mount();
+        root.archive()
+            .write_member_with("blob.bin", &payload(size), codec)
+            .expect("the member writes");
+        root.archive().flush().expect("the directory publishes");
+        root
+    }
+
+    /// The same archive, written to a file and mounted again from it.
+    ///
+    /// A mount's cost is what parsing a directory this archive did not write
+    /// asks of the handle, so it has to be a handle whose bytes are already
+    /// there rather than one this process filled in.
+    fn stored(name: &str, codec: Codec, stride: u64, size: usize) -> (Node, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "yggdryl-calls-zip-{name}-{}.zip",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let root = Archive::new(Holder::file(&path).expect("a local archive"))
+                .with_restart_stride(stride)
+                .mount();
+            root.archive()
+                .write_member_with("blob.bin", &payload(size), codec)
+                .expect("the member writes");
+            root.archive().flush().expect("the directory publishes");
+        }
+        let root = Archive::new(Holder::file(&path).expect("a local archive")).mount();
+        (root, path)
+    }
+
+    #[test]
+    fn mounting_an_archive_is_two_reads_and_a_listing_is_none() {
+        let (fresh, path) = stored("mount", Codec::Identity, 0, 4_096);
+
+        // The size, then the tail that holds the directory.
+        assert_eq!(fresh.ls(true, true).count(), 1);
+        assert_eq!(fresh.archive().handle_reads(), 2);
+
+        // Every later listing walks the index the archive already holds.
+        let quiet = fresh.archive().handle_reads();
+        assert_eq!(fresh.ls(true, true).count(), 1);
+        assert_eq!(fresh.glob("*.bin", true).expect("a glob").count(), 1);
+        assert_eq!(fresh.archive().handle_reads(), quiet);
+
+        // A member this archive did not write costs one read of the local
+        // header that says where its bytes are, once and once only.
+        let member = fresh.as_leaf("blob.bin").expect("a member");
+        member.read_range_bytes(0, 16).expect("a range");
+        assert_eq!(fresh.archive().handle_reads() - quiet, 2);
+        let warm = fresh.archive().handle_reads();
+        member.read_range_bytes(2_000, 16).expect("a range");
+        assert_eq!(fresh.archive().handle_reads() - warm, 1);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_positional_read_of_a_stored_member_is_one_call() {
+        let root = archive(Codec::Identity, 0, 4_096);
+        let member = root.as_leaf("blob.bin").expect("a member");
+        // This archive wrote the member, so it never has to read the local
+        // header that would say where the bytes start.
+        let before = root.archive().handle_reads();
+        assert_eq!(
+            member.read_range_bytes(1_000, 16).expect("a range").len(),
+            16
+        );
+        assert_eq!(root.archive().handle_reads() - before, 1);
+    }
+
+    #[test]
+    fn a_seek_into_a_mapped_member_proves_its_map_once() {
+        let root = archive(Codec::Deflate, 4 * 1024, 64 * 1024);
+        let member = root.as_leaf("blob.bin").expect("a member");
+
+        // The first seek reads the eight bytes that prove the map, then the
+        // encoded window it decodes from.
+        let before = root.archive().handle_reads();
+        member.read_range_bytes(40_000, 16).expect("a range");
+        assert_eq!(root.archive().handle_reads() - before, 2);
+
+        // What the proof settled is the map, so no later seek pays for it.
+        let before = root.archive().handle_reads();
+        member.read_range_bytes(50_000, 16).expect("a range");
+        assert_eq!(root.archive().handle_reads() - before, 1);
+    }
+
+    #[test]
+    fn a_member_write_is_one_call_and_a_publish_is_two() {
+        let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+        let before = root.archive().handle_writes();
+        root.archive()
+            .write_member_with("a.bin", &payload(4_096), Codec::Identity)
+            .expect("the member writes");
+        root.archive()
+            .write_member_with("b.bin", &payload(64), Codec::Identity)
+            .expect("the member writes");
+        assert_eq!(root.archive().handle_writes() - before, 2);
+
+        // The trailer, then the flush behind it; nothing shortened.
+        let before = root.archive().handle_writes();
+        root.archive().flush().expect("the directory publishes");
+        assert_eq!(root.archive().handle_writes() - before, 2);
+
+        // And a flush with nothing pending is not a write.
+        let before = root.archive().handle_writes();
+        root.archive().flush().expect("nothing to publish");
+        assert_eq!(root.archive().handle_writes(), before);
+    }
+
+    #[test]
+    fn a_streamed_member_is_one_call_per_window_and_one_settle() {
+        let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+        let long = payload(3 * 1024 * 1024);
+
+        let before = root.archive().handle_writes();
+        root.archive()
+            .write_member_from("long.bin", std::io::Cursor::new(&long), Codec::Identity)
+            .expect("the member streams in");
+        assert_eq!(root.archive().handle_writes() - before, 4);
+
+        // A member whose encoded form fits one window is one write, header
+        // and bytes together, because they are one record.
+        let before = root.archive().handle_writes();
+        root.archive()
+            .write_member_from(
+                "short.bin",
+                std::io::Cursor::new(b"symbol"),
+                Codec::Identity,
+            )
+            .expect("the member streams in");
+        assert_eq!(root.archive().handle_writes() - before, 1);
+    }
+}

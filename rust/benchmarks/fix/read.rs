@@ -17,6 +17,13 @@ const BARE: &str = "8=FIX.4.4|9=176|35=D|11=ORDER-1|55=AAPL|54=1|38=100|40=2|10=
 const NAMED: &str =
     "ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|ORDTYPE=2";
 const GROUPED: &str = "MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=SYNTH-01\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=SYNTH-02\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=3";
+/// A bridge row keyed by `#` names, one of them twinned by its bare spelling.
+///
+/// The twin is what makes the shape its own benchmark: whether one `#` drops
+/// is a fact about the whole row, so this measures the scan that decides it
+/// on a row where it actually fires.
+const HASHED: &str = "toBridge ORDERID=OD-1|MSGTYPE=D|#CLORDID=ORDER-1|#SYMBOL=AAPL|#SIDE=1\
+|#ORDERQTY=100|#ORDTYPE=2|#ORDERID=OD-2";
 
 /// One Jolokia read of one session interface, as a bridge answers it.
 ///
@@ -44,6 +51,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         ("bare", BARE),
         ("named", NAMED),
         ("grouped", GROUPED),
+        ("hashed", HASHED),
     ] {
         group.throughput(Throughput::Bytes(row.len() as u64));
         group.bench_function(label, |bencher| {
@@ -55,8 +63,27 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     }
 
-    // A row read as an older version pays the lineage projection per field,
-    // which is the reason a version is resolved once and cached per field.
+    // The twin scan at width: hundreds of `#` keys around one bare twin, so
+    // how the scan scales shows here rather than hiding inside the short rows
+    // above.
+    let mut wide = String::from("MSGTYPE=D|ORDERID=OD-1");
+    for at in 0..300 {
+        use std::fmt::Write;
+        write!(wide, "|#TAG{at}=V{at}").expect("writing to a String cannot fail");
+    }
+    wide.push_str("|#ORDERID=OD-2");
+    group.throughput(Throughput::Bytes(wide.len() as u64));
+    group.bench_function("hashed_wide", |bencher| {
+        bencher.iter(|| {
+            black_box(&reader)
+                .transform_line(black_box(&wide).as_bytes(), false)
+                .expect("a readable row")
+        });
+    });
+
+    // A row read at an older version pays one dated code lookup per value and
+    // nothing else: the column it lands in is the dictionary's at every
+    // version, so a dated read is a read.
     let dated = reader
         .clone()
         .with_version("4.2".parse::<Version>().expect("a version"));

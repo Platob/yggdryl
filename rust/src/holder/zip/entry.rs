@@ -2,7 +2,7 @@
 
 use smol_str::SmolStr;
 
-use crate::{Codec, Result};
+use crate::{Codec, Restarts, Result};
 
 use super::format;
 
@@ -31,6 +31,7 @@ use super::format;
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Entry {
     name: SmolStr,
+    made_by: u16,
     flags: u16,
     method: u16,
     modified: i64,
@@ -40,13 +41,16 @@ pub struct Entry {
     header_offset: u64,
     external_attributes: u32,
     comment: SmolStr,
+    restarts: Restarts,
+    spelling: Option<Box<[u8]>>,
 }
 
 impl Entry {
     /// Assemble an entry from the exact fields a record carries.
     #[allow(clippy::too_many_arguments)]
-    pub(super) const fn from_parts(
+    pub(super) fn from_parts(
         name: SmolStr,
+        made_by: u16,
         flags: u16,
         method: u16,
         modified: i64,
@@ -59,6 +63,7 @@ impl Entry {
     ) -> Self {
         Self {
             name,
+            made_by,
             flags,
             method,
             modified,
@@ -68,6 +73,8 @@ impl Entry {
             header_offset,
             external_attributes,
             comment,
+            restarts: Restarts::default(),
+            spelling: None,
         }
     }
 
@@ -75,6 +82,7 @@ impl Entry {
     pub(super) fn new(name: SmolStr, method: u16, modified: i64) -> Self {
         let directory = name.ends_with('/');
         Self {
+            made_by: format::MADE_BY_THIS,
             flags: format::FLAG_UTF8,
             method,
             modified,
@@ -84,6 +92,8 @@ impl Entry {
             header_offset: 0,
             external_attributes: format::external_attributes(directory),
             comment: SmolStr::default(),
+            restarts: Restarts::default(),
+            spelling: None,
             name,
         }
     }
@@ -139,6 +149,20 @@ impl Entry {
         &self.comment
     }
 
+    /// Where the member's decode may begin, when its record maps that.
+    ///
+    /// A member this crate compressed carries the map beside its record, so a
+    /// positional read decodes one stride rather than everything before the
+    /// offset. A stored member needs none - every offset is addressable - and
+    /// a member another writer compressed states none, which reads honestly
+    /// as an empty map.
+    ///
+    /// Offsets are relative to the member's first data byte, so compaction
+    /// moves a record without touching what it says.
+    pub const fn restarts(&self) -> &Restarts {
+        &self.restarts
+    }
+
     /// Whether the record names a directory rather than a byte member.
     pub fn is_directory(&self) -> bool {
         self.name.ends_with('/')
@@ -172,17 +196,72 @@ impl Entry {
         self.external_attributes
     }
 
+    /// The host system and specification version the record was made by.
+    ///
+    /// The high byte is what says how to read the external attributes, so a
+    /// record rewritten under a different one changes what its mode means.
+    pub(super) const fn made_by(&self) -> u16 {
+        self.made_by
+    }
+
+    /// Restate this entry under what another record already said about it.
+    ///
+    /// A rewrite replaces a member's bytes, not the facts around them: the
+    /// host that made the record, the mode it carries, and the comment beside
+    /// it all describe the member rather than its content.
+    pub(super) fn with_facts_of(mut self, previous: &Self) -> Self {
+        self.made_by = previous.made_by;
+        self.external_attributes = previous.external_attributes;
+        self.comment = previous.comment.clone();
+        self
+    }
+
     /// Restate this entry with the sizes and digest a published member has.
-    pub(super) const fn with_content(
-        mut self,
-        crc32: u32,
-        compressed_size: u64,
-        size: u64,
-    ) -> Self {
+    pub(super) fn with_content(mut self, crc32: u32, compressed_size: u64, size: u64) -> Self {
         self.crc32 = crc32;
         self.compressed_size = compressed_size;
         self.size = size;
+        // The map describes bytes that are being replaced, so it goes with
+        // them; the writer states the new one beside the new content.
+        self.restarts = Restarts::default();
         self
+    }
+
+    /// The bytes a record spells this member's name with.
+    ///
+    /// A name is UTF-8 in every record this crate writes, and a record it did
+    /// not write may spell one in a code page or under an extra field. The
+    /// recorded bytes are kept so republishing a directory leaves an untouched
+    /// member exactly as it was - a name re-encoded in the central record
+    /// alone would no longer match the local header that introduces it.
+    pub(super) fn spelling(&self) -> &[u8] {
+        self.spelling
+            .as_deref()
+            .unwrap_or_else(|| self.name.as_bytes())
+    }
+
+    /// Restate this entry with the bytes its record spells the name with.
+    pub(super) fn with_spelling(mut self, spelling: &[u8]) -> Self {
+        self.spelling = (spelling != self.name.as_bytes()).then(|| spelling.into());
+        self
+    }
+
+    /// Restate this entry with the restart map its record carries.
+    pub(super) fn with_restarts(mut self, restarts: Restarts) -> Self {
+        self.restarts = restarts;
+        self
+    }
+
+    /// The host byte a record was made by, for a test that asserts it.
+    #[cfg(test)]
+    pub(super) const fn made_by_for_test(&self) -> u16 {
+        self.made_by
+    }
+
+    /// The external attributes a record carries, for a test that asserts them.
+    #[cfg(test)]
+    pub(super) const fn external_attributes_for_test(&self) -> u32 {
+        self.external_attributes
     }
 
     /// Restate this entry with the general purpose bit flags a record has.

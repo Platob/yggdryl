@@ -24,7 +24,6 @@ from yggdryl import DataType, Field, IOBase, MimeType, Scalar, Url
 from yggdryl.fix import (
     FixBranch,
     FixMsg,
-    FixProjection,
     FixCodec,
     FixRegistry,
     STANDARD_BRANCH,
@@ -33,6 +32,7 @@ from yggdryl.fix import (
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
+    fix_schema_carrying,
     fix_schema_tags,
     global_registry,
     install_global_registry,
@@ -540,7 +540,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
             _field("Tail", "utf8", 9001),
         ]
     )
-    # Tag-major, then by branch digest - the packed identifier's order.
+    # Tag-major, then by branch digest - the identifier's own order.
     assert [field.fix.id for field in registry] == [
         "1:",
         "44:",
@@ -1186,10 +1186,15 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     """A branch, a version and the spellings that mean nothing was sent."""
     assert FixCodec(seed).registry == seed
 
-    # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
-    # pinned version is what decides which name the row answers to.
+    # Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
+    # a value is read, never what a field is called: the column is the
+    # dictionary's own whatever version read the row, and the 4.2 spelling
+    # still reaches it as an alias.
     dated = FixCodec(seed, version="4.2")
-    assert dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+    named = dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|")
+    assert named.field.index_of("lastqty") is not None
+    assert named.get_by_name("lastshares") is not None
+    assert named.get_by_name("lastqty") is not None
 
     # A stated absence produces no field at all.
     silent = FixCodec(seed, null_values=["<none>"])
@@ -1210,18 +1215,16 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     ], "and the two lists close it"
     assert fix_schema_tags()[:3] == [8, 9, 35]
 
-    projection = FixProjection(seed, "FixMessage")
-    assert len(projection) == len(columns)
-    assert projection.position_of(35) == 2
-    assert projection.position_of(999_999) is None
-    assert projection.carried == 0
-    assert projection.field.name == "FixMessage"
+    # A column is found by the name its tag spells, and nothing else is needed.
+    assert schema.index_of("35") == 2
+    assert schema.index_of("999999") is None
+    assert schema.name == "FixMessage"
 
     reader = FixCodec(seed)
-    row = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    row = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(schema).as_py()
     assert len(row) == len(columns)
-    assert row[projection.position_of(35)] == "D"
-    assert row[projection.position_of(55)] == "AAPL"
+    assert row[schema.index_of("35")] == "D"
+    assert row[schema.index_of("55")] == "AAPL"
     # A tag no dictionary explains is still there, in its own column.
     assert len(row[-1]) == 1
 
@@ -1238,20 +1241,18 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
         ),
         nullable=False,
     )
-    plain = FixProjection(seed, "FixMessage")
-    carried = FixProjection(seed, "FixMessage", carrier)
+    plain = fix_schema(seed, "FixMessage")
+    carried = fix_schema_carrying(carrier, plain)
 
-    assert carried.carried == 2
-    assert carried.carried_positions == [0, 1]
-    assert carried.column(0).name == "url"
+    assert [child.name for child in carried][:2] == ["url", "body"]
     assert len(carried) == len(plain) + 2
-    assert carried.position_of(35) == plain.position_of(35) + 2
+    assert carried.index_of("35") == plain.index_of("35") + 2
 
-    # A carried column carries no tag, so a row answers null there: the capture
-    # fills it, and nothing in the message says what it held.
+    # A column no tag names is the capture's, so a row answers null there: the
+    # capture fills it, and nothing in the message says what it held.
     row = FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
     assert row[0] is None
-    assert row[carried.position_of(35)] == "D"
+    assert row[carried.index_of("35")] == "D"
 
 
 def test_the_crate_fields_declare_their_own_protocols() -> None:

@@ -127,7 +127,7 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the bytes; `from_column`'s own argument sets it |
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a numeric frame is written with |
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
-| `version` | `with_version` | none | the version built messages are expressed in; unpinned, each row answers for itself |
+| `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took — no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
@@ -148,7 +148,7 @@ One column carries the bytes; five more supply, per row, arguments the byte read
 | `sep` | the separator |
 | `direction` | the direction, stated |
 
-A column is the caller speaking per row and an option is the caller speaking per stream, so a column outranks the option and both outrank what the frame infers: tag 32 is `lastshares` on a row whose `beginstring` says `FIX.4.2`, whatever the stream was pinned to. A column absent, null or empty is silence, never an instruction and never an error.
+A column is the caller speaking per row and an option is the caller speaking per stream, so a column outranks the option and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the stream was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 
 Each one is still carried into the row, because a monitor needs to see the value it supplied rather than infer that it was used. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 

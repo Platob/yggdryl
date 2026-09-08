@@ -5,9 +5,16 @@ use std::io::{Read, Write};
 use crate::Result;
 
 use crate::IOBase;
-use crate::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::codec::{CodedWrite, Encoder, EncoderKind};
 use crate::coding::Coding;
 use crate::{Codec, Level};
+
+/// The four bytes every Zstandard frame begins with.
+///
+/// Frames are self-contained and concatenate, so each one begins a restart
+/// point: a decoder handed the bytes from a frame's magic reads that frame and
+/// every frame behind it.
+pub(crate) const FRAME_MAGIC: &[u8] = &[0x28, 0xb5, 0x2f, 0xfd];
 
 /// Decode a complete Zstandard frame.
 ///
@@ -65,15 +72,77 @@ pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target> {
 
 /// Wrap a writer so written bytes are Zstandard-encoded at an explicit level.
 pub fn writer_with_level<'target, W: Write + 'target>(target: W, level: Level) -> Encoder<'target> {
-    match zstd::stream::write::Encoder::new(target, level.zstd()) {
-        Ok(encoder) => Encoder(EncoderKind::Zstd(Box::new(encoder))),
-        Err(error) => Encoder(EncoderKind::Zstd(Box::new(FailingWrite(Some(error))))),
+    let kind = match FrameWriter::new(Box::new(target), level) {
+        Ok(writer) => EncoderKind::Coded(Box::new(writer)),
+        Err(error) => EncoderKind::Coded(Box::new(FailingWrite(Some(error)))),
+    };
+    Encoder {
+        kind,
+        codec: Codec::Zstd,
     }
 }
 
-impl<W: Write> FlateFinish for zstd::stream::write::Encoder<'_, W> {
-    fn finish_boxed(self: Box<Self>) -> std::io::Result<()> {
-        (*self).finish().map(|_| ())
+/// A Zstandard writer that can close one frame and open the next.
+///
+/// A restart point is a frame boundary, and a frame is only closed by
+/// finishing the encoder, so the encoder is held in an option: restarting
+/// takes it, finishes it, and builds the next one over the writer it gives
+/// back. Only the encoder's own window is held.
+struct FrameWriter<'target> {
+    encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn Write + 'target>>>,
+    level: Level,
+}
+
+impl<'target> FrameWriter<'target> {
+    /// Open the first frame over `target`.
+    fn new(target: Box<dyn Write + 'target>, level: Level) -> std::io::Result<Self> {
+        Ok(Self {
+            encoder: Some(zstd::stream::write::Encoder::new(target, level.zstd())?),
+            level,
+        })
+    }
+
+    /// Borrow the open frame, naming a writer whose frame was already closed.
+    fn open(
+        &mut self,
+    ) -> std::io::Result<&mut zstd::stream::write::Encoder<'static, Box<dyn Write + 'target>>> {
+        self.encoder
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("the Zstandard frame was already closed"))
+    }
+}
+
+impl Write for FrameWriter<'_> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.open()?.write(buffer)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.open()?.flush()
+    }
+}
+
+impl CodedWrite for FrameWriter<'_> {
+    fn finish_boxed(mut self: Box<Self>) -> std::io::Result<()> {
+        let encoder = self
+            .encoder
+            .take()
+            .ok_or_else(|| std::io::Error::other("the Zstandard frame was already closed"))?;
+        encoder.finish()?.flush()
+    }
+
+    /// Close this frame and open the next over the same writer.
+    fn restart_unit(&mut self) -> std::io::Result<bool> {
+        let encoder = self
+            .encoder
+            .take()
+            .ok_or_else(|| std::io::Error::other("the Zstandard frame was already closed"))?;
+        let target = encoder.finish()?;
+        self.encoder = Some(zstd::stream::write::Encoder::new(
+            target,
+            self.level.zstd(),
+        )?);
+        Ok(true)
     }
 }
 
@@ -103,7 +172,7 @@ impl Write for FailingWrite {
     }
 }
 
-impl FlateFinish for FailingWrite {
+impl CodedWrite for FailingWrite {
     fn finish_boxed(mut self: Box<Self>) -> std::io::Result<()> {
         Err(self.0.take().unwrap_or_else(|| {
             std::io::Error::other("the Zstandard encoder could not be constructed")

@@ -1,18 +1,18 @@
 # Capture
 
-A day of session log is a table. This page is the road from one to the other: [`FixCodec`](#a-reader-is-the-whole-parse-surface) turns a captured line into a [message](message.md), [`fix_schema`](#the-columns-are-the-tags) is the one row shape every message answers as, and [`FixProjection`](#a-projection-resolves-the-columns-once) is what makes filling it an indexed read rather than six thousand [dictionary](registry.md) lookups a row.
+A day of session log is a table. This page is the road from one to the other: [`FixCodec`](#a-reader-is-the-whole-parse-surface) turns a captured line into a [message](message.md), [`fix_schema`](#the-columns-are-the-tags) is the one row shape every message answers as, and [`FixMsg::to_row`](#a-column-is-the-name-its-tag-spells) fills it - by the tag each column is named for, so nothing is resolved against the [dictionary](registry.md) per row.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixCodec`, `fix_schema`, `fix_schema_tags`, `FixProjection`, `FixMsg::to_row`, `fix_crate_fields` |
+| Owns | `FixCodec`, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `FixMsg::to_row`, `fix_crate_fields` |
 | Columns | named by tag as decimal text - `"35"`, never `"msgtype"`; the spelling stays on the field's `display` |
 | Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's derived facts, then `nofixentries` and `nounmappedfixentries` |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Refuses | nothing a row's content can do; a line the reader cannot read is a message with nothing in it, and the row count still matches the capture's |
-| Cached | a reader holds one version's projections; a clone gets a cache of its own |
+| Found | a column is `index_of("35")` on the schema itself - the name is the tag, so nothing is cached, resolved or invalidated |
 
 ## Use
 
@@ -23,18 +23,18 @@ One line in, one row out, with the columns named by tag.
     ```rust
     use std::sync::Arc;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixProjection, FixCodec, FixRegistry, Scalar};
+    use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
 
-    let projection = FixProjection::new(&registry, "FixMessage")?;
+    let schema = fix_schema(&registry, "FixMessage")?;
     let reader = FixCodec::new(Arc::clone(&registry));
     let order = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|", false)?;
 
-    let row = order.to_row(&projection)?;
+    let row = order.to_row(&schema)?;
     let held = row.as_sequence().expect("a row");
-    let at = projection.position_of(35).expect("the msgtype column");
+    let at = schema.index_of("35").expect("the msgtype column");
     assert_eq!(held[at].as_str(), Some("D"));
 
     // A tag no dictionary explains is still in the row, in its own column.
@@ -47,17 +47,17 @@ One line in, one row out, with the columns named by tag.
     ```python
     from pathlib import Path
 
-    from yggdryl.fix import FixProjection, FixCodec, FixRegistry
+    from yggdryl.fix import FixCodec, FixRegistry, fix_schema
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    projection = FixProjection(registry, "FixMessage")
+    schema = fix_schema(registry, "FixMessage")
     reader = FixCodec(registry)
 
     order = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
-    row = order.to_row(projection).as_py()
+    row = order.to_row(schema).as_py()
 
-    assert row[projection.position_of(35)] == "D"
-    assert row[projection.position_of(55)] == "AAPL"
+    assert row[schema.index_of("35")] == "D"
+    assert row[schema.index_of("55")] == "AAPL"
     # A tag no dictionary explains is still in the row, in its own column.
     assert len(row[-1]) == 1
     ```
@@ -70,14 +70,14 @@ One line in, one row out, with the columns named by tag.
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    const projection = new fix.FixProjection(registry, 'FixMessage')
+    const schema = fix.schema(registry, 'FixMessage')
     const reader = new fix.FixCodec(registry)
 
     const order = reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
-    const row = order.toRow(projection).toJSON()
+    const row = order.toRow(schema).toJSON()
 
-    assert.equal(row[projection.positionOf(35)], 'D')
-    assert.equal(row[projection.positionOf(55)], 'AAPL')
+    assert.equal(row[schema.indexOf('35')], 'D')
+    assert.equal(row[schema.indexOf('55')], 'AAPL')
     // A tag no dictionary explains is still in the row, in its own column.
     assert.equal(row[row.length - 1].length, 1)
     ```
@@ -90,7 +90,7 @@ Every shape a capture holds, read by the real package, is on the [Decode](decode
 
 Eighty-nine columns is more than anyone scrolls, and the question a reader actually has is *which column holds this*. The filter matches the tag, the field name and the wording alike.
 
-<div class="ygg-fx" data-fix="projection" markdown="1">
+<div class="ygg-fx" data-fix="row" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.
 </div>
 
@@ -189,9 +189,9 @@ When neither control spelling is present, the reader scans for the next direct m
 ### Edges
 
 - A line the reader refuses is not a line lost: it is a message with nothing in it, so the output row count still equals the input line count.
+- A bridge key's `#` drops only where it is the row's sole spelling of that key. `ORDERID=123|#ORDERID=345` states two keys, so there `#ORDERID` stays verbatim beside the dictionary's `OrderID` - its own column, its own entry - rather than two values merging under one name. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` keep it too; a bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
-- A pinned `version` decides which name a tag answers to: tag 32 is `lastshares` at 4.2 and `lastqty` at a newer one.
-- Cloning a reader gives it a projection cache of its own, because two readers differing in version would otherwise clear each other's every row.
+- A pinned `version` decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable through the field's lineage.
 
 ## The columns are the tags
 
@@ -406,11 +406,11 @@ Rust only: neither binding registers ULBridge's fields today, and a dictionary t
 - A sentinel is a number the bridge sent: `BackupPort: -1` and `LogLevel: -1` land as `-1`, never as an absence. A stated `null` is the absence.
 - Without `with_ulbridge_fields`, every attribute is still kept — as nullable text under its own folded spelling, with no tag.
 
-## A projection resolves the columns once
+## A column is the name its tag spells
 
-Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) is a hash, a verification and a branch walk. A projection resolves them once and turns the per-row cost into an indexed read, which is the whole reason a fixed schema is worth having.
+Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) would be a hash, a verification and a branch walk. None of that runs per row: the schema is fixed, its columns are named `"35"` and `"55"`, and `to_row` fills each one by reading the tag out of the column's own name.
 
-It is held beside a dictionary rather than inside one: a projection is a reader's concern, and a dictionary carrying one would have to invalidate it on every edit.
+So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has, and two captures sharing a dictionary share both the schema and every position in it.
 
 ### A group is laid out the way the column declares it
 
@@ -428,7 +428,7 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixProjection, FixRegistry, fix_schema};
+    use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -440,16 +440,12 @@ A carried column whose name a FIX column already takes is dropped rather than re
     ])?
     .required_field("line");
 
-    let plain = FixProjection::new(&registry, "FixMessage")?;
-    let carried = FixProjection::carrying(&capture, fix_schema(&registry, "FixMessage")?)?;
+    let plain = fix_schema(&registry, "FixMessage")?;
+    let carried = fix_schema_carrying(&capture, &plain)?;
 
-    assert_eq!(carried.carried(), 3);
-    assert_eq!(carried.column(0).map(yggdryl::Field::name), Some("url"));
+    assert_eq!(carried.fields()[0].name(), "url");
     // The FIX columns keep their order; they only start further along.
-    assert_eq!(
-        carried.position_of(35),
-        plain.position_of(35).map(|at| at + 3),
-    );
+    assert_eq!(carried.index_of("35"), plain.index_of("35").map(|at| at + 3));
     ```
 
 === "Python"
@@ -458,7 +454,7 @@ A carried column whose name a FIX column already takes is dropped rather than re
     from pathlib import Path
 
     from yggdryl import DataType, Field
-    from yggdryl.fix import FixProjection, FixRegistry
+    from yggdryl.fix import FixRegistry, fix_schema, fix_schema_carrying
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     capture = Field(
@@ -473,13 +469,12 @@ A carried column whose name a FIX column already takes is dropped rather than re
         nullable=False,
     )
 
-    plain = FixProjection(registry, "FixMessage")
-    carried = FixProjection(registry, "FixMessage", capture)
+    plain = fix_schema(registry, "FixMessage")
+    carried = fix_schema_carrying(capture, plain)
 
-    assert carried.carried == 3
-    assert carried.column(0).name == "url"
+    assert carried.get_field_at(0).name == "url"
     # The FIX columns keep their order; they only start further along.
-    assert carried.position_of(35) == plain.position_of(35) + 3
+    assert carried.index_of("35") == plain.index_of("35") + 3
     ```
 
 === "JavaScript"
@@ -500,21 +495,20 @@ A carried column whose name a FIX column already takes is dropped rather than re
       { nullable: false },
     )
 
-    const plain = new fix.FixProjection(registry, 'FixMessage')
-    const carried = new fix.FixProjection(registry, 'FixMessage', capture)
+    const plain = fix.schema(registry, 'FixMessage')
+    const carried = fix.schemaCarrying(capture, plain)
 
-    assert.equal(carried.carried, 3)
-    assert.equal(carried.column(0).name, 'url')
+    assert.equal(carried.fieldAt(0).name, 'url')
     // The FIX columns keep their order; they only start further along.
-    assert.equal(carried.positionOf(35), plain.positionOf(35) + 3)
+    assert.equal(carried.indexOf('35'), plain.indexOf('35') + 3)
     ```
 
 ## Edges
 
 - A tag the dictionary does not have is skipped rather than invented: a column with no field behind it could not be typed.
-- A carried column carries no tag, so `to_row` answers null there; whoever read the capture fills it.
+- A column no tag names is the capture's own, so `to_row` answers null there; whoever read the capture fills it.
 - A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a timestamp is null rather than a refusal.
-- `position_of` on a tag the schema does not carry -> `None`, never a wrong column.
+- `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
 - Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
 
@@ -524,15 +518,20 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
 | shape | bytes | median |
 | --- | --- | --- |
-| a framed tag stream with prose either side | 85 | 12.8 us |
-| a bare tag stream | 64 | 12.4 us |
-| a bridge row keyed by name | 78 | 15.2 us |
-| a bridge row with a packed repeating group | 147 | 21.8 us |
-| a bridge configuration document | 630 | 80.6 us |
-| the same, on a dictionary without ULBridge's fields | 630 | 74.0 us |
-| the emit that closes the round trip | | 144 ns |
+| a framed tag stream with prose either side | 85 | 13.6 us |
+| a bare tag stream | 64 | 13.4 us |
+| the same, read at a pinned 4.2 | 64 | 13.5 us |
+| a bridge row keyed by name | 78 | 15.9 us |
+| a bridge row with a packed repeating group | 147 | 23.1 us |
+| a bridge row of `#` keys, one twinned by its bare spelling | 108 | 18.8 us |
+| a wide bridge row, three hundred `#` keys around one twin | 3716 | 659 us |
+| a bridge configuration document | 630 | 91.8 us |
+| the same, on a dictionary without ULBridge's fields | 630 | 82.9 us |
+| the emit that closes the round trip | | 194 ns |
 
-A document costs about six times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 9% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as.
+A document costs about seven times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 11% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as. The twin scan that decides a `#` costs nothing to see here: a bridge row splits into borrowed slices, the row of `#` keys reads faster per byte than the named one, and the wide row's per-pair cost matches the narrow one's - the scan probes the row's few bare spellings rather than the whole row, so it stays linear.
+
+A dated read costs what an undated one costs, within a code translation per value: a version decides which spellings answer, and no field is renamed or retyped for it, so there is nothing per row to resolve or cache.
 
 Regenerate with:
 

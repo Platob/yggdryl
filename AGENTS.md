@@ -18,7 +18,8 @@ results and exact skipped checks.
    names in `.api-inventory.txt` (Rust) / `.api-bindings.txt` (Python, JS).
 2. **Design against §1**: one owner per fact, one spelling per verb, no second
    schema, no second dispatcher - and the [Patterns](#patterns) the core already
-   has for equivalences, the handle stack, row accessors, and what is zero copy.
+   has for equivalences, the handle stack, row accessors, how outside data
+   becomes a resolved type, and what is zero copy.
 3. **Implement in Rust**: behavior, edges, errors, `rust/tests/`,
    `rust/benchmarks/`, rustdoc examples, both directions of any exchange format.
    Delete what it replaces in the same commit.
@@ -40,7 +41,7 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
-| storage backend | `holder/<name>/` with `Path`, `Folder`, `File` over the root traits; state and assert its call/request counts -> interop script -> docs |
+| storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
@@ -60,6 +61,18 @@ an invariant; a value's behavior is a method on it, not a helper. Delete dead
 branches and redundant wrappers you touch. No speculative generality, no
 binding-side core logic. Comments carry non-obvious constraints, ownership,
 bounds, safety - never prose translation.
+
+**Wide in, typed through.** Data from outside - a user argument, a wire byte, a
+host runtime object - meets one boundary that accepts every documented spelling
+of the thing it is, resolves it exactly once into `DataType`, `Field`, `Scalar`,
+or the owning enum, and hands the interior a value whose type is already proven.
+Flexibility belongs to intake, never to meaning: accept more spellings, never
+pick between two readings - ambiguous, disagreeing, or unrepresentable input
+fails with expected, actual, and location rather than widening to fit. Past that
+boundary nothing re-infers, re-parses, re-validates, or branches on a string:
+work is planned once against the resolved type, and the per-item path moves
+bytes under it. The interior is fast because the edge was exact, never because
+it skipped a check.
 
 **Compressed output.** Only what changes a decision, proves a result, names a
 blocker, or enables the next action; each fact once; outcome first (state,
@@ -96,7 +109,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, datatype families |
-| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder (`local/`, `s3/`, `zip/`) with `Path`, `Folder`, `File` |
+| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `s3/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -209,6 +222,37 @@ never to a wrapper's own buffer.
   `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
 - Add no row type, schema accessor, or per-row map/JSON bridge; a binding's row
   helper closes over one Struct `Field`.
+
+### Intake: accept, resolve, exploit
+
+| Step | Surface | Contract |
+| --- | --- | --- |
+| accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
+| resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
+| carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`/`TypedScalar<K>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
+| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `scalar_array`/`scalar_value`, cached Arrow projections, `as_integer`/`as_float`/`as_decimal`/`as_temporal`, `default_value` | schema-dependent work leaves the per-item path |
+
+- Precedence, where the caller did not say: an explicit argument, then a declared
+  `Field`, `MediaType`, or path suffix, then one bounded content read - never a
+  second read to break a tie, never a host runtime's guess. An input that answers
+  none of them names every step that failed.
+- Inference reads what a value already is, not what a column could hold:
+  `Scalar::dtype` names the variant's own datatype with its width, unit, zone and
+  scale intact; children that disagree are an error rather than a widened common
+  type, and a null child only makes its field nullable. Rows carrying no schema
+  get one from `inferred_scalar_field`/`inferred_array_field`/
+  `inferred_struct_field`; rows under a `Field` get that field's answer and never
+  an inferred one.
+- Resolution is a boundary event, never a per-item one: parse, lookup, layout
+  choice, and plan compilation hoist into options, a typed marker, or the
+  compiled plan, leaving masks, offsets and buffers to vary per row or batch.
+  `TextOptions::autotype` is the shape to copy - capture datatypes settle from
+  the pattern before a byte is read. A per-row `from_str`, dictionary rebuild,
+  metadata lookup, or format branch is a defect, and the benchmark plus the
+  `IOBase` call counts are where it shows.
+- Nothing re-enters the boundary from inside: no round trip through text, JSON,
+  or a host runtime's casting to recover a type the value already carries, and no
+  second inference over values a `Field` types.
 
 ### Zero copy
 
@@ -396,6 +440,32 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   the operation bounds them. Object-safe traits return one named iterator type
   per item kind; bindings expose native lazy protocols without collecting;
   benchmarks measure time to first item and full drain.
+
+### ZIP (`holder/zip/`)
+
+An archive is a file system inside one file, so it supplies the backend roles
+under the names its own index has: `Node` is a prefix of that index, `Leaf` is
+one entry in it, `Path` resolves to whichever is there.
+
+- Codings are `Codec::Identity`, `Codec::Deflate`, `Codec::Zstd` and nothing
+  else spells one; the archive adds no second coding dispatcher, and gzip and
+  zlib are refused by name because their framing wraps a whole resource.
+- A member is addressed by the archive's URL with its path in the fragment.
+  An archive inside an archive continues that fragment past a `//` marker,
+  which is a spelling no canonical member path can claim; the marker with
+  nothing after it is the mounted archive, and the same fragment without it is
+  the member whose bytes hold it.
+- A compressed member is written as units a stated stride apart, and its
+  central record carries the map of where they begin under this crate's own
+  extra field id `0x5967`. A read decodes one unit, not the whole prefix; a
+  point is proven against the coding's own evidence before it is used, and a
+  member another writer compressed maps nothing and says so.
+- One member writer, and it streams: nothing holds a member whole, the header
+  reserves the sizes a stream does not know yet, and the index learns about a
+  member only once its bytes are in the handle.
+- `Archive::handle_reads`/`handle_writes` count what the backend asked of the
+  handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
+  and asserted in those terms.
 
 ### S3 (`holder/s3/`, non-default `s3` feature)
 

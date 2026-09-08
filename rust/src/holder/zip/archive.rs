@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use smol_str::{SmolStr, format_smolstr};
@@ -10,7 +10,21 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::holder::Holder;
 use crate::{Codec, Error, IOBase, Level, Result, Url};
 
-use super::{Entry, Folder, format, name};
+use super::{Entry, Node, format, name};
+
+/// What separates one archive's member from the archive inside it.
+///
+/// A canonical member path never holds an empty segment - `name::resolve`
+/// drops them - so a doubled separator is a spelling no member can claim, and
+/// a fragment that holds one is naming a member of a member.
+pub(super) const NESTED: &str = "//";
+
+/// The bytes of evidence a restart point is proven by, on either side of it.
+///
+/// Both spellings are four bytes - the empty stored block a DEFLATE full flush
+/// ends with, and the magic a Zstandard frame begins with - so a window of
+/// four on each side of a point holds whichever one applies.
+const RESTART_EVIDENCE: u64 = 4;
 
 /// The most bytes an end-of-central-directory record can be from the end.
 ///
@@ -21,11 +35,27 @@ const END_SEARCH_LEN: u64 = format::END_LEN as u64 + u16::MAX as u64;
 /// Bytes moved per step while compacting, matching the shared stream batch.
 const COMPACT_CHUNK: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 
+/// Decoded bytes between the restart points a compressed member is written
+/// with.
+///
+/// One stream batch, which is also the page a [`Buffered`] handle fetches, so
+/// a page of a member begins exactly on a point and its fill decodes nothing
+/// it does not return.
+///
+/// Restarting costs size, because a unit begins with no history of the one
+/// before it: about 5% on realistic CSV at this stride, 1.3% at 256 KiB, and
+/// 0.3% at 1 MiB. That is the price of a member that can be read at an offset
+/// rather than only from its first byte; a caller that wants the bytes back
+/// writes with a stride of zero and gets a solid member.
+///
+/// [`Buffered`]: crate::holder::buffered::Buffered
+pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
+
 /// A ZIP archive mounted over one byte handle.
 ///
 /// The archive owns two things and nothing else: the handle its bytes live in,
 /// and the central directory that says where each member is inside it. Every
-/// member view - [`Folder`](super::Folder), [`File`](super::File),
+/// member view - [`Node`](super::Node), [`Leaf`](super::Leaf),
 /// [`Path`](super::Path) - is a name plus a shared reference to this, so
 /// opening a member allocates nothing but its name, and two handles on one
 /// member always agree about what is there.
@@ -79,6 +109,8 @@ pub struct Archive {
     codec: Codec,
     /// The compression level that coding runs at.
     level: Level,
+    /// Decoded bytes between the restart points a compressed write states.
+    restart_stride: u64,
 }
 
 /// The archive's mutable state, held under one lock.
@@ -91,6 +123,12 @@ struct Inner {
     handle: Holder,
     /// The parsed index, materialized on first use.
     index: Option<Index>,
+    /// The batch a member write reads its source through, reused by every one.
+    ///
+    /// A write holds the archive, so there is only ever one of these in use,
+    /// and an archive of many small members allocates it once rather than
+    /// once each.
+    scratch: Vec<u8>,
     /// Questions asked of the handle.
     reads: u64,
     /// Operations that changed the handle.
@@ -154,6 +192,12 @@ struct Index {
     dirty: bool,
     /// Whether a removal left dead space the next flush must reclaim.
     compact: bool,
+    /// Bytes before the first record, which belong to something else.
+    ///
+    /// A self-extracting archive carries a program there. It is not the
+    /// archive's to move, so compaction packs the records behind it rather
+    /// than over it.
+    prologue: u64,
     /// Where each member's bytes start, once a local header has said so.
     ///
     /// A member's data offset is only knowable from its own local header, so
@@ -161,6 +205,11 @@ struct Index {
     /// resolution of a location naming it, answers from here instead of
     /// reading the header again.
     data: BTreeMap<SmolStr, u64>,
+    /// Members whose restart map has been proven against the member's bytes.
+    ///
+    /// One name per member that a positional read has actually seeked in, so
+    /// the eight-byte proof is read once rather than once a seek.
+    proven: BTreeSet<SmolStr>,
     /// The byte length the stored archive had when this index last matched it.
     ///
     /// A publish only has to shorten the archive when the trailer it writes
@@ -171,21 +220,24 @@ struct Index {
 
 impl Archive {
     /// Mount `handle` as an archive without touching it.
+    ///
+    /// The archive's location is the handle's own, fragment included: an
+    /// archive mounted over a member of another archive is that member, and
+    /// its own members are named below it.
     pub fn new(handle: Holder) -> Self {
-        let mut url = handle.url().cloned().unwrap_or_else(|| unlocated().clone());
-        // The archive is the whole resource; a fragment addresses one member
-        // of it, so an archive mounted from a member URL is still the archive.
-        let _ = url.set_fragment(None);
+        let url = handle.url().cloned().unwrap_or_else(|| unlocated().clone());
         Self {
             url,
             inner: Mutex::new(Inner {
                 handle,
                 index: None,
+                scratch: Vec::new(),
                 reads: 0,
                 writes: 0,
             }),
             codec: Codec::Deflate,
             level: Level::DEFAULT,
+            restart_stride: DEFAULT_RESTART_STRIDE,
         }
     }
 
@@ -229,6 +281,41 @@ impl Archive {
         self.level
     }
 
+    /// Return this archive with a different restart stride for its writes.
+    ///
+    /// A compressed member is written as units this far apart in decoded
+    /// bytes, and its record states where each begins, so a positional read
+    /// decodes one unit rather than everything before the offset. Zero writes
+    /// solid members, which are smaller and readable only from their first
+    /// byte.
+    ///
+    /// ```
+    /// use yggdryl::holder::{Buffer, Holder, zip::Archive};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let root = Archive::new(Holder::buffer(Buffer::new()))
+    ///     .with_restart_stride(4_096)
+    ///     .mount();
+    /// root.archive()
+    ///     .write_member("trades.csv", &b"symbol,price\nAAPL,187.23\n".repeat(512))?;
+    ///
+    /// let entry = root.archive().get_entry("trades.csv")?.expect("the member");
+    /// assert_eq!(entry.restarts().stride(), 4_096);
+    /// assert!(!entry.restarts().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn with_restart_stride(mut self, stride: u64) -> Self {
+        self.restart_stride = stride;
+        self
+    }
+
+    /// Decoded bytes between the restart points a compressed write states.
+    pub const fn restart_stride(&self) -> u64 {
+        self.restart_stride
+    }
+
     /// The archive's own location, which every member URL is built under.
     pub const fn url(&self) -> &Url {
         &self.url
@@ -256,8 +343,8 @@ impl Archive {
     /// # }
     /// ```
     #[must_use]
-    pub fn mount(self) -> Folder {
-        Folder::new(Arc::new(self), SmolStr::default())
+    pub fn mount(self) -> Node {
+        Node::new(Arc::new(self), SmolStr::default())
     }
 
     /// Consume the archive, publishing the index and answering its handle.
@@ -268,7 +355,10 @@ impl Archive {
     /// failure when another thread panicked while holding this archive.
     pub fn into_handle(self) -> Result<Holder> {
         self.flush()?;
-        let inner = self.inner.into_inner().map_err(|_| poisoned())?;
+        let inner = self
+            .inner
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         Ok(inner.handle)
     }
 
@@ -282,7 +372,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn entries(&self) -> Result<Vec<Entry>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.values().cloned().collect())
     }
 
@@ -302,7 +392,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn comment(&self) -> Result<Vec<u8>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.comment.clone())
     }
 
@@ -323,7 +413,7 @@ impl Archive {
                 ),
             )));
         }
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         index.comment = comment.to_vec();
         index.dirty = true;
@@ -342,9 +432,7 @@ impl Archive {
         let Some(entry) = self.entry(&name)? else {
             return Err(Error::absent("zip member", self.member_url(&name)));
         };
-        let bytes = self.read_entry(&entry)?;
-        verify_crc(&entry, &bytes)?;
-        Ok(bytes)
+        self.read_entry(&entry)
     }
 
     /// Write one member under the archive's default coding.
@@ -365,6 +453,51 @@ impl Archive {
     /// the archive root, or [`Error::Unsupported`] naming a coding no ZIP
     /// compression method spells.
     pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<Entry> {
+        self.write_member_from(path, bytes, codec)
+    }
+
+    /// Write one member by streaming `source` through `codec` into the handle.
+    ///
+    /// Nothing is held whole: the source is read one batch at a time, encoded
+    /// into one window, and the window written out when it fills, so a member
+    /// larger than memory costs a window rather than its own size. The sizes
+    /// and the digest are only known when the last byte is encoded, so the
+    /// header reserves room for them and is settled afterwards - which is one
+    /// extra write, and none at all for a member whose whole encoded form fit
+    /// the first window.
+    ///
+    /// ```
+    /// use yggdryl::holder::{Buffer, Holder, zip::Archive};
+    /// use yggdryl::{Codec, IOBase};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let source = std::io::Cursor::new(b"symbol,price\nAAPL,187.23\n");
+    /// let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+    /// root.archive()
+    ///     .write_member_from("trades/eu.csv", source, Codec::Deflate)?;
+    /// root.archive().flush()?;
+    ///
+    /// assert_eq!(
+    ///     root.archive().read_member("trades/eu.csv")?,
+    ///     b"symbol,price\nAAPL,187.23\n",
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// The archive is held for the whole write, because the record is placed
+    /// where the directory currently begins and nothing may move that until
+    /// it is there. So the source must not read through *this* archive: a
+    /// member copied inside one archive goes through its value, while one
+    /// copied between two archives streams.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source's read failure, the encode or write failure, a
+    /// refusal when `path` resolves to the archive root, or
+    /// [`Error::Unsupported`] naming a coding no ZIP compression method
+    /// spells.
+    pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry> {
         let name = name::resolve("", path)?;
         if name.is_empty() {
             return Err(Error::Io(std::io::Error::new(
@@ -376,16 +509,95 @@ impl Archive {
             )));
         }
         let method = format::method_of(codec)?;
-        let encoded = codec.dump_with_level(bytes, self.level)?;
-        let mut crc = flate2::Crc::new();
-        crc.update(bytes);
-        let mut guard = self.locked()?;
+        if name.len() > usize::from(format::ZIP64_MARK_16) {
+            return Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "expected a member name of at most {} bytes, got {}",
+                    format::ZIP64_MARK_16,
+                    name.len()
+                ),
+            )));
+        }
+        let mut guard = self.locked();
         let inner = &mut *guard;
-        let offset = Self::index_of(inner)?.directory_offset;
-        let entry = Entry::new(name, method, now_nanos())
-            .with_content(crc.sum(), encoded.len() as u64, bytes.len() as u64)
-            .with_header_offset(offset);
-        Self::append_record(inner, &entry, &encoded)?;
+        let index = Self::index_of(inner)?;
+        let offset = index.directory_offset;
+        let previous = index.entries.get(name.as_str()).cloned();
+        let mut entry = Entry::new(name, method, now_nanos()).with_header_offset(offset);
+        // Replacing a member's bytes says nothing about the member: what the
+        // record already stated about it is carried rather than reinvented.
+        if let Some(previous) = &previous {
+            entry = entry.with_facts_of(previous);
+        }
+        let stride = if codec.has_restarts() && !codec.is_identity() {
+            self.restart_stride
+        } else {
+            0
+        };
+        self.write_record(inner, entry, source, codec, stride)
+    }
+
+    /// Encode `source` into one record and index what it wrote.
+    fn write_record(
+        &self,
+        inner: &mut Inner,
+        entry: Entry,
+        mut source: impl Read,
+        codec: Codec,
+        stride: u64,
+    ) -> Result<Entry> {
+        let produced = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut batch = std::mem::take(&mut inner.scratch);
+        batch.resize(crate::DEFAULT_STREAM_BATCH_SIZE, 0);
+        let mut sink = MemberSink {
+            offset: entry.header_offset(),
+            entry: entry.clone(),
+            header: None,
+            reserved: false,
+            window: Vec::new(),
+            flushed: 0,
+            produced: Arc::clone(&produced),
+            inner,
+        };
+        let mut crc = flate2::Crc::new();
+        let mut log = RestartLog::new(stride);
+        let mut size = 0_u64;
+        {
+            let mut encoder = codec.writer_with_level(&mut sink, self.level);
+            loop {
+                let read = source.read(&mut batch)?;
+                if read == 0 {
+                    break;
+                }
+                let mut chunk = &batch[..read];
+                while !chunk.is_empty() {
+                    // A point lands exactly on its stride, so the map states
+                    // where a unit begins without also stating how long it is.
+                    let head = log.until(size).min(chunk.len());
+                    if head == 0 {
+                        encoder.restart()?;
+                        log.record(produced.load(std::sync::atomic::Ordering::Relaxed));
+                        continue;
+                    }
+                    encoder.write_all(&chunk[..head])?;
+                    crc.update(&chunk[..head]);
+                    size += head as u64;
+                    chunk = &chunk[head..];
+                }
+            }
+            encoder.finish()?;
+        }
+        let entry = entry
+            .with_content(
+                crc.sum(),
+                produced.load(std::sync::atomic::Ordering::Relaxed),
+                size,
+            )
+            .with_restarts(log.into_restarts());
+        let data = sink.finish(&entry)?;
+        inner.scratch = batch;
+        Self::index_record(inner, &entry, data)?;
         Ok(entry)
     }
 
@@ -401,7 +613,7 @@ impl Archive {
     pub fn create_directory(&self, path: &str) -> Result<()> {
         let base = name::resolve("", path)?;
         {
-            let mut guard = self.locked()?;
+            let mut guard = self.locked();
             let inner = &mut *guard;
             if base.is_empty() {
                 // The root is the archive itself; an empty one is a bare
@@ -416,7 +628,7 @@ impl Archive {
                 let offset = index.directory_offset;
                 let entry = Entry::new(directory, format::method_of(Codec::Identity)?, now_nanos())
                     .with_header_offset(offset);
-                Self::append_record(inner, &entry, &[])?;
+                self.write_record(inner, entry, std::io::empty(), Codec::Identity, 0)?;
             }
         }
         self.flush()
@@ -434,7 +646,7 @@ impl Archive {
     pub fn remove_member(&self, path: &str) -> Result<bool> {
         let name = name::resolve("", path)?;
         let directory = name::directory_name(&name);
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         let removed =
             index.entries.remove(&name).is_some() | index.entries.remove(&directory).is_some();
@@ -453,14 +665,16 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn clear_members(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
+        // Clearing is not a write: an archive that holds nothing is not
+        // brought into being by being emptied.
         if !index.entries.is_empty() {
             index.entries.clear();
             index.data.clear();
             index.compact = true;
+            index.dirty = true;
         }
-        index.dirty = true;
         Ok(())
     }
 
@@ -470,7 +684,7 @@ impl Archive {
     ///
     /// Returns the compaction, write, or flush failure.
     pub fn flush(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::publish(&mut guard)
     }
 
@@ -484,14 +698,14 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn open(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::index(&mut guard)?;
         Ok(())
     }
 
     /// Whether the central directory is currently held in memory.
     pub fn is_indexed(&self) -> bool {
-        self.locked().is_ok_and(|guard| guard.index.is_some())
+        self.locked().index.is_some()
     }
 
     /// Publish anything pending and release the index.
@@ -500,7 +714,7 @@ impl Archive {
     ///
     /// Returns the write or flush failure.
     pub fn close(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::publish(&mut guard)?;
         guard.index = None;
         Ok(())
@@ -516,7 +730,7 @@ impl Archive {
     /// Returns the read or format failure the index parse hit.
     pub fn remove_under(&self, path: &str) -> Result<usize> {
         let base = name::resolve("", path)?;
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         let kept = name::directory_name(&base);
         let doomed: Vec<SmolStr> = index
@@ -542,7 +756,9 @@ impl Archive {
     /// Whether the index differs from the directory the handle holds.
     pub fn is_pending(&self) -> bool {
         self.locked()
-            .is_ok_and(|guard| guard.index.as_ref().is_some_and(|index| index.dirty))
+            .index
+            .as_ref()
+            .is_some_and(|index| index.dirty)
     }
 
     /// Delete the archive and everything in it.
@@ -551,7 +767,7 @@ impl Archive {
     ///
     /// Returns the backing store's delete failure.
     pub fn remove(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         // The index goes first, so a later flush cannot recreate what is gone.
         guard.index = None;
         guard.writes += 1;
@@ -566,7 +782,7 @@ impl Archive {
     #[cfg(test)]
     pub(super) fn image(&self) -> Result<Vec<u8>> {
         self.flush()?;
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         guard.reads += 1;
         guard.handle.read_all_bytes()
     }
@@ -577,11 +793,11 @@ impl Archive {
     /// plus the trailer behind it - so this asks the handle only while the
     /// archive is still unopened, exactly as any other cached metadata does.
     pub fn size(&self) -> u64 {
-        self.locked()
-            .map_or(0, |mut guard| match guard.index.as_ref() {
-                Some(index) => index.stored_end,
-                None => guard.size(),
-            })
+        let mut guard = self.locked();
+        match guard.index.as_ref() {
+            Some(index) => index.stored_end,
+            None => guard.size(),
+        }
     }
 
     /// How many questions this archive has asked the handle beneath it.
@@ -591,7 +807,7 @@ impl Archive {
     /// 64 KiB is two reads, a warm positional read of a stored member is one,
     /// and a listing of any size is none.
     pub fn handle_reads(&self) -> u64 {
-        self.locked().map_or(0, |guard| guard.reads)
+        self.locked().reads
     }
 
     /// How many operations this archive has run that changed that handle.
@@ -600,7 +816,7 @@ impl Archive {
     /// shortening only when the trailer ends earlier than the last one did,
     /// and one flush.
     pub fn handle_writes(&self) -> u64 {
-        self.locked().map_or(0, |guard| guard.writes)
+        self.locked().writes
     }
 
     /// The URL a member of this archive is addressed by.
@@ -612,18 +828,33 @@ impl Archive {
     /// something lives below a name that happens to end in `.zip`, and would
     /// read identically to a real directory of that name.
     ///
+    /// An archive inside an archive continues the same fragment, one level per
+    /// [`NESTED`] separator: `day.zip#inner.zip//trades/eu.csv` is that member
+    /// of that inner archive. The separator cannot collide with a name,
+    /// because a canonical member path never holds an empty segment.
+    ///
     /// It also makes the location a round trip: [`zip::from_url`](super::from_url)
-    /// mounts the archive the base names and resolves the member the fragment
-    /// names, so a member URL that was written down opens the member again.
+    /// mounts the archive the base names, descends every level the fragment
+    /// spells, and resolves the member at the end, so a member URL that was
+    /// written down opens the member again however deeply it was nested.
     pub(super) fn member_url(&self, member: &str) -> Url {
         let member = member.trim_end_matches('/');
-        if member.is_empty() {
-            return self.url.clone();
-        }
+        let held = match self.url.fragment(true) {
+            Ok(held) => held.filter(|held| !held.is_empty()),
+            Err(_) => return self.url.clone(),
+        };
+        let fragment = match held {
+            // A member-backed archive continues the chain past the marker,
+            // and its own root is the marker with nothing after it - which is
+            // what tells the archive apart from the member holding its bytes.
+            Some(outer) => format_smolstr!("{outer}{NESTED}{member}"),
+            None if member.is_empty() => return self.url.clone(),
+            None => SmolStr::new(member),
+        };
         let mut url = self.url.clone();
         // A member path is not URI text, so the fragment carries it encoded.
         // A name no fragment can state leaves the archive as the location.
-        if url.set_fragment(Some(member)).is_err() {
+        if url.set_fragment(Some(&fragment)).is_err() {
             return self.url.clone();
         }
         url
@@ -636,7 +867,7 @@ impl Archive {
 
     /// The parent of the archive itself, which is where its bytes live.
     pub(super) fn archive_parent(&self) -> Option<Holder> {
-        self.locked().ok()?.handle.parent()
+        self.locked().handle.parent()
     }
 
     /// The member `name` names, when the archive holds one.
@@ -645,7 +876,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub(super) fn entry(&self, name: &str) -> Result<Option<Entry>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.get(name).cloned())
     }
 
@@ -660,7 +891,7 @@ impl Archive {
             return Ok(true);
         }
         let directory = name::directory_name(base);
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         Ok(index
             .entries
@@ -686,7 +917,7 @@ impl Archive {
         recursive: bool,
         include_private: bool,
     ) -> Result<Vec<(SmolStr, bool)>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         // A directory is anything a record marks as one plus anything a
         // deeper member implies, so both are collected before either answers.
@@ -737,7 +968,7 @@ impl Archive {
     ///
     /// Returns the backing store's read failure.
     pub(super) fn pread_raw(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        self.locked()?.pread(offset, buffer)
+        self.locked().pread(offset, buffer)
     }
 
     /// Where a member's bytes start, read from its own local file header.
@@ -754,7 +985,7 @@ impl Archive {
     /// Returns the read failure, or [`Error::Codec`] when the local header is
     /// not one.
     pub(super) fn data_offset(&self, entry: &Entry) -> Result<u64> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::member_data(&mut guard, entry)
     }
 
@@ -777,12 +1008,11 @@ impl Archive {
     /// The index already holds it, so this answers without copying the record
     /// out of the map - which matters because every ranged read asks it first.
     pub(super) fn member_size(&self, name: &str) -> u64 {
-        self.locked().map_or(0, |mut guard| {
-            Self::index_of(&mut guard)
-                .ok()
-                .and_then(|index| index.entries.get(name))
-                .map_or(0, Entry::size)
-        })
+        let mut guard = self.locked();
+        Self::index_of(&mut guard)
+            .ok()
+            .and_then(|index| index.entries.get(name))
+            .map_or(0, Entry::size)
     }
 
     /// One member's stored modification time, in UTC nanoseconds.
@@ -790,12 +1020,11 @@ impl Archive {
     /// The index holds it beside the length, so this costs the same lookup a
     /// ranged read already pays.
     pub(super) fn member_mtime(&self, name: &str) -> Option<i64> {
-        self.locked().ok().and_then(|mut guard| {
-            Self::index_of(&mut guard)
-                .ok()
-                .and_then(|index| index.entries.get(name))
-                .map(Entry::modified)
-        })
+        let mut guard = self.locked();
+        Self::index_of(&mut guard)
+            .ok()
+            .and_then(|index| index.entries.get(name))
+            .map(Entry::modified)
     }
 
     /// Read from one member, when its bytes can pass straight through.
@@ -816,7 +1045,7 @@ impl Archive {
         offset: u64,
         buffer: &mut [u8],
     ) -> Result<Option<usize>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let inner = &mut *guard;
         let index = Self::index_of(inner)?;
         let Some(entry) = index.entries.get(name) else {
@@ -854,11 +1083,12 @@ impl Archive {
         inner.pread(data + offset, &mut buffer[..length]).map(Some)
     }
 
-    /// Decode one member whole, without verifying its digest.
+    /// Decode one member whole, verifying the digest its record states.
     ///
     /// # Errors
     ///
-    /// Returns the read or decode failure.
+    /// Returns the read or decode failure, or [`Error::Codec`] naming both
+    /// digests when the decoded bytes do not match the record's.
     pub(super) fn read_entry(self: &Arc<Self>, entry: &Entry) -> Result<Vec<u8>> {
         // A stored member is already the bytes it decodes to, so reading one
         // whole is one ranged read of the archive rather than a stream over
@@ -866,10 +1096,15 @@ impl Archive {
         if !entry.is_encrypted() && entry.codec()?.is_identity() {
             let length = usize::try_from(entry.size().min(entry.compressed_size()))
                 .map_err(|_| crate::iobase::oversized(entry.size()))?;
-            let mut guard = self.locked()?;
-            let inner = &mut *guard;
-            let data = Self::member_data(inner, entry)?;
-            return inner.read_range(data, length);
+            let bytes = {
+                let mut guard = self.locked();
+                let inner = &mut *guard;
+                let data = Self::member_data(inner, entry)?;
+                inner.read_range(data, length)?
+            };
+            // Nothing streamed, so nothing hashed on the way past.
+            verify_crc(entry, &bytes)?;
+            return Ok(bytes);
         }
         let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
         self.entry_reader(entry, 0)?.read_to_end(&mut bytes)?;
@@ -880,9 +1115,15 @@ impl Archive {
     ///
     /// A stored member decodes to itself, so the reader is the archive's own
     /// bytes over the member's range: `position` is applied to the range and
-    /// nothing before it is touched. A compressed member has no decoded seek,
-    /// so the same range runs through the coding its record names and the
-    /// decoded prefix is discarded through one bounded scratch buffer.
+    /// nothing before it is touched.
+    ///
+    /// A compressed member has no decoded seek, so the decode begins at the
+    /// restart point its record maps at or before `position` and the rest of
+    /// that unit is discarded through one bounded scratch buffer. What a read
+    /// decodes is therefore bounded by the member's stride rather than by the
+    /// offset - and for a member whose record maps nothing, which is what
+    /// another writer's compressed member is, the point is the member's first
+    /// byte and the whole prefix is discarded as it always was.
     ///
     /// # Errors
     ///
@@ -909,27 +1150,108 @@ impl Archive {
                 remaining: entry.compressed_size() - skipped,
             }));
         }
+
+        let (decoded_at, encoded_at) = self.restart_before(entry, codec, position)?;
         let range = RangeReader {
             archive: Arc::clone(self),
-            position: start,
-            remaining: entry.compressed_size(),
+            position: start + encoded_at,
+            remaining: entry.compressed_size() - encoded_at,
         };
         let decoded = codec.reader_send(std::io::BufReader::with_capacity(
             crate::DEFAULT_STREAM_BATCH_SIZE,
             range,
         ));
-        if position == 0 {
+        if position == decoded_at {
+            // A reader that begins at the member's first byte can hash what
+            // it hands out, so a stream read to its end proves the digest the
+            // record states. One that begins anywhere else cannot: it never
+            // sees the bytes before it.
+            if position == 0 {
+                return Ok(Box::new(Verified::new(decoded, entry)));
+            }
             return Ok(decoded);
         }
         Ok(Box::new(Skip {
             reader: decoded,
-            remaining: position,
+            remaining: position - decoded_at,
         }))
     }
 
-    /// Lock the archive, naming a poisoned lock rather than panicking on it.
-    fn locked(&self) -> Result<MutexGuard<'_, Inner>> {
-        self.inner.lock().map_err(|_| poisoned())
+    /// The restart point a read at `position` decodes from.
+    ///
+    /// A record states its map, and a map states bytes: another tool that
+    /// rewrote the member while keeping the record's extra fields would leave
+    /// one describing bytes that are gone. So a point is proven against the
+    /// coding's own evidence before it is trusted - the marker a full flush
+    /// ends with, the magic a frame begins with - and a map that fails is
+    /// dropped from the index rather than believed. That costs one read of
+    /// eight bytes, once per member however many seeks follow, because what
+    /// it proves is the map rather than the point.
+    fn restart_before(
+        self: &Arc<Self>,
+        entry: &Entry,
+        codec: Codec,
+        position: u64,
+    ) -> Result<(u64, u64)> {
+        let (decoded_at, encoded_at) = entry.restarts().before(position);
+        if encoded_at == 0 {
+            return Ok((0, 0));
+        }
+        {
+            let mut guard = self.locked();
+            if Self::index_of(&mut guard)?.proven.contains(entry.name()) {
+                return Ok((decoded_at, encoded_at));
+            }
+        }
+        if self.restart_proven(entry, codec, encoded_at)? {
+            let mut guard = self.locked();
+            Self::index_of(&mut guard)?
+                .proven
+                .insert(SmolStr::new(entry.name()));
+            return Ok((decoded_at, encoded_at));
+        }
+        // The map does not describe these bytes, so nothing may use it again.
+        let mut guard = self.locked();
+        let index = Self::index_of(&mut guard)?;
+        if let Some(held) = index.entries.get_mut(entry.name()) {
+            *held = held.clone().with_restarts(crate::Restarts::default());
+        }
+        index.proven.insert(SmolStr::new(entry.name()));
+        Ok((0, 0))
+    }
+
+    /// Whether the coding's own evidence of a restart sits at `encoded_at`.
+    ///
+    /// The window spans both spellings a restart has - the four bytes a full
+    /// flush ends with, and the four a frame begins with - so the scan the
+    /// coding owns answers for either without this knowing which.
+    fn restart_proven(&self, entry: &Entry, codec: Codec, encoded_at: u64) -> Result<bool> {
+        let start = self.data_offset(entry)?;
+        let Some(before) = encoded_at.checked_sub(RESTART_EVIDENCE) else {
+            return Ok(false);
+        };
+        if encoded_at + RESTART_EVIDENCE > entry.compressed_size() {
+            return Ok(false);
+        }
+        let window = self
+            .locked()
+            .read_range(start + before, 2 * RESTART_EVIDENCE as usize)?;
+        let mut found = Vec::new();
+        codec.restart_scan().push(&window, &mut found);
+        Ok(found.contains(&RESTART_EVIDENCE))
+    }
+
+    /// Lock the archive, taking the state a panicking thread left behind.
+    ///
+    /// Every operation here either completes or leaves the index untouched,
+    /// so a panic elsewhere in the process has nothing to have corrupted -
+    /// and reporting the poison instead would answer "empty" from every
+    /// accessor that cannot carry an error, which reads as an archive that is
+    /// not there and invites a caller to write over one that is.
+    fn locked(&self) -> MutexGuard<'_, Inner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Borrow the index, parsing the stored directory on first use.
@@ -948,28 +1270,24 @@ impl Archive {
             .ok_or_else(|| Error::Io(std::io::Error::other("the archive index was lost")))
     }
 
-    /// Append one member record after the last member.
+    /// Index the record a write just placed, which is the last thing it does.
     ///
-    /// The header and the bytes it introduces go out as one write, because
-    /// they are one record: against a store where a write is a round trip,
-    /// two writes would be two of them for no gain.
-    fn append_record(inner: &mut Inner, entry: &Entry, encoded: &[u8]) -> Result<()> {
-        let offset = entry.header_offset();
-        let mut record = Vec::with_capacity(format::LOCAL_LEN + entry.name().len() + encoded.len());
-        format::write_local(entry, &mut record);
-        let data = offset + record.len() as u64;
-        record.extend_from_slice(encoded);
-
+    /// The index only learns about a member once its bytes are in the handle,
+    /// so a failed write leaves an archive that never claimed them.
+    fn index_record(inner: &mut Inner, entry: &Entry, data: u64) -> Result<()> {
         let name = SmolStr::new(entry.name());
         let index = Self::index_of(inner)?;
-        index.directory_offset = offset + record.len() as u64;
+        index.directory_offset = data + entry.compressed_size();
         index.stored_end = index.stored_end.max(index.directory_offset);
         index.entries.insert(name.clone(), entry.clone());
         // The write knows where it put the bytes, so reading them back never
         // costs the local header read that would otherwise find out.
-        index.data.insert(name, data);
+        index.data.insert(name.clone(), data);
+        // Whatever was proven about the member that used to be here describes
+        // bytes this write replaced.
+        index.proven.remove(&name);
         index.dirty = true;
-        inner.pwrite_all(offset, &record)
+        Ok(())
     }
 
     /// Write the central directory and its trailer, compacting first when a
@@ -1003,15 +1321,19 @@ impl Archive {
         );
         let end = offset + trailer.len() as u64;
         let shrinks = end < index.stored_end;
-        index.dirty = false;
-        index.stored_end = end;
         inner.pwrite_all(offset, &trailer)?;
         // Shortening is only needed when this trailer ends before the last one
         // did; an archive that only grew has nothing beyond it to discard.
         if shrinks {
             inner.truncate(end)?;
         }
-        inner.flush()
+        inner.flush()?;
+        // Only a published directory makes the index match the archive, so a
+        // failed write leaves the flush still owed rather than forgotten.
+        let index = Self::index_of(inner)?;
+        index.dirty = false;
+        index.stored_end = end;
+        Ok(())
     }
 
     /// Move every surviving member to the front, reclaiming dead space.
@@ -1022,10 +1344,11 @@ impl Archive {
     /// each record exactly as long as it was and makes that guarantee hold.
     fn compact(guard: &mut MutexGuard<'_, Inner>) -> Result<()> {
         let inner = &mut **guard;
-        let mut ordered: Vec<Entry> = Self::index_of(inner)?.entries.values().cloned().collect();
+        let index = Self::index_of(inner)?;
+        let mut ordered: Vec<Entry> = index.entries.values().cloned().collect();
+        let mut cursor = index.prologue;
         ordered.sort_by_key(Entry::header_offset);
 
-        let mut cursor = 0_u64;
         let mut moved = Vec::with_capacity(ordered.len());
         let mut buffer = vec![0_u8; COMPACT_CHUNK];
         for entry in ordered {
@@ -1090,6 +1413,150 @@ fn join(base: &str, relative: &str) -> SmolStr {
     format_smolstr!("{base}/{relative}")
 }
 
+/// Encoded bytes a member write holds before they reach the handle.
+///
+/// One transport window, so a member whose encoded form fits it is one write -
+/// header and bytes together, because they are one record - and a longer one
+/// is one write per window plus the write that settles its header.
+const MEMBER_WINDOW: usize = crate::DEFAULT_FETCH_BYTE_SIZE;
+
+/// Where a member write puts the encoded bytes an encoder hands it.
+///
+/// The header travels with the first window, because a member that fits one
+/// window is one record and one write. A member that does not have its header
+/// written with room reserved for the sizes nobody knows yet, and settled once
+/// the last byte is encoded.
+struct MemberSink<'inner> {
+    inner: &'inner mut Inner,
+    /// Where the record begins in the archive.
+    offset: u64,
+    /// The member being written, which the header spells.
+    entry: Entry,
+    /// The header's byte length, once one has been written.
+    header: Option<u64>,
+    /// Whether that header reserved room for 64-bit sizes.
+    reserved: bool,
+    /// Encoded bytes held back from the handle.
+    window: Vec<u8>,
+    /// Encoded bytes already written.
+    flushed: u64,
+    /// Encoded bytes handed in, which the restart log reads as it goes.
+    produced: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl MemberSink<'_> {
+    /// Write what the window holds, spelling the header on the first call.
+    fn spill(&mut self, last: bool) -> Result<()> {
+        match self.header {
+            // A tail with nothing in it is not a write; the header is, even
+            // for a member whose encoded form is empty.
+            Some(_) if self.window.is_empty() => return Ok(()),
+            Some(header) => {
+                let at = self.offset + header + self.flushed;
+                self.inner.pwrite_all(at, &self.window)?;
+            }
+            None => {
+                // A member that ends inside its first window states its own
+                // sizes; one that does not reserves the room to state them.
+                self.reserved = !last;
+                let mut record = Vec::with_capacity(
+                    format::LOCAL_LEN + self.entry.name().len() + self.window.len(),
+                );
+                format::write_local_with(&self.entry, self.reserved, &mut record);
+                self.header = Some(record.len() as u64);
+                record.extend_from_slice(&self.window);
+                self.inner.pwrite_all(self.offset, &record)?;
+            }
+        }
+        self.flushed += self.window.len() as u64;
+        self.window.clear();
+        Ok(())
+    }
+
+    /// Write the tail, settle the header, and answer where the bytes start.
+    fn finish(&mut self, entry: &Entry) -> Result<u64> {
+        self.entry = entry.clone();
+        self.spill(true)?;
+        if self.reserved {
+            let mut header = Vec::new();
+            format::write_local_with(&self.entry, true, &mut header);
+            self.inner.pwrite_all(self.offset, &header)?;
+        }
+        Ok(self.offset + self.header.unwrap_or(0))
+    }
+}
+
+impl std::io::Write for MemberSink<'_> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.window.extend_from_slice(buffer);
+        self.produced
+            .fetch_add(buffer.len() as u64, std::sync::atomic::Ordering::Relaxed);
+        if self.window.len() >= MEMBER_WINDOW {
+            self.spill(false).map_err(std::io::Error::other)?;
+        }
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The restart points a member write states, and the stride they are apart.
+///
+/// The map rides the central directory, so it is bounded rather than allowed
+/// to grow: at the ceiling the stride doubles and every second point is
+/// dropped, which is exactly the map the wider stride would have produced. The
+/// points already written stay where they are - they cost size, not
+/// correctness.
+struct RestartLog {
+    stride: u64,
+    /// The decoded offset the next point belongs at.
+    next: u64,
+    points: Vec<u64>,
+}
+
+impl RestartLog {
+    /// Log points `stride` decoded bytes apart, or none at all for zero.
+    const fn new(stride: u64) -> Self {
+        Self {
+            stride,
+            next: stride,
+            points: Vec::new(),
+        }
+    }
+
+    /// Decoded bytes still to write before the next point is due.
+    fn until(&self, decoded: u64) -> usize {
+        if self.stride == 0 {
+            return usize::MAX;
+        }
+        usize::try_from(self.next.saturating_sub(decoded)).unwrap_or(usize::MAX)
+    }
+
+    /// Record a point that has just been written at encoded offset `at`.
+    fn record(&mut self, at: u64) {
+        self.points.push(at);
+        self.next += self.stride;
+        if self.points.len() >= format::MAX_RESTARTS {
+            let mut kept = Vec::with_capacity(self.points.len() / 2);
+            let mut index = 1;
+            while index < self.points.len() {
+                kept.push(self.points[index]);
+                index += 2;
+            }
+            self.points = kept;
+            self.stride *= 2;
+            self.next = (self.points.len() as u64 + 1) * self.stride;
+        }
+    }
+
+    /// The map the log built.
+    fn into_restarts(self) -> crate::Restarts {
+        crate::Restarts::new(self.stride, self.points)
+    }
+}
+
 /// A bounded positional reader over the archive's own bytes.
 ///
 /// One member's encoded range, read through the shared handle. Nothing is
@@ -1119,7 +1586,55 @@ impl Read for RangeReader {
     }
 }
 
+/// Check a member's digest against what a stream of it actually decoded to.
+///
+/// The check happens at the end of the member and only there: a stream a
+/// caller stops reading has proven nothing, and says so by not answering.
+struct Verified {
+    reader: Box<dyn Read + Send>,
+    crc: flate2::Crc,
+    entry: Entry,
+    done: bool,
+}
+
+impl Verified {
+    /// Hash what `reader` hands out, against what `entry` states.
+    fn new(reader: Box<dyn Read + Send>, entry: &Entry) -> Self {
+        Self {
+            reader,
+            crc: flate2::Crc::new(),
+            entry: entry.clone(),
+            done: false,
+        }
+    }
+}
+
+impl Read for Verified {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.reader.read(target)?;
+        if read > 0 {
+            self.crc.update(&target[..read]);
+            return Ok(read);
+        }
+        if !self.done {
+            self.done = true;
+            if self.crc.sum() != self.entry.crc32() {
+                return Err(std::io::Error::other(digest_failure(
+                    &self.entry,
+                    self.crc.sum(),
+                )));
+            }
+        }
+        Ok(0)
+    }
+}
+
 /// Discard a decoded prefix before serving the position a caller asked for.
+///
+/// What it discards is the distance from a restart point to the position, so
+/// its bound is the member's stride rather than the position itself. A member
+/// whose record maps no restart point is the one case where the two are the
+/// same.
 struct Skip {
     reader: Box<dyn Read + Send>,
     remaining: u64,
@@ -1157,16 +1672,20 @@ pub(super) fn verify_crc(entry: &Entry, bytes: &[u8]) -> Result<()> {
     if crc.sum() == entry.crc32() {
         return Ok(());
     }
-    Err(Error::Codec {
+    Err(digest_failure(entry, crc.sum()))
+}
+
+/// Report a member whose bytes do not hash to what its record states.
+fn digest_failure(entry: &Entry, digest: u32) -> Error {
+    Error::Codec {
         format: "zip",
         position: usize::try_from(entry.header_offset()).unwrap_or(usize::MAX),
         reason: format_smolstr!(
-            "expected the member {:?} to hash to {:#010x}, got {:#010x}",
+            "expected the member {:?} to hash to {:#010x}, got {digest:#010x}",
             entry.name(),
             entry.crc32(),
-            crc.sum()
         ),
-    })
+    }
 }
 
 /// The identity a member of an unlocated handle is addressed by.
@@ -1179,13 +1698,6 @@ fn unlocated() -> &'static Url {
         Url::from_str("mem://0/0x0").expect("the fallback identity is valid")
     });
     &UNLOCATED
-}
-
-/// Report a lock another thread panicked while holding.
-fn poisoned() -> Error {
-    Error::Io(std::io::Error::other(
-        "the zip archive lock was poisoned by a panic in another thread",
-    ))
 }
 
 /// The current instant, in UTC nanoseconds since the Unix epoch.
@@ -1306,7 +1818,9 @@ fn parse(inner: &mut Inner) -> Result<Index> {
         comment,
         dirty: false,
         compact: false,
+        prologue: u64::try_from(shift).unwrap_or(0),
         data: BTreeMap::new(),
+        proven: BTreeSet::new(),
         stored_end: size,
     })
 }

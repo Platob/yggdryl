@@ -53,7 +53,7 @@ pub mod xxhash;
 #[cfg(feature = "arrow")]
 pub use arrow::{ArrowShape, ArrowValue};
 pub use bytestream::ByteStream;
-pub use codec::{Codec, Encoder, Level};
+pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
 pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
@@ -64,11 +64,11 @@ pub use fix::{
     CRATE_BRANCH, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS, ERROR_TAG, FixAnomalies,
     FixAnomaly, FixBranch, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixEntry,
     FixFieldIter, FixId, FixKey, FixLift, FixLineage, FixLineageEntry, FixMsg, FixParty,
-    FixPedigree, FixProjection, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG,
-    MSGHASH_TAG, OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, SESSIONINTERFACES_TAG,
+    FixPedigree, FixRegistry, FixSpellings, MBEAN_TAG, MSGDIRECTION_TAG, MSGHASH_TAG,
+    OPERATION_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG, SESSIONINTERFACES_TAG,
     STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATUS_TAG, SYMBOLTICKER_TAG, TIMESTAMP_TAG,
     ULBRIDGE_BRANCH, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, VERSION_TAG, Words, fix_crate_fields,
-    fix_lift, fix_lifts, fix_schema, fix_schema_tags, fix_ulbridge_fields,
+    fix_lift, fix_lifts, fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
 };
 #[cfg(feature = "arrow")]
 pub use fix::{

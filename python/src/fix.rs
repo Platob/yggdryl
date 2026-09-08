@@ -25,9 +25,8 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixBatchReader as CoreFixBatchReader, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec,
     FixField as CoreFixField, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixOptions as CoreFixOptions, FixProjection as CoreFixProjection,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar, Version as CoreVersion,
-    from_json_scalar_with_field, into_json_scalar,
+    FixOptions as CoreFixOptions, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, Scalar,
+    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -113,7 +112,7 @@ pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
     CoreFixId::from_str(text).map_err(value_error)
 }
 
-/// Retain the branch spelling beside the packed identifier for a field write.
+/// Retain the branch spelling beside the identifier for a field write.
 pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
     let id = id_from_py(text)?;
     let branch = text
@@ -1085,14 +1084,15 @@ impl PyFixMsg {
 
     /// This message as the fixed row a table holds.
     ///
-    /// Every column is filled from the message's own values by tag, so a
-    /// message that carried nothing at a column answers null there rather than
-    /// shifting its neighbours - which is what makes two rows of one capture
-    /// comparable at all. A carried column answers null: it is the capture's,
-    /// and nothing in the message says what it held.
-    fn to_row(&self, projection: &PyFixProjection) -> PyResult<PyScalar> {
+    /// `schema` is the fixed root :func:`fix_schema` builds. Every column is
+    /// filled by the tag its name spells, so a message that carried nothing at
+    /// a column answers null there rather than shifting its neighbours - which
+    /// is what makes two rows of one capture comparable at all. A column no tag
+    /// names answers null: it is the capture's, and nothing in the message says
+    /// what it held.
+    fn to_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .to_row(&projection.inner)
+            .to_row(&core_field_from_value(schema)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
@@ -1132,12 +1132,6 @@ impl PyFixMsg {
 /// name/value text, or pairs a caller already has. Each redirects to the core
 /// method of the same name, so nothing here decides a dialect, a version or a
 /// separator - it only carries what Python said across.
-///
-/// A reader caches the projection of whichever version it was last asked for,
-/// so a capture read at one version pays the resolution once rather than once
-/// per row. Copying one gives it a cache of its own, exactly as the core does,
-/// because two readers differing in version would otherwise clear each other's
-/// every row.
 #[pyclass(name = "FixCodec", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixCodec {
     inner: CoreFixCodec,
@@ -1293,111 +1287,6 @@ fn version_from_py(text: &str) -> PyResult<CoreVersion> {
     spelling.parse::<CoreVersion>().map_err(value_error)
 }
 
-/// Where each fixed column sits, resolved once against one dictionary.
-///
-/// A row projection asks for the same tags in the same order for every message
-/// in a capture, and each ask through the ordinary tiers is a hash, a
-/// verification and a branch walk. Building one turns the per-row cost into an
-/// indexed read, which is the whole reason a fixed schema is worth having.
-#[pyclass(
-    name = "FixProjection",
-    module = "yggdryl._native",
-    skip_from_py_object
-)]
-pub(crate) struct PyFixProjection {
-    pub(crate) inner: CoreFixProjection,
-}
-
-#[pymethods]
-impl PyFixProjection {
-    /// Resolve every fixed column against one dictionary.
-    ///
-    /// `carrier` is a capture's own root - where a line was read from, which
-    /// line it was, what stamped it - whose columns lead the row where one is
-    /// given, because that is what a monitor orders and joins on.
-    #[new]
-    #[pyo3(signature = (registry=None, name="fix", carrier=None))]
-    fn new(
-        registry: Option<PyRef<'_, PyFixRegistry>>,
-        name: &str,
-        carrier: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let registry = match registry {
-            Some(held) => Arc::clone(&held.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
-        };
-        let read = yggdryl::fix_schema(&registry, name.to_owned()).map_err(value_error)?;
-        let inner = match carrier {
-            None => CoreFixProjection::from_field(read),
-            Some(held) => {
-                let carrier = core_field_from_value(held)?;
-                CoreFixProjection::carrying(&carrier, read).map_err(value_error)?
-            }
-        };
-        Ok(Self { inner })
-    }
-
-    /// Wrap a root that is already the fixed schema.
-    #[staticmethod]
-    fn from_field(field: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self {
-            inner: CoreFixProjection::from_field(core_field_from_value(field)?),
-        })
-    }
-
-    /// The root this projection fills.
-    #[getter]
-    fn field(&self) -> PyField {
-        PyField::from_inner(self.inner.field().clone())
-    }
-
-    /// The tag each column carries, in column order; 0 where it carries none.
-    #[getter]
-    fn tags(&self) -> Vec<i32> {
-        self.inner.tags().to_vec()
-    }
-
-    /// How many leading columns are the capture's rather than FIX's.
-    #[getter]
-    fn carried(&self) -> usize {
-        self.inner.carried()
-    }
-
-    /// Where each carried column sat in the capture it came from.
-    #[getter]
-    fn carried_positions(&self) -> Vec<usize> {
-        self.inner.carried_positions().to_vec()
-    }
-
-    /// How many columns carry a value rather than the arrival record.
-    #[getter]
-    fn value_columns(&self) -> usize {
-        self.inner.value_columns()
-    }
-
-    /// The field behind one column, by position.
-    fn column(&self, at: usize) -> Option<PyField> {
-        self.inner.column(at).cloned().map(PyField::from_inner)
-    }
-
-    /// Where one tag's column sits, without a dictionary lookup.
-    fn position_of(&self, tag: FixTag) -> Option<usize> {
-        self.inner.position_of(tag.0)
-    }
-
-    fn __len__(&self) -> usize {
-        self.inner.tags().len()
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "FixProjection({:?}, {} columns)",
-            self.inner.field().name(),
-            self.inner.tags().len()
-        )
-    }
-}
-
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
@@ -1415,6 +1304,26 @@ pub(crate) fn fix_schema(
         None => Arc::clone(CoreFixRegistry::global().map_err(value_error)?),
     };
     yggdryl::fix_schema(&registry, name.to_owned())
+        .map(PyField::from_inner)
+        .map_err(value_error)
+}
+
+/// The fixed root behind a capture's own columns.
+///
+/// `carrier` is a capture's own root - where a line was read from, which line
+/// it was, what stamped it - and its columns lead the row, because that is what
+/// a monitor orders and joins on. A carried column whose name a FIX column
+/// already takes is dropped rather than renamed: the FIX column is the one a
+/// reader spelling it means.
+#[pyfunction]
+#[pyo3(name = "fix_schema_carrying", signature = (carrier, read))]
+pub(crate) fn fix_schema_carrying(
+    carrier: &Bound<'_, PyAny>,
+    read: &Bound<'_, PyAny>,
+) -> PyResult<PyField> {
+    let carrier = core_field_from_value(carrier)?;
+    let read = core_field_from_value(read)?;
+    yggdryl::fix_schema_carrying(&carrier, &read)
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -1740,7 +1649,7 @@ impl PyFixBranch {
         self.inner.is_standard()
     }
 
-    /// The identity packed into every identifier of this branch.
+    /// The identity every identifier of this branch carries.
     ///
     /// The signed reading of the XXH32, which is exactly what an arrival
     /// entry's `branch` carries and what `FixRegistry.branch_by_digest`
@@ -1754,7 +1663,7 @@ impl PyFixBranch {
     /// The deterministic cross-language hash of the whole declaration.
     ///
     /// Equality is the whole declaration, so the hash is too; `digest` is the
-    /// narrower answer, the name identity a packed identifier carries.
+    /// narrower answer, the name identity an identifier carries.
     fn stable_hash(&self) -> u64 {
         Scalar::from_sequence([
             Scalar::from(self.inner.name()),

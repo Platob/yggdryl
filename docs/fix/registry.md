@@ -11,12 +11,12 @@
 | Collision | A read rechecks the field behind every name digest, so a digest collision is a miss; a mutation refuses it loudly |
 | Tiers | canonical identifier, alternate identifier, canonical name folded, alias folded; a later tier only when every earlier one missed |
 | Branch | An explicit branch never crosses into another dictionary; with no branch, one deterministic best-match order decides; outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` no named branch may hold a tag |
-| Branch aliases | A declaration may name other spellings it answers to; `branch_named` tries the canonical name first and an alias only after, so a dialect is never shadowed by another's second spelling. An alias is a lookup spelling alone - the canonical name is what a field stores and what a `FixId` packs |
+| Branch aliases | A declaration may name other spellings it answers to; `branch_named` tries the canonical name first and an alias only after, so a dialect is never shadowed by another's second spelling. An alias is a lookup spelling alone - the canonical name is what a field stores and what a `FixId` digests |
 | String key | A colon-bearing string is a name, never an identifier; `From<&str>` cannot fail, so an identifier is parsed with `FixId::from_str` |
 | Folding | ASCII case, once at insert; a probe hashes the query folded beside an inline branch and allocates nothing on a hit |
 | Identity | The `FixId`, and separately the branch plus folded canonical name; two fields share neither, nor an alternate identifier, nor an alias |
 | Conflict | The same key twice in one tier of one branch -> typed conflict naming both fields and the branch; overlap across tiers or branches is legal |
-| Order | `iter` and `next_field_after` walk ascending packed identifiers, tag-major then by branch digest |
+| Order | `iter` and `next_field_after` walk ascending identifiers, tag-major then by branch digest |
 | Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
 | Fold | `merge_with` is the one place two dictionaries combine - fields add-or-update, dialects fold beside them, aliases accumulate. `add_fields` is the same fold over a bare field list, `add_cfb_file` a parse in front of it. All three are one mutation: a refusal writes nothing, and all answer the counts added and merged |
@@ -281,7 +281,7 @@ Every lookup has an optional form and a failing twin. The twin raises a typed ab
 | call | answers |
 | --- | --- |
 | `contains(impl Into<FixKey>)` | whether the key resolves, through the same tiers |
-| `iter` | every field in ascending packed-identifier order, tag-major then by branch digest |
+| `iter` | every field in ascending identifier order, tag-major then by branch digest |
 | `next_field_after` | the cursor each binding advances with; the same order as `iter` |
 | `len` / `is_empty` | the one field vector counted |
 
