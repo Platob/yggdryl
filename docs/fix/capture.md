@@ -397,7 +397,40 @@ A [bridge configuration document](registry.md#a-bridge-configuration-is-a-docume
     assert!(held.get_by_path("SessionInterfaces.0.BackupHost").is_none());
     ```
 
-Rust only: neither binding registers ULBridge's fields today, and a dictionary that does not have them keeps every key under its own folded spelling rather than dropping it.
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry, ULBRIDGE_BRANCH
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    registry.with_ulbridge_fields()
+    reader = FixCodec(registry, branch=ULBRIDGE_BRANCH)
+
+    document = (
+        b'{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
+        b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},'
+        b'"value":{"SenderCompID":"ULB_BKRBDG","CurrentPort":7061,'
+        b'"BackupHost":null,"NeedReload":false},"status":200}'
+    )
+    held = reader.transform_line(document)
+
+    # The envelope is what the exchange was, and it types.
+    assert held.by_tag(20002).as_py() == "read"
+    assert held.by_tag(20003).as_py() == 200
+
+    # The entry is one occurrence, and FIX's own names keep FIX's own tags.
+    assert held.by_path("SessionInterfaces.0.SenderCompID").as_py() == "ULB_BKRBDG"
+    assert held.by_path("SessionInterfaces.0.MBeanType").as_py() == "Plugin"
+    # A port is a number and a flag is a boolean, not the text they arrived as.
+    assert held.by_path("SessionInterfaces.0.CurrentPort").as_py() == 7061
+    assert held.by_path("SessionInterfaces.0.NeedReload").as_py() is False
+    # A stated null is an absence: no field, no entry.
+    assert held.get_by_path("SessionInterfaces.0.BackupHost") is None
+    ```
+
+JavaScript reads the same document, but registering ULBridge's fields is Rust and Python only today, and a dictionary that does not have them keeps every key under its own folded spelling rather than dropping it.
 
 ### One plugin, out of a document and back
 
@@ -445,6 +478,51 @@ A row is one exchange, and a wildcard read answers fifty plugins in one. `UlPlug
     let back: Vec<UlPlugin> = UlPlugin::from_fixmsg(&message).collect();
     assert_eq!(back[0].name(), held[0].name());
     assert_eq!(back[0].mbean(), held[0].mbean());
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry, ULBRIDGE_BRANCH, UlPlugin
+
+    # A wildcard read, as a log line writes it: prose in front, prose behind.
+    line = (
+        b'06:46:22 [Jolokia] (DEBUG) Response: {"request":{"mbean":'
+        b'"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":'
+        b'{"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,'
+        b'plugin-type=FIX,type=ConfigurationPlugin":{"Name":"ULMSG_BROKER_BDG_DMZ_PCO",'
+        b'"Version":"2.0.3","PriorityLevel":5},'
+        b'"com.ullink.ulbridge.sessioninterfaces.plugins:name=OrderRouting,'
+        b'plugin-type=FIX,type=Plugin":{"Name":"OrderRouting","Version":"4.7.0",'
+        b'"State":"logged"}},"status":200} (12 ms)'
+    )
+
+    # In ObjectName order, because a JSON object has no order of its own.
+    held = UlPlugin.from_json_bytes(line)
+    assert len(held) == 2
+    assert held[0].name == "OrderRouting"
+    assert held[1].name == "ULMSG_BROKER_BDG_DMZ_PCO"
+    # The ObjectName's own properties, read off the name rather than kept twice.
+    assert held[1].mbean_type == "ConfigurationPlugin"
+    assert held[1].plugin_type == "FIX"
+    assert held[0].state == "logged"
+    # Any attribute, under the fold every other name uses.
+    assert held[1].get("priority_level").as_py() == 5
+    assert "priority_level" in held[1]
+
+    # And back to a typed message, one plugin at a time.
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    registry.with_ulbridge_fields()
+    reader = FixCodec(registry, branch=ULBRIDGE_BRANCH)
+
+    message = held[0].into_fixmsg(reader)
+    assert message.by_path("SessionInterfaces.0.Version").as_py() == "4.7.0"
+    # Out of the message again, and it is the same plugin.
+    back = UlPlugin.from_fixmsg(message)
+    assert back[0].name == held[0].name
+    assert back[0].mbean == held[0].mbean
     ```
 
 ### Edges

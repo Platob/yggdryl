@@ -18,6 +18,14 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
+:class:`UlPlugin` is one plugin a bridge configuration document answers for -
+the ObjectName the bridge holds it under beside the attributes it stated - read
+out of the bytes a line carries, out of a document already parsed, or out of a
+typed message, and crossing back to one through
+:meth:`UlPlugin.into_fixmsg`. :func:`fix_ulbridge_fields` is the dictionary
+those attributes type against, which
+:meth:`FixRegistry.with_ulbridge_fields` registers.
+
 :class:`FixCodec` turns a captured line into one of those messages,
 :func:`parse_arrow_reader` turns a whole Arrow capture into batches of them --
 the capture's own columns first, the dictionary's fixed columns after, one
@@ -44,12 +52,14 @@ from __future__ import annotations
 
 from ._native import (
     STANDARD_BRANCH,
+    ULBRIDGE_BRANCH,
     USER_TAG_MAX,
     USER_TAG_MIN,
     FixBranch,
     FixMsg,
     FixCodec,
     FixRegistry,
+    UlPlugin,
     fix_cfb_fields,
     fix_classify_arrow_array as classify_arrow_array,
     fix_crate_fields,
@@ -57,24 +67,28 @@ from ._native import (
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
+    fix_ulbridge_fields,
     global_registry,
     install_global_registry,
 )
 
 __all__ = [
     "STANDARD_BRANCH",
+    "ULBRIDGE_BRANCH",
     "USER_TAG_MAX",
     "USER_TAG_MIN",
     "FixBranch",
     "FixMsg",
     "FixCodec",
     "FixRegistry",
+    "UlPlugin",
     "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",
+    "fix_ulbridge_fields",
     "global_registry",
     "install_global_registry",
     "parse_arrow_reader",

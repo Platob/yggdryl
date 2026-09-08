@@ -623,7 +623,7 @@ fn rendered(value: &Scalar) -> Option<Vec<u8>> {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UlPlugin {
     /// The ObjectName the document answered under, where it named one.
     ///
@@ -636,6 +636,19 @@ pub struct UlPlugin {
 }
 
 impl UlPlugin {
+    /// One plugin from the parts a document states.
+    ///
+    /// The ObjectName where the document named one, and the attributes it
+    /// stated - which is what a caller already holding both has: a binding
+    /// rebuilding one, a reader that pulled a `value` out itself.
+    #[must_use]
+    pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self {
+        Self {
+            mbean: mbean.map(SmolStr::new),
+            attributes,
+        }
+    }
+
     /// Every plugin one document answers for, from the bytes a line carries.
     ///
     /// The document is found inside the line the way the classifier finds it:
@@ -831,6 +844,12 @@ impl UlPlugin {
                 .find(|(name, _)| crate::types::folds_equal(name, attribute))
                 .map(|(_, value)| value)
         })
+    }
+
+    /// The attributes as the one value they are.
+    #[must_use]
+    pub const fn as_attributes(&self) -> &Scalar {
+        &self.attributes
     }
 
     /// Every attribute this plugin states, by name.
