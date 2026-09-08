@@ -109,7 +109,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## Edges
 
-- A numeric frame states its group members flat, so the counter holds no occurrences and the miscount is reported rather than repaired. A bridge frame's indexed keys build the occurrences, and the same counter then holds them.
+- A numeric frame states its group members flat, and the dictionary's declaration is what folds them back: the group's first declared member opens an occurrence, a member the occurrence already holds opens the next, and a tag the group does not declare closes it. A bridge frame's indexed keys state the occurrences outright, and the same counter holds them either way. A count the members do not meet is reported rather than repaired.
 - A tag that merely arrived twice is two values, not a group of one: only a counter states a count.
 - A value that will not type is null in the row and still exactly as it arrived in the entries; the refusal is an anomaly, never an error.
 - A key no dictionary names is kept under its own spelling. Nothing is dropped for being unexplained.

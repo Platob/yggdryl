@@ -268,6 +268,33 @@ pub(super) struct Builder<'registry> {
     /// it records no entry and never overrides a child the line stated: a
     /// key it shares with the line is left to the line.
     outer: Option<usize>,
+    /// The repeating groups a numeric frame has opened and not yet closed,
+    /// outermost first.
+    ///
+    /// A numeric frame states no structure: a counter arrives, its members
+    /// follow, and where one occurrence ends and the next begins is what
+    /// the dictionary's declaration says - the first declared member opens
+    /// an occurrence, a member already seen in the current one opens the
+    /// next, and a tag the group does not declare closes it. Empty for a
+    /// frame with no counter, which is most of them, so the fast path
+    /// reads one empty vector.
+    open: Vec<OpenGroup>,
+}
+
+/// One repeating group a numeric frame has opened and not yet closed.
+struct OpenGroup {
+    /// The group's own field name, as a located key spells it.
+    name: SmolStr,
+    /// The direct members the dictionary declares, the first their delimiter.
+    members: Vec<i32>,
+    /// The occurrence being filled, once a member arrived.
+    occurrence: Option<usize>,
+    /// The index the first occurrence takes: what the column already holds,
+    /// so a counter the frame states twice at one level appends to the
+    /// group rather than writing over what the first counter gathered.
+    base: usize,
+    /// The member tags the current occurrence holds.
+    seen: Vec<i32>,
 }
 
 impl<'registry> Builder<'registry> {
@@ -289,6 +316,7 @@ impl<'registry> Builder<'registry> {
             entries: Vec::with_capacity(capacity),
             recorded: Vec::with_capacity(capacity),
             outer: None,
+            open: Vec::new(),
         }
     }
 
@@ -504,6 +532,15 @@ impl<'registry> Builder<'registry> {
         // the rest: the counter and the scalar readings are the same probe
         // filtered two ways, and a numeric key is most of every frame.
         let (field, tag, known) = if let Some(parsed) = super::field::parse_tag(key) {
+            // A tag an open group declares is that group's member, placed in
+            // the occurrence the frame's order implies; any other tag closes
+            // every group still open, because a numeric frame ends a group
+            // by moving on.
+            if let Some(depth) = self.grouped_depth(parsed) {
+                self.push_numeric_member(depth, parsed, key, text, raw);
+                return;
+            }
+            self.open.clear();
             match self.registry.get_field_by_tag(parsed) {
                 Some(found) => {
                     let tag = found.as_fix().tag().ok().flatten().unwrap_or(0);
@@ -512,8 +549,18 @@ impl<'registry> Builder<'registry> {
                             return;
                         }
                         self.record(key, text, tag);
+                        let members = declared_members(found);
+                        let name = SmolStr::new(found.name());
                         let slot = self.slot_for(stated(found), tag, true);
                         slot.group = true;
+                        let base = slot.occurrences.len();
+                        self.open.push(OpenGroup {
+                            name,
+                            members,
+                            occurrence: None,
+                            base,
+                            seen: Vec::new(),
+                        });
                         return;
                     }
                     (stated(found), tag, true)
@@ -557,6 +604,69 @@ impl<'registry> Builder<'registry> {
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
         Some((stated(field), tag))
+    }
+
+    /// The depth of the open group that declares `tag`, closing every group
+    /// opened inside it on the way: a member of an outer group arriving
+    /// means the inner group ended.
+    fn grouped_depth(&mut self, tag: i32) -> Option<usize> {
+        while let Some(innermost) = self.open.last() {
+            if innermost.members.contains(&tag) {
+                return Some(self.open.len() - 1);
+            }
+            self.open.pop();
+        }
+        None
+    }
+
+    /// One member of a numeric frame's open group, placed in the occurrence
+    /// the frame's order implies.
+    ///
+    /// The delimiter - the group's first declared member - opens an
+    /// occurrence, and so does a member the current occurrence already
+    /// holds, because a wire never states one member twice in one
+    /// occurrence. The member then builds through the same path a bridge's
+    /// located key builds, so a numeric frame and a bridge row stating one
+    /// group land in one shape; the entry keeps the tag as it arrived.
+    fn push_numeric_member(&mut self, depth: usize, tag: i32, key: &str, text: &str, raw: &[u8]) {
+        {
+            let group = &mut self.open[depth];
+            let opens = group.occurrence.is_none()
+                || group.members.first() == Some(&tag)
+                || group.seen.contains(&tag);
+            if opens {
+                group.occurrence = Some(group.occurrence.map_or(group.base, |held| held + 1));
+                group.seen.clear();
+            }
+            group.seen.push(tag);
+        }
+        // The located key a bridge would have written for this member:
+        // every open group down to the member's own, each at its current
+        // occurrence, then the member's tag.
+        let top = &self.open[0];
+        let top_name = top.name.clone();
+        let top_occurrence = top.occurrence.unwrap_or(0);
+        let mut member = String::new();
+        for inner in &self.open[1..=depth] {
+            member.push_str(inner.name.as_str());
+            member.push('[');
+            member.push_str(itoa_usize(inner.occurrence.unwrap_or(0)).as_str());
+            member.push_str("].");
+        }
+        member.push_str(key);
+        self.push_grouped(top_name.as_str(), top_occurrence, &member, key, text, raw);
+        // A member that is itself a counter opens its group inside the
+        // occurrence, and what follows fills that group first.
+        if let Some(nested) = self.registry.get_nested_field(tag) {
+            let members = declared_members(nested);
+            self.open.push(OpenGroup {
+                name: SmolStr::new(nested.name()),
+                members,
+                occurrence: None,
+                base: 0,
+                seen: Vec::new(),
+            });
+        }
     }
 
     /// One occurrence of a repeated flat field, placed by index.
@@ -1278,6 +1388,24 @@ fn stated(known: &Field) -> Field {
     let mut field = known.clone();
     field.set_nullable(false);
     field
+}
+
+/// The tags one repeating group declares as its direct members, the first
+/// being the delimiter that opens an occurrence.
+fn declared_members(group: &Field) -> Vec<i32> {
+    let item = match group.dtype() {
+        DataType::List(item) | DataType::LargeList(item) => item,
+        _ => return Vec::new(),
+    };
+    item.fields()
+        .iter()
+        .filter_map(|member| member.as_fix().tag().ok().flatten())
+        .collect()
+}
+
+/// One occurrence index as text, for a located key.
+fn itoa_usize(value: usize) -> SmolStr {
+    smol_str::format_smolstr!("{value}")
 }
 
 /// The `BeginString` child a built message carries when its line stated
