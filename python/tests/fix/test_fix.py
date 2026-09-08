@@ -796,8 +796,9 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     other.set_branch(incoming)
 
     # The other dictionary holds the crate's own fields as every registry
-    # does, and each folds onto this one's identical copy: a merge apiece.
-    assert dictionary.merge_with(other) == (1, 1 + CRATED)
+    # does, and they are never folded: they are the crate's definition, not
+    # something a dictionary states, so only `symbol` merges.
+    assert dictionary.merge_with(other) == (1, 1)
     assert len(dictionary) == 3 + CRATED
     assert dictionary.field_by_tag(55).name == "SYMBOL"
 

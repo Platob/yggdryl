@@ -1324,9 +1324,10 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   assert.equal(registry.branchByDigest(bid), 'bloomberg')
   assert.equal(registry.getBranchByDigest(bid), 'bloomberg')
 
-  // Only a declared branch resolves, and a value no digest can hold names
-  // nothing at all.
-  assert.equal(registry.getBranchByDigest(0), null)
+  // Zero is the standard branch, which every registry holds through the
+  // crate's own fields; a value no declared branch digests to names nothing
+  // at all.
+  assert.equal(registry.getBranchByDigest(0), fix.STANDARD_BRANCH)
   assert.equal(registry.getBranchByDigest(-1), null)
   assert.throws(() => registry.branchByDigest(-1))
 })

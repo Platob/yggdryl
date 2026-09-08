@@ -188,6 +188,9 @@ impl FixMsg {
     /// the root is not a Struct field, or when the value violates it, naming
     /// the path of the first value that does not fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
+        // The root's own dialect is read before its value is checked: a root
+        // that misstates its branch is refused as such, whatever it holds.
+        field.as_fix().branch()?;
         let value = field.canonicalize_value(value)?;
         let tags = tag_positions(&field);
         Self::resolved(registry, field, value, Vec::new(), tags)

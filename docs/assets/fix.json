@@ -96,20 +96,20 @@
     ]
   },
   "kpi": {
-    "fields": 6210,
+    "fields": 6219,
     "groups": 521,
-    "primitives": 5689,
+    "primitives": 5698,
     "codeSets": 2016,
     "codes": 27103,
     "lineage": 1564,
-    "aliases": 42,
+    "aliases": 44,
     "alternates": 0,
     "messages": 181,
     "components": 167,
     "layoutGroups": 580,
-    "columns": 89,
-    "branches": 2,
-    "datatypes": 19,
+    "columns": 98,
+    "branches": 1,
+    "datatypes": 20,
     "versions": 10,
     "dtypes": [
       [
@@ -118,7 +118,7 @@
       ],
       [
         "utf8",
-        1895
+        1900
       ],
       [
         "float64",
@@ -153,11 +153,11 @@
         56
       ],
       [
-        "ascii(8)",
-        19
+        "mic",
+        20
       ],
       [
-        "mic",
+        "ascii(8)",
         19
       ],
       [
@@ -167,6 +167,10 @@
       [
         "country",
         12
+      ],
+      [
+        "state",
+        3
       ],
       [
         "ascii(2)",
@@ -192,11 +196,7 @@
     "branchSizes": [
       [
         "",
-        6203
-      ],
-      [
-        "yggdryl",
-        7
+        6219
       ]
     ],
     "versionList": [
@@ -11478,7 +11478,7 @@
     {
       "t": 39,
       "n": "ordstatus",
-      "y": "utf8",
+      "y": "state",
       "d": "OrdStatus",
       "x": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "c": 15,
@@ -12586,7 +12586,7 @@
     {
       "t": 150,
       "n": "exectype",
-      "y": "utf8",
+      "y": "state",
       "d": "ExecType",
       "x": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
       "c": 22,
@@ -37645,62 +37645,6 @@
       "y": "utf8",
       "d": "TradingSessionEnvironment",
       "x": "Identification of a specific trading environment."
-    },
-    {
-      "t": 30001,
-      "n": "msghash",
-      "y": "fixed_size_binary(16)",
-      "d": "MsgHash",
-      "b": "yggdryl",
-      "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
-    },
-    {
-      "t": 30002,
-      "n": "version",
-      "y": "utf8",
-      "d": "Version",
-      "b": "yggdryl",
-      "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
-    },
-    {
-      "t": 30003,
-      "n": "symbolticker",
-      "y": "utf8",
-      "d": "SymbolTicker",
-      "b": "yggdryl",
-      "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
-    },
-    {
-      "t": 30004,
-      "n": "timestamp",
-      "y": "datetime64(ns,\"UTC\")",
-      "d": "Timestamp",
-      "b": "yggdryl",
-      "x": "The market timestamp a capture is ordered by: the first clock the message answers, in decreasing exactness."
-    },
-    {
-      "t": 30005,
-      "n": "unixpartition",
-      "y": "int64",
-      "d": "UnixPartition",
-      "b": "yggdryl",
-      "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
-    },
-    {
-      "t": 30006,
-      "n": "parentclordid",
-      "y": "utf8",
-      "d": "ParentClOrdID",
-      "b": "yggdryl",
-      "x": "The client order identifier this order descends from, which no standard tag names."
-    },
-    {
-      "t": 30007,
-      "n": "parentorderid",
-      "y": "utf8",
-      "d": "ParentOrderID",
-      "b": "yggdryl",
-      "x": "The venue order identifier this order descends from, which no standard tag names."
     },
     {
       "t": 40000,
@@ -62917,6 +62861,124 @@
       "d": "BatchProcessMode",
       "x": "Indicates the processing mode for a batch of messages.",
       "c": 2
+    },
+    {
+      "t": 65000,
+      "n": "msghash",
+      "y": "fixed_size_binary(16)",
+      "d": "MsgHash",
+      "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
+    },
+    {
+      "t": 65001,
+      "n": "version",
+      "y": "utf8",
+      "d": "Version",
+      "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
+    },
+    {
+      "t": 65002,
+      "n": "symbolticker",
+      "y": "utf8",
+      "d": "SymbolTicker",
+      "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
+    },
+    {
+      "t": 65003,
+      "n": "timestamp",
+      "y": "datetime64(ns,\"UTC\")",
+      "d": "Timestamp",
+      "x": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness."
+    },
+    {
+      "t": 65004,
+      "n": "unixpartition",
+      "y": "int64",
+      "d": "UnixPartition",
+      "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
+    },
+    {
+      "t": 65005,
+      "n": "parentclordid",
+      "y": "utf8",
+      "d": "ParentClOrdID",
+      "x": "The client order identifier this order descends from, which no standard tag names."
+    },
+    {
+      "t": 65006,
+      "n": "parentorderid",
+      "y": "utf8",
+      "d": "ParentOrderID",
+      "x": "The venue order identifier this order descends from, which no standard tag names."
+    },
+    {
+      "t": 65007,
+      "n": "sessionid",
+      "y": "utf8",
+      "d": "SessionId",
+      "x": "The session a message belongs to, as the message states it."
+    },
+    {
+      "t": 65008,
+      "n": "msgctxid",
+      "y": "utf8",
+      "d": "MsgCtxId",
+      "x": "The message context a bridge handled the message in, as its own log names it."
+    },
+    {
+      "t": 65009,
+      "n": "senderpluginid",
+      "y": "utf8",
+      "d": "SenderPluginId",
+      "x": "The plugin a message came from inside a bridge, as the bridge names it."
+    },
+    {
+      "t": 65010,
+      "n": "targetpluginid",
+      "y": "utf8",
+      "d": "TargetPluginId",
+      "x": "The plugin a message went to inside a bridge, as the bridge names it."
+    },
+    {
+      "t": 65011,
+      "n": "senderpluginsession",
+      "y": "utf8",
+      "d": "SenderPluginSession",
+      "x": "The plugin session a message came from: the bridge row's own statement, else the plugin that logged the line it sent.",
+      "a": [
+        "ULFromSessionName"
+      ]
+    },
+    {
+      "t": 65012,
+      "n": "targetpluginsession",
+      "y": "utf8",
+      "d": "TargetPluginSession",
+      "x": "The plugin session a message went to: the bridge row's own statement, else the plugin that logged the line it received.",
+      "a": [
+        "ULToSessionName"
+      ]
+    },
+    {
+      "t": 65013,
+      "n": "isincode",
+      "y": "utf8",
+      "d": "ISINCode",
+      "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
+    },
+    {
+      "t": 65014,
+      "n": "miccode",
+      "y": "mic",
+      "d": "MICCode",
+      "x": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt."
+    },
+    {
+      "t": 65015,
+      "n": "state",
+      "y": "state",
+      "d": "State",
+      "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
     }
   ],
   "messages": [
@@ -128017,609 +128079,672 @@
   "row": {
     "columns": [
       {
-        "c": "8",
+        "c": "beginstring",
         "t": 8,
         "n": "BeginString",
         "y": "utf8",
         "x": "Identifies beginning of new message and session protocol version by means of a session profile identifier (see FIX Session Layer for details). ALWAYS FIRST FIELD IN MESSAGE. (Always unencrypted)."
       },
       {
-        "c": "9",
+        "c": "bodylength",
         "t": 9,
         "n": "BodyLength",
         "y": "int32",
         "x": "Message length, in bytes, forward to the CheckSum field. ALWAYS SECOND FIELD IN MESSAGE. (Always unencrypted)"
       },
       {
-        "c": "35",
+        "c": "msgtype",
         "t": 35,
         "n": "MsgType",
         "y": "msgtype",
         "x": "Defines message type ALWAYS THIRD FIELD IN MESSAGE. (Always unencrypted)"
       },
       {
-        "c": "49",
+        "c": "sendercompid",
         "t": 49,
         "n": "SenderCompID",
         "y": "utf8",
         "x": "Assigned value used to identify firm sending message."
       },
       {
-        "c": "56",
+        "c": "targetcompid",
         "t": 56,
         "n": "TargetCompID",
         "y": "utf8",
         "x": "Assigned value used to identify receiving firm."
       },
       {
-        "c": "115",
+        "c": "onbehalfofcompid",
         "t": 115,
         "n": "OnBehalfOfCompID",
         "y": "utf8",
         "x": "Assigned value used to identify firm originating message if the message was delivered by a third party i.e. the third party firm identifier would be delivered in the SenderCompID field and the firm originating the message in this field."
       },
       {
-        "c": "128",
+        "c": "delivertocompid",
         "t": 128,
         "n": "DeliverToCompID",
         "y": "utf8",
         "x": "Assigned value used to identify the firm targeted to receive the message if the message is delivered by a third party i.e. the third party firm identifier would be delivered in the TargetCompID (56) field and the ultimate receiver firm ID in this field."
       },
       {
-        "c": "90",
+        "c": "securedatalen",
         "t": 90,
         "n": "SecureDataLen",
         "y": "int32",
         "x": "Length of encrypted message"
       },
       {
-        "c": "91",
+        "c": "securedata",
         "t": 91,
         "n": "SecureData",
         "y": "binary",
         "x": "Actual encrypted data stream"
       },
       {
-        "c": "34",
+        "c": "msgseqnum",
         "t": 34,
         "n": "MsgSeqNum",
         "y": "int64",
         "x": "Integer message sequence number."
       },
       {
-        "c": "50",
+        "c": "sendersubid",
         "t": 50,
         "n": "SenderSubID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message originator (desk, trader, etc.)"
       },
       {
-        "c": "142",
+        "c": "senderlocationid",
         "t": 142,
         "n": "SenderLocationID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader)"
       },
       {
-        "c": "57",
+        "c": "targetsubid",
         "t": 57,
         "n": "TargetSubID",
         "y": "utf8",
         "x": "Assigned value used to identify specific individual or unit intended to receive message. \"ADMIN\" reserved for administrative messages not intended for a specific user."
       },
       {
-        "c": "143",
+        "c": "targetlocationid",
         "t": 143,
         "n": "TargetLocationID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message destination's location (i.e. geographic location and/or desk, trader)"
       },
       {
-        "c": "116",
+        "c": "onbehalfofsubid",
         "t": 116,
         "n": "OnBehalfOfSubID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party"
       },
       {
-        "c": "144",
+        "c": "onbehalfoflocationid",
         "t": 144,
         "n": "OnBehalfOfLocationID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party"
       },
       {
-        "c": "129",
+        "c": "delivertosubid",
         "t": 129,
         "n": "DeliverToSubID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message recipient (i.e. trader) if the message is delivered by a third party"
       },
       {
-        "c": "145",
+        "c": "delivertolocationid",
         "t": 145,
         "n": "DeliverToLocationID",
         "y": "utf8",
         "x": "Assigned value used to identify specific message recipient's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party"
       },
       {
-        "c": "43",
+        "c": "possdupflag",
         "t": 43,
         "n": "PossDupFlag",
         "y": "boolean",
         "x": "Indicates possible retransmission of message with this sequence number"
       },
       {
-        "c": "97",
+        "c": "possresend",
         "t": 97,
         "n": "PossResend",
         "y": "boolean",
         "x": "Indicates that message may contain information that has been sent under another sequence number."
       },
       {
-        "c": "52",
+        "c": "sendingtime",
         "t": 52,
         "n": "SendingTime",
         "y": "datetime64(ns,\"UTC\")",
         "x": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")"
       },
       {
-        "c": "122",
+        "c": "origsendingtime",
         "t": 122,
         "n": "OrigSendingTime",
         "y": "datetime64(ns,\"UTC\")",
         "x": "Original time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\") when transmitting orders as the result of a resend request."
       },
       {
-        "c": "212",
+        "c": "xmldatalen",
         "t": 212,
         "n": "XmlDataLen",
         "y": "int32",
         "x": "Length of the XmlData data block."
       },
       {
-        "c": "213",
+        "c": "xmldata",
         "t": 213,
         "n": "XmlData",
         "y": "binary",
         "x": "Actual XML data stream (e.g. FIXML). See appropriate XML reference (e.g. FIXML). Note: may contain embedded SOH characters."
       },
       {
-        "c": "1",
+        "c": "account",
         "t": 1,
         "n": "Account",
         "y": "utf8",
         "x": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager."
       },
       {
-        "c": "11",
+        "c": "clordid",
         "t": 11,
         "n": "ClOrdID",
         "y": "utf8",
         "x": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field."
       },
       {
-        "c": "41",
+        "c": "origclordid",
         "t": 41,
         "n": "OrigClOrdID",
         "y": "utf8",
         "x": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests."
       },
       {
-        "c": "526",
+        "c": "secondaryclordid",
         "t": 526,
         "n": "SecondaryClOrdID",
         "y": "utf8",
         "x": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system."
       },
       {
-        "c": "37",
+        "c": "orderid",
         "t": 37,
         "n": "OrderID",
         "y": "utf8",
         "x": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days."
       },
       {
-        "c": "198",
+        "c": "secondaryorderid",
         "t": 198,
         "n": "SecondaryOrderID",
         "y": "utf8",
         "x": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system."
       },
       {
-        "c": "17",
+        "c": "execid",
         "t": 17,
         "n": "ExecID",
         "y": "utf8",
         "x": "Unique identifier of execution message as assigned by sell-side (broker, exchange, ECN) (will be 0 (zero) for ExecType (150)=I (Order Status))."
       },
       {
-        "c": "1003",
+        "c": "tradeid",
         "t": 1003,
         "n": "TradeID",
         "y": "utf8",
         "x": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty."
       },
       {
-        "c": "131",
+        "c": "quotereqid",
         "t": 131,
         "n": "QuoteReqID",
         "y": "utf8",
         "x": "Unique identifier for a QuoteRequest(35=R)."
       },
       {
-        "c": "117",
+        "c": "quoteid",
         "t": 117,
         "n": "QuoteID",
         "y": "utf8",
         "x": "Unique identifier for quote"
       },
       {
-        "c": "693",
+        "c": "quoterespid",
         "t": 693,
         "n": "QuoteRespID",
         "y": "utf8",
         "x": "Message reference for Quote Response"
       },
       {
-        "c": "55",
+        "c": "symbol",
         "t": 55,
         "n": "Symbol",
         "y": "utf8",
         "x": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)"
       },
       {
-        "c": "48",
+        "c": "securityid",
         "t": 48,
         "n": "SecurityID",
         "y": "utf8",
         "x": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource."
       },
       {
-        "c": "22",
+        "c": "securityidsource",
         "t": 22,
         "n": "SecurityIDSource",
         "y": "utf8",
         "x": "Identifies class or source of the SecurityID(48) value."
       },
       {
-        "c": "167",
+        "c": "securitytype",
         "t": 167,
         "n": "SecurityType",
         "y": "utf8",
         "x": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties."
       },
       {
-        "c": "762",
+        "c": "securitysubtype",
         "t": 762,
         "n": "SecuritySubType",
         "y": "utf8",
         "x": "Sub-type qualification/identification of the SecurityType. As an example for SecurityType(167)=\"REPO\", the SecuritySubType=\"General Collateral\" can be used to further specify the type of REPO."
       },
       {
-        "c": "207",
+        "c": "securityexchange",
         "t": 207,
         "n": "SecurityExchange",
         "y": "mic",
         "x": "Market used to help identify a security."
       },
       {
-        "c": "461",
+        "c": "cficode",
         "t": 461,
         "n": "CFICode",
         "y": "utf8",
         "x": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments."
       },
       {
-        "c": "541",
+        "c": "maturitydate",
         "t": 541,
         "n": "MaturityDate",
         "y": "datetime64(ns)",
         "x": "Date of maturity."
       },
       {
-        "c": "460",
+        "c": "product",
         "t": 460,
         "n": "Product",
         "y": "int32",
         "x": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields."
       },
       {
-        "c": "54",
+        "c": "side",
         "t": 54,
         "n": "Side",
         "y": "side",
         "x": "Side of order (see Volume : \"Glossary\" for value definitions)"
       },
       {
-        "c": "40",
+        "c": "ordtype",
         "t": 40,
         "n": "OrdType",
         "y": "utf8",
         "x": "Order type."
       },
       {
-        "c": "44",
+        "c": "price",
         "t": 44,
         "n": "Price",
         "y": "float64",
         "x": "Price per unit of quantity (e.g. per share)"
       },
       {
-        "c": "38",
+        "c": "orderqty",
         "t": 38,
         "n": "OrderQty",
         "y": "float64",
         "x": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments."
       },
       {
-        "c": "53",
+        "c": "quantity",
         "t": 53,
         "n": "Quantity",
         "y": "float64",
         "x": "Overall/total quantity (e.g. number of shares)"
       },
       {
-        "c": "854",
+        "c": "qtytype",
         "t": 854,
         "n": "QtyType",
         "y": "int32",
         "x": "Type of quantity specified in quantity field. ContractMultiplier (tag 231) is required when QtyType = 1 (Contracts). UnitOfMeasure (tag 996) and TimeUnit (tag 997) are required when QtyType = 2 (Units of Measure per Time Unit)."
       },
       {
-        "c": "15",
+        "c": "currency",
         "t": 15,
         "n": "Currency",
         "y": "currency",
         "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
       },
       {
-        "c": "120",
+        "c": "settlcurrency",
         "t": 120,
         "n": "SettlCurrency",
         "y": "currency",
         "x": "Currency code of settlement denomination."
       },
       {
-        "c": "132",
+        "c": "bidpx",
         "t": 132,
         "n": "BidPx",
         "y": "float64",
         "x": "Bid price/rate"
       },
       {
-        "c": "133",
+        "c": "offerpx",
         "t": 133,
         "n": "OfferPx",
         "y": "float64",
         "x": "Offer price/rate"
       },
       {
-        "c": "134",
+        "c": "bidsize",
         "t": 134,
         "n": "BidSize",
         "y": "float64",
         "x": "Quantity of bid"
       },
       {
-        "c": "135",
+        "c": "offersize",
         "t": 135,
         "n": "OfferSize",
         "y": "float64",
         "x": "Quantity of offer"
       },
       {
-        "c": "31",
+        "c": "lastpx",
         "t": 31,
         "n": "LastPx",
         "y": "float64",
         "x": "Price of this (last) fill."
       },
       {
-        "c": "32",
+        "c": "lastqty",
         "t": 32,
         "n": "LastQty",
         "y": "float64",
         "x": "Quantity (e.g. shares) bought/sold on this (last) fill."
       },
       {
-        "c": "6",
+        "c": "avgpx",
         "t": 6,
         "n": "AvgPx",
         "y": "float64",
         "x": "Calculated average price of all fills on this order."
       },
       {
-        "c": "14",
+        "c": "cumqty",
         "t": 14,
         "n": "CumQty",
         "y": "float64",
         "x": "Total quantity (e.g. number of shares) filled."
       },
       {
-        "c": "151",
+        "c": "leavesqty",
         "t": 151,
         "n": "LeavesQty",
         "y": "float64",
         "x": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14)."
       },
       {
-        "c": "60",
+        "c": "transacttime",
         "t": 60,
         "n": "TransactTime",
         "y": "datetime64(ns,\"UTC\")",
         "x": "Timestamp when the business transaction represented by the message occurred."
       },
       {
-        "c": "64",
+        "c": "settldate",
         "t": 64,
         "n": "SettlDate",
         "y": "datetime64(ns)",
         "x": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format."
       },
       {
-        "c": "75",
+        "c": "tradedate",
         "t": 75,
         "n": "TradeDate",
         "y": "datetime64(ns)",
         "x": "Indicates date of trading day. Absence of this field indicates current day (expressed in local time at place of trade)."
       },
       {
-        "c": "126",
+        "c": "expiretime",
         "t": 126,
         "n": "ExpireTime",
         "y": "datetime64(ns,\"UTC\")",
         "x": "Time/Date of order expiration (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")"
       },
       {
-        "c": "39",
+        "c": "ordstatus",
         "t": 39,
         "n": "OrdStatus",
-        "y": "utf8",
+        "y": "state",
         "x": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)"
       },
       {
-        "c": "150",
+        "c": "exectype",
         "t": 150,
         "n": "ExecType",
-        "y": "utf8",
+        "y": "state",
         "x": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled)."
       },
       {
-        "c": "297",
+        "c": "quotestatus",
         "t": 297,
         "n": "QuoteStatus",
         "y": "int32",
         "x": "Identifies the status of the quote acknowledgement."
       },
       {
-        "c": "301",
+        "c": "quoteresponselevel",
         "t": 301,
         "n": "QuoteResponseLevel",
         "y": "int32",
         "x": "Level of Response requested from receiver of quote messages. A default value should be bilaterally agreed."
       },
       {
-        "c": "368",
+        "c": "quoteentryrejectreason",
         "t": 368,
         "n": "QuoteEntryRejectReason",
         "y": "int32",
         "x": "Reason Quote Entry was rejected:"
       },
       {
-        "c": "103",
+        "c": "ordrejreason",
         "t": 103,
         "n": "OrdRejReason",
         "y": "int32",
         "x": "Code to identify reason for order rejection. Note: Values 3, 4, and 5 will be used when rejecting an order due to pre-allocation information errors."
       },
       {
-        "c": "102",
+        "c": "cxlrejreason",
         "t": 102,
         "n": "CxlRejReason",
         "y": "int32",
         "x": "Code to identify reason for rejection of cancellation or modification."
       },
       {
-        "c": "58",
+        "c": "text",
         "t": 58,
         "n": "Text",
         "y": "utf8",
         "x": "Free format text string"
       },
       {
-        "c": "453",
+        "c": "nopartyids",
         "t": 453,
         "n": "NoPartyIDs",
         "y": "list(field(\"partyid\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"fix:tag\":\"448\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"447\"}),field(\"partyrole\",int32,nullable=true,metadata={\"fix:tag\":\"452\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"fix:tag\":\"2376\"})),nullable=false,metadata={}))",
         "x": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries"
       },
       {
-        "c": "454",
+        "c": "nosecurityaltid",
         "t": 454,
         "n": "NoSecurityAltID",
         "y": "list(field(\"securityaltid\",struct(field(\"securityaltid\",utf8,nullable=true,metadata={\"fix:tag\":\"455\"}),field(\"securityaltidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"456\"}),field(\"symbolpositionnumber\",int32,nullable=true,metadata={\"fix:tag\":\"2957\"})),nullable=false,metadata={}))",
         "x": "Number of SecurityAltID (455) entries."
       },
       {
-        "c": "768",
+        "c": "notrdregtimestamps",
         "t": 768,
         "n": "NoTrdRegTimestamps",
         "y": "list(field(\"trdregtimestamp\",struct(field(\"trdregtimestamp\",datetime64(ns,\"UTC\"),nullable=true,metadata={\"fix:tag\":\"769\"}),field(\"trdregtimestamptype\",int32,nullable=true,metadata={\"fix:tag\":\"770\"}),field(\"trdregtimestamporigin\",utf8,nullable=true,metadata={\"fix:tag\":\"771\"}),field(\"trdregtimestampmanualindicator\",boolean,nullable=true,metadata={\"fix:tag\":\"2839\"}),field(\"desktype\",utf8,nullable=true,metadata={\"fix:tag\":\"1033\"}),field(\"desktypesource\",int32,nullable=true,metadata={\"fix:tag\":\"1034\"}),field(\"deskorderhandlinginst\",utf8,nullable=true,metadata={\"fix:tag\":\"1035\"}),field(\"informationbarrierid\",utf8,nullable=true,metadata={\"fix:tag\":\"1727\"}),field(\"nbboentrytype\",int32,nullable=true,metadata={\"fix:tag\":\"2831\"}),field(\"nbboprice\",float64,nullable=true,metadata={\"fix:tag\":\"2832\"}),field(\"nbboqty\",float64,nullable=true,metadata={\"fix:tag\":\"2833\"}),field(\"nbbosource\",int32,nullable=true,metadata={\"fix:tag\":\"2834\"})),nullable=false,metadata={}))",
         "x": "Number of timestamp entries."
       },
       {
-        "c": "93",
+        "c": "signaturelength",
         "t": 93,
         "n": "SignatureLength",
         "y": "int32",
         "x": "Number of bytes in signature field"
       },
       {
-        "c": "89",
+        "c": "signature",
         "t": 89,
         "n": "Signature",
         "y": "binary",
         "x": "Electronic signature"
       },
       {
-        "c": "10",
+        "c": "checksum",
         "t": 10,
         "n": "CheckSum",
         "y": "utf8",
         "x": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)"
       },
       {
-        "c": "30001",
-        "t": 30001,
+        "c": "msghash",
+        "t": 65000,
         "n": "MsgHash",
         "y": "fixed_size_binary(16)",
         "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
       },
       {
-        "c": "30002",
-        "t": 30002,
+        "c": "version",
+        "t": 65001,
         "n": "Version",
         "y": "utf8",
         "x": "The FIX version the message was read at, which is not always the one its BeginString claims."
       },
       {
-        "c": "30003",
-        "t": 30003,
+        "c": "symbolticker",
+        "t": 65002,
         "n": "SymbolTicker",
         "y": "utf8",
         "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
       },
       {
-        "c": "30004",
-        "t": 30004,
+        "c": "timestamp",
+        "t": 65003,
         "n": "Timestamp",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "The market timestamp a capture is ordered by: the first clock the message answers, in decreasing exactness."
+        "x": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness."
       },
       {
-        "c": "30005",
-        "t": 30005,
+        "c": "unixpartition",
+        "t": 65004,
         "n": "UnixPartition",
         "y": "int64",
         "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
       },
       {
-        "c": "30006",
-        "t": 30006,
+        "c": "parentclordid",
+        "t": 65005,
         "n": "ParentClOrdID",
         "y": "utf8",
         "x": "The client order identifier this order descends from, which no standard tag names."
       },
       {
-        "c": "30007",
-        "t": 30007,
+        "c": "parentorderid",
+        "t": 65006,
         "n": "ParentOrderID",
         "y": "utf8",
         "x": "The venue order identifier this order descends from, which no standard tag names."
       },
       {
-        "c": "385",
+        "c": "sessionid",
+        "t": 65007,
+        "n": "SessionId",
+        "y": "utf8",
+        "x": "The session a message belongs to, as the message states it."
+      },
+      {
+        "c": "msgctxid",
+        "t": 65008,
+        "n": "MsgCtxId",
+        "y": "utf8",
+        "x": "The message context a bridge handled the message in, as its own log names it."
+      },
+      {
+        "c": "senderpluginid",
+        "t": 65009,
+        "n": "SenderPluginId",
+        "y": "utf8",
+        "x": "The plugin a message came from inside a bridge, as the bridge names it."
+      },
+      {
+        "c": "targetpluginid",
+        "t": 65010,
+        "n": "TargetPluginId",
+        "y": "utf8",
+        "x": "The plugin a message went to inside a bridge, as the bridge names it."
+      },
+      {
+        "c": "senderpluginsession",
+        "t": 65011,
+        "n": "SenderPluginSession",
+        "y": "utf8",
+        "x": "The plugin session a message came from: the bridge row's own statement, else the plugin that logged the line it sent."
+      },
+      {
+        "c": "targetpluginsession",
+        "t": 65012,
+        "n": "TargetPluginSession",
+        "y": "utf8",
+        "x": "The plugin session a message went to: the bridge row's own statement, else the plugin that logged the line it received."
+      },
+      {
+        "c": "isincode",
+        "t": 65013,
+        "n": "ISINCode",
+        "y": "utf8",
+        "x": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN."
+      },
+      {
+        "c": "miccode",
+        "t": 65014,
+        "n": "MICCode",
+        "y": "mic",
+        "x": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt."
+      },
+      {
+        "c": "state",
+        "t": 65015,
+        "n": "State",
+        "y": "state",
+        "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
+      },
+      {
+        "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
         "y": "msgdirection",
@@ -128640,7 +128765,7 @@
         "x": "The pairs no dictionary explained, a view over the arrival record."
       }
     ],
-    "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()\nfix.schema(registry, 'FixMessage')"
+    "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nfix.schema(registry, 'FixMessage')"
   },
   "frames": [
     {
@@ -128652,75 +128777,8 @@
       "msgtype": "D",
       "direction": "SENT",
       "branch": "",
-      "size": 17,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 34,
-          "n": "MsgSeqNum",
-          "y": "int64",
-          "v": "12"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 207,
-          "n": "SecurityExchange",
-          "y": "mic",
-          "v": "XNAS"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "10.5"
-        },
-        {
-          "t": 60,
-          "n": "TransactTime",
-          "y": "datetime64(ns,\"UTC\")",
-          "v": "2024-02-01T12:34:56.123000000Z"
-        }
-      ],
+      "size": 18,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -128875,7 +128933,7 @@
       "digest": "9696554ac611d41091e56e98a4f561d2",
       "ticker": "AAPL@XNAS",
       "clock": "2024-02-01T12:34:56.123000000Z",
-      "partition": null,
+      "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))"
     },
@@ -128888,75 +128946,8 @@
       "msgtype": "8",
       "direction": null,
       "branch": "",
-      "size": 20,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "8"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 34,
-          "n": "MsgSeqNum",
-          "y": "int64",
-          "v": "98"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 31,
-          "n": "LastPx",
-          "y": "float64",
-          "v": "10.5"
-        },
-        {
-          "t": 32,
-          "n": "LastQty",
-          "y": "float64",
-          "v": "100"
-        },
-        {
-          "t": 39,
-          "n": "OrdStatus",
-          "y": "utf8",
-          "v": "2"
-        },
-        {
-          "t": 150,
-          "n": "ExecType",
-          "y": "utf8",
-          "v": "F"
-        },
-        {
-          "t": 60,
-          "n": "TransactTime",
-          "y": "datetime64(ns,\"UTC\")",
-          "v": "2024-02-01T12:34:57.900000000Z"
-        }
-      ],
+      "size": 21,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129126,7 +129117,7 @@
       "digest": "20fa7bfae629c075e5e13241d3b2059c",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:34:57.900000000Z",
-      "partition": null,
+      "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))"
     },
@@ -129139,63 +129130,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 16,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "BRN"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "50"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "41.25"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "41.25"
-        },
-        {
-          "t": 60,
-          "n": "TransactTime",
-          "y": "datetime64(ns,\"UTC\")",
-          "v": "2024-02-01T12:35:02.000000000Z"
-        }
-      ],
+      "size": 17,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129365,33 +129301,8 @@
       "msgtype": "W",
       "direction": null,
       "branch": "",
-      "size": 11,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "W"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "BRN"
-        }
-      ],
+      "size": 12,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129487,8 +129398,8 @@
       ],
       "digest": "50169881299c468ceebc4e82c03af49a",
       "ticker": "BRN",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))"
     },
@@ -129501,39 +129412,8 @@
       "msgtype": "S",
       "direction": null,
       "branch": "",
-      "size": 10,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "S"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "BRN"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "41.2"
-        },
-        {
-          "t": 133,
-          "n": "OfferPx",
-          "y": "float64",
-          "v": "41.3"
-        },
-        {
-          "t": 60,
-          "n": "TransactTime",
-          "y": "datetime64(ns,\"UTC\")",
-          "v": "2024-02-01T12:35:00.000000000Z"
-        }
-      ],
+      "size": 11,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129636,33 +129516,8 @@
       "msgtype": "A",
       "direction": null,
       "branch": "",
-      "size": 12,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "A"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 34,
-          "n": "MsgSeqNum",
-          "y": "int64",
-          "v": "1"
-        }
-      ],
+      "size": 13,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129770,33 +129625,8 @@
       "msgtype": "0",
       "direction": null,
       "branch": "",
-      "size": 8,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "0"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 34,
-          "n": "MsgSeqNum",
-          "y": "int64",
-          "v": "7"
-        }
-      ],
+      "size": 9,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -129884,33 +129714,8 @@
       "msgtype": "3",
       "direction": null,
       "branch": "",
-      "size": 12,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "3"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 34,
-          "n": "MsgSeqNum",
-          "y": "int64",
-          "v": "99"
-        }
-      ],
+      "size": 13,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130004,8 +129809,8 @@
       "anomalies": [],
       "digest": "8822601c8c9d30edb2547aec5aaae324",
       "ticker": null,
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))"
     },
@@ -130018,63 +129823,8 @@
       "msgtype": "G",
       "direction": null,
       "branch": "",
-      "size": 15,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "G"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "150"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.75"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "10.75"
-        },
-        {
-          "t": 60,
-          "n": "TransactTime",
-          "y": "datetime64(ns,\"UTC\")",
-          "v": "2024-02-01T12:36:00.000000000Z"
-        }
-      ],
+      "size": 16,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130227,57 +129977,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 11,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 48,
-          "n": "SecurityID",
-          "y": "utf8",
-          "v": "US0378331005"
-        },
-        {
-          "t": 22,
-          "n": "SecurityIDSource",
-          "y": "utf8",
-          "v": "4"
-        },
-        {
-          "t": 207,
-          "n": "SecurityExchange",
-          "y": "mic",
-          "v": "XNAS"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "10.5"
-        }
-      ],
+      "size": 12,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130376,8 +130077,8 @@
       "anomalies": [],
       "digest": "f03766f963a31ac8a60e5fb3f77fc1f5",
       "ticker": "4:US0378331005@XNAS",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))"
     },
@@ -130390,51 +130091,8 @@
       "msgtype": "d",
       "direction": null,
       "branch": "",
-      "size": 16,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "d"
-        },
-        {
-          "t": 49,
-          "n": "SenderCompID",
-          "y": "utf8",
-          "v": "VENUE"
-        },
-        {
-          "t": 56,
-          "n": "TargetCompID",
-          "y": "utf8",
-          "v": "BUYSIDE"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "BRN"
-        },
-        {
-          "t": 48,
-          "n": "SecurityID",
-          "y": "utf8",
-          "v": "GB00BN7SWP63"
-        },
-        {
-          "t": 22,
-          "n": "SecurityIDSource",
-          "y": "utf8",
-          "v": "4"
-        },
-        {
-          "t": 207,
-          "n": "SecurityExchange",
-          "y": "mic",
-          "v": "XLON"
-        }
-      ],
+      "size": 17,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130543,8 +130201,8 @@
       "anomalies": [],
       "digest": "5095235cdd04feda1527428a535bfcbb",
       "ticker": "BRN@XLON",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))"
     },
@@ -130557,33 +130215,8 @@
       "msgtype": null,
       "direction": null,
       "branch": "",
-      "size": 5,
-      "columns": [
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "TTF"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "1200"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "41.25"
-        }
-      ],
+      "size": 7,
+      "columns": [],
       "arrivals": [
         [
           "55",
@@ -130654,8 +130287,8 @@
       ],
       "digest": "3d5dfa375c7137ba61146956a330598c",
       "ticker": "TTF",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0].PARTYID=BUYSIDE|NOPARTYIDS[0].PARTYIDSOURCE=D|NOPARTYIDS[0].PARTYROLE=1|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))"
     },
@@ -130668,33 +130301,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 8,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
-        }
-      ],
+      "size": 9,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130768,8 +130376,8 @@
       "anomalies": [],
       "digest": "1c8e0f1914ec2b3c2c234d9b635b209a",
       "ticker": "AAPL",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))"
     },
@@ -130782,33 +130390,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 8,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
-        }
-      ],
+      "size": 9,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130879,8 +130462,8 @@
       "anomalies": [],
       "digest": "555c78be6bd879bbd4109616689a485b",
       "ticker": "AAPL",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))"
     },
@@ -130893,27 +130476,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 8,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        }
-      ],
+      "size": 9,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -130975,8 +130539,8 @@
       ],
       "digest": "3b30ede943bb27d750388e53d2ae5dac",
       "ticker": "AAPL",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))"
     },
@@ -130989,7 +130553,7 @@
       "msgtype": null,
       "direction": null,
       "branch": "",
-      "size": 3,
+      "size": 5,
       "columns": [],
       "arrivals": [
         [
@@ -131016,8 +130580,8 @@
       "anomalies": [],
       "digest": "2de6ce1c82695076a6cc2a1940a542a5",
       "ticker": null,
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))"
     },
@@ -131030,7 +130594,7 @@
       "msgtype": null,
       "direction": null,
       "branch": "",
-      "size": 0,
+      "size": 2,
       "columns": [],
       "arrivals": [],
       "unmapped": [],
@@ -131038,8 +130602,8 @@
       "anomalies": [],
       "digest": "99aa06d3014798d86001c324468d497f",
       "ticker": null,
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"no level printed by this plugin\", 'binary'))"
     },
@@ -131052,45 +130616,8 @@
       "msgtype": "D",
       "direction": null,
       "branch": "",
-      "size": 8,
-      "columns": [
-        {
-          "t": 35,
-          "n": "MsgType",
-          "y": "msgtype",
-          "v": "D"
-        },
-        {
-          "t": 55,
-          "n": "Symbol",
-          "y": "utf8",
-          "v": "AAPL"
-        },
-        {
-          "t": 54,
-          "n": "Side",
-          "y": "side",
-          "v": "1"
-        },
-        {
-          "t": 38,
-          "n": "OrderQty",
-          "y": "float64",
-          "v": "100"
-        },
-        {
-          "t": 44,
-          "n": "Price",
-          "y": "float64",
-          "v": "10.5"
-        },
-        {
-          "t": 132,
-          "n": "BidPx",
-          "y": "float64",
-          "v": "10.5"
-        }
-      ],
+      "size": 9,
+      "columns": [],
       "arrivals": [
         [
           "8",
@@ -131169,14 +130696,14 @@
       "anomalies": [],
       "digest": "3dc6316f635adb56b2e58b2ab9e48aa1",
       "ticker": "AAPL",
-      "clock": null,
-      "partition": null,
+      "clock": "1970-01-01T00:00:00.000000000Z",
+      "partition": "0",
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
       "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))"
     }
   ],
   "calls": {
-    "registry": "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()",
+    "registry": "const registry = fix.FixRegistry.fromHandle('config/fix')",
     "reader": "const reader = new fix.FixCodec(registry)"
   }
 }

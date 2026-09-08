@@ -590,23 +590,29 @@ pub struct FixRegistry
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
-pub const CRATE_BRANCH: &str = "yggdryl";
-pub const MSGHASH_TAG: i32 = 30001;
-pub const VERSION_TAG: i32 = 30002;
-pub const SYMBOLTICKER_TAG: i32 = 30003;
-pub const TIMESTAMP_TAG: i32 = 30004;
-pub const UNIXPARTITION_TAG: i32 = 30005;
-pub const PARENTCLORDID_TAG: i32 = 30006;
-pub const PARENTORDERID_TAG: i32 = 30007;
-pub const SESSIONID_TAG: i32 = 30008;
-pub const MSGCTXID_TAG: i32 = 30009;
-pub const PLUGINID_TAG: i32 = 30010;
-pub const PREVPLUGINID_TAG: i32 = 30011;
+pub const CRATE_TAG_MIN: i32 = 65_000;
+pub const MSGHASH_TAG: i32 = 65_000;
+pub const VERSION_TAG: i32 = 65_001;
+pub const SYMBOLTICKER_TAG: i32 = 65_002;
+pub const TIMESTAMP_TAG: i32 = 65_003;
+pub const UNIXPARTITION_TAG: i32 = 65_004;
+pub const PARENTCLORDID_TAG: i32 = 65_005;
+pub const PARENTORDERID_TAG: i32 = 65_006;
+pub const SESSIONID_TAG: i32 = 65_007;
+pub const MSGCTXID_TAG: i32 = 65_008;
+pub const SENDERPLUGINID_TAG: i32 = 65_009;
+pub const TARGETPLUGINID_TAG: i32 = 65_010;
+pub const SENDERPLUGINSESSION_TAG: i32 = 65_011;
+pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
+pub const ISINCODE_TAG: i32 = 65_013;
+pub const MICCODE_TAG: i32 = 65_014;
+pub const STATE_TAG: i32 = 65_015;
 pub const TIMESTAMP_NAME: &str = "timestamp";
 pub const MSGDIRECTION_TAG: i32 = 385;
 pub const MSGTYPE_TAG: i32 = 35;
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (eleven fields in tag order; every FixRegistry holds them from construction)
+pub const fn is_crate_tag(tag: i32) -> bool  (a standard tag from CRATE_TAG_MIN up)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (sixteen standard fields in tag order; every FixRegistry holds them from construction and no store writes them)
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<MsgType>
 
@@ -641,7 +647,7 @@ pub const OPERATION_TAG: i32 = 20_002;
 pub const STATUS_TAG: i32 = 20_003;
 pub const ERROR_TAG: i32 = 20_004;
 pub const SESSIONINTERFACES_TAG: i32 = 20_005;
-pub const ULBRIDGE_ROWHEADER: &str  (the row header a bridge log writes: timestamp, threadId with optional sessionId, msgCtxId and seqNum, plugin, level)
+pub const ULBRIDGE_ROWHEADER: &str  (the row header a bridge log writes: timestamp, threadId with optional sessionUid, msgCtxId and seqNum, plugin, level)
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>

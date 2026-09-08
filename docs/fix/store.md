@@ -15,7 +15,7 @@ A registry persists through one [`IOBase`](../holder/index.md) folder handle as 
 | Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; `aliases` is written only where a branch declares one, and absent is valid for the key and for the file |
 | Load | every shard of both trees on open; both trees optional; other leaves ignored; a missing folder loads as `FixRegistry::new()`, the crate's own fields alone |
 | Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
-| Crate branch | the crate's own `yggdryl` branch is never written - every registry holds it from construction - and a stored copy of it is read past |
+| Crate fields | the crate's own sixteen fields, standard tags from 65000, are never written - every registry holds them from construction - and a stored copy of one is read past |
 | Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |
 | Refused | a root still holding `records/`; no migration, no backward compatibility |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
@@ -88,8 +88,8 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     assert!(!root.join("primitive").join("").join("1.json").exists());
     assert!(!root.join("primitive").join("cme").exists());
     assert!(!root.join("nested").exists());
-    // The crate's own branch is never written: every registry already holds it.
-    assert!(!root.join("primitive").join("yggdryl").exists());
+    // The crate's own fields are never written: every registry already holds them.
+    assert!(!root.join("primitive").join("650.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder)?.len(), 2 + fix_crate_fields()?.len());
 
     // A folder that is not there loads as the crate's own fields alone and
@@ -165,8 +165,8 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     assert not (root / "primitive" / "1.json").exists()
     assert not (root / "primitive" / "cme").exists()
     assert not (root / "nested").exists()
-    # The crate's own branch is never written: every registry already holds it.
-    assert not (root / "primitive" / "yggdryl").exists()
+    # The crate's own fields are never written: every registry already holds them.
+    assert not (root / "primitive" / "650.json").exists()
     assert len(FixRegistry.from_handle(root)) == 2 + len(fix_crate_fields())
 
     # A root left in the retired `records/` layout is refused, not read empty.
@@ -243,8 +243,8 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     assert.equal(fs.existsSync(path.join(root, 'primitive', '1.json')), false)
     assert.equal(fs.existsSync(path.join(root, 'primitive', 'cme')), false)
     assert.equal(fs.existsSync(path.join(root, 'nested')), false)
-    // The crate's own branch is never written: every registry already holds it.
-    assert.equal(fs.existsSync(path.join(root, 'primitive', 'yggdryl')), false)
+    // The crate's own fields are never written: every registry already holds them.
+    assert.equal(fs.existsSync(path.join(root, 'primitive', '650.json')), false)
     assert.equal(fix.FixRegistry.fromHandle(root).size, 2 + fix.crateFields().length)
 
     // A root left in the retired `records/` layout is refused, not read empty.
@@ -324,10 +324,10 @@ Each field carries the specification's wording as its description and a display 
     assert_eq!(registry.field_by_tag(150)?.display(), Some("ExecType"));
     assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("ClOrdID", Some(&standard))?.display(), Some("ClOrdID"));
-    // Every seed field is a specification field, so none states a branch;
-    // the ones that do are the crate's own, which every registry holds.
+    // Every field is a specification field or one of the crate's own, and
+    // both are standard, so none states a branch.
     let branched = registry.iter().filter(|field| field.has_metadata("fix:branch")).count();
-    assert_eq!(branched, yggdryl::fix_crate_fields()?.len());
+    assert_eq!(branched, 0);
     // The whole published dictionary, not a sample of it.
     assert!(registry.len() > 6_000);
     ```
@@ -393,8 +393,8 @@ Each field carries the specification's wording as its description and a display 
 - A dictionary-encoded or run-end-encoded field -> placed by its unwrapped value type, so a dictionary of Struct is nested and one of Utf8 is not.
 - A shard that does not parse, holds a tagless field, duplicates another shard's tag, or holds a field the registry refuses -> typed error naming the shard's URL.
 - A folder that does not exist -> `FixRegistry::new()`, the crate's own fields and nothing else, and the folder is not created.
-- A `yggdryl` folder under a tree -> read past: the crate's own fields are the crate's definition, and the registry already holds them.
-- `write_into` writes no shard, branch folder or manifest entry for the crate's own fields, so a store never learns the crate branch.
+- A shard holding one of the crate's own fields, a standard tag from 65000 -> read past: they are the crate's definition, and the registry already holds them.
+- `write_into` writes no shard for the crate's own fields, so a store never holds a copy of a definition that could drift from the crate's.
 - A root still holding `records/`, nested or flat -> refused naming the folder, never read as empty.
 - The last field of a shard removed -> that shard, its branch folder and its tree disappear on the next `write_into`.
 - A field whose datatype moves it between trees -> the old tree's copy is removed by the next `write_into`, never resurrected on reload.

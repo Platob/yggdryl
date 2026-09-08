@@ -174,20 +174,22 @@ A fill is named the way a key is: a column whose folded name resolves in the mes
 `yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
-^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
 | --- | --- | --- |
 | `timestamp` | datetime | the row's clock, so the message's `timestamp` |
 | `threadId` | int64 | the capture's own column, leading the row |
-| `sessionId` | utf8, nullable | fills `sessionid` (30008) |
-| `msgCtxId` | utf8, nullable | fills `msgctxid` (30009) |
+| `sessionUid` | utf8, nullable | the bridge's own session instance, carried in front; `sessionid` (65007) stays what the message states |
+| `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
 | `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
-| `plugin` | utf8 | the capture's own column |
+| `plugin` | utf8 | carried in front, and a parameter: fills `senderpluginsession` (65011) for a line the row says was sent and `targetpluginsession` (65012) for one it received |
 | `level` | utf8 | the capture's own column |
 
-The session, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
+The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
+
+The plugin is the one capture read as a parameter rather than as a fill by name: with the row's direction - stated in its `direction` column, else read off the line's verb, else sent, which is what a session's own log means by silence - it fills the plugin session the line moved from or to. A bridge row that spells `ULFROMSESSIONNAME` or `ULTOSESSIONNAME` itself keeps its own statement, because a fill never overrides a value the message stated.
 
 === "Rust"
 
@@ -198,7 +200,7 @@ The session, the context and the sequence number are optional as a whole, so a l
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    assert!(names.ends_with(&["timestamp", "threadId", "sessionId", "msgCtxId", "seqNum", "plugin", "level"]));
+    assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
     // Typed from the pattern before a byte is read.
     assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
     ```

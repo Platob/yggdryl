@@ -14,7 +14,7 @@ The whole committed dictionary, live: what it holds, what each field is, which m
 
 ## Use
 
-The counts below are the dictionary this repository ships, plus the eleven fields of the crate's own that every registry holds. The same numbers come out of the package.
+The counts below are the dictionary this repository ships, plus the sixteen fields of the crate's own that every registry holds. The same numbers come out of the package.
 
 === "Rust"
 
@@ -24,13 +24,13 @@ The counts below are the dictionary this repository ships, plus the eleven field
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_214);
+    assert_eq!(registry.len(), 6_219);
     assert_eq!(registry.field_by_tag(35)?.name(), "msgtype");
     // A repeating group is reached through its counter, and the crate's own
-    // columns are ordinary fields on their own branch, held by every registry.
+    // columns are standard fields from tag 65000, held by every registry.
     let standard = yggdryl::FixBranch::STANDARD;
     assert_eq!(registry.field_by_path("nopartyids.partyid", Some(&standard))?.as_fix().tag()?, Some(448));
-    let timestamp = registry.field_by_id("30004:yggdryl".parse()?)?;
+    let timestamp = registry.field_by_id("65003:".parse()?)?;
     assert_eq!(timestamp.name(), "timestamp");
     assert_eq!(timestamp.display(), Some("Timestamp"));
     ```
@@ -43,12 +43,12 @@ The counts below are the dictionary this repository ships, plus the eleven field
     from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_214
+    assert len(registry) == 6_219
     assert registry.field_by_tag(35).name == "msgtype"
     # A repeating group is reached through its counter, and the crate's own
-    # columns are ordinary fields on their own branch, held by every registry.
+    # columns are standard fields from tag 65000, held by every registry.
     assert registry.field_by_path("nopartyids.partyid", STANDARD_BRANCH).fix.tag == 448
-    timestamp = registry.field_by_id("30004:yggdryl")
+    timestamp = registry.field_by_id("65003:")
     assert timestamp.name == "timestamp"
     assert timestamp.display == "Timestamp"
     ```
@@ -61,12 +61,12 @@ The counts below are the dictionary this repository ships, plus the eleven field
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_214)
+    assert.equal(registry.size, 6_219)
     assert.equal(registry.fieldByTag(35).name, 'msgtype')
     // A repeating group is reached through its counter, and the crate's own
-    // columns are ordinary fields on their own branch, held by every registry.
+    // columns are standard fields from tag 65000, held by every registry.
     assert.equal(registry.fieldByPath('nopartyids.partyid', fix.STANDARD_BRANCH).fix.tag, 448)
-    const timestamp = registry.fieldById('30004:yggdryl')
+    const timestamp = registry.fieldById('65003:')
     assert.equal(timestamp.name, 'timestamp')
     assert.equal(timestamp.display, 'Timestamp')
     ```

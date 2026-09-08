@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec`, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::to_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag` |
-| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own eleven, `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
+| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own sixteen, `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
 | Non-null | `beginstring`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
@@ -273,25 +273,30 @@ Two lists close every row.
 
 ## The crate's own columns
 
-Eleven fields carry ten facts a capture states that no dictionary publishes - the parent order needs separate client and venue identifiers. Each is an ordinary field on this crate's own branch, `yggdryl`, so it lifts, columns, serializes and resolves with no special case anywhere. Every registry holds them from construction: `FixRegistry::new()` inserts them before anything else, so a dictionary loaded from a [store](store.md), built from fields or left empty answers `timestamp` and `sessionid` alike, and the store never writes them. `fix_crate_fields` is the listing, in tag order; `SESSIONID_TAG` and its siblings name the tags, `TIMESTAMP_NAME` the column the clock takes.
+Sixteen fields carry what a capture states, or what a message implies, that no dictionary publishes. Each is an ordinary standard field with a tag from 65000 up - a block no venue claims, above the user-defined range a dialect may take - so it lifts, columns, serializes and resolves with no special case anywhere, and a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name like any other field. Every registry holds them from construction: `FixRegistry::new()` inserts them before anything else, so a dictionary loaded from a [store](store.md), built from fields or left empty answers `timestamp` and `sessionid` alike, and the store never writes them. `fix_crate_fields` is the listing, in tag order; `SESSIONID_TAG` and its siblings name the tags, `CRATE_TAG_MIN` the first of them, `is_crate_tag` whether a tag is one, and `TIMESTAMP_NAME` the column the clock takes.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
-| `msghash` | `MsgHash` | 30001 | the xxh3-128 digest of what the message said: the arrival record with the standard header and trailer left out, `MsgType` excepted |
-| `version` | `Version` | 30002 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
-| `symbolticker` | `SymbolTicker` | 30003 | one instrument symbol that is the same across venues |
-| `timestamp` | `Timestamp` | 30004 | the clock a capture is ordered by: the row's own, else the message's, else the epoch |
-| `unixpartition` | `UnixPartition` | 30005 | the partition that clock falls in, as whole seconds |
-| `parentclordid` | `ParentClOrdID` | 30006 | the client order identifier this order descends from |
-| `parentorderid` | `ParentOrderID` | 30007 | the venue order identifier this order descends from |
-| `sessionid` | `SessionId` | 30008 | the session a bridge handled the message under, as its own log names it |
-| `msgctxid` | `MsgCtxId` | 30009 | the message context a bridge handled the message in |
-| `pluginid` | `PluginId` | 30010 | the plugin the message came from inside a bridge |
-| `prevpluginid` | `PrevPluginId` | 30011 | the plugin the message went to inside a bridge |
+| `msghash` | `MsgHash` | 65000 | the xxh3-128 digest of what the message said: the arrival record with the standard header and trailer left out, `MsgType` excepted |
+| `version` | `Version` | 65001 | the FIX version it was *read* at, which is not always what `BeginString` claimed |
+| `symbolticker` | `SymbolTicker` | 65002 | one instrument symbol that is the same across venues |
+| `timestamp` | `Timestamp` | 65003 | the clock a capture is ordered by: the row's own, else the message's, else the epoch |
+| `unixpartition` | `UnixPartition` | 65004 | the partition that clock falls in, as whole seconds |
+| `parentclordid` | `ParentClOrdID` | 65005 | the client order identifier this order descends from |
+| `parentorderid` | `ParentOrderID` | 65006 | the venue order identifier this order descends from |
+| `sessionid` | `SessionId` | 65007 | the session the message itself states, as a bridge row spells it in `SESSIONID` - never the bracket a log writes in front of a line |
+| `msgctxid` | `MsgCtxId` | 65008 | the message context a bridge handled the message in, from its log's bracket |
+| `senderpluginid` | `SenderPluginId` | 65009 | the plugin the message came from inside a bridge, as the message states it |
+| `targetpluginid` | `TargetPluginId` | 65010 | the plugin the message went to inside a bridge, as the message states it |
+| `senderpluginsession` | `SenderPluginSession` | 65011 | the plugin session the message came from: a bridge row's `ULFROMSESSIONNAME`, else the plugin that logged a line it sent |
+| `targetpluginsession` | `TargetPluginSession` | 65012 | the plugin session the message went to: a bridge row's `ULTOSESSIONNAME`, else the plugin that logged a line it received |
+| `isincode` | `ISINCode` | 65013 | the instrument's ISIN: `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
+| `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
+| `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
 
 The envelope `msghash` drops is the standard header and the standard trailer whole, read from the same two tag lists the row shape is ordered by, so a tag either component gains leaves the digest without a second listing learning about it. `MsgType` is the one exception and stays in: a message type is what a message *is* rather than how it travelled, so an order and a report carrying the same tags are not one message. The consequence is the point - two identical orders sent a second apart hash equal, and so do the same order relayed through two sessions or replayed on a resend.
 
-The last four are what a bridge's own log states about the line it wrote, in the bracket after its clock: a [row header](arrow.md#a-bridge-log-names-what-it-fills) captures them and the row fills them, so a monitor joins a bridge's log on them. FIX publishes the counterparties in `SenderCompID` and `TargetCompID`; the plugin that carried a message inside a bridge is a fact about the bridge, and one FIX never states.
+The last nine are read from two places. A bridge row states its own session and plugin sessions in `SESSIONID`, `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, which reach the fields by name; and a bridge's log states the message context in the bracket after its clock, and the plugin that wrote the line in front of it, which a [row header](arrow.md#a-bridge-log-names-what-it-fills) captures and the row fills - the plugin landing on the sender's session for a line the plugin sent and on the target's for one it received, never over a value the row stated itself. The three after them are derived when a message becomes a row, from the tags the table names, so a monitor filters an instrument, a market or a lifecycle without knowing which of several tags a venue put it in. FIX publishes the counterparties in `SenderCompID` and `TargetCompID`; the plugin that carried a message inside a bridge is a fact about the bridge, and one FIX never states.
 
 Two of them declare more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for. `msghash` is a digest holder, so it says which algorithm filled it and what it read. `unixpartition` is a derived partition column, so it says which column it derives from and how.
 
@@ -645,7 +650,7 @@ That is the rule the whole row keeps: what a message said can never fail the bat
 
 A line was read from somewhere, and where it was read from is what a monitor orders and joins on: the object's URL, the line number in it, the clock the line was stamped with, the thread that wrote it. None of that is FIX and all of it is the row, so it leads the row - and because a line in is a row out, carrying it is a slice rather than a join.
 
-A carried column whose folded name a FIX column already takes - a `sessionId` capture beside `sessionid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost, because the row [fills that column from it](arrow.md#a-column-is-the-caller-speaking-per-row). `direction` and `msgdirection` are two names, so both are present.
+A carried column whose folded name a FIX column already takes - a `msgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost, because the row [fills that column from it](arrow.md#a-column-is-the-caller-speaking-per-row). `direction` and `msgdirection` are two names, so both are present.
 
 === "Rust"
 
@@ -732,7 +737,8 @@ A carried column whose folded name a FIX column already takes - a `sessionId` ca
 - A column whose field carries no `fix:tag`, and whose name spells none, is the capture's own, so `to_row` answers null there; whoever read the capture fills it.
 - A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a clock leaves the message to its next clock, else the epoch - never a refusal.
 - `unixpartition` is floored from the clock's nanoseconds, so a clock stated to the microsecond has a partition rather than a null for not being a whole second.
-- A column of the crate's own is typed by the crate's definition, never by a venue claiming the same tag on its own branch: `timestamp` is an instant whatever a venue meant by 30004.
+- A column of the crate's own is typed by the crate's definition, on a standard tag from 65000 that no dialect claims: `timestamp` is an instant, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
+- Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
 - Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
