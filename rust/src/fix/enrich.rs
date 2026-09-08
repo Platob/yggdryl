@@ -39,6 +39,8 @@
 
 use std::sync::Arc;
 
+use crate::types::State;
+use crate::types::ascii::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar};
 
 use super::msg::FixMsg;
