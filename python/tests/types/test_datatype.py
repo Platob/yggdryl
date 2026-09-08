@@ -524,11 +524,14 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     # folds to the upper case it spells because the check digit cannot tell
     # the two apart.
     isin = DataType("isin")
-    assert isin.scalar("us0378331005").as_py() == "US0378331005"
+    apple = isin.scalar("us0378331005")
+    assert apple.as_py() == "US0378331005"
+    assert apple.kind == "isin"
+    assert pickle.loads(pickle.dumps(apple)) == apple
     assert isin.ascii_packed("US0378331005") == DataType.ascii(12).ascii_packed("US0378331005")
-    with pytest.raises(ValueError, match="check digit"):
+    with pytest.raises(ValueError, match="check digit does not close"):
         isin.scalar("US0378331006")
-    with pytest.raises(ValueError, match="isin"):
+    with pytest.raises(ValueError, match="expected twelve characters"):
         isin.scalar("US037833100")
 
 
