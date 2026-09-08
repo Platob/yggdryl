@@ -164,7 +164,7 @@ textOptions.leadingFragment = 'drop'
 textOptions.maxRecordByteSize = 4096
 textOptions.maxRecordByteSize = null
 textOptions.rowheader = '\\[(?<level>[A-Z]+)\\]'
-textOptions.withRownum = 1n
+textOptions.startRownum = 1n
 textOptions.lstrip = ['^\\s+']
 textOptions.rstrip = ['\\s+$']
 textOptions.linesep = new Uint8Array([13, 10])
@@ -184,7 +184,7 @@ const textRstrip: string[] = textOptions.rstrip
 const textLinesep: Buffer | null = textOptions.linesep
 const textAutotype: boolean = textOptions.autotype
 const textTimezone: Timezone | null = textOptions.timezone
-const textRownum: bigint | null = textOptions.withRownum
+const textRownum: bigint | null = textOptions.startRownum
 const lineBatches: BatchReader = handle.readArrowReader(textOptions)
 const lineRecords: IterableIterator<Record<string, unknown>> =
   handle.readRecords(textOptions)

@@ -49,7 +49,7 @@ function corpus(from, to) {
 function textOptions() {
   const options = new TextOptions()
   options.rowheader = rowheader
-  options.withRownum = 1n
+  options.startRownum = 1n
   options.lstrip = '^\\s+'
   options.rstrip = '\\s+$'
   return options

@@ -3574,9 +3574,9 @@ export declare class TextOptions {
   /** Replace partition filters. */
   set filterPartitions(partitions: Array<[string, string]>)
   /** The first emitted row number, or `null` when the column is omitted. */
-  get withRownum(): bigint | null
+  get startRownum(): bigint | null
   /** Set or clear the exact signed 64-bit starting row number. */
-  set withRownum(value: bigint | undefined | null)
+  set startRownum(value: bigint | undefined | null)
   /** Return whether physical lines are framed into logical records. */
   get framing(): boolean
   /** Enable or disable logical-record framing. */

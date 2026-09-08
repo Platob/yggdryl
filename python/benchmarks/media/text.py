@@ -47,7 +47,7 @@ def corpus() -> str:
 def options() -> TextOptions:
     value = TextOptions()
     value.rowheader = ROWHEADER
-    value.with_rownum = 1
+    value.start_rownum = 1
     # A sequence, applied in order: one pattern is the one-element case.
     value.lstrip = [r"^\s+"]
     value.rstrip = [r"\s+$"]

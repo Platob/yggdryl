@@ -124,7 +124,7 @@ fn options_are_flat_and_validate_rowheader_names() {
         .with_max_record_byte_size(1_024)
         .with_autotype(false)
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(-3);
+    options.start_rownum = Some(-3);
     options.set_batch_row_size(Some(7));
 
     assert_eq!(
@@ -139,7 +139,7 @@ fn options_are_flat_and_validate_rowheader_names() {
     assert_eq!(options.max_record_byte_size(), Some(1_024));
     assert!(!options.autotype());
     assert_eq!(options.timezone(), Some(&Timezone::UTC));
-    assert_eq!(options.with_rownum, Some(-3));
+    assert_eq!(options.start_rownum, Some(-3));
     assert_eq!(options.batch_row_size(), Some(7));
 
     let error = TextOptions::new()
@@ -156,7 +156,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
         b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
     );
     let mut text = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
-    text.with_rownum = Some(10);
+    text.start_rownum = Some(10);
     text.set_lstrip(Some(r"^\s+")).unwrap();
     text.set_rstrip(Some(r"\s+$")).unwrap();
     let options = text.into();
@@ -261,7 +261,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
 #[test]
 fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
     let mut options = TextOptions::new();
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(1));
     let mut reader = named("rows.log", b"first\nsecond\n")
         .read_arrow_reader(&options.into())
@@ -401,7 +401,7 @@ fn framing_normalizes_every_physical_terminator_and_keeps_start_rownums() {
         b"[A] first\ncontinuation one\r\n[B] second\rcontinuation two",
     );
     let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
-    options.with_rownum = Some(10);
+    options.start_rownum = Some(10);
     options.set_batch_row_size(Some(1));
 
     let batches = collect(&source, options);
@@ -452,7 +452,7 @@ fn text_row_size_counts_logical_records_when_framing_is_enabled() {
 fn text_row_size_ignores_row_value_conversion_and_retains_no_bodies() {
     let source = named("count-raw.log", b"A first\ncontinued\n\xFF second\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     let text = Text::new(source).with_options(options);
 
     // The second output row cannot be represented by the configured rownum,
@@ -464,7 +464,7 @@ fn text_row_size_ignores_row_value_conversion_and_retains_no_bodies() {
 fn a_result_row_limit_does_not_convert_the_following_record() {
     let source = named("limited-values.log", b"A first\n\xFF invalid\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
     options.set_max_row_size(Some(1));
 
@@ -477,7 +477,7 @@ fn a_result_row_limit_does_not_convert_the_following_record() {
 fn a_physical_row_limit_does_not_convert_the_following_line() {
     let source = named("limited-lines.log", b"A first\n\xFF invalid\n");
     let mut options = options(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
     options.set_max_row_size(Some(1));
 
@@ -505,7 +505,7 @@ fn leading_fragments_are_kept_dropped_or_rejected_and_eof_finishes_a_record() {
     let source = named("leading.log", b"before\nstill before\n[A] final");
 
     let mut keep = framed(r"^\[(?<kind>[A-Z])\] ");
-    keep.with_rownum = Some(1);
+    keep.start_rownum = Some(1);
     let kept = collect(&source, keep);
     assert_eq!(
         bodies(&kept),
@@ -739,7 +739,7 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
     second.write_all_bytes(b"leading in b\n[B] second").unwrap();
 
     let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
-    options.with_rownum = Some(1);
+    options.start_rownum = Some(1);
     let batches = collect(&folder, options);
     assert_eq!(
         bodies(&batches),
@@ -882,9 +882,9 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .concat(),
     );
     let mut options = TextOptions::new();
-    options.with_mimetype = true;
-    options.with_msgtype = true;
-    options.with_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
+    options.parse_direction = true;
 
     // The columns a classifying read declares, in order.
     let field = options.source_field().unwrap();
@@ -1007,7 +1007,7 @@ fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
         b"sending >> 8=FIX.4.4|35=D|10=1|\nrecv >> 8=FIX.4.4|35=D|10=1|\n".to_vec(),
     );
     let mut options = TextOptions::new().try_with_lstrip([r"^>>\s*"]).unwrap();
-    options.with_direction = true;
+    options.parse_direction = true;
     options.dedup_adjacent = true;
     assert_eq!(bodies(&collect(&prefixed, options)).len(), 1);
 }

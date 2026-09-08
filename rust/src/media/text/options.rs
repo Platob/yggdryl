@@ -100,14 +100,14 @@ pub struct TextOptions {
     /// Partition equalities a read is pruned and filtered by.
     pub filter_partitions: Vec<(String, String)>,
     /// First emitted row number; `None` omits the `rownum` column.
-    pub with_rownum: Option<i64>,
+    pub start_rownum: Option<i64>,
     /// Whether to classify each line and emit a `mimetype` column.
-    pub with_mimetype: bool,
+    pub parse_mimetype: bool,
     /// Whether to read each line's message type and emit a `msgtype` column.
-    pub with_msgtype: bool,
+    pub parse_msgtype: bool,
     /// Whether to read each line's direction, emit a `direction` column, and
     /// take the marker off the body.
-    pub with_direction: bool,
+    pub parse_direction: bool,
     /// Whether to drop a row whose body repeats the row before it.
     ///
     /// A capture tool that published a line twice publishes it twice in a
@@ -150,10 +150,10 @@ impl TextOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
-            with_rownum: None,
-            with_mimetype: false,
-            with_msgtype: false,
-            with_direction: false,
+            start_rownum: None,
+            parse_mimetype: false,
+            parse_msgtype: false,
+            parse_direction: false,
             dedup_adjacent: false,
             framing: false,
             leading_fragment: LeadingFragment::Keep,
@@ -458,7 +458,7 @@ impl TextOptions {
     /// One question, because every caller asking it is deciding whether the
     /// body it is about to hand on is the bytes it read.
     pub(crate) fn rewrites_body(&self) -> bool {
-        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.with_direction
+        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.parse_direction
     }
 
     pub(crate) fn output_linesep(&self) -> &[u8] {
@@ -485,25 +485,25 @@ impl TextOptions {
             DataType::Utf8.required_field("url"),
             "The URL of the object this line was read from.",
         )?);
-        if self.with_rownum.is_some() {
+        if self.start_rownum.is_some() {
             fields.push(described(
                 DataType::Int64.required_field("rownum"),
                 "The physical line number within that object.",
             )?);
         }
-        if self.with_direction {
+        if self.parse_direction {
             fields.push(described(
                 DataType::MsgDirection.nullable_field("direction"),
                 "Which way the line moved, read from the verb in front of it.",
             )?);
         }
-        if self.with_mimetype {
+        if self.parse_mimetype {
             fields.push(described(
                 DataType::Utf8.required_field("mimetype"),
                 "What the line was classified as.",
             )?);
         }
-        if self.with_msgtype {
+        if self.parse_msgtype {
             fields.push(described(
                 DataType::MsgType.nullable_field("msgtype"),
                 "The message type read from the line.",

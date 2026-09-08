@@ -1259,7 +1259,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 
 ## Edges
 
-- `TextOptions.with_rownum` -> `None` or a signed 64-bit `int`; a `bool` is a `TypeError`, out of range an `OverflowError`.
+- `TextOptions.start_rownum` -> `None` or a signed 64-bit `int`; a `bool` is a `TypeError`, out of range an `OverflowError`.
 - an empty output collection -> requires `field=`, because it cannot infer a type.
 - a zoned `datetime.time`, or a zone on `date`, `time`, `duration` -> refused by the core.
 - a decimal past 256 coefficient bits, or an exponent with no scale in `-128..=127` -> `OverflowError`.

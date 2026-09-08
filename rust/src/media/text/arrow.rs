@@ -53,7 +53,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     options.require_framing_rowheader()?;
     let field = options.source_field()?;
     let base_count = 2
-        + usize::from(options.with_rownum.is_some())
+        + usize::from(options.start_rownum.is_some())
         + usize::from(options.max_record_byte_size().is_some());
     let capture_dtypes = field
         .fields()
@@ -98,7 +98,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<u64> {
     options.require_framing_rowheader()?;
     let mut counting = options.clone();
-    counting.with_rownum = None;
+    counting.start_rownum = None;
     counting.set_lstrip::<[&str; 0], &str>([])?;
     counting.set_rstrip::<[&str; 0], &str>([])?;
     counting.set_max_record_byte_size(Some(0));
@@ -607,7 +607,7 @@ impl<R: Read> RawRows<R> {
         // The direction marker is transport prose in front of the payload, so
         // reading it takes it off the body: a body that kept it would carry a
         // word no protocol sent.
-        let direction = if options.with_direction {
+        let direction = if options.parse_direction {
             let (direction, kept) = crate::types::MsgDirection::split_bytes(&body[start..end]);
             start = end - kept.len();
             direction
@@ -920,14 +920,14 @@ impl<R: Read> Records<R> {
     fn convert(&self, row: RawRow) -> Result<Scalar> {
         let mut entries = Vec::with_capacity(4 + row.captures.len());
         entries.push((SmolStr::new_static("url"), self.raw.url_value.clone()));
-        let rownum = physical_rownum(self.raw.options.with_rownum, row.index)?;
+        let rownum = physical_rownum(self.raw.options.start_rownum, row.index)?;
         if let Some(rownum) = rownum {
             entries.push((SmolStr::new_static("rownum"), Scalar::from(rownum)));
         }
         // Classification is one shallow scan over bytes the reader already
         // holds, and every column it fills is a fact about the line rather
         // than about the protocol inside it.
-        if self.raw.options.with_direction {
+        if self.raw.options.parse_direction {
             entries.push((
                 SmolStr::new_static("direction"),
                 row.direction.map_or(Scalar::Null, |direction| {
@@ -937,13 +937,13 @@ impl<R: Read> Records<R> {
                 }),
             ));
         }
-        if self.raw.options.with_mimetype {
+        if self.raw.options.parse_mimetype {
             entries.push((
                 SmolStr::new_static("mimetype"),
                 Scalar::from(crate::MimeType::infer_bytes(&row.body).as_str()),
             ));
         }
-        if self.raw.options.with_msgtype {
+        if self.raw.options.parse_msgtype {
             entries.push((
                 SmolStr::new_static("msgtype"),
                 crate::types::MsgType::infer_bytes(&row.body)

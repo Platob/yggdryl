@@ -1165,7 +1165,7 @@ impl PyRecordOptions {
             state.set_item("framing", options.framing())?;
             state.set_item("leading_fragment", options.leading_fragment().as_str())?;
             state.set_item("max_record_byte_size", options.max_record_byte_size())?;
-            state.set_item("with_rownum", options.with_rownum)?;
+            state.set_item("start_rownum", options.start_rownum)?;
             state.set_item("rowheader", options.rowheader())?;
             state.set_item("lstrip", options.lstrip().collect::<Vec<_>>())?;
             state.set_item("rstrip", options.rstrip().collect::<Vec<_>>())?;
@@ -1272,13 +1272,13 @@ impl PyRecordOptions {
                 required_record_pickle_item(state, "max_record_byte_size")?.extract()?,
             );
 
-            let value = required_record_pickle_item(state, "with_rownum")?;
-            text.with_rownum = if value.is_none() {
+            let value = required_record_pickle_item(state, "start_rownum")?;
+            text.start_rownum = if value.is_none() {
                 None
             } else {
                 if value.is_instance_of::<PyBool>() {
                     return Err(PyTypeError::new_err(
-                        "with_rownum must be an integer or None, not bool",
+                        "start_rownum must be an integer or None, not bool",
                     ));
                 }
                 Some(value.extract::<i64>()?)
@@ -2068,17 +2068,17 @@ impl PyTextOptions {
 
     /// The first emitted row number, or `None` when the column is omitted.
     #[getter]
-    fn with_rownum(&self) -> Option<i64> {
-        self.inner.with_rownum
+    fn start_rownum(&self) -> Option<i64> {
+        self.inner.start_rownum
     }
 
     #[setter]
-    fn set_with_rownum(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
+    fn set_start_rownum(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.with_rownum = if let Some(value) = value {
+        self.inner.start_rownum = if let Some(value) = value {
             if value.is_instance_of::<PyBool>() {
                 return Err(PyTypeError::new_err(
-                    "with_rownum must be an integer or None, not bool",
+                    "start_rownum must be an integer or None, not bool",
                 ));
             }
             Some(value.extract::<i64>()?)

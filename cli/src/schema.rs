@@ -42,7 +42,7 @@ pub fn build(registry: &FixRegistry, rowheader: Option<&str>, name: &str) -> Res
     let mut options = TextOptions::new().with_timezone(yggdryl::Timezone::UTC);
     // From one, because a line number a person reads is the line they would
     // count to in an editor.
-    options.with_rownum = Some(1);
+    options.start_rownum = Some(1);
     options.set_rowheader(Some(header))?;
     let carrier = options.source_field()?;
     Ok(FixProjection::carrying(&carrier, read)?.field().clone())

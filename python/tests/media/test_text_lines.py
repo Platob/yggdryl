@@ -56,7 +56,7 @@ def test_text_options_are_flat_validated_values() -> None:
     options.linesep = r"\r\n"
     options.autotype = False
     options.timezone = "+02:00"
-    options.with_rownum = -3
+    options.start_rownum = -3
     options.batch_row_size = 7
 
     assert options.framing is True
@@ -68,7 +68,7 @@ def test_text_options_are_flat_validated_values() -> None:
     assert options.linesep == b"\r\n"
     assert options.autotype is False
     assert options.timezone == Timezone("+02:00")
-    assert options.with_rownum == -3
+    assert options.start_rownum == -3
     assert options.batch_row_size == 7
 
     for rebuilt in (copy.copy(options), copy.deepcopy(options), pickle.loads(pickle.dumps(options))):
@@ -97,9 +97,9 @@ def test_text_options_are_flat_validated_values() -> None:
     with pytest.raises(ValueError, match="valid byte regex"):
         options.lstrip = ["("]
     with pytest.raises(TypeError, match="not bool"):
-        options.with_rownum = True
+        options.start_rownum = True
     with pytest.raises(OverflowError):
-        options.with_rownum = 1 << 63
+        options.start_rownum = 1 << 63
 
     arrow = RecordOptions("application/vnd.apache.arrow.stream")
     assert not hasattr(arrow, "autotype")
@@ -129,7 +129,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_binary_body(
     )
     options = text_options()
     options.rowheader = ROWHEADER
-    options.with_rownum = 10
+    options.start_rownum = 10
     options.lstrip = [r"^\s+"]
     options.rstrip = [r"\s+$"]
 
@@ -316,7 +316,7 @@ def test_framing_normalizes_terminators_and_reports_record_caps(
     base.framing = True
     base.leading_fragment = "drop"
     base.rowheader = r"^\[(?<kind>[A-Z])\] "
-    base.with_rownum = 1
+    base.start_rownum = 1
     base.batch_row_size = 1
 
     for limit, expected_bodies, expected_dropped in (
@@ -407,7 +407,7 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     )
     options = text_options()
     options.rowheader = ROWHEADER
-    options.with_rownum = 1
+    options.start_rownum = 1
     options.lstrip = [r"^\s+"]
 
     rows = list(IOBase(root).read_records(options=options))

@@ -1242,7 +1242,7 @@ pub enum LeadingFragment
 
 ### yggdryl::media::text::options  [rust\src\media\text\options.rs]
 pub struct TextOptions
-  pub with_rownum: Option<i64>
+  pub start_rownum: Option<i64>
   pub fn new() -> Self
   pub const fn framing(&self) -> bool
   pub const fn set_framing(&mut self, framing: bool)
