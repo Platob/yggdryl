@@ -28,7 +28,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Branch | ASCII letter first, then letters, digits, `-`, `.`, `_`; at most `FixBranch::MAX_LENGTH` (23) bytes; case folded once on parse |
 | Standard branch | Empty name, digest zero, `Version::default()`, empty sender and target component IDs; an absent key means it, and setting it removes the key |
 | Named branch | Any non-empty spelling, `std` and `standard` included; `FixBranch::from_parts` fills name, digest and `Version`, and the registry stores that value |
-| Identity | `FixId` packs the tag in the high 32 bits and the branch's cached XXH32 digest in the low 32 bits of one positive `i64`; `Copy`, eight bytes, tag-major |
+| Identity | `FixId` is the tag and the branch's cached XXH32 digest, two `i32` halves - `tag()` and `branch()`, the same pair and the same signed reading an arrival entry stores; `Copy`, eight bytes, ordered tag-major then by branch |
 | Spelling | Parsed as `tag:branch`; displayed `35:` for the standard branch and `5001:#7f3a1c02` for another; a field keeps its branch text, so `field.fix.id` reads `5001:cme` |
 | Derived | The identifier is computed on every read from `fix:branch` and `fix:tag`, never stored; `None` without a tag |
 | User tag range | A non-standard branch may claim only `FixId::USER_TAG_MIN..FixId::USER_TAG_MAX`, currently `[5000, 40000)`; the standard branch holds every non-negative tag |
@@ -380,7 +380,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 
     ```bash
     cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::name_indexes_fold_ascii fix::tests::a_branch_folds fix::tests::an_identifier_is_packed fix::tests::properties_round_trip fix::tests::a_property_write fix::tests::the_branch_round_trips fix::tests::a_specification_tag fix::tests::set_id_moves fix::tests::a_corrupt_stored fix::tests::a_path_reaches
+    cargo test -p yggdryl --lib -- fix::tests::name_indexes_fold_ascii fix::tests::a_branch_folds fix::tests::an_identifier_is_two_halves fix::tests::properties_round_trip fix::tests::a_property_write fix::tests::the_branch_round_trips fix::tests::a_specification_tag fix::tests::set_id_moves fix::tests::a_corrupt_stored fix::tests::a_path_reaches
     cargo bench -p yggdryl --bench fix -- fix/mutate/set_
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_render
     cargo bench -p yggdryl --bench fix -- fix/resolve/id_parse

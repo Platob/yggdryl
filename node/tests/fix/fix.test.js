@@ -476,7 +476,7 @@ test('the registry iterates lazily in ascending identifier order', () => {
     fixField('Tail', 'utf8', 9001),
   ])
 
-  // Tag-major, then by branch digest - the packed identifier's order. The
+  // Tag-major, then by branch digest - the identifier's own order. The
   // vendor fields therefore precede the later standard tag.
   assert.deepEqual(
     [...registry].map((field) => field.fix.id),
