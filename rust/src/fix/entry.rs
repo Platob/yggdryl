@@ -142,10 +142,9 @@ impl FixEntry {
     /// that never arrived is never invented: the caller keeps the child flat.
     pub(crate) fn adopt(&mut self, tag: i32, mut child: FixEntry) -> Option<FixEntry> {
         for held in self.children.iter_mut().rev() {
-            match held.adopt(tag, child) {
-                None => return None,
-                Some(back) => child = back,
-            }
+            // A child that was adopted answers `None`, which is this
+            // function's own answer for the same thing.
+            child = held.adopt(tag, child)?;
         }
         if self.tag == tag {
             self.children.push(child);
