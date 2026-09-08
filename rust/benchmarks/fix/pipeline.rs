@@ -259,7 +259,13 @@ pub fn stages(criterion: &mut Criterion) {
             || messages.clone(),
             |held| {
                 held.into_iter()
-                    .map(|message| codec.enrich_fixmsg(message).expect("enriched").entries().len())
+                    .map(|message| {
+                        codec
+                            .enrich_fixmsg(message)
+                            .expect("enriched")
+                            .entries()
+                            .len()
+                    })
                     .sum::<usize>()
             },
             BatchSize::LargeInput,
