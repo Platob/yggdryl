@@ -51,6 +51,7 @@ use crate::media::IORecordOptions;
 use crate::types::MsgDirection;
 use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
+use super::build::Fill;
 use super::codec::FixCodec;
 use super::msg::FixMsg;
 use super::record::{RowParameters, empty, transform_bytes};
@@ -600,6 +601,10 @@ fn payload_bytes<'batch>(
         .map_or(Cow::Borrowed(&[]), Cow::Owned))
 }
 
+/// A field a row's own column fills, beside the tag it carries: resolved
+/// once per stream, non-null as a built child is.
+type Filled = Option<(Field, i32)>;
+
 /// Where each column a row is read from sits, decided once per stream.
 ///
 /// The parameter columns are found by the fold every record column is found
@@ -613,14 +618,18 @@ struct Columns {
     direction: Option<usize>,
     /// The column stating the row's own clock, which stamps the message.
     clock: Option<usize>,
-    /// The columns whose names reach a field, so their cells fill it.
+    /// The column naming the plugin that logged the row, which fills the
+    /// plugin session the row's direction says it moved between.
+    plugin: Option<usize>,
+    /// The columns whose names reach a field, each beside the field it fills.
     ///
-    /// Decided once from the schema and the dictionary: a column named after
-    /// nothing the dictionary knows is never read per row for it.
-    fills: Vec<usize>,
+    /// Resolved once from the schema and the dictionary: a column named after
+    /// nothing the dictionary knows is never read per row for it, and the
+    /// dictionary is never probed per row for one it does know.
+    fills: Vec<(usize, Field, i32)>,
+    /// The plugin session fields a sent and a received row fill.
+    sessions: (Filled, Filled),
     kept: Vec<usize>,
-    /// Each source column's name, as a fill is offered under it.
-    names: Vec<SmolStr>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
 }
@@ -636,11 +645,15 @@ impl Columns {
         let fills = fields
             .iter()
             .enumerate()
-            .filter(|(_, held)| {
-                !super::record::is_parameter(held.name(), payload) && reader.fills(held.name())
+            .filter(|(_, held)| !super::record::is_parameter(held.name(), payload))
+            .filter_map(|(at, held)| {
+                let (field, tag) = reader.fill_target(held.name())?;
+                Some((at, field, tag))
             })
-            .map(|(at, _)| at)
             .collect();
+        let registry = reader.registry();
+        let session =
+            |direction: &'static str| super::record::plugin_session(registry, Some(direction));
         Self {
             payload: named(payload),
             branch: named(super::record::BRANCH_COLUMN),
@@ -648,12 +661,10 @@ impl Columns {
             separator: named(super::record::SEPARATOR_COLUMN),
             direction: named(DIRECTION_COLUMN),
             clock: named(super::record::CLOCK_COLUMN),
+            plugin: named(super::record::PLUGIN_COLUMN),
             fills,
+            sessions: (session(MsgDirection::SENT), session(MsgDirection::RECV)),
             kept,
-            names: fields
-                .iter()
-                .map(|held| SmolStr::new(held.name()))
-                .collect(),
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         }
     }
@@ -704,16 +715,42 @@ impl Rows {
         let beginstring = stated(self.columns.beginstring)?;
         let separator = stated(self.columns.separator)?;
         let clock = stated(self.columns.clock)?;
+        // The direction a row states outranks any reading of its line, and it
+        // is decided before the build: it picks which plugin session the
+        // row's plugin fills.
+        let direction = stated(self.columns.direction)?
+            .and_then(|held| {
+                let text = held.as_str()?;
+                [MsgDirection::SENT, MsgDirection::RECV]
+                    .into_iter()
+                    .find(|known| known.eq_ignore_ascii_case(text))
+            })
+            .or_else(|| direction_of(&payload, self.default));
         // The cells that fill fields, read only where the row states them.
-        let mut filled: Vec<(usize, Scalar)> = Vec::with_capacity(self.columns.fills.len());
-        for at in &self.columns.fills {
+        let mut cells: Vec<(&Field, i32, Scalar)> =
+            Vec::with_capacity(self.columns.fills.len() + 1);
+        for (at, field, tag) in &self.columns.fills {
             if let Some(value) = stated(Some(*at))? {
-                filled.push((*at, value));
+                cells.push((field, *tag, value));
             }
         }
-        let fills: Vec<(&str, &Scalar)> = filled
+        if let Some(plugin) = stated(self.columns.plugin)? {
+            let session = match direction {
+                Some(MsgDirection::SENT) => self.columns.sessions.0.as_ref(),
+                Some(MsgDirection::RECV) => self.columns.sessions.1.as_ref(),
+                _ => None,
+            };
+            if let Some((field, tag)) = session {
+                cells.push((field, *tag, plugin));
+            }
+        }
+        let fills: Vec<Fill<'_>> = cells
             .iter()
-            .map(|(at, value)| (self.columns.names[*at].as_str(), value))
+            .map(|(field, tag, value)| Fill {
+                field,
+                tag: *tag,
+                value,
+            })
             .collect();
         let parameters = RowParameters {
             branch: branch.as_ref().and_then(Scalar::as_str),
@@ -723,15 +760,6 @@ impl Rows {
             fills: &fills,
         };
         let message = transform_bytes(&self.reader, parameters, &payload, self.enrich)?;
-        // The direction a row states outranks any reading of its line.
-        let direction = stated(self.columns.direction)?
-            .and_then(|held| {
-                let text = held.as_str()?;
-                [MsgDirection::SENT, MsgDirection::RECV]
-                    .into_iter()
-                    .find(|known| known.eq_ignore_ascii_case(text))
-            })
-            .or_else(|| direction_of(&payload, self.default));
         // By position: the columns kept were decided from the schema, and a
         // row of that schema arrives in that order.
         let front = self

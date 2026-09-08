@@ -235,7 +235,11 @@ fn columns() -> Vec<(Field, Scalar)> {
         ),
         (
             Field::new("state", DataType::State, true),
-            Scalar::from_sequence([Scalar::from("2NEW"), Scalar::from("8FILLED"), Scalar::Null]),
+            Scalar::from_sequence([
+                Scalar::from("20NEW"),
+                Scalar::from("80FILLED"),
+                Scalar::Null,
+            ]),
         ),
         (
             Field::new("timeinforce", DataType::TimeInForce, true),

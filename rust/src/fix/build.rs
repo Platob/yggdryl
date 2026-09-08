@@ -168,8 +168,23 @@ impl Slot {
 pub(super) struct RowExtras<'row> {
     /// The row's own clock.
     pub(super) clock: Option<&'row Scalar>,
-    /// The row's own columns, by name, filling fields the message did not state.
-    pub(super) fills: &'row [(&'row str, &'row Scalar)],
+    /// The row's own columns, resolved to the fields they fill.
+    pub(super) fills: &'row [Fill<'row>],
+}
+
+/// One of a row's own columns, resolved to the field it fills.
+///
+/// Resolved once per stream by the batch reader and once per record by the
+/// record reader, never per row inside the builder: the dictionary probes a
+/// name costs are paid where the column is decided, not where it is read.
+#[derive(Clone, Copy)]
+pub(super) struct Fill<'row> {
+    /// The field, as a built child carries it: non-null.
+    pub(super) field: &'row Field,
+    /// The tag the field carries.
+    pub(super) tag: i32,
+    /// What the row stated.
+    pub(super) value: &'row Scalar,
 }
 
 impl RowExtras<'static> {
@@ -182,14 +197,12 @@ impl RowExtras<'static> {
 
 /// The registry field one of a row's own columns fills, and its tag.
 ///
-/// Four tiers, each consulted only when the ones before it missed. The
-/// crate's own fields first, because they are exactly the facts a capture
-/// states about a line and a column named `sessionId` means the capture's
-/// session whatever a dialect calls its own; then the message's own branch
-/// and the standard one, which is how every key resolves; then any
-/// dictionary the registry holds; then the bridge's own spellings of
-/// standard fields, because a bridge writes `seqNum` in its log where FIX
-/// says `MsgSeqNum`.
+/// Three tiers, each consulted only when the ones before it missed: the
+/// message's own branch and then the standard one - where the crate's own
+/// fields live, so a column named `msgCtxId` means the capture's context -
+/// which is how every key resolves; then any dictionary the registry holds;
+/// then the bridge's own spellings of standard fields, because a bridge
+/// writes `seqNum` in its log where FIX says `MsgSeqNum`.
 pub(super) fn fill_field<'registry>(
     registry: &'registry FixRegistry,
     branch: &FixBranch,
@@ -199,11 +212,8 @@ pub(super) fn fill_field<'registry>(
     if key.is_empty() || super::field::parse_tag(key).is_some() {
         return None;
     }
-    let crated = FixBranch::from_str(super::CRATE_BRANCH).ok();
-    let named = crated
-        .as_ref()
-        .and_then(|held| registry.get_field_by_name(key, Some(held)))
-        .or_else(|| registry.get_field_by_path(key, Some(branch)))
+    let named = registry
+        .get_field_by_path(key, Some(branch))
         .or_else(|| {
             (!branch.is_standard())
                 .then(|| registry.get_field_by_path(key, Some(&FixBranch::STANDARD)))
@@ -333,29 +343,30 @@ impl<'registry> Builder<'registry> {
     /// on the line and this arrived on the row beside it. A value the field
     /// cannot hold fills nothing rather than a null, so a column the row
     /// carried in the wrong kind leaves the field to what the message said.
-    pub(super) fn fill(&mut self, key: &str, value: &Scalar) {
-        if value.is_null() {
+    pub(super) fn fill(&mut self, fill: &Fill<'_>) {
+        if fill.value.is_null() {
             return;
         }
-        let Some((known, tag)) = fill_field(self.registry, &self.branch, key) else {
-            return;
-        };
-        if self.recorded.contains(&tag)
-            || self
-                .slots
-                .iter()
-                .any(|slot| slot.tag == tag && (slot.group || !slot.values.is_empty()))
+        // Stated by tag or by name, the message's own answer stands: a fill
+        // never overrides a value, and never lands beside a same-named
+        // child the line built.
+        if self.recorded.contains(&fill.tag)
+            || self.slots.iter().any(|slot| {
+                (slot.tag == fill.tag && (slot.group || !slot.values.is_empty()))
+                    || slot.field.name() == fill.field.name()
+            })
         {
             return;
         }
-        let field = stated(known);
-        let Ok(typed) = field.scalar(value.clone()) else {
+        let Ok(typed) = fill.field.scalar(fill.value.clone()) else {
             return;
         };
         if typed.is_null() {
             return;
         }
-        self.slot_for(field, tag, true).values.push(typed);
+        self.slot_for(fill.field.clone(), fill.tag, true)
+            .values
+            .push(typed);
     }
 
     /// The registry field one key names, and the tag it carries.
@@ -376,14 +387,6 @@ impl<'registry> Builder<'registry> {
                     (!self.branch.is_standard())
                         .then(|| self.by_path(key, &super::FixBranch::STANDARD))
                         .flatten()
-                })
-                // The crate's own fields last: a bridge spelling `SESSIONID`
-                // in its row means the session the crate's own column holds,
-                // and a name every registry carries is never an unknown key.
-                .or_else(|| {
-                    FixBranch::from_str(super::CRATE_BRANCH)
-                        .ok()
-                        .and_then(|held| self.registry.get_field_by_name(key, Some(&held)))
                 })
                 .filter(|field| !super::registry::is_nested(field))
         }?;
@@ -436,6 +439,12 @@ impl<'registry> Builder<'registry> {
     /// stays in the entries, the refusal is readable, and the message still
     /// answers `Ok`. A parse error is for input that is not a message at all.
     fn typed(&self, field: &Field, raw: &[u8], text: &str) -> Scalar {
+        // What the row types is the text with its unknown characters gone:
+        // a byte no encoding explained became U+FFFD in the decode, and a
+        // control byte a bridge left in a value is not part of it. The entry
+        // keeps the decode as it was, which is what the anomaly reads.
+        let cleaned = cleaned(text);
+        let text = cleaned.as_ref();
         let view = field.as_fix();
         // A spelling this field states as its own absence types as null while
         // the entry keeps the text: which spelling means "nothing was sent" is
@@ -801,7 +810,10 @@ impl<'registry> Builder<'registry> {
             entries,
             ..
         } = self;
-        if !slots.iter().any(|slot| slot.tag == 8) {
+        if !slots
+            .iter()
+            .any(|slot| slot.tag == 8 || slot.field.name() == "beginstring")
+        {
             let field = registry.get_field_by_tag(8).map_or_else(
                 || {
                     let mut field = DataType::Utf8.required_field("beginstring");
@@ -830,7 +842,7 @@ impl<'registry> Builder<'registry> {
         let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
         let mut trailing: Vec<(usize, Slot)> = Vec::new();
         for slot in slots {
-            if slot.tag == super::TIMESTAMP_TAG {
+            if slot.tag == super::TIMESTAMP_TAG || slot.field.name() == super::TIMESTAMP_NAME {
                 // Restamped below, in the one place the clock is decided.
                 continue;
             }
@@ -893,54 +905,36 @@ pub(super) struct Built {
 /// own second, so a row header's ISO instant and a wire's `20240102-10:15:30`
 /// both stamp.
 fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
-    let field = super::fix_crate_fields()
-        .ok()
-        .and_then(|fields| {
-            fields
-                .iter()
-                .find(|field| field.as_fix().tag().ok().flatten() == Some(super::TIMESTAMP_TAG))
-        })
-        .map_or_else(
-            || {
-                let mut field = super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
-                let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG);
-                field
-            },
-            stated,
-        );
-    let stated_clock = clock.filter(|held| !held.is_null()).and_then(|held| {
-        let read = super::schema::as_instant(held.clone());
-        let read = if read.is_null() {
-            field.scalar(held.clone()).unwrap_or(Scalar::Null)
-        } else {
-            read
-        };
-        (!read.is_null()).then_some(read)
-    });
+    let field = super::crated::timestamp_field()
+        .cloned()
+        .unwrap_or_else(|| {
+            let mut field = super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
+            let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG);
+            field
+        });
+    let stated_clock = clock.and_then(|held| utc_instant(&field, held));
     let carried = || {
         slots
             .iter()
-            .find(|slot| slot.tag == super::TIMESTAMP_TAG)
+            .find(|slot| {
+                slot.tag == super::TIMESTAMP_TAG || slot.field.name() == super::TIMESTAMP_NAME
+            })
             .and_then(|slot| slot.values.first())
-            .filter(|held| !held.is_null())
-            .cloned()
+            .and_then(|held| utc_instant(&field, held))
     };
     let wire = || {
-        super::schema::wire_clock(|tag| {
+        let read = super::schema::wire_clock(|tag| {
             slots
                 .iter()
                 .find(|slot| slot.tag == tag)
                 .and_then(|slot| slot.values.first().cloned())
-        })
+        });
+        utc_instant(&field, &read)
     };
-    let value = stated_clock.or_else(carried).unwrap_or_else(wire);
-    let value = if value.is_null() {
-        super::schema::epoch()
-    } else {
-        field
-            .scalar(value)
-            .unwrap_or_else(|_| super::schema::epoch())
-    };
+    let value = stated_clock
+        .or_else(carried)
+        .or_else(wire)
+        .unwrap_or_else(super::schema::epoch);
     Slot {
         field,
         tag: super::TIMESTAMP_TAG,
@@ -949,6 +943,71 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
         group: false,
         occurrences: Vec::new(),
     }
+}
+
+/// One clock as the UTC instant the crate's column holds, whatever it came as.
+///
+/// Text is read in FIX's own spelling first and in the column's own second.
+/// An instant with no zone, which is what a row header the text reader typed
+/// without one arrives as, is the wall clock read as UTC, restated through
+/// its count rather than refused for the zone it never had. Anything else
+/// that will not become an instant is nothing.
+fn utc_instant(field: &Field, held: &Scalar) -> Option<Scalar> {
+    if held.is_null() {
+        return None;
+    }
+    if let Some(text) = held.as_str() {
+        let read = super::schema::as_instant(held.clone());
+        if !read.is_null() {
+            return field.scalar(read).ok().filter(|held| !held.is_null());
+        }
+        if let Ok(read) = field.scalar(held.clone()) {
+            if !read.is_null() {
+                return Some(read);
+            }
+        }
+        let naive = DataType::DateTime64 {
+            unit: crate::TimeUnit::Nanosecond,
+            timezone: crate::Timezone::NAIVE,
+        }
+        .scalar(Scalar::from(text))
+        .ok()?;
+        return restated(field, &naive);
+    }
+    if let Ok(read) = field.scalar(held.clone()) {
+        if !read.is_null() {
+            return Some(read);
+        }
+    }
+    restated(field, held)
+}
+
+/// An instant restated in the column's own unit and zone through its count.
+fn restated(field: &Field, held: &Scalar) -> Option<Scalar> {
+    let count = held.temporal_count_at(crate::TimeUnit::Nanosecond)?;
+    field
+        .scalar(Scalar::from(count))
+        .ok()
+        .filter(|held| !held.is_null())
+}
+
+/// The text a value is typed from, with its unknown characters gone.
+///
+/// A lossy decode marks a byte no encoding explained with U+FFFD, and a
+/// bridge sometimes leaves a control byte inside a value; neither is part of
+/// what the value says. The common case - clean text - borrows.
+fn cleaned(text: &str) -> std::borrow::Cow<'_, str> {
+    if text
+        .chars()
+        .all(|held| held != '\u{FFFD}' && (!held.is_control() || held == '\t'))
+    {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    std::borrow::Cow::Owned(
+        text.chars()
+            .filter(|held| *held != '\u{FFFD}' && (!held.is_control() || *held == '\t'))
+            .collect(),
+    )
 }
 
 /// Where one tag sits in a component's declared order, if it is in it.

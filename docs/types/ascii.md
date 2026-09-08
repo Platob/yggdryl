@@ -56,12 +56,13 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             // Six bytes: `cfi` stores what it is, not the eight some other
             // width would pad it to.
             ("cfi", DataType::Cfi, 6),
-            // Three FIX-facing codes, each at the width it needs rather than
-            // one width for all: a venue's message type is what runs long.
+            // The FIX-facing codes, each at the width it needs rather than
+            // one width for all: a venue's message type is what runs long,
+            // and a state carries two digits of rank before its name.
             ("side", DataType::Side, 4),
             ("msgtype", DataType::MsgType, 8),
             ("msgdirection", DataType::MsgDirection, 4),
-            ("state", DataType::State, 8),
+            ("state", DataType::State, 10),
             ("timeinforce", DataType::TimeInForce, 8),
         ]
     );
@@ -510,55 +511,67 @@ report is - and a scheduler names a job's state in ordinary English. They are
 the same shape, so a capture and the pipeline reading it need one vocabulary
 rather than two and a join.
 
-A value is a **rank character then a name**, eight ASCII bytes. The rank is
-what makes the stored bytes sort from the first state to the terminal ones,
-and that matters because most things that sort a column are not this crate: a
-Parquet row group's bounds, an external sort, an `ORDER BY` in whatever reads
-the file. Sorting by name would put `CANCELD` before `NEW`.
+A value is **two decimal digits of rank then a name**, ten ASCII bytes. The
+rank is what makes the stored bytes sort from the first state to the terminal
+ones, and that matters because most things that sort a column are not this
+crate: a Parquet row group's bounds, an external sort, an `ORDER BY` in
+whatever reads the file. Sorting by name would put `CANCELED` before `NEW`.
+
+Ranks run `00`-`99`. Every shipped state sits on a round rank, and the digits
+between two of them - `01`-`09`, `11`-`19`, and so on - are the placeholders a
+state that belongs between two ranks takes, so adding one moves nothing
+already stored. `State::rank` answers the two digits as the number they spell.
 
 | rank | meaning | members |
 | --- | --- | --- |
-| `0` | stated, but not a state anything reached | `0UNKNOWN` |
-| `1` | asked for, not yet acknowledged | `1PENDING`, `1PENDNEW`, `1QUEUED` |
-| `2` | acknowledged, not yet working | `2ACCEPTD`, `2NEW`, `2STARTNG`, `2SUBMITD` |
-| `3` | working | `3RUNNING`, `3STATUS`, `3TRIGGER` |
-| `4` | working, and something has happened | `4INPROGR`, `4PARTFIL`, `4TRADE`, `4TRDCORR`, `4TRDCXL`, `4TRDHOLD` |
-| `5` | halted, and able to resume | `5PAUSED`, `5STOPPED`, `5SUSPEND` |
-| `6` | a change is outstanding | `6PENDCXL`, `6PENDRPL` |
-| `7` | changed, and the new thing carries on | `7REPLACD` |
-| `8` | ended, having done what was asked | `8CALCULD`, `8COMPLET`, `8DONEDAY`, `8FILLED`, `8SUCCESS`, `8TRDRELS` |
-| `9` | ended, because someone stopped it | `9CANCELD` |
-| `A` | ended, because it could not be done | `AEXPIRED`, `AFAILED`, `AREJECTD`, `ATIMEOUT` |
+| `00` | stated, but not a state anything reached | `00UNKNOWN` |
+| `10` | asked for, not yet acknowledged | `10PENDING`, `10PENDNEW`, `10QUEUED` |
+| `20` | acknowledged, not yet working | `20ACCEPTED`, `20NEW`, `20STARTING`, `20SUBMITTD` |
+| `30` | working | `30RUNNING`, `30STATUS`, `30TRIGGER` |
+| `40` | working, and something has happened | `40INPROGR`, `40PARTFILL`, `40TRADE`, `40TRDCORR`, `40TRDCXL`, `40TRDHOLD` |
+| `50` | halted, and able to resume | `50PAUSED`, `50STOPPED`, `50SUSPEND` |
+| `60` | a change is outstanding | `60PENDCXL`, `60PENDRPL` |
+| `70` | changed, and the new thing carries on | `70REPLACED` |
+| `80` | ended, having done what was asked | `80CALCULAT`, `80COMPLETE`, `80DONEDAY`, `80FILLED`, `80SUCCESS`, `80TRDRELS` |
+| `90` | ended, because someone stopped it | `90CANCELED` |
+| `95` | ended, because it could not be done | `95EXPIRED`, `95FAILED`, `95REJECTED`, `95TIMEOUT` |
 
 The three endings are ranked apart deliberately: "did it finish" and "did it
 work" are different questions, and one terminal rank would answer neither
-without reading the name.
+without reading the name. Each ending owns a band - `80`-`89` done, `90`-`94`
+cancelled, `95`-`99` failed - and `State::is_live` (below `80`), `is_done`,
+`is_cancelled` and `is_failed` read the band, so a placeholder inside one
+answers as its ending does.
 
 === "Rust"
 
     ```rust
     use yggdryl::types::State;
 
-    // Three vocabularies reach one value: the wire code an ExecutionReport
-    // carries, the specification's name for it, and a scheduler's word.
-    assert_eq!(State::from_spelling("1").unwrap().as_str(), "4PARTFIL");
-    assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "4PARTFIL");
-    assert_eq!(State::from_spelling("running").unwrap().as_str(), "3RUNNING");
+    // Four vocabularies reach one value: the wire code an ExecutionReport
+    // carries, the specification's name for it, a scheduler's word, and the
+    // short name a FIX bridge logs.
+    assert_eq!(State::from_spelling("1").unwrap().as_str(), "40PARTFILL");
+    assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "40PARTFILL");
+    assert_eq!(State::from_spelling("running").unwrap().as_str(), "30RUNNING");
+    assert_eq!(State::from_spelling("PartFill").unwrap().as_str(), "40PARTFILL");
 
     // The stored bytes sort by lifecycle, which is the whole reason the rank
     // leads - nothing but ASCII order is needed to read it back.
-    let mut held = ["8FILLED", "2NEW", "AREJECTD", "4PARTFIL"];
+    let mut held = ["80FILLED", "20NEW", "95REJECTED", "40PARTFILL"];
     held.sort_unstable();
-    assert_eq!(held, ["2NEW", "4PARTFIL", "8FILLED", "AREJECTD"]);
+    assert_eq!(held, ["20NEW", "40PARTFILL", "80FILLED", "95REJECTED"]);
 
-    // And the three endings are told apart without reading a name.
+    // The rank is a number, and the three endings are told apart by band
+    // without reading a name.
+    assert_eq!(State::from_spelling("Filled").unwrap().rank(), Some(80));
     assert!(State::from_spelling("New").unwrap().is_live());
     assert!(State::from_spelling("Filled").unwrap().is_done());
     assert!(State::from_spelling("Rejected").unwrap().is_failed());
     ```
 
-`timeinforce` is the same eight bytes over FIX's `TimeInForce(59)` code set,
-stored as the wire value rather than a name for it, exactly as `side` is.
+`timeinforce` is eight bytes over FIX's `TimeInForce(59)` code set, stored as
+the wire value rather than a name for it, exactly as `side` is.
 
 ## Edges
 
@@ -578,8 +591,10 @@ stored as the wire value rather than a name for it, exactly as `side` is.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; declare `utf8` to read text.
 - `MsgType::coerce` on a spelling past eight bytes -> a `~`-marked synthesized value; `DataType::MsgType.scalar` on the same spelling -> refused, because a stored value is held to the width and only the coercion decides what a wide reading becomes.
-- A wire code never folds: `A` is `PendingNew` and `a` names no state, because
+- A wire code never folds: `A` is `PendingNew` and `a` names no state, because they are different FIX codes and a folded lookup would answer the wrong state for one of them.
+- A name folds: `DoneForDay`, `done_for_day`, `DONE FOR DAY` and a bridge's `DoneDay` are one spelling, `80DONEDAY`.
 - A stored value names itself, so resolving one twice is resolving it once.
+- `State::rank` on a value that does not open with two digits -> `None`, and every lifecycle predicate answers `false`.
 - A spelling nothing publishes answers nothing rather than a guess.
 
 ## Commands

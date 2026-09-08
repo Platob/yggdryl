@@ -17,8 +17,10 @@
 
 use crate::{Error, Result, Scalar, Version};
 
+use crate::Field;
+
 use super::FixBranch;
-use super::build::RowExtras;
+use super::build::{Fill, RowExtras};
 use super::codec::FixCodec;
 use super::msg::FixMsg;
 
@@ -37,6 +39,32 @@ pub(super) const SEPARATOR_COLUMN: &str = "sep";
 pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_NAME;
 /// The column a row states its direction in, read by the batch reader.
 pub(super) const DIRECTION_COLUMN: &str = "direction";
+/// The column naming the plugin session that logged the row's line.
+pub(super) const PLUGIN_COLUMN: &str = "plugin";
+
+/// The plugin session a logged line moved between, from the plugin that
+/// logged it and the direction it moved: the sender's for a line it sent,
+/// the target's for one it received.
+///
+/// The field and tag the fill lands on, resolved against `registry`; a row
+/// stating neither the plugin nor a direction states no plugin session.
+pub(super) fn plugin_session(
+    registry: &super::FixRegistry,
+    direction: Option<&str>,
+) -> Option<(Field, i32)> {
+    let tag = match direction? {
+        held if held.eq_ignore_ascii_case(crate::types::MsgDirection::SENT) => {
+            super::SENDERPLUGINSESSION_TAG
+        }
+        held if held.eq_ignore_ascii_case(crate::types::MsgDirection::RECV) => {
+            super::TARGETPLUGINSESSION_TAG
+        }
+        _ => return None,
+    };
+    let mut field = registry.get_field_by_tag(tag)?.clone();
+    field.set_nullable(false);
+    Some((field, tag))
+}
 
 /// Whether a column is one the readers take as a parameter or the payload,
 /// rather than one that could fill a field by its name.
@@ -48,6 +76,7 @@ pub(super) fn is_parameter(name: &str, payload: &str) -> bool {
         SEPARATOR_COLUMN,
         CLOCK_COLUMN,
         DIRECTION_COLUMN,
+        PLUGIN_COLUMN,
     ]
     .iter()
     .any(|held| crate::types::folds_equal(held, name))
@@ -69,8 +98,8 @@ pub(super) struct RowParameters<'row> {
     pub(super) separator: Option<&'row str>,
     /// The row's own clock, which stamps the message.
     pub(super) clock: Option<&'row Scalar>,
-    /// The row's other columns, filling the fields their names reach.
-    pub(super) fills: &'row [(&'row str, &'row Scalar)],
+    /// The row's other columns, resolved to the fields they fill.
+    pub(super) fills: &'row [Fill<'row>],
 }
 
 impl<'row> RowParameters<'row> {
@@ -122,10 +151,42 @@ pub(super) fn transform_record_with(
         .unwrap_or_default();
     // Every other column the record carries is offered as a fill: one named
     // after a field the dictionary knows lands on it, the rest are silence.
-    let fills: Vec<(&str, &Scalar)> = held
+    // The plugin that logged the line fills the plugin session the line's
+    // direction says it moved between.
+    let branch = column(BRANCH_COLUMN)
+        .and_then(Scalar::as_str)
+        .and_then(|name| FixBranch::from_str(name).ok())
+        .or_else(|| reader.branch().cloned())
+        .unwrap_or_default();
+    let mut resolved: Vec<(Field, i32, &Scalar)> = held
         .iter()
         .filter(|(name, value)| !is_parameter(name, payload) && !value.is_null())
-        .map(|(name, value)| (name.as_str(), value))
+        .filter_map(|(name, value)| {
+            let (field, tag) = super::build::fill_field(reader.registry(), &branch, name)?;
+            let mut field = field.clone();
+            field.set_nullable(false);
+            Some((field, tag, value))
+        })
+        .collect();
+    if let Some(plugin) = column(PLUGIN_COLUMN) {
+        // The direction the record states, else the one its line spells,
+        // else sent: the reading the batch reader makes of an unmarked line,
+        // so one record and one batch row fill the same plugin session.
+        let direction = column(DIRECTION_COLUMN)
+            .and_then(Scalar::as_str)
+            .or_else(|| crate::types::MsgDirection::infer_bytes(bytes))
+            .or(Some(crate::types::MsgDirection::SENT));
+        if let Some((field, tag)) = plugin_session(reader.registry(), direction) {
+            resolved.push((field, tag, plugin));
+        }
+    }
+    let fills: Vec<Fill<'_>> = resolved
+        .iter()
+        .map(|(field, tag, value)| Fill {
+            field,
+            tag: *tag,
+            value,
+        })
         .collect();
     let parameters = RowParameters {
         branch: column(BRANCH_COLUMN).and_then(Scalar::as_str),

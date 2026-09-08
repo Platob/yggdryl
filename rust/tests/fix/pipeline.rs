@@ -201,11 +201,12 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // which line it was, what it was, the line itself and the header's
     // captures - and the fixed columns follow. A capture whose folded name a
     // fixed column takes is not carried in front, it fills that column: the
-    // reader's `msgtype`, and the header's `timestamp`, `sessionId` and
-    // `msgCtxId`. `seqNum` is carried, since no fixed column is spelled so,
-    // and fills `msgseqnum` besides.
+    // reader's `msgtype`, and the header's `timestamp` and `msgCtxId`.
+    // `sessionUid`, `seqNum` and `plugin` are carried, since no fixed column
+    // is spelled so; `seqNum` fills `msgseqnum` besides and `plugin` the
+    // plugin session the line's direction names.
     assert_eq!(
-        &names[..9],
+        &names[..10],
         [
             "url",
             "rownum",
@@ -213,6 +214,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "mimetype",
             "body",
             "threadId",
+            "sessionUid",
             "seqNum",
             "plugin",
             "level"
@@ -220,7 +222,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "{names:?}"
     );
     assert_eq!(
-        &names[9..12],
+        &names[10..13],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
@@ -312,15 +314,36 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(seq[ROUTED_ROW].as_i64(), Some(4_507));
     assert!(seq[HEARTBEAT_ROW].is_null(), "no session, no sequence");
 
-    // The bracket's session and context are captures named after the crate's
-    // own fields, so they land in those columns rather than in front: the
-    // routed row's bracket stated them, the heartbeat's did not.
+    // The bracket's context is a capture named after the crate's own field,
+    // so it lands in that column rather than in front: the routed row's
+    // bracket stated it, the heartbeat's did not. The bracket's session uid
+    // is the bridge's, carried in front, and `sessionid` stays the message's
+    // own - which no line here spells.
+    let uid = text_column(&read, "sessionUid");
     let session = tag_text(&read, yggdryl::SESSIONID_TAG);
     let context = tag_text(&read, yggdryl::MSGCTXID_TAG);
-    assert_eq!(session[ROUTED_ROW].as_deref(), Some("e7254b22"));
+    assert_eq!(uid[ROUTED_ROW].as_deref(), Some("e7254b22"));
     assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
-    assert_eq!(session[HEARTBEAT_ROW], None);
+    assert_eq!(uid[HEARTBEAT_ROW], None);
     assert_eq!(context[HEARTBEAT_ROW], None);
+    assert!(session.iter().all(Option::is_none), "{session:?}");
+
+    // The plugin that logged a line is the plugin session it moved from or
+    // to, by the direction the line took: the heartbeat was sent, the fill
+    // received, and the routed row - no verb - takes the default, sent.
+    let sender = tag_text(&read, yggdryl::SENDERPLUGINSESSION_TAG);
+    let target = tag_text(&read, yggdryl::TARGETPLUGINSESSION_TAG);
+    assert_eq!(
+        sender[HEARTBEAT_ROW].as_deref(),
+        Some("OMS_X1_TradeCapture")
+    );
+    assert_eq!(target[HEARTBEAT_ROW], None);
+    assert_eq!(target[FILL_ROW].as_deref(), Some("Spot_FX_TradeCapture"));
+    assert_eq!(sender[FILL_ROW], None);
+    assert_eq!(
+        sender[ROUTED_ROW].as_deref(),
+        Some("Broker_DarkPool_TradeCapture")
+    );
 
     // The bracket's sequence number fills `MsgSeqNum` where the line stated
     // none - the routed row is keyed by name and carries no 34 - and never
@@ -663,8 +686,8 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     assert_eq!(recorded.len(), alone.entries().len());
     for filled in [
         34,
-        yggdryl::SESSIONID_TAG,
         yggdryl::MSGCTXID_TAG,
+        yggdryl::SENDERPLUGINSESSION_TAG,
         yggdryl::TIMESTAMP_TAG,
     ] {
         assert!(

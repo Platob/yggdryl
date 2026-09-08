@@ -298,7 +298,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
 fn every_row_is_dated_versioned_and_named_by_its_bracket() {
     let (text_names, text) = text_rows();
     let batch = batches(None);
-    let (_, rows) = rows_of(&batch);
+    let (names, rows) = rows_of(&batch);
     let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
     let column =
         |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
@@ -324,36 +324,89 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             !held[column(yggdryl::MSGHASH_TAG)].is_null(),
             "row {row} digests"
         );
-        // The bracket names the session and the context - unless the row
-        // itself spells `SESSIONID`, which a bridge row does for its own
-        // session name, and a stated value is never overridden.
-        let session = &text[row][at(&text_names, "sessionId")];
-        if body(&text_names, &text[row]).contains("|SESSIONID=") {
-            assert!(
-                held[column(yggdryl::SESSIONID_TAG)].as_str().is_some(),
-                "row {row} states its session"
-            );
-        } else {
-            assert_eq!(
-                &held[column(yggdryl::SESSIONID_TAG)],
-                session,
-                "row {row} session"
-            );
-        }
+        // The bracket names the context, which fills `msgctxid`; its session
+        // uid is the bridge's own and is carried in front, so `sessionid`
+        // holds only what the message itself spelled - a bridge row's
+        // `SESSIONID`, and nothing on any other line.
         let context = &text[row][at(&text_names, "msgCtxId")];
         assert_eq!(
             &held[column(yggdryl::MSGCTXID_TAG)],
             context,
             "row {row} context"
         );
+        let uid = &text[row][at(&text_names, "sessionUid")];
+        assert_eq!(&held[at(&names, "sessionUid")], uid, "row {row} uid");
+        let line = body(&text_names, &text[row]);
+        assert_eq!(
+            held[column(yggdryl::SESSIONID_TAG)].as_str().is_some(),
+            line.contains("|SESSIONID="),
+            "row {row} session is the message's own"
+        );
+        // The plugin that logged the line is the plugin session it moved
+        // from or to, by the direction it moved - unless the row spelled the
+        // session itself, which a bridge row does as `ULFROMSESSIONNAME`.
+        let plugin = &text[row][at(&text_names, "plugin")];
+        let direction = held[column(yggdryl::MSGDIRECTION_TAG)]
+            .as_str()
+            .map(str::to_owned);
+        let (sender, target) = (
+            &held[column(yggdryl::SENDERPLUGINSESSION_TAG)],
+            &held[column(yggdryl::TARGETPLUGINSESSION_TAG)],
+        );
+        match direction.as_deref() {
+            Some("SENT") if !line.contains("|ULFROMSESSIONNAME=") => {
+                assert_eq!(sender, plugin, "row {row} sent by its plugin");
+                assert!(
+                    target.is_null() || line.contains("|ULTOSESSIONNAME="),
+                    "row {row} target"
+                );
+            }
+            Some("RECV") if !line.contains("|ULTOSESSIONNAME=") => {
+                assert_eq!(target, plugin, "row {row} received by its plugin");
+                assert!(
+                    sender.is_null() || line.contains("|ULFROMSESSIONNAME="),
+                    "row {row} sender"
+                );
+            }
+            _ => {}
+        }
     }
-    // A thread bracket with no session leaves both null - the Jolokia lines.
+    // A thread bracket with no session leaves the bracket's columns null -
+    // the Jolokia lines - and the bridge's own session name, where a row
+    // spells one, is the plugin session rather than the logging plugin.
     let jolokia = text
         .iter()
         .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
         .expect("the Jolokia read");
+    assert!(rows[jolokia][at(&names, "sessionUid")].is_null());
     assert!(rows[jolokia][column(yggdryl::SESSIONID_TAG)].is_null());
     assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG)].is_null());
+    let stating = |key: &str| {
+        text.iter()
+            .position(|held| body(&text_names, held).contains(&format!("|{key}")))
+            .unwrap_or_else(|| panic!("a bridge row spelling {key}"))
+    };
+    let spelled = |row: usize, key: &str| {
+        body(&text_names, &text[row])
+            .split('|')
+            .find_map(|pair| pair.strip_prefix(key))
+            .map(str::to_owned)
+            .expect(key)
+    };
+    let bridged = stating("ULFROMSESSIONNAME=");
+    assert_eq!(
+        rows[bridged][column(yggdryl::SENDERPLUGINSESSION_TAG)].as_str(),
+        Some(spelled(bridged, "ULFROMSESSIONNAME=").as_str())
+    );
+    assert_eq!(
+        rows[bridged][column(yggdryl::TARGETPLUGINSESSION_TAG)].as_str(),
+        Some(spelled(bridged, "ULTOSESSIONNAME=").as_str())
+    );
+    let sessioned = stating("SESSIONID=");
+    assert_eq!(
+        rows[sessioned][column(yggdryl::SESSIONID_TAG)].as_str(),
+        Some(spelled(sessioned, "SESSIONID=").as_str())
+    );
     // And the sequence number the bracket states fills a row that carries
     // no frame, while a frame keeps its own.
     let routed = text
@@ -468,8 +521,9 @@ fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dro
     let (text_names, text) = text_rows();
     // The same enrichment result, printed twice by the bridge: once with the
     // viewer's bullets for the two control bytes and the party's
-    // sub-identifiers flattened to the row, once with `<x>` and the
-    // sub-identifiers packed inside the party they belong to.
+    // sub-identifiers flattened to the row, once with the bridge's own
+    // control bytes and the sub-identifiers packed inside the party they
+    // belong to.
     let rows: Vec<usize> = text
         .iter()
         .enumerate()
@@ -642,9 +696,8 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     assert_eq!(rows[out][column(32)].as_f64(), Some(21.0));
     let inbound = find("<FIXML><Order ClOrdID=\"OD9EOEDJ401\"");
     assert_eq!(rows[inbound][column(55)].as_str(), Some("HOLN"));
-    assert_eq!(
+    assert!(
         rows[inbound][column(35)].is_null(),
-        true,
         "an element is not a MsgType"
     );
 

@@ -56,14 +56,13 @@ use super::{FixBranch, FixMsg, FixRegistry};
 /// ULLINK writes EOT then ETX. A bridge relaying into a FIX session writes the
 /// protocol's own SOH instead, which is unambiguous inside an occurrence
 /// because no FIX value may contain one.
-const MEMBER_SEPARATORS: [&[u8]; 5] = [
+const MEMBER_SEPARATORS: [&[u8]; 4] = [
     b"\x04\x03",
     b"\x01",
     // The glyphs a log viewer prints for the two control bytes, which is
     // what an exported log carries in their place.
     "\u{2022}\u{2022}".as_bytes(),
     "\u{25AF}\u{25AF}".as_bytes(),
-    b"<x>",
 ];
 
 /// FIX's own data fields, whose byte length rides in the pair before them.
@@ -76,17 +75,36 @@ const DATA_TAGS: [i32; 21] = [
     1404, 1469,
 ];
 
-/// Whether a key names one of FIX's own data fields.
-fn is_data_tag(key: &[u8]) -> bool {
-    std::str::from_utf8(key)
+/// The tag one of FIX's own data fields carries, when the key names one.
+///
+/// A data tag is at most four digits, so the parse is skipped for every
+/// other key before it is attempted.
+fn data_tag(key: &[u8]) -> Option<i32> {
+    if key.is_empty() || key.len() > 4 || !key[0].is_ascii_digit() {
+        return None;
+    }
+    let tag = std::str::from_utf8(key)
         .ok()
-        .and_then(super::field::parse_tag)
-        .is_some_and(|tag| DATA_TAGS.binary_search(&tag).is_ok())
+        .and_then(super::field::parse_tag)?;
+    DATA_TAGS.binary_search(&tag).ok().map(|_| tag)
 }
 
-/// Whether a data value is a bridge row rather than a document or bytes.
+/// FIX's `XmlData(213)`, the one data field a bridge writes a row into.
+const XML_DATA_TAG: i32 = 213;
+
+/// Whether an `XmlData` value is a bridge row rather than a document: it
+/// opens with a bridge key - a run of key bytes, `#`-marked or not, closing
+/// at an `=` - and not with a tag or a brace.
 fn bridge_row(value: &[u8]) -> bool {
-    !matches!(value.first(), None | Some(b'<' | b'{')) && memchr::memchr(b'=', value).is_some()
+    let key = value.strip_prefix(b"#").unwrap_or(value);
+    let Some(equals) = memchr::memchr(b'=', key) else {
+        return false;
+    };
+    equals > 0
+        && key[..equals]
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'[' | b']'))
+        && key[0].is_ascii_alphabetic()
 }
 
 /// Where a data field's value ends, when it is read by length rather than
@@ -95,14 +113,16 @@ fn bridge_row(value: &[u8]) -> bool {
 /// The length the pair before it stated is honoured when the byte after the
 /// span is the separator and a numeric tag follows, which is what a frame
 /// looks like after a data field and what a row inside one never does. A
-/// stated length that does not fit - a log that printed each control byte
-/// as a glyph carries more bytes than the bridge counted - reads the value to
-/// the trailer instead, because a data field is the last thing a body says.
+/// stated length that does not fit reads the value to the trailer instead -
+/// for `XmlData` only, because a bridge writes it last and a log that printed
+/// each control byte as a glyph carries more bytes than the bridge counted;
+/// any other data field keeps its split segment, as it always did.
 fn data_span(
     previous: Option<&(&[u8], &[u8])>,
     body: &[u8],
     value_start: usize,
     separator: u8,
+    xml: bool,
 ) -> Option<(usize, usize)> {
     let stated = previous
         .and_then(|(_, value)| std::str::from_utf8(value).ok())
@@ -118,6 +138,9 @@ fn data_span(
                 return Some((span, span + 1));
             }
         }
+    }
+    if !xml {
+        return None;
     }
     let trailer = [separator, b'1', b'0', b'='];
     let found = memchr::memmem::rfind(&body[value_start..], &trailer)? + value_start;
@@ -240,9 +263,12 @@ impl FixCodec {
     ///
     /// Decided the way the builder decides it, so a batch reader that asks
     /// once per column and the builder that fills once per row agree.
-    pub(super) fn fills(&self, name: &str) -> bool {
+    pub(super) fn fill_target(&self, name: &str) -> Option<(Field, i32)> {
         let branch = self.branch.clone().unwrap_or_default();
-        super::build::fill_field(&self.registry, &branch, name).is_some()
+        let (field, tag) = super::build::fill_field(&self.registry, &branch, name)?;
+        let mut field = field.clone();
+        field.set_nullable(false);
+        Some((field, tag))
     }
 
     /// Whether one raw value is a stated absence rather than a value.
@@ -367,15 +393,18 @@ impl FixCodec {
             };
             let mut next = end + 1;
             let mut value = value;
-            if is_data_tag(key) {
+            if let Some(tag) = data_tag(key) {
                 // The value starts after the `=`, untrimmed: a data field's
                 // bytes are what they are, separators included.
                 let value_start = at + memchr::memchr(b'=', &body[at..end]).unwrap_or(0) + 1;
-                if let Some((span, after)) = data_span(pairs.last(), body, value_start, separator) {
+                let xml = tag == XML_DATA_TAG;
+                if let Some((span, after)) =
+                    data_span(pairs.last(), body, value_start, separator, xml)
+                {
                     value = &body[value_start..span];
                     next = after;
                 }
-                if bridge_row(value) {
+                if xml && bridge_row(value) {
                     nested.push(value);
                 }
             }
@@ -856,8 +885,8 @@ impl FixCodec {
             }
             builder.end_nested();
         }
-        for (key, value) in extras.fills {
-            builder.fill(key, value);
+        for fill in extras.fills {
+            builder.fill(fill);
         }
         let built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
         let built = FixMsg::from_built(Arc::clone(&self.registry), built)?;

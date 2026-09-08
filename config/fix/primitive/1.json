@@ -576,14 +576,14 @@
   {
     "name": "exectype",
     "dtype": {
-      "type": "utf8"
+      "type": "state"
     },
     "nullable": true,
     "metadata": {
       "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
       "display": "ExecType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.1\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"3\",\"name\":\"DoneForDay\",\"since\":\"4.1\",\"sort\":2,\"doc\":\"Done for day\"},{\"value\":\"4\",\"name\":\"Canceled\",\"since\":\"4.1\",\"sort\":3,\"doc\":\"Canceled\"},{\"value\":\"5\",\"name\":\"Replaced\",\"since\":\"4.1\",\"sort\":4,\"doc\":\"Replaced\"},{\"value\":\"6\",\"name\":\"PendingCancel\",\"since\":\"4.1\",\"sort\":5,\"doc\":\"Pending Cancel (e.g. result of Order Cancel Request)\"},{\"value\":\"7\",\"name\":\"Stopped\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"Stopped\"},{\"value\":\"8\",\"name\":\"Rejected\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"Rejected\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"4.1\",\"sort\":8,\"doc\":\"Suspended\"},{\"value\":\"A\",\"name\":\"PendingNew\",\"since\":\"4.1\",\"sort\":9,\"doc\":\"Pending New\"},{\"value\":\"B\",\"name\":\"Calculated\",\"since\":\"4.1\",\"sort\":10,\"doc\":\"Calculated\"},{\"value\":\"C\",\"name\":\"Expired\",\"since\":\"4.1\",\"sort\":11,\"doc\":\"Expired\"},{\"value\":\"D\",\"name\":\"Restated\",\"since\":\"4.2\",\"sort\":12,\"doc\":\"Restated (Execution Report sent unsolicited by sellside, with ExecRestatementReason (378) set)\"},{\"value\":\"E\",\"name\":\"PendingReplace\",\"since\":\"4.2\",\"sort\":13,\"doc\":\"Pending Replace (e.g. result of Order Cancel/Replace Request)\"},{\"value\":\"F\",\"name\":\"Trade\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Trade (partial fill or fill)\"},{\"value\":\"G\",\"name\":\"TradeCorrect\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Trade Correct\"},{\"value\":\"H\",\"name\":\"TradeCancel\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"Trade Cancel\"},{\"value\":\"I\",\"name\":\"OrderStatus\",\"since\":\"4.3\",\"sort\":17,\"doc\":\"Order Status\"},{\"value\":\"J\",\"name\":\"TradeInAClearingHold\",\"since\":\"4.4\",\"ep\":5,\"sort\":18,\"doc\":\"Trade in a Clearing Hold\"},{\"value\":\"K\",\"name\":\"TradeHasBeenReleasedToClearing\",\"since\":\"4.4\",\"ep\":5,\"sort\":19,\"doc\":\"Trade has been released to Clearing\"},{\"value\":\"L\",\"name\":\"TriggeredOrActivatedBySystem\",\"since\":\"4.4\",\"ep\":22,\"sort\":20,\"doc\":\"Triggered or Activated by System\"},{\"value\":\"M\",\"name\":\"Locked\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":21,\"doc\":\"Locked\"},{\"value\":\"N\",\"name\":\"Released\",\"since\":\"5.0SP2\",\"ep\":131,\"sort\":22,\"doc\":\"Released\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"exectype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"exectype\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0SP2\",\"name\":\"exectype\",\"type\":{\"type\":\"state\"}}]}",
       "fix:tag": "150"
     }
   },

@@ -1203,10 +1203,10 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
             Some(&["mstanley"]),
         )
         .expect("a readable CBlock");
-    // Fifteen of the file's added, and the crate's own fields merged: the
-    // parsed dictionary holds them as every registry does, and each folds
-    // onto this one's identical copy.
-    assert_eq!((added, merged), (15, super::crated()));
+    // Fifteen of the file's added, and nothing merged: the parsed dictionary
+    // holds the crate's own fields as every registry does, and a fold never
+    // counts them.
+    assert_eq!((added, merged), (15, 0));
     assert_eq!(dictionary.len(), 15 + super::crated());
 
     // The dialect the root element declared, which reading the fields alone
@@ -1236,8 +1236,8 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
         .expect("the same dialect, read again");
     assert_eq!(
         (added, merged),
-        (0, 1 + super::crated()),
-        "SELLSIDE declares only tag 35, and the crate's own fields fold again"
+        (0, 1),
+        "SELLSIDE declares only tag 35; the crate's own fields are never folded"
     );
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);

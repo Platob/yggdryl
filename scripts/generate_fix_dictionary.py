@@ -147,11 +147,9 @@ LOGICAL_NAMES = {
 # code set stays the field's vocabulary, and the datatype is how a value of it
 # is stored. Tag 385 is here because a direction is what every capture in this
 # crate carries on its own lines, so it is read far more often than it arrives.
-CODED_TAGS = {35: "msgtype", 54: "side", 385: "msgdirection"}
-
-# The crate's own branch, and the two fields it registers on it.
-CRATE_BRANCH = "yggdryl"
-
+# Tags 39 and 150 are the order's state: their two code sets agree on every
+# value they share, and the crate's own `state` type reads either.
+CODED_TAGS = {35: "msgtype", 39: "state", 54: "side", 150: "state", 385: "msgdirection"}
 
 def folded(name: str) -> str:
     """The crate's one fold: case folded, `_`, `-` and space dropped."""
@@ -771,6 +769,7 @@ def dtype_document(name: str) -> dict[str, Any]:
         "msgtype": {"type": "msgtype"},
         "side": {"type": "side"},
         "msgdirection": {"type": "msgdirection"},
+        "state": {"type": "state"},
     }
     document = documents.get(name)
     if document is None:

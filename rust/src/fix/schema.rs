@@ -162,18 +162,11 @@ const REQUIRED_TAGS: [i32; 4] = [
 /// Returns the schema grammar's refusal when the columns do not make a
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
-    let crate_fields = super::fix_crate_fields()?;
     let mut fields: Vec<Field> = Vec::with_capacity(fix_schema_tags().len() + 2);
     for tag in fix_schema_tags() {
-        // The crate's own columns are the crate's own definition, read by
-        // identity: a venue is free to claim the same tag on its branch, and
-        // a name lookup answering the venue would type `timestamp` as
-        // whatever it meant by 30004.
-        let held = crate_fields
-            .iter()
-            .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
-            .or_else(|| registry.get_field_by_tag(tag));
-        let Some(held) = held else {
+        // The standard branch answers first, and the crate's own fields are
+        // on it: every registry holds them, so every tag here resolves.
+        let Some(held) = registry.get_field_by_tag(tag) else {
             continue;
         };
         let mut held = held.clone();
@@ -622,7 +615,9 @@ impl super::FixMsg {
     /// from it, and the row reads it for the first and keeps it for the
     /// second.
     fn column_value(&self, tag: i32, clock: &mut Option<crate::Scalar>) -> crate::Scalar {
-        if let Some(held) = self.get_by_tag(tag) {
+        // A stated value wins - a stated null is a value that would not
+        // type, and the derivation still answers for it.
+        if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
             return held.clone();
         }
         if let Some(facet) = DERIVED_FACETS
@@ -633,19 +628,97 @@ impl super::FixMsg {
                 return held.clone();
             }
         }
+        // The columns every row fills, derived here for a message built from
+        // a schema and a value exactly as the builder stamps one it parsed.
         match tag {
+            8 => crate::Scalar::from(format!(
+                "FIX.{}",
+                self.registry()
+                    .newest()
+                    .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
+            )),
             super::MSGHASH_TAG => crate::Scalar::from(self.digest().to_be_bytes().to_vec()),
             super::VERSION_TAG => self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
             }),
             super::SYMBOLTICKER_TAG => self.symbol_ticker(),
-            super::TIMESTAMP_TAG => clock.get_or_insert_with(|| self.market_timestamp()).clone(),
+            super::TIMESTAMP_TAG => clock.get_or_insert_with(|| self.stamped_clock()).clone(),
             super::UNIXPARTITION_TAG => partition_of(
-                clock.get_or_insert_with(|| self.market_timestamp()),
+                clock.get_or_insert_with(|| self.stamped_clock()),
                 super::DEFAULT_PARTITION_SECONDS,
             ),
+            super::ISINCODE_TAG => self.isin_code(),
+            super::MICCODE_TAG => self.mic_code(),
+            super::STATE_TAG => self.state(),
             _ => crate::Scalar::Null,
         }
+    }
+
+    /// The clock the row is dated by, never null: the stamp, else the epoch.
+    fn stamped_clock(&self) -> crate::Scalar {
+        let held = self.market_timestamp();
+        if held.is_null() { epoch() } else { held }
+    }
+
+    /// The instrument's ISIN: `SecurityID(48)` under an ISIN source, else the
+    /// `SecurityAltID(455)` whose source says ISIN.
+    ///
+    /// The message's own `isincode` answered before this was asked, so this
+    /// reads the standard tags a venue states one in.
+    fn isin_code(&self) -> crate::Scalar {
+        if self.get_by_tag(22).and_then(crate::Scalar::as_str) == Some("4") {
+            if let Some(held) = self.get_by_tag(48).filter(|held| !held.is_null()) {
+                return held.clone();
+            }
+        }
+        self.group_member_where(454, 455, 456, "4")
+            .unwrap_or(crate::Scalar::Null)
+    }
+
+    /// The market the message names, as the MIC it states first: the
+    /// exchange the instrument is listed on, the destination it was routed to,
+    /// or the market it last traded on.
+    fn mic_code(&self) -> crate::Scalar {
+        [207, 100, 30]
+            .into_iter()
+            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
+            .unwrap_or(crate::Scalar::Null)
+    }
+
+    /// The order's state: `OrdStatus(39)`, else `ExecType(150)`, both typed
+    /// as the crate's one lifecycle vocabulary.
+    fn state(&self) -> crate::Scalar {
+        [39, 150]
+            .into_iter()
+            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
+            .unwrap_or(crate::Scalar::Null)
+    }
+
+    /// One member of the first occurrence of a group whose other member
+    /// states `wanted`: the `455` beside a `456` of `4`, say.
+    fn group_member_where(
+        &self,
+        group: i32,
+        member: i32,
+        by: i32,
+        wanted: &str,
+    ) -> Option<crate::Scalar> {
+        let at = self.index_of_tag(group)?;
+        let declared = item_fields(self.as_field().get_field_at(at)?)?;
+        let position = |tag: i32| {
+            declared
+                .iter()
+                .position(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+        };
+        let (member, by) = (position(member)?, position(by)?);
+        self.as_value()
+            .get(at)?
+            .as_sequence()?
+            .iter()
+            .filter_map(crate::Scalar::as_sequence)
+            .find(|occurrence| occurrence.get(by).and_then(crate::Scalar::as_str) == Some(wanted))
+            .and_then(|occurrence| occurrence.get(member).cloned())
+            .filter(|held| !held.is_null())
     }
 
     /// Whether this message's dictionary has a field at one tag.

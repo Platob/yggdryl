@@ -1,23 +1,24 @@
-//! The fields this crate invents, on a branch of its own.
+//! The fields this crate invents, on the standard branch above every published tag.
 //!
 //! A capture states things about a message that no dictionary publishes: what
 //! its bytes hash to, which way its line moved, which version it was read at,
-//! the two derived facts a store is organised by - one instrument symbol
-//! that is the same across venues, and one timestamp a partition is cut on -
-//! and the four facts a bridge's own log states about the line it wrote: the
-//! session and the message context it handled the message under, and the
-//! plugins the message came from and went to. Each belongs in a column, so
-//! each is an ordinary field: they lift, column, serialize and resolve like
-//! every other field with no special case anywhere.
+//! the derived facts a store is organised by - one instrument symbol that is
+//! the same across venues, its ISIN, the market it traded on, the state the
+//! order is in, and one timestamp a partition is cut on - and the facts a
+//! bridge's own log states about the line it wrote: the session and the
+//! message context it handled the message under, and the plugins and plugin
+//! sessions the message moved between. Each belongs in a column, so each is
+//! an ordinary field: they lift, column, serialize and resolve like every
+//! other field with no special case anywhere.
 //!
-//! # Why a branch
+//! # Why the standard branch, and why 65000
 //!
-//! Their tags are in FIX's user-defined range - high in it, from 30001 up,
-//! rather than down in the 5000s where venues actually crowd. That is not
-//! enough on its own: a venue is free to define its own 30001. They are
-//! therefore carried on this crate's own branch, so the
-//! [identifier](super::FixId) differs even where the tag does not - same
-//! tag, different branch, different identity.
+//! Their tags sit above every tag FIX publishes and above the user-defined
+//! ranges venues share, so they collide with nothing a dictionary declares
+//! and need no branch of their own: `timestamp` is one identity in every
+//! dictionary, a bridge row spelling `SESSIONID` lands on the crate's own
+//! column, and a name every registry carries is never an unknown key.
+//! [`is_crate_tag`] is the whole test.
 //!
 //! # And why one of them is not here
 //!
@@ -31,56 +32,75 @@
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
 //! else, so a dictionary loaded from a store, built from fields or left empty
 //! answers `timestamp` and `sessionid` alike - and a store never writes them,
-//! because they are the crate's rather than the store's. A stored copy of
-//! this branch is read past for the same reason: the crate's own definition
-//! is the one that types a row.
+//! because they are the crate's rather than the store's. A stored copy is
+//! read past for the same reason: the crate's own definition is the one that
+//! types a row. Folding another dictionary in never counts them either.
 //!
-//! One mechanism, eleven fields.
+//! One mechanism, sixteen fields.
 
 use std::sync::LazyLock;
 
 use crate::{DataType, DigestAlgorithm, Field, Result, TimeUnit, Timezone};
 
-use super::FixBranch;
-
-/// The branch this crate's own fields are defined on.
-pub const CRATE_BRANCH: &str = "yggdryl";
+/// The first tag this crate claims: everything from here up is the crate's.
+pub const CRATE_TAG_MIN: i32 = 65_000;
 
 /// The tag carrying a message's value digest.
-pub const MSGHASH_TAG: i32 = 30001;
+pub const MSGHASH_TAG: i32 = 65_000;
 
 /// The tag carrying the FIX version a message was read at.
-pub const VERSION_TAG: i32 = 30002;
+pub const VERSION_TAG: i32 = 65_001;
 
 /// The tag carrying one instrument symbol that is the same across venues.
-pub const SYMBOLTICKER_TAG: i32 = 30003;
+pub const SYMBOLTICKER_TAG: i32 = 65_002;
 
 /// The tag carrying the timestamp a capture is ordered by.
-pub const TIMESTAMP_TAG: i32 = 30004;
+pub const TIMESTAMP_TAG: i32 = 65_003;
 
 /// The tag carrying the partition that timestamp falls in.
-pub const UNIXPARTITION_TAG: i32 = 30005;
+pub const UNIXPARTITION_TAG: i32 = 65_004;
 
 /// The tag carrying the client order identifier this one descends from.
-pub const PARENTCLORDID_TAG: i32 = 30006;
+pub const PARENTCLORDID_TAG: i32 = 65_005;
 
 /// The tag carrying the venue order identifier this one descends from.
-pub const PARENTORDERID_TAG: i32 = 30007;
+pub const PARENTORDERID_TAG: i32 = 65_006;
 
-/// The tag carrying the session a bridge handled the message under.
-pub const SESSIONID_TAG: i32 = 30008;
+/// The tag carrying the session a message belongs to, as the message states it.
+pub const SESSIONID_TAG: i32 = 65_007;
 
 /// The tag carrying the message context a bridge handled the message in.
-pub const MSGCTXID_TAG: i32 = 30009;
+pub const MSGCTXID_TAG: i32 = 65_008;
 
 /// The tag carrying the plugin a message came from, as a bridge names it.
-pub const PLUGINID_TAG: i32 = 30010;
+pub const SENDERPLUGINID_TAG: i32 = 65_009;
 
 /// The tag carrying the plugin a message went to, as a bridge names it.
-pub const PREVPLUGINID_TAG: i32 = 30011;
+pub const TARGETPLUGINID_TAG: i32 = 65_010;
+
+/// The tag carrying the plugin session a message came from.
+pub const SENDERPLUGINSESSION_TAG: i32 = 65_011;
+
+/// The tag carrying the plugin session a message went to.
+pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
+
+/// The tag carrying the instrument's ISIN.
+pub const ISINCODE_TAG: i32 = 65_013;
+
+/// The tag carrying the market the message names, as an ISO 10383 MIC.
+pub const MICCODE_TAG: i32 = 65_014;
+
+/// The tag carrying the state the order is in.
+pub const STATE_TAG: i32 = 65_015;
 
 /// The column the timestamp takes, which is also what its partition names.
 pub const TIMESTAMP_NAME: &str = "timestamp";
+
+/// Whether a tag is one of this crate's own.
+#[must_use]
+pub const fn is_crate_tag(tag: i32) -> bool {
+    tag >= CRATE_TAG_MIN
+}
 
 /// FIX's own tag for which way a message moved.
 ///
@@ -101,15 +121,27 @@ const DIGEST_WIDTH: i32 = 16;
 /// fourteen hundred of them, which is more files than rows in the quiet ones.
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 
-/// This crate's branch, built once.
-fn branch() -> Result<FixBranch> {
-    FixBranch::from_str(CRATE_BRANCH)
-}
-
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| build().ok());
 
-/// One field on the crate's branch, with its folded identity and FIX-style display.
+/// The crate's `timestamp` field as a built message carries it: non-null,
+/// resolved once for every message the builder stamps.
+static TIMESTAMP_FIELD: LazyLock<Option<Field>> = LazyLock::new(|| {
+    let held = FIELDS
+        .as_deref()?
+        .iter()
+        .find(|field| field.as_fix().tag().ok().flatten() == Some(TIMESTAMP_TAG))?;
+    let mut field = held.clone();
+    field.set_nullable(false);
+    Some(field)
+});
+
+/// The crate's `timestamp` field, non-null, built once.
+pub(super) fn timestamp_field() -> Option<&'static Field> {
+    TIMESTAMP_FIELD.as_ref()
+}
+
+/// One field of the crate's own, with its folded identity and FIX-style display.
 ///
 /// Display and description use generic field metadata rather than the `fix:`
 /// scheme because every catalog the crate writes to understands them.
@@ -121,9 +153,23 @@ fn crated(
     description: &str,
 ) -> Result<Field> {
     let mut field = dtype.nullable_field(name);
-    field.as_fix_mut().set_id(&branch()?, tag)?;
+    field.as_fix_mut().set_tag(tag)?;
     field.set_display(display)?;
     field.set_description(description)?;
+    Ok(field)
+}
+
+/// One field a bridge spells under its own names, which resolve to it.
+fn aliased(
+    name: &str,
+    display: &str,
+    tag: i32,
+    dtype: DataType,
+    description: &str,
+    aliases: &[&str],
+) -> Result<Field> {
+    let mut field = crated(name, display, tag, dtype, description)?;
+    field.as_fix_mut().set_aliases(aliases.iter().copied())?;
     Ok(field)
 }
 
@@ -169,8 +215,8 @@ fn build() -> Result<Vec<Field>> {
         "The partition the market timestamp falls in, as whole seconds \
              since the epoch floored to the partition width.",
     )?;
-    // Named by the column it reads, which is the tag, because that is what
-    // the column is called in a row.
+    // Named by the column it reads, because that is what the column is
+    // called in a row.
     //
     // Written through the protocol view rather than through
     // `PartitionFieldMut::set_sources`, because that half of the partition
@@ -229,8 +275,8 @@ fn build() -> Result<Vec<Field>> {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
             },
-            "The market timestamp a capture is ordered by: the first clock \
-             the message answers, in decreasing exactness.",
+            "The timestamp a capture is ordered by: the row's own clock, else \
+             the first clock the message answers in decreasing exactness.",
         )?,
         unixpartition,
         // Where an order came from. FIX threads a replace chain through
@@ -255,18 +301,18 @@ fn build() -> Result<Vec<Field>> {
             "The venue order identifier this order descends from, which no \
              standard tag names.",
         )?,
-        // What a bridge's own log states about the line it wrote, in the
-        // bracket after its clock: the session and the message context the
-        // line was handled under. A row header captures them and the row
-        // fills them, so a monitor joins a bridge's own log on them.
+        // The session a message belongs to, as the message itself states it:
+        // a bridge row spells `SESSIONID`, and the row header's own bracket
+        // is the bridge's, not the message's, so it never fills this.
         crated(
             "sessionid",
             "SessionId",
             SESSIONID_TAG,
             DataType::Utf8,
-            "The session a bridge handled the message under, as its own log \
-             names it.",
+            "The session a message belongs to, as the message states it.",
         )?,
+        // The message context a bridge handled the line in, from the bracket
+        // its row header writes after the clock.
         crated(
             "msgctxid",
             "MsgCtxId",
@@ -280,20 +326,69 @@ fn build() -> Result<Vec<Field>> {
         // the plugin that carried a message inside a bridge is a fact about
         // the bridge, and one FIX never states.
         crated(
-            "pluginid",
-            "PluginId",
-            PLUGINID_TAG,
+            "senderpluginid",
+            "SenderPluginId",
+            SENDERPLUGINID_TAG,
             DataType::Utf8,
             "The plugin a message came from inside a bridge, as the bridge \
              names it.",
         )?,
         crated(
-            "prevpluginid",
-            "PrevPluginId",
-            PREVPLUGINID_TAG,
+            "targetpluginid",
+            "TargetPluginId",
+            TARGETPLUGINID_TAG,
             DataType::Utf8,
             "The plugin a message went to inside a bridge, as the bridge \
              names it.",
+        )?,
+        // The plugin sessions a message moved between: what a bridge row
+        // spells as `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, and what the
+        // row header names in front of a line the plugin sent or received.
+        aliased(
+            "senderpluginsession",
+            "SenderPluginSession",
+            SENDERPLUGINSESSION_TAG,
+            DataType::Utf8,
+            "The plugin session a message came from: the bridge row's own \
+             statement, else the plugin that logged the line it sent.",
+            &["ULFromSessionName"],
+        )?,
+        aliased(
+            "targetpluginsession",
+            "TargetPluginSession",
+            TARGETPLUGINSESSION_TAG,
+            DataType::Utf8,
+            "The plugin session a message went to: the bridge row's own \
+             statement, else the plugin that logged the line it received.",
+            &["ULToSessionName"],
+        )?,
+        // The instrument and the market, one spelling each: an ISIN as a
+        // bridge row states it or as `SecurityID` with an ISIN source, and
+        // the market as the MIC the message names first.
+        crated(
+            "isincode",
+            "ISINCode",
+            ISINCODE_TAG,
+            DataType::Utf8,
+            "The instrument's ISIN: the message's own, else SecurityID or a \
+             SecurityAltID whose source is ISIN.",
+        )?,
+        crated(
+            "miccode",
+            "MICCode",
+            MICCODE_TAG,
+            DataType::Mic,
+            "The market the message names, as an ISO 10383 MIC: the message's \
+             own, else SecurityExchange, ExDestination or LastMkt.",
+        )?,
+        // The state the order is in, whatever code set or word stated it.
+        crated(
+            "state",
+            "State",
+            STATE_TAG,
+            DataType::State,
+            "The state the order is in: OrdStatus, else ExecType, read as one \
+             lifecycle vocabulary.",
         )?,
     ])
 }
@@ -317,23 +412,24 @@ fn partition_transform() -> String {
 /// let held = yggdryl::fix_crate_fields()?;
 /// assert_eq!(held[0].name(), "msghash");
 /// assert_eq!(held[0].display(), Some("MsgHash"));
-/// // Same tag as a venue's own 30001 would be, and a different identity.
+/// // On the standard branch, above every tag FIX or a venue publishes.
 /// let mine = held[0].as_fix().id()?.expect("an identity");
-/// assert_ne!(mine, yggdryl::FixId::standard(30001));
+/// assert_eq!(mine, yggdryl::FixId::standard(yggdryl::MSGHASH_TAG));
+/// assert!(yggdryl::is_crate_tag(yggdryl::STATE_TAG));
+/// assert!(!yggdryl::is_crate_tag(35));
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Errors
 ///
-/// Returns the schema grammar's refusal when the crate's own branch or one of
-/// the datatypes does not build, which is a defect in this module rather than
-/// anything a caller did.
+/// Returns the schema grammar's refusal when one of the datatypes does not
+/// build, which is a defect in this module rather than anything a caller did.
 pub fn fix_crate_fields() -> Result<&'static [Field]> {
     FIELDS
         .as_deref()
         .ok_or_else(|| crate::Error::InvalidRecord {
-            path: CRATE_BRANCH.into(),
+            path: "crate".into(),
             reason: crate::text::expected_got("the crate's own fields", "a build failure"),
         })
 }

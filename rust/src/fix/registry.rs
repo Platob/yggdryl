@@ -863,8 +863,10 @@ impl FixRegistry {
             // and never a source's to redefine.
             if field
                 .as_fix()
-                .branch()
-                .is_ok_and(|branch| branch.name() == super::CRATE_BRANCH)
+                .tag()
+                .ok()
+                .flatten()
+                .is_some_and(super::is_crate_tag)
             {
                 continue;
             }

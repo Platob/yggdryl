@@ -85,11 +85,6 @@ fn shard_index(entry: &Holder) -> Option<i32> {
 }
 
 /// The branch a folder under a tree root names.
-/// Whether a branch is the one this crate's own fields are defined on.
-fn is_crate_branch(branch: &FixBranch) -> bool {
-    branch.name() == super::CRATE_BRANCH
-}
-
 fn branch_of(entry: &Holder) -> Result<FixBranch> {
     FixBranch::from_str(entry.url().and_then(Url::file_name).unwrap_or_default())
 }
@@ -291,11 +286,11 @@ impl FixRegistry {
         for value in fields {
             let field = Field::from_value(value.clone())?;
             let id = canonical_id(&field)?;
-            // The crate's own branch is never a store's to define: every
+            // The crate's own tags are never a store's to define: every
             // registry holds the crate's definition from construction, and a
             // copy an older store wrote is read past rather than allowed to
             // replace it.
-            if is_crate_branch(branch) {
+            if branch.is_standard() && super::is_crate_tag(id.tag()) {
                 continue;
             }
             if shard_of(id.tag()) != shard {
@@ -360,7 +355,7 @@ impl FixRegistry {
             // every registry holds them from construction, so a store that
             // wrote them would only hand them back to a reader that already
             // had them.
-            if is_crate_branch(&branch) {
+            if branch.is_standard() && super::is_crate_tag(id.tag()) {
                 continue;
             }
             shards
@@ -429,7 +424,7 @@ impl FixRegistry {
     fn write_branch_manifest(&self, root: &mut dyn IOBase) -> Result<()> {
         let mut branches: Vec<&FixBranch> = self
             .branch_values()
-            .filter(|branch| !branch.is_standard() && !is_crate_branch(branch))
+            .filter(|branch| !branch.is_standard())
             .collect();
         branches.sort_by_key(|branch| branch.name());
         let mut values = Vec::with_capacity(branches.len());

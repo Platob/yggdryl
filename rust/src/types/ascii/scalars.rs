@@ -136,53 +136,61 @@ ascii_code_leaf!(Cfi, 6);
 ascii_code_leaf!(Side, 4);
 ascii_code_leaf!(MsgType, 8);
 ascii_code_leaf!(MsgDirection, 4);
-ascii_code_leaf!(State, 8);
+ascii_code_leaf!(State, 10);
 ascii_code_leaf!(TimeInForce, 8);
 
 impl State {
     /// The rank a stored state opens with, first to terminal.
     ///
-    /// The byte itself, so a caller comparing two states compares one byte
-    /// and a sort of the raw column is already in lifecycle order.
+    /// The two leading digits read as the number they spell, `0` to `99`, or
+    /// `None` where the value does not open with two digits. A sort of the
+    /// raw column is already in this order, because the digits lead and are
+    /// fixed at two.
     #[must_use]
     pub fn rank(&self) -> Option<u8> {
-        self.as_str().bytes().next()
+        match self.as_str().as_bytes() {
+            [tens @ b'0'..=b'9', ones @ b'0'..=b'9', ..] => {
+                Some((tens - b'0') * 10 + (ones - b'0'))
+            }
+            _ => None,
+        }
     }
 
     /// Whether this state can still change.
     ///
-    /// Every rank below the three terminal ones. A reader asking "is this
-    /// still going" asks this rather than listing names.
+    /// Every rank below `80`, the first terminal band. A reader asking "is
+    /// this still going" asks this rather than listing names.
     #[must_use]
     pub fn is_live(&self) -> bool {
-        self.rank().is_some_and(|rank| rank < b'8')
+        self.rank().is_some_and(|rank| rank < 80)
     }
 
-    /// Whether this state ended having done what was asked.
+    /// Whether this state ended having done what was asked: rank `80`-`89`.
     #[must_use]
     pub fn is_done(&self) -> bool {
-        self.rank() == Some(b'8')
+        matches!(self.rank(), Some(80..=89))
     }
 
-    /// Whether this state ended because someone stopped it.
+    /// Whether this state ended because someone stopped it: rank `90`-`94`.
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.rank() == Some(b'9')
+        matches!(self.rank(), Some(90..=94))
     }
 
-    /// Whether this state ended because it could not be done.
+    /// Whether this state ended because it could not be done: rank `95`-`99`.
     #[must_use]
     pub fn is_failed(&self) -> bool {
-        self.rank() == Some(b'A')
+        matches!(self.rank(), Some(95..=99))
     }
 
     /// The state one spelling names, or `None` where none does.
     ///
-    /// Three vocabularies reach one value, because they name one thing:
+    /// Four vocabularies reach one value, because they name one thing:
     ///
     /// - a FIX `OrdStatus(39)` or `ExecType(150)` wire code - `0`, `1`, `F`;
     /// - the specification's own name for it - `PartiallyFilled`, `DoneForDay`;
-    /// - the word a scheduler uses - `running`, `succeeded`, `timed out`.
+    /// - the word a scheduler uses - `running`, `succeeded`, `timed out`;
+    /// - the short name a FIX bridge logs - `PartFill`, `PendNew`, `DoneDay`.
     ///
     /// Names fold the way every other name in this crate folds: ASCII case
     /// insensitive, with `_`, `-` and spaces ignored, so `DoneForDay`,
@@ -194,15 +202,15 @@ impl State {
     /// use yggdryl::types::State;
     ///
     /// // The wire code, the specification's name and the scheduler's word.
-    /// assert_eq!(State::from_spelling("1").unwrap().as_str(), "4PARTFIL");
-    /// assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "4PARTFIL");
-    /// assert_eq!(State::from_spelling("running").unwrap().as_str(), "3RUNNING");
+    /// assert_eq!(State::from_spelling("1").unwrap().as_str(), "40PARTFILL");
+    /// assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "40PARTFILL");
+    /// assert_eq!(State::from_spelling("running").unwrap().as_str(), "30RUNNING");
     ///
     /// // The stored bytes sort from the first state to the terminal ones,
     /// // which is the whole reason the rank leads.
-    /// let mut held = ["8FILLED", "2NEW", "AREJECTD", "4PARTFIL"];
+    /// let mut held = ["80FILLED", "20NEW", "95REJECTED", "40PARTFILL"];
     /// held.sort_unstable();
-    /// assert_eq!(held, ["2NEW", "4PARTFIL", "8FILLED", "AREJECTD"]);
+    /// assert_eq!(held, ["20NEW", "40PARTFILL", "80FILLED", "95REJECTED"]);
     ///
     /// // And the three endings are told apart without reading the name.
     /// assert!(State::from_spelling("New").unwrap().is_live());
@@ -251,73 +259,83 @@ fn folded_spelling(spelling: &str) -> SmolStr {
 /// only `ExecType` defines a value - `F` Trade, `L` Triggered - the state is
 /// what that report says the order is doing.
 static STATE_CODES: &[(&str, &str)] = &[
-    ("0", "2NEW"),
-    ("1", "4PARTFIL"),
-    ("2", "8FILLED"),
-    ("3", "8DONEDAY"),
-    ("4", "9CANCELD"),
-    ("5", "7REPLACD"),
-    ("6", "6PENDCXL"),
-    ("7", "5STOPPED"),
-    ("8", "AREJECTD"),
-    ("9", "5SUSPEND"),
-    ("A", "1PENDNEW"),
-    ("B", "8CALCULD"),
-    ("C", "AEXPIRED"),
-    ("D", "2ACCEPTD"),
-    ("E", "6PENDRPL"),
-    ("F", "4TRADE"),
-    ("G", "4TRDCORR"),
-    ("H", "4TRDCXL"),
-    ("I", "3STATUS"),
-    ("J", "4TRDHOLD"),
-    ("K", "8TRDRELS"),
-    ("L", "3TRIGGER"),
+    ("0", "20NEW"),
+    ("1", "40PARTFILL"),
+    ("2", "80FILLED"),
+    ("3", "80DONEDAY"),
+    ("4", "90CANCELED"),
+    ("5", "70REPLACED"),
+    ("6", "60PENDCXL"),
+    ("7", "50STOPPED"),
+    ("8", "95REJECTED"),
+    ("9", "50SUSPEND"),
+    ("A", "10PENDNEW"),
+    ("B", "80CALCULAT"),
+    ("C", "95EXPIRED"),
+    ("D", "20ACCEPTED"),
+    ("E", "60PENDRPL"),
+    ("F", "40TRADE"),
+    ("G", "40TRDCORR"),
+    ("H", "40TRDCXL"),
+    ("I", "30STATUS"),
+    ("J", "40TRDHOLD"),
+    ("K", "80TRDRELS"),
+    ("L", "30TRIGGER"),
 ];
 
-/// Every name that reaches a state, folded, FIX's beside a scheduler's.
+/// Every name that reaches a state, folded: FIX's, a scheduler's, and the
+/// short names a FIX bridge logs - `PartFill`, `PendNew`, `DoneDay`,
+/// `Cancel`, `Reject`.
 static STATE_NAMES: &[(&str, &str)] = &[
-    ("accepted", "2ACCEPTD"),
-    ("acceptedforbidding", "2ACCEPTD"),
-    ("calculated", "8CALCULD"),
-    ("canceled", "9CANCELD"),
-    ("cancelled", "9CANCELD"),
-    ("complete", "8COMPLET"),
-    ("completed", "8COMPLET"),
-    ("doneforday", "8DONEDAY"),
-    ("expired", "AEXPIRED"),
-    ("failed", "AFAILED"),
-    ("failure", "AFAILED"),
-    ("filled", "8FILLED"),
-    ("inprogress", "4INPROGR"),
-    ("new", "2NEW"),
-    ("orderstatus", "3STATUS"),
-    ("partiallyfilled", "4PARTFIL"),
-    ("paused", "5PAUSED"),
-    ("pending", "1PENDING"),
-    ("pendingcancel", "6PENDCXL"),
-    ("pendingnew", "1PENDNEW"),
-    ("pendingreplace", "6PENDRPL"),
-    ("queued", "1QUEUED"),
-    ("rejected", "AREJECTD"),
-    ("replaced", "7REPLACD"),
-    ("restated", "7REPLACD"),
-    ("running", "3RUNNING"),
-    ("starting", "2STARTNG"),
-    ("stopped", "5STOPPED"),
-    ("submitted", "2SUBMITD"),
-    ("succeeded", "8SUCCESS"),
-    ("success", "8SUCCESS"),
-    ("suspended", "5SUSPEND"),
-    ("timedout", "ATIMEOUT"),
-    ("timeout", "ATIMEOUT"),
-    ("trade", "4TRADE"),
-    ("tradecancel", "4TRDCXL"),
-    ("tradecorrect", "4TRDCORR"),
-    ("tradehasbeenreleasedtoclearing", "8TRDRELS"),
-    ("tradeinaclearinghold", "4TRDHOLD"),
-    ("triggeredoractivatedbysystem", "3TRIGGER"),
-    ("unknown", "0UNKNOWN"),
+    ("accepted", "20ACCEPTED"),
+    ("acceptedforbidding", "20ACCEPTED"),
+    ("calculated", "80CALCULAT"),
+    ("cancel", "90CANCELED"),
+    ("canceled", "90CANCELED"),
+    ("cancelled", "90CANCELED"),
+    ("complete", "80COMPLETE"),
+    ("completed", "80COMPLETE"),
+    ("doneday", "80DONEDAY"),
+    ("doneforday", "80DONEDAY"),
+    ("expired", "95EXPIRED"),
+    ("failed", "95FAILED"),
+    ("failure", "95FAILED"),
+    ("filled", "80FILLED"),
+    ("inprogress", "40INPROGR"),
+    ("new", "20NEW"),
+    ("orderstatus", "30STATUS"),
+    ("partfill", "40PARTFILL"),
+    ("partfilled", "40PARTFILL"),
+    ("partiallyfilled", "40PARTFILL"),
+    ("paused", "50PAUSED"),
+    ("pendcancel", "60PENDCXL"),
+    ("pending", "10PENDING"),
+    ("pendingcancel", "60PENDCXL"),
+    ("pendingnew", "10PENDNEW"),
+    ("pendingreplace", "60PENDRPL"),
+    ("pendnew", "10PENDNEW"),
+    ("pendreplace", "60PENDRPL"),
+    ("queued", "10QUEUED"),
+    ("reject", "95REJECTED"),
+    ("rejected", "95REJECTED"),
+    ("replaced", "70REPLACED"),
+    ("restated", "70REPLACED"),
+    ("running", "30RUNNING"),
+    ("starting", "20STARTING"),
+    ("stopped", "50STOPPED"),
+    ("submitted", "20SUBMITTD"),
+    ("succeeded", "80SUCCESS"),
+    ("success", "80SUCCESS"),
+    ("suspended", "50SUSPEND"),
+    ("timedout", "95TIMEOUT"),
+    ("timeout", "95TIMEOUT"),
+    ("trade", "40TRADE"),
+    ("tradecancel", "40TRDCXL"),
+    ("tradecorrect", "40TRDCORR"),
+    ("tradehasbeenreleasedtoclearing", "80TRDRELS"),
+    ("tradeinaclearinghold", "40TRDHOLD"),
+    ("triggeredoractivatedbysystem", "30TRIGGER"),
+    ("unknown", "00UNKNOWN"),
 ];
 
 impl MsgType {

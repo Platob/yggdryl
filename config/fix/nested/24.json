@@ -11,7 +11,7 @@
             {
               "name": "ordstatus",
               "dtype": {
-                "type": "utf8"
+                "type": "state"
               },
               "nullable": true,
               "metadata": {
@@ -21,7 +21,7 @@
             {
               "name": "exectype",
               "dtype": {
-                "type": "utf8"
+                "type": "state"
               },
               "nullable": true,
               "metadata": {

@@ -510,7 +510,10 @@ pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
     } else {
         MimeType::XML
     };
-    Some((shape, line.len() - trimmed.len() + open))
+    // The offset is into `line`: the whitespace trimmed off the front, which
+    // is not the whitespace trimmed off both ends.
+    let leading = line.len() - line.trim_ascii_start().len();
+    Some((shape, leading + open))
 }
 
 /// Whether the line holds any pair at all, marked or not.

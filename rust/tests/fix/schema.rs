@@ -77,8 +77,13 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::PARENTORDERID_TAG, "ParentOrderID"),
         (yggdryl::SESSIONID_TAG, "SessionId"),
         (yggdryl::MSGCTXID_TAG, "MsgCtxId"),
-        (yggdryl::PLUGINID_TAG, "PluginId"),
-        (yggdryl::PREVPLUGINID_TAG, "PrevPluginId"),
+        (yggdryl::SENDERPLUGINID_TAG, "SenderPluginId"),
+        (yggdryl::TARGETPLUGINID_TAG, "TargetPluginId"),
+        (yggdryl::SENDERPLUGINSESSION_TAG, "SenderPluginSession"),
+        (yggdryl::TARGETPLUGINSESSION_TAG, "TargetPluginSession"),
+        (yggdryl::ISINCODE_TAG, "ISINCode"),
+        (yggdryl::MICCODE_TAG, "MICCode"),
+        (yggdryl::STATE_TAG, "State"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");

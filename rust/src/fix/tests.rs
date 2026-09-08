@@ -675,9 +675,9 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
     other.set_branch(incoming.clone()).unwrap();
 
     // The other dictionary holds the crate's own fields as every registry
-    // does, and each folds onto this one's identical copy: a merge apiece.
+    // does, and they are neither added nor merged: a fold never counts them.
     let (added, merged) = dictionary.merge_with(&other).unwrap();
-    assert_eq!((added, merged), (1, 1 + crated()));
+    assert_eq!((added, merged), (1, 1));
     assert_eq!(dictionary.len(), 3 + crated());
     // The incoming spelling wins the field, as it does in any fold.
     assert_eq!(dictionary.field_by_tag(55).unwrap().name(), "SYMBOL");
@@ -4311,8 +4311,9 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
     // 1,926 before these two phases: 268 entries stated nothing their
     // predecessor did not once types were resolved and the temporal ones
     // adopted backward, and one more was a second statement about one dated
-    // point.
-    assert_eq!(entries, 1_669, "lineage entries");
+    // point. Two more since: `OrdStatus` and `ExecType` retyped to the
+    // crate's `state`, which each lineage records.
+    assert_eq!(entries, 1_671, "lineage entries");
 }
 
 #[test]

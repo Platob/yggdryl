@@ -269,6 +269,15 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
         .transform_line(FIXML.as_bytes(), true)
         .expect("a FIXML row");
     assert_eq!(fixml.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
+    // The same document behind a transport's prose, with whitespace either
+    // side: the document opens where the tag opens, whatever was trimmed off
+    // the line's end.
+    let prosed = format!("  Sending : {FIXML}  \t");
+    let behind = codec
+        .transform_line(prosed.as_bytes(), true)
+        .expect("a FIXML row behind prose");
+    assert_eq!(behind.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
+    assert_eq!(behind.by_tag(38).unwrap(), fixml.by_tag(38).unwrap());
 
     // A bridge configuration document, read as the document it is. It is read
     // under the bridge's own dialect, which is what gives its envelope fields

@@ -109,11 +109,23 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     assert_eq!(side.dtype(), &DataType::Side);
     assert_eq!(side.as_fix().code_name("1"), Some("Buy"));
     assert_eq!(side.as_fix().code_value("buy"), Some("1"));
-    // A code set stays on the field that declares it; every other one keeps
-    // its base type.
-    let ord_status = registry.field_by_tag(39).expect("tag 39");
-    assert_eq!(ord_status.dtype(), &DataType::Utf8);
-    assert!(ord_status.as_fix().codes().count() > 5);
+    // The order's state is declared twice, as `OrdStatus` and as `ExecType`,
+    // and both take the crate's `state`: their code sets agree on every value
+    // they share, and the type reads either. The code set stays on the field
+    // that declares it.
+    for tag in [39, 150] {
+        let state = registry.field_by_tag(tag).expect("a state tag");
+        assert_eq!(state.dtype(), &DataType::State, "tag {tag}");
+        assert!(state.as_fix().codes().count() > 5, "tag {tag}");
+    }
+    assert_eq!(
+        registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
+        Some("PartiallyFilled")
+    );
+    // Every other code set keeps its base type.
+    let ord_type = registry.field_by_tag(40).expect("tag 40");
+    assert_eq!(ord_type.dtype(), &DataType::Utf8);
+    assert!(ord_type.as_fix().codes().count() > 5);
 
     // The float family is what the specification says it is.
     for tag in [31, 38, 44, 6] {
@@ -359,7 +371,7 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
         }
     }
     let total: usize = census.values().sum();
-    assert_eq!(total, 65, "surviving retypes: {census:?}");
+    assert_eq!(total, 67, "surviving retypes: {census:?}");
     assert_eq!(
         census
             .iter()
@@ -381,6 +393,8 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
             ("utf8", "msgdirection", 1),
             ("utf8", "msgtype", 1),
             ("utf8", "side", 1),
+            // `OrdStatus` and `ExecType`: the order's state, read as one type.
+            ("utf8", "state", 2),
         ]
     );
 }

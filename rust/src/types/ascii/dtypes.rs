@@ -165,10 +165,10 @@ pub(crate) const DIRECTION_WIDTH: usize = 4;
 
 /// The storage width of a thing's state.
 ///
-/// A rank character and up to seven name bytes. Eight because the rank has to
-/// leave room for a name a person can read, and because widening later would
-/// change a discriminant, which is a wire contract.
-pub(crate) const STATE_WIDTH: usize = 8;
+/// Two decimal digits of rank and up to eight name bytes. Ten because the
+/// rank has to leave room for a name a person can read, and because widening
+/// later would change a discriminant, which is a wire contract.
+pub(crate) const STATE_WIDTH: usize = 10;
 
 /// The storage width of how long an order stands.
 ///

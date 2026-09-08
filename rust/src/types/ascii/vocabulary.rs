@@ -157,42 +157,79 @@ impl AsciiEnum {
     /// of three ways. A capture and the pipeline that reads it should not need
     /// two vocabularies and a join to answer "what happened".
     ///
-    /// # The first byte is the rank
+    /// # The first two bytes are the rank
     ///
-    /// A value is a rank character then a name, and the rank is what makes the
-    /// *stored bytes* sort from first state to terminal. That matters because
-    /// most things that sort a column are not this crate: a Parquet row group's
-    /// min and max, an external sort, a `ORDER BY` in whatever reads the file.
-    /// Ordering by name would put `CANCELD` before `NEW`; ordering by these
-    /// bytes puts every live state before every ended one, and that ordering
-    /// survives every format the value crosses.
+    /// A value is two decimal digits of rank then a name of up to eight
+    /// bytes, and the rank is what makes the *stored bytes* sort from first
+    /// state to terminal. That matters because most things that sort a column
+    /// are not this crate: a Parquet row group's min and max, an external
+    /// sort, a `ORDER BY` in whatever reads the file. Ordering by name would
+    /// put `CANCELED` before `NEW`; ordering by these bytes puts every live
+    /// state before every ended one, and that ordering survives every format
+    /// the value crosses.
     ///
-    /// Ranks run `0`-`9` then `A`-`Z`, which is ASCII order, so thirty-six
-    /// ranks are available and eleven are used:
+    /// Ranks run `00`-`99`. Every shipped state sits on a round rank, and the
+    /// digits between two of them - `01`-`09`, `11`-`19`, and so on - are the
+    /// placeholders a state that belongs between two ranks takes, so adding
+    /// one moves nothing already stored:
     ///
     /// | rank | meaning |
     /// | --- | --- |
-    /// | `0` | stated, but not a state anything reached |
-    /// | `1` | asked for, not yet acknowledged |
-    /// | `2` | acknowledged, not yet working |
-    /// | `3` | working |
-    /// | `4` | working, and something has happened |
-    /// | `5` | halted, and able to resume |
-    /// | `6` | a change is outstanding |
-    /// | `7` | changed, and the new thing carries on |
-    /// | `8` | ended, having done what was asked |
-    /// | `9` | ended, because someone stopped it |
-    /// | `A` | ended, because it could not be done |
+    /// | `00` | stated, but not a state anything reached |
+    /// | `10` | asked for, not yet acknowledged |
+    /// | `20` | acknowledged, not yet working |
+    /// | `30` | working |
+    /// | `40` | working, and something has happened |
+    /// | `50` | halted, and able to resume |
+    /// | `60` | a change is outstanding |
+    /// | `70` | changed, and the new thing carries on |
+    /// | `80` | ended, having done what was asked |
+    /// | `90` | ended, because someone stopped it |
+    /// | `95` | ended, because it could not be done |
     ///
     /// The three endings are ranked apart deliberately: "did it finish" and
     /// "did it work" are different questions, and a single terminal rank would
-    /// answer neither without reading the name.
+    /// answer neither without reading the name. Each ending owns a band -
+    /// `80`-`89` done, `90`-`94` cancelled, `95`-`99` failed - and
+    /// [`State::is_done`](crate::types::State::is_done),
+    /// [`State::is_cancelled`](crate::types::State::is_cancelled) and
+    /// [`State::is_failed`](crate::types::State::is_failed) read the band, so
+    /// a placeholder inside one answers as its ending does.
     pub const STATES: &'static [&'static str] = &[
-        "0UNKNOWN", "1PENDING", "1PENDNEW", "1QUEUED", "2ACCEPTD", "2NEW", "2STARTNG", "2SUBMITD",
-        "3RUNNING", "3STATUS", "3TRIGGER", "4INPROGR", "4PARTFIL", "4TRADE", "4TRDCORR", "4TRDCXL",
-        "4TRDHOLD", "5PAUSED", "5STOPPED", "5SUSPEND", "6PENDCXL", "6PENDRPL", "7REPLACD",
-        "8CALCULD", "8COMPLET", "8DONEDAY", "8FILLED", "8SUCCESS", "8TRDRELS", "9CANCELD",
-        "AEXPIRED", "AFAILED", "AREJECTD", "ATIMEOUT",
+        "00UNKNOWN",
+        "10PENDING",
+        "10PENDNEW",
+        "10QUEUED",
+        "20ACCEPTED",
+        "20NEW",
+        "20STARTING",
+        "20SUBMITTD",
+        "30RUNNING",
+        "30STATUS",
+        "30TRIGGER",
+        "40INPROGR",
+        "40PARTFILL",
+        "40TRADE",
+        "40TRDCORR",
+        "40TRDCXL",
+        "40TRDHOLD",
+        "50PAUSED",
+        "50STOPPED",
+        "50SUSPEND",
+        "60PENDCXL",
+        "60PENDRPL",
+        "70REPLACED",
+        "80CALCULAT",
+        "80COMPLETE",
+        "80DONEDAY",
+        "80FILLED",
+        "80SUCCESS",
+        "80TRDRELS",
+        "90CANCELED",
+        "95EXPIRED",
+        "95FAILED",
+        "95REJECTED",
+        "95TIMEOUT",
     ];
 
     /// FIX's `TimeInForceCodeSet`, the union across every version, sorted.

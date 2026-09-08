@@ -16,10 +16,11 @@
 //!
 //! Because ULBridge is not FIX and is not this crate. The specification
 //! publishes no `PrimaryHost`, so putting one on the standard branch would
-//! say it does; this crate did not invent it either, so the
-//! [crate branch](super::CRATE_BRANCH) is not its home. It is a vendor's
-//! dictionary, which is exactly what a [`FixBranch`] is for - and being a
-//! branch is also what lets a venue keep its own 20001 without colliding.
+//! say it does; this crate did not invent it either, so the crate's own
+//! tags above [`CRATE_TAG_MIN`](super::CRATE_TAG_MIN) are not its home. It
+//! is a vendor's dictionary, which is exactly what a [`FixBranch`] is for -
+//! and being a branch is also what lets a venue keep its own 20001 without
+//! colliding.
 //!
 //! A reader pins it with [`FixCodec::with_branch`](super::FixCodec), and the
 //! names FIX publishes still resolve, because a name is looked for in the
@@ -109,12 +110,17 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 /// them. Those three are optional as a whole, so a line that carries only
 /// the thread still frames and leaves them null rather than failing the row.
 ///
-/// Every capture is named for what it fills. `timestamp` is the row's clock,
-/// so it stamps the message; `sessionId` and `msgCtxId` fill the crate's own
-/// [`SessionId`](super::SESSIONID_TAG) and [`MsgCtxId`](super::MSGCTXID_TAG);
-/// `seqNum` fills `MsgSeqNum(34)`, through the spellings
-/// [`capture_tag`] knows; `threadId`, `plugin` and `level` are the capture's
-/// own columns and lead the row.
+/// Every capture is named for what it does. `timestamp` is the row's clock,
+/// so it stamps the message; `msgCtxId` fills the crate's own
+/// [`MsgCtxId`](super::MSGCTXID_TAG); `seqNum` fills `MsgSeqNum(34)`,
+/// through the spellings [`capture_tag`] knows; `plugin` names the plugin
+/// session that logged the line, which fills
+/// [`SenderPluginSession`](super::SENDERPLUGINSESSION_TAG) for a line it
+/// sent and [`TargetPluginSession`](super::TARGETPLUGINSESSION_TAG) for one
+/// it received; `sessionUid` is the bridge's own session instance, not the
+/// message's session, so it leads the row as the capture's own column beside
+/// `threadId` and `level` and leaves [`SessionId`](super::SESSIONID_TAG) to
+/// what the message itself states.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -122,12 +128,12 @@ const SESSIONINTERFACE_NAME: &str = "SessionInterface";
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "threadId", "sessionId", "msgCtxId", "seqNum", "plugin", "level"]));
+/// assert!(names.ends_with(&["timestamp", "threadId", "sessionUid", "msgCtxId", "seqNum", "plugin", "level"]));
 /// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<sessionUid>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
 
 /// The standard tag one of the bridge's own capture spellings fills.
 ///
