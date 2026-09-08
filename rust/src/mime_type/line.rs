@@ -159,8 +159,8 @@ impl<'line> LineInference<'line> {
 /// carry Ullink `MSGTYPE=` before an embedded `8=FIX...` frame. The returned
 /// value is borrowed and bounded by the first common entry separator.
 fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u8]> {
-    for start in 0..line.len() {
-        let Some((LineKey::Name(name), equals)) = pair_at(line, start) else {
+    for (_, key, equals) in pairs(line) {
+        let LineKey::Name(name) = key else {
             continue;
         };
         if !name.eq_ignore_ascii_case(wanted) {
@@ -208,10 +208,7 @@ fn route_msgtype(value: &[u8]) -> &[u8] {
 fn locate_frame(line: &[u8]) -> Option<LineFrame> {
     let mut first = None;
     let mut msgtype = None;
-    for start in 0..line.len() {
-        let Some((key, _)) = pair_at(line, start) else {
-            continue;
-        };
+    for (start, key, _) in pairs(line) {
         let candidate = (start, matches!(key, LineKey::Tag(_)));
         first.get_or_insert(candidate);
         match key {
@@ -490,7 +487,37 @@ pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
 
 /// Whether the line holds any pair at all, marked or not.
 fn has_any_pair(line: &[u8]) -> bool {
-    (0..line.len()).any(|start| matches!(pair_at(line, start), Some((LineKey::Name(_), _))))
+    pairs(line).any(|(_, key, _)| matches!(key, LineKey::Name(_)))
+}
+
+/// Every pair the line holds, in order: where it starts, its key, and where
+/// its `=` sits.
+///
+/// A pair closes its key at an `=`, so the `=` signs are where the pairs
+/// are, and the line is read at those rather than tried at every byte. The
+/// key is the run of key bytes closing at the `=`; the pair starts where
+/// that run starts, one byte earlier at the bridge's `#`, or just past an
+/// escaped separator whose spelling ends in a key byte - `^A` and `\x01` -
+/// and [`pair_at`] then reads it exactly as it reads a pair anywhere, so
+/// what this yields is what a byte-by-byte scan yielded, in the same order.
+fn pairs(line: &[u8]) -> impl Iterator<Item = (usize, LineKey<'_>, usize)> + '_ {
+    memchr::memchr_iter(b'=', line).filter_map(move |equals| {
+        let mut run = equals;
+        while run > 0 && is_name_continue(line[run - 1]) {
+            run -= 1;
+        }
+        let before = run.checked_sub(1).map(|at| line[at]);
+        let candidates = [
+            run.checked_sub(1).filter(|_| before == Some(b'#')),
+            Some(run),
+            (before == Some(b'^') && line.get(run) == Some(&b'A')).then_some(run + 1),
+            (before == Some(b'\\') && line[run..].starts_with(b"x01")).then_some(run + 3),
+        ];
+        candidates.into_iter().flatten().find_map(|start| {
+            let (key, at) = pair_at(line, start)?;
+            (at == equals).then_some((start, key, at))
+        })
+    })
 }
 
 /// The media type one whole document opens as, before any pair rule runs.

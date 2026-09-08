@@ -397,8 +397,17 @@ impl FixBatchReader {
         let dedup = options.dedup;
         // The one column no message carries, found once: the direction is read
         // from the line in front of the frame, which is gone by the time a row
-        // is built.
+        // is built. Its two values are built once, as the column holds them.
         let direction_at = field.index_of(&super::schema::rendered(super::MSGDIRECTION_TAG));
+        let directions = direction_at.map(|at| {
+            let column = &field.fields()[at];
+            let held = |direction: &str| {
+                column
+                    .scalar(Scalar::from(direction))
+                    .unwrap_or(Scalar::Null)
+            };
+            (held(MsgDirection::SENT), held(MsgDirection::RECV))
+        });
         // The rows are filled against the same schema the reader publishes; a
         // clone shares it rather than building a second one.
         let schema = field.clone();
@@ -413,10 +422,20 @@ impl FixBatchReader {
                     }
                     last = Some(digest);
                 }
+                let direction = match (direction, &directions) {
+                    (Some(MsgDirection::SENT), Some((sent, _))) => sent.clone(),
+                    (Some(MsgDirection::RECV), Some((_, recv))) => recv.clone(),
+                    _ => Scalar::Null,
+                };
                 Some(row_of(&message, &schema, direction_at, direction, front))
             }
         });
-        Ok(crate::arrow::rows::result_reader(
+        // Every value in a row went through the contract of the field it
+        // lands under - the message's own through the dictionary's fields,
+        // the derived ones through their columns, the carried ones through
+        // the Arrow reading - so the funnel is told so rather than made to
+        // find it out on every leaf of every row.
+        Ok(crate::arrow::rows::canonical_result_reader(
             &field,
             rows,
             options.batch_row_size(),
@@ -437,7 +456,7 @@ fn row_of(
     message: &FixMsg,
     schema: &Field,
     direction_at: Option<usize>,
-    direction: Option<&'static str>,
+    direction: Scalar,
     front: Vec<Scalar>,
 ) -> Result<Scalar> {
     // The row is the schema's whole width already: a carried column is named
@@ -448,7 +467,7 @@ fn row_of(
         *slot = value;
     }
     if let Some(slot) = direction_at.and_then(|at| held.get_mut(at)) {
-        *slot = direction.map_or(Scalar::Null, Scalar::from);
+        *slot = direction;
     }
     Ok(Scalar::from_sequence(held))
 }

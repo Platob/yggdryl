@@ -367,6 +367,23 @@ fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     ])
 }
 
+/// One value as the column holds it.
+///
+/// A value the message holds was typed under the column's own field - the
+/// dictionary's, which the fixed row renamed - so it is already the stored
+/// form and passes untouched. A value this module derived, or one the
+/// message holds in another kind, goes through the column's contract: a
+/// digest becomes the fixed-width bytes its column declares, a clock read
+/// out of text becomes an instant, and a kind the column cannot hold is
+/// null rather than a refusal the row cannot survive. This is what lets a
+/// reader take every row of a capture as canonical without walking it.
+fn fitted(column: &Field, value: crate::Scalar) -> crate::Scalar {
+    if value.is_null() || value.id() == column.dtype().id() {
+        return value;
+    }
+    column.scalar(value).unwrap_or(crate::Scalar::Null)
+}
+
 /// One clock source as the instant it states, whatever it is typed as.
 ///
 /// A narrow dictionary types a clock field as text, and the derived clock
@@ -472,7 +489,10 @@ impl super::FixMsg {
                 // so a name that is not a tag is a capture's own column and
                 // nothing in the message answers for it.
                 name => match super::field::parse_tag(name) {
-                    Some(tag) => self.regrouped(tag, column, self.column_value(tag, &mut clock)),
+                    Some(tag) => {
+                        let held = self.regrouped(tag, column, self.column_value(tag, &mut clock));
+                        fitted(column, held)
+                    }
                     None => crate::Scalar::Null,
                 },
             });

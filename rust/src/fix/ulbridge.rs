@@ -537,11 +537,14 @@ fn push_occurrence(
     name: Option<&str>,
     attributes: &Scalar,
 ) {
+    // The occurrence is spelled once and every member's key copies it.
+    let index = occurrence.to_string();
     let mut push = |member: &[u8], value: Vec<u8>| {
-        let mut key = Vec::with_capacity(member.len() + 24);
+        let mut key =
+            Vec::with_capacity(SESSIONINTERFACES_NAME.len() + index.len() + member.len() + 3);
         key.extend_from_slice(SESSIONINTERFACES_NAME.as_bytes());
         key.push(b'[');
-        key.extend_from_slice(occurrence.to_string().as_bytes());
+        key.extend_from_slice(index.as_bytes());
         key.extend_from_slice(b"].");
         key.extend_from_slice(member);
         pairs.push((key, value));

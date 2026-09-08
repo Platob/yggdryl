@@ -122,6 +122,14 @@ pub(super) struct Builder<'registry> {
     /// bridge row quadratic in its keys.
     hashes: Vec<u64>,
     entries: Vec<FixEntry>,
+    /// The tag of every entry recorded so far, in arrival order.
+    ///
+    /// A member nests under the latest arrival of its counter, and finding
+    /// that arrival walks the whole record - which is worth doing only where
+    /// the counter arrived at all. One integer per entry answers that
+    /// before the walk, and a document of fifty attributes under a group no
+    /// counter introduced walks nothing.
+    recorded: Vec<i32>,
 }
 
 impl<'registry> Builder<'registry> {
@@ -139,6 +147,7 @@ impl<'registry> Builder<'registry> {
             slots: Vec::with_capacity(capacity),
             hashes: Vec::with_capacity(capacity),
             entries: Vec::with_capacity(capacity),
+            recorded: Vec::with_capacity(capacity),
         }
     }
 
@@ -289,13 +298,37 @@ impl<'registry> Builder<'registry> {
         // number that arrived stays in the entries and the two are compared
         // on demand through `anomalies()`. Writing it into the row as well
         // would put two facts about one thing at one tag.
-        if let Some((field, tag)) = self.counter(key) {
-            self.record(key, text, tag);
-            let slot = self.slot_for(field, tag, true);
-            slot.group = true;
-            return;
-        }
-        let (field, tag, known) = self.field_for(key);
+        //
+        // A tag reaches the dictionary once, and which half it is in decides
+        // the rest: the counter and the scalar readings are the same probe
+        // filtered two ways, and a numeric key is most of every frame.
+        let (field, tag, known) = if let Some(parsed) = super::field::parse_tag(key) {
+            match self.registry.get_field_by_tag(parsed) {
+                Some(found) => {
+                    let tag = found.as_fix().tag().ok().flatten().unwrap_or(0);
+                    if super::registry::is_nested(found) {
+                        self.record(key, text, tag);
+                        let slot = self.slot_for(stated(found), tag, true);
+                        slot.group = true;
+                        return;
+                    }
+                    (stated(found), tag, true)
+                }
+                None => (
+                    DataType::Utf8.nullable_field(folded_name(key)),
+                    parsed,
+                    false,
+                ),
+            }
+        } else {
+            if let Some((field, tag)) = self.counter(key) {
+                self.record(key, text, tag);
+                let slot = self.slot_for(field, tag, true);
+                slot.group = true;
+                return;
+            }
+            self.field_for(key)
+        };
         let value = self.typed(&field, raw, text);
         self.record(key, text, tag);
         self.slot_for(field, tag, known).values.push(value);
@@ -420,7 +453,10 @@ impl<'registry> Builder<'registry> {
         } else {
             entry.with_branch(&self.branch)
         };
-        if counter_tag != 0 {
+        self.recorded.push(tag);
+        // The walk finds a counter only where one was recorded, so a record
+        // holding none is not walked for it.
+        if counter_tag != 0 && self.recorded.contains(&counter_tag) {
             for root in self.entries.iter_mut().rev() {
                 match root.adopt(counter_tag, entry) {
                     None => return,
@@ -442,6 +478,7 @@ impl<'registry> Builder<'registry> {
         } else {
             entry.with_branch(&self.branch)
         };
+        self.recorded.push(tag);
         self.entries.push(entry);
     }
 
