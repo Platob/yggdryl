@@ -189,6 +189,7 @@ When neither control spelling is present, the reader scans for the next direct m
 ### Edges
 
 - A line the reader refuses is not a line lost: it is a message with nothing in it, so the output row count still equals the input line count.
+- A bridge key's `#` drops only where it is the row's sole spelling of that key. `ORDERID=123|#ORDERID=345` states two keys, so there `#ORDERID` stays verbatim beside the dictionary's `OrderID` - its own column, its own entry - rather than two values merging under one name. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` keep it too; a bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
 - A pinned `version` decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable through the field's lineage.
 
@@ -517,16 +518,18 @@ A carried column whose name a FIX column already takes is dropped rather than re
 
 | shape | bytes | median |
 | --- | --- | --- |
-| a framed tag stream with prose either side | 85 | 8.1 us |
-| a bare tag stream | 64 | 8.1 us |
-| the same, read at a pinned 4.2 | 64 | 8.7 us |
-| a bridge row keyed by name | 78 | 11.5 us |
-| a bridge row with a packed repeating group | 147 | 18.1 us |
-| a bridge configuration document | 630 | 53.1 us |
-| the same, on a dictionary without ULBridge's fields | 630 | 50.8 us |
-| the emit that closes the round trip | | 103 ns |
+| a framed tag stream with prose either side | 85 | 13.6 us |
+| a bare tag stream | 64 | 13.4 us |
+| the same, read at a pinned 4.2 | 64 | 13.5 us |
+| a bridge row keyed by name | 78 | 15.9 us |
+| a bridge row with a packed repeating group | 147 | 23.1 us |
+| a bridge row of `#` keys, one twinned by its bare spelling | 108 | 18.8 us |
+| a wide bridge row, three hundred `#` keys around one twin | 3716 | 659 us |
+| a bridge configuration document | 630 | 91.8 us |
+| the same, on a dictionary without ULBridge's fields | 630 | 82.9 us |
+| the emit that closes the round trip | | 194 ns |
 
-A document costs about six times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 4% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as.
+A document costs about seven times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 11% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as. The twin scan that decides a `#` costs nothing to see here: a bridge row splits into borrowed slices, the row of `#` keys reads faster per byte than the named one, and the wide row's per-pair cost matches the narrow one's - the scan probes the row's few bare spellings rather than the whole row, so it stays linear.
 
 A dated read costs what an undated one costs, within a code translation per value: a version decides which spellings answer, and no field is renamed or retyped for it, so there is nothing per row to resolve or cache.
 
