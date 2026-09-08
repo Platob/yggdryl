@@ -447,9 +447,11 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
+    // The header in rank order, the body, the trailer, and the crate's own
+    // clock closing the message.
     assert_eq!(
         names,
-        ["beginstring", "bodylength", "msgtype", "symbol", "checksum"],
+        ["beginstring", "bodylength", "msgtype", "symbol", "checksum", "timestamp"],
         "{names:?}"
     );
 }
@@ -580,13 +582,19 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
         .unwrap();
 
     for message in [&by_tag, &by_name] {
-        let columns = message
+        let columns: Vec<&str> = message
             .as_field()
             .dtype()
             .as_fields()
             .expect("a struct root")
-            .len();
-        assert_eq!(columns, 2, "msgtype and the group, and nothing beside them");
+            .iter()
+            .map(yggdryl::Field::name)
+            .collect();
+        assert_eq!(
+            columns,
+            ["beginstring", "msgtype", "nopartyids", "timestamp"],
+            "msgtype and the group, beside the two children every message has"
+        );
         let occurrences = message.by_tag(453).unwrap().as_sequence().unwrap();
         assert_eq!(occurrences.len(), 2);
         assert!(message.anomalies().next().is_none());
@@ -640,10 +648,17 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["msgtype", "nolinesoftext"], "{names:?}");
+    assert_eq!(
+        names,
+        ["beginstring", "msgtype", "nolinesoftext", "timestamp"],
+        "{names:?}"
+    );
     // One group, one column: the counter and its members reach one slot.
     assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
-    let group = &message.as_field().fields()[1];
+    let group = message
+        .as_field()
+        .field("nolinesoftext")
+        .expect("the group column");
     assert_eq!(
         group.as_fix().name_at("4.2".parse().unwrap()),
         Some("linesoftext"),
@@ -905,9 +920,13 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
 /// so a clock field typed as text is read through FIX's own spelling. A
 /// `TZTimeOnly` is a legal reading of that spelling and never a moment a
 /// capture happened at, so a dateless value contributes nothing and the
-/// ladder keeps walking.
+/// ladder keeps walking - to the epoch itself, where a message with no clock
+/// at all is stamped, which sorts first and visibly rather than among the
+/// rows of whatever day it was read on.
 #[test]
 fn a_dateless_clock_never_becomes_the_capture_instant() {
+    use yggdryl::{TimeUnit, Timezone};
+
     // A dictionary narrow enough to type the clock as text is what reaches
     // the reading at all: a full one has already made it an instant.
     let mut narrow = FixRegistry::new();
@@ -922,12 +941,19 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
             .market_timestamp()
     };
 
-    assert_eq!(clocked("07:39:12.123+05:30"), Scalar::Null);
-    // A dated one is answered as the spelling the clock column casts, which
-    // is what this derivation exists to produce.
+    let instant = |count: i64| {
+        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).expect("a nanosecond count")
+    };
+    assert_eq!(
+        clocked("07:39:12.123+05:30"),
+        instant(0),
+        "the epoch, never the epoch day"
+    );
+    // A dated one is the instant the clock column holds, which is what this
+    // derivation exists to produce.
     assert_eq!(
         clocked("20240102-10:15:30.000"),
-        Scalar::from("2024-01-02T10:15:30.000Z"),
+        instant(1_704_190_530_000_000_000),
     );
 }
 

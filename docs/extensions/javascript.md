@@ -901,7 +901,7 @@ and validates a plain object. Resolution and merging are the core's, on the
   a vendor field leaves.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
-- A missing FIX folder -> the empty registry; a retired `records/` folder -> throws.
+- A missing FIX folder -> a registry holding only the crate's own fields; a retired `records/` folder -> throws.
 - A registry write -> creates the folder and its parents under
   `primitive/<branch>/` and `nested/<branch>/`.
 - `message.getById`/`byId` -> name one dictionary exactly and do not tier.

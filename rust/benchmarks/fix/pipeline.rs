@@ -28,13 +28,6 @@ use super::seed;
 /// How many capture lines one measured run reads.
 const ROWS: usize = crate::bench_profile::corpus(2_400, 240);
 
-/// The row header every line of the log opens with.
-///
-/// A timestamp, the thread that wrote the line, the plugin it wrote about
-/// and the level - the four columns a monitor orders and filters on, typed
-/// from the pattern before a byte is read.
-const ROWHEADER: &str = r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<thread>[^\]]+)\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
-
 /// The lines a bridge interleaves, in the order it writes them.
 ///
 /// One Jolokia exchange - four lines of prose and the answer, which is the
@@ -81,11 +74,13 @@ fn handle(bytes: &[u8]) -> Buffer {
     )
 }
 
-/// The text options a bridge log is read under: the row header framed,
-/// each line numbered, classified and read for its direction.
+/// The text options a bridge log is read under: the bridge's own row header
+/// framed - its clock stamping each row, its bracket filling the session,
+/// context and sequence columns - each line numbered, classified and read
+/// for its direction.
 fn text(classify: bool) -> RecordOptions {
     let mut options = TextOptions::new()
-        .try_with_rowheader(ROWHEADER)
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
     options.with_rownum = Some(1);

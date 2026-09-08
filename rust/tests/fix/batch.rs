@@ -54,12 +54,28 @@ fn column<'batch>(
     batch.column(index).as_ref()
 }
 
-/// One projected scalar in the first row of a batch.
+/// One column of one batch, by the tag its field carries.
+fn tag_column(batch: &RecordBatch, tag: i32) -> &dyn arrow_array::Array {
+    batch.column(super::tag_index(batch, tag)).as_ref()
+}
+
+/// One projected scalar in the first row of a batch, by name.
 fn first_value(batch: &RecordBatch, name: &str) -> Scalar {
     let index = batch
         .schema()
         .index_of(name)
         .unwrap_or_else(|_| panic!("a {name} column"));
+    first_at(batch, index)
+}
+
+/// One projected scalar in the first row of a batch, by the tag its field
+/// carries.
+fn first_tag_value(batch: &RecordBatch, tag: i32) -> Scalar {
+    first_at(batch, super::tag_index(batch, tag))
+}
+
+/// One projected scalar in the first row of a batch, by position.
+fn first_at(batch: &RecordBatch, index: usize) -> Scalar {
     let rows = yggdryl::arrow::batch_to_value(batch).expect("the projected rows");
     rows.as_sequence().expect("rows")[0]
         .as_sequence()
@@ -81,29 +97,46 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         .map(|held| held.name().as_str())
         .collect();
 
-    // Columns are named by tag, because a tag is the one name a field has in
-    // every version and every dialect.
-    assert_eq!(&names[..5], ["8", "9", "35", "49", "56"], "{names:?}");
+    // Columns are named by their folded names, and each carries its tag on
+    // the field - which is what the row is filled by.
+    assert_eq!(
+        &names[..5],
+        ["beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"],
+        "{names:?}"
+    );
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"],
     );
     // The standard header, the body a consumer queries, the groups worth
-    // keeping whole, the trailer, and this crate's own derived facts.
+    // keeping whole, the trailer, and this crate's own derived facts - each
+    // found by the tag its column carries.
+    let fixed = yggdryl::Field::from_arrow_schema("row", &schema).expect("the schema reads");
     for tag in [
-        "55", "54", "44", "38", "60", // the trade
-        "132", "133", "134", "135", // the quote's lanes
-        "453", "454", "768", // the groups
-        "10",  // the trailer
-        "30001", "30004", "30005", // the digest, the clock, the partition
-        "385",   // which way the line moved
+        55, 54, 44, 38, 60, // the trade
+        132, 133, 134, 135, // the quote's lanes
+        453, 454, 768, // the groups
+        10, // the trailer
+        yggdryl::MSGHASH_TAG,
+        yggdryl::TIMESTAMP_TAG,
+        yggdryl::UNIXPARTITION_TAG, // the digest, the clock, the partition
+        yggdryl::SESSIONID_TAG,
+        yggdryl::MSGCTXID_TAG, // what a bridge's own log states
+        yggdryl::MSGDIRECTION_TAG, // which way the line moved
     ] {
-        assert!(names.contains(&tag), "{tag} missing from {names:?}");
+        assert!(
+            yggdryl::fix_column_of(&fixed, tag).is_some(),
+            "tag {tag} missing from {names:?}"
+        );
     }
 
-    // Each column still carries the spelling it had, so a renderer can show
-    // `msgtype` over column `35`.
-    let msgtype = schema.field_with_name("35").expect("the msgtype column");
+    // Each column carries its tag and the spelling it had, so a renderer can
+    // show `MsgType` over the column `msgtype`.
+    let msgtype = schema.field_with_name("msgtype").expect("the msgtype column");
+    assert_eq!(
+        msgtype.metadata().get("fix:tag").map(String::as_str),
+        Some("35"),
+    );
     assert_eq!(
         msgtype.metadata().get("display").map(String::as_str),
         Some("MsgType"),
@@ -124,7 +157,7 @@ fn a_row_in_is_a_row_out() {
 
     // The rows that were not FIX are still rows, named `unknown`.
     let first = &batches[0];
-    let msgtype = column(first, "35");
+    let msgtype = tag_column(first, 35);
     assert!(msgtype.is_valid(0), "a framed row states its type");
 }
 
@@ -153,7 +186,7 @@ fn both_batch_sources_use_separatorless_group_inference() {
     let column_batch = columns.into_iter().next().unwrap().unwrap();
 
     for batch in [&row_batch, &column_batch] {
-        let group = first_value(batch, "453");
+        let group = first_tag_value(batch, 453);
         let parties = group.as_sequence().expect("the party group");
         assert_eq!(parties.len(), 1);
         let members = parties[0].as_sequence().expect("one occurrence");
@@ -178,10 +211,10 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     assert_eq!(batch.num_rows(), 1);
 
     // The lifted facets answered.
-    let symbol = column(&batch, "55");
+    let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
     // The digest is sixteen bytes, not a string.
-    let digest = column(&batch, "30001");
+    let digest = tag_column(&batch, yggdryl::MSGHASH_TAG);
     assert_eq!(
         digest.data_type(),
         &arrow_schema::DataType::FixedSizeBinary(16)
@@ -316,7 +349,7 @@ fn an_enriching_reader_fills_the_columns_a_message_implies() {
         .map(std::result::Result::unwrap)
         .next()
         .expect("one batch");
-    assert_eq!(first_value(&bare, "151"), Scalar::Null);
+    assert_eq!(first_tag_value(&bare, 151), Scalar::Null);
 
     // The same reader, asked to fill, states what the message implied - and
     // the arrival record is untouched, so the wire still re-emits exactly.
@@ -327,9 +360,9 @@ fn an_enriching_reader_fills_the_columns_a_message_implies() {
         .map(std::result::Result::unwrap)
         .next()
         .expect("one batch");
-    assert_eq!(first_value(&filled, "151"), Scalar::from(60.0_f64));
+    assert_eq!(first_tag_value(&filled, 151), Scalar::from(60.0_f64));
     // One fill, so the average is that fill's price.
-    assert_eq!(first_value(&filled, "6"), Scalar::from(10.5_f64));
+    assert_eq!(first_tag_value(&filled, 6), Scalar::from(10.5_f64));
     // A derived tag the fixed row does not carry - `GrossTradeAmt(381)` is
     // one - is filled on the message and simply has no column to appear in.
     // The row is a projection of the message, not the whole of it.
@@ -522,7 +555,10 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         1,
         "the clashing capture column yielded to the FIX one"
     );
-    assert!(columns.contains(&"35".to_owned()), "the tags follow it");
+    assert!(
+        columns.contains(&"msgtype".to_owned()),
+        "the fixed columns follow it"
+    );
 
     let batches: Vec<_> = read.map(|held| held.expect("a batch")).collect();
     assert_eq!(batches.iter().map(RecordBatch::num_rows).sum::<usize>(), 1);
@@ -536,7 +572,7 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     assert_eq!(row[2].as_str(), Some("session-a"));
     let at = columns
         .iter()
-        .position(|held| held == "35")
+        .position(|held| held == "msgtype")
         .expect("the msgtype column");
     assert_eq!(row[at].as_str(), Some("D"), "and FIX filled its own");
 }

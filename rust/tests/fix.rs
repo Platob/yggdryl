@@ -42,3 +42,29 @@ fn run_isolated(test_name: &str, marker: &str) -> bool {
     assert!(status.success(), "isolated FIX test {test_name} failed");
     true
 }
+
+/// How many fields every registry holds before a test inserts one: the
+/// crate's own, which `FixRegistry::new` seeds and no store writes.
+fn crated() -> usize {
+    yggdryl::fix_crate_fields()
+        .expect("the crate's own fields")
+        .len()
+}
+
+/// The crate's own field names, in the order every registry iterates them:
+/// last, because their tags are above every tag a test claims.
+fn crate_names() -> Vec<&'static str> {
+    yggdryl::fix_crate_fields()
+        .expect("the crate's own fields")
+        .iter()
+        .map(yggdryl::Field::name)
+        .collect()
+}
+
+/// Where the column carrying `tag` sits in a batch: by the tag its field
+/// carries, never by its spelling.
+fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch.schema())
+        .expect("the batch schema reads");
+    yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
+}

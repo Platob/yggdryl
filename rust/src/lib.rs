@@ -69,8 +69,8 @@ pub use fix::{
     SESSIONID_TAG, SESSIONINTERFACES_TAG, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
     STATUS_TAG, SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG,
     ULBRIDGE_BRANCH, ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UNIXPARTITION_TAG, UlPlugin,
-    UlPlugins, VERSION_TAG, Words, fix_crate_fields, fix_lift, fix_lifts, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
+    UlPlugins, VERSION_TAG, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_lift,
+    fix_lifts, fix_schema, fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
 };
 #[cfg(feature = "arrow")]
 pub use fix::{

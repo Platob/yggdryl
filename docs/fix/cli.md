@@ -12,7 +12,7 @@ Two audiences, one implementation. A person at a prompt and a workflow gating a 
 | Binary | `ygg`, from the `yggdryl-cli` workspace member, so a library consumer carries none of it |
 | Ships in | the `yggdryl` wheel, as `<version>.data/scripts/ygg`, which an installer puts on PATH; `pip install yggdryl` therefore answers `ygg` with the compiled binary and no Python in the run path |
 | Namespace | one subcommand per namespace, each owning its own verbs and its own state; `fix` is the only one today |
-| Root | `ygg fix --root`, defaulting to `config/fix`; global to the namespace, so it may be given before or after the verb; a folder with no dictionary in it opens empty rather than failing |
+| Root | `ygg fix --root`, defaulting to `config/fix`; global to the namespace, so it may be given before or after the verb; a folder with no dictionary in it opens holding only the crate's own fields rather than failing |
 | Writes | only `set`, `rm` and `ingest`, and only after the command that changed something asked to save |
 | Colour | on where stdout is a terminal and `NO_COLOR` is unset; box drawing and animation follow the same test |
 | Annotates | `--annotate`, on by itself under `GITHUB_ACTIONS`; findings become workflow annotations and a failure becomes a non-zero exit |
@@ -58,13 +58,13 @@ A key is a tag, an identifier (`5001:cme`), a name, or a branch-qualified dotted
 
 ## The schema command dumps the row
 
-`schema` prints the fixed row a capture lands in, built by [`fix_schema`](capture.md#the-columns-are-the-tags) from the dictionary that was loaded. A schema printed here and a schema a reader answers `schema()` with are the same object built by the same code, never two spellings of one intention.
+`schema` prints the fixed row a capture lands in, built by [`fix_schema`](capture.md#the-columns-are-the-folded-names) from the dictionary that was loaded. A schema printed here and a schema a reader answers `schema()` with are the same object built by the same code, never two spellings of one intention.
 
 ```bash
 cargo run -p yggdryl-cli -- fix schema --out schemas/fix-message.json
 ```
 
-With `--rowheader`, the columns a capture supplies lead the row. The regex is the one a text read frames lines with, and its named captures become columns ahead of the FIX ones, typed by what their syntax can match - so a group matching `2024-02-01 12:34:56.123456` becomes a microsecond UTC timestamp column and not a string.
+With `--rowheader`, the columns a capture supplies lead the row. The regex is the one a text read frames lines with, and its named captures become columns ahead of the FIX ones, typed by what their syntax can match - so a group matching `2024-02-01 12:34:56.123456` is a microsecond UTC instant and not a string. A capture named after a FIX column is not carried in front: `timestamp` here is the row's clock and [lands in that column](arrow.md#a-column-is-the-caller-speaking-per-row), and `yggdryl::ULBRIDGE_ROWHEADER` is a [bridge log's own header](arrow.md#a-bridge-log-names-what-it-fills) written that way.
 
 ```bash
 cargo run -p yggdryl-cli -- fix schema \
@@ -109,7 +109,7 @@ The prompt carries a `*` while anything is unsaved. Every shell command is the s
 
 ## Edges
 
-- A folder holding no `primitive/` or `nested/` tree opens as an empty dictionary; a folder holding the retired layout is refused with the URL named.
+- A folder holding no `primitive/` or `nested/` tree opens as a dictionary holding only the crate's own fields; a folder holding the retired layout is refused with the URL named.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new dictionary and a revised configuration is a change to one that exists; `sync` always folds, because keeping in step with a source is not the same as taking one in for the first time.
 - `sync` of a location that is neither a folder nor a `.cfb` -> refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
 - `sync` of a `.cfb` whose stem is not a branch -> refused rather than folded into one, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) refuses it.

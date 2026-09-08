@@ -146,7 +146,9 @@ The source field is complete before any source bytes are read.
 Named `rowheader` captures follow these columns and stay nullable in both modes.
 [`DataType::from_regex`](../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
-datetimes.
+datetimes. `yggdryl::ULBRIDGE_ROWHEADER` is the header a bridge log writes,
+its captures named for the [FIX columns they fill](../fix/arrow.md#a-bridge-log-names-what-it-fills)
+when the read goes on into a FIX batch.
 
 ### Classifying each record
 

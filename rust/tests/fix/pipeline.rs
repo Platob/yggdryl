@@ -1,15 +1,17 @@
 //! A bridge's own log, end to end: text records in, one stable FIX table out.
 //!
-//! The capture is what a ULBridge writes - each line under one row header,
-//! a Jolokia exchange whose answer is a configuration document, framed FIX
-//! either side of a plugin's prose, a bridge row keyed by name, and the
-//! sentences between them. The text reader frames and classifies every line;
-//! the codec reads every framed body into the one row shape the dictionary
-//! decides before a byte is read. This is the acceptance test for that
-//! composition: the schema never depends on the data, a line in is a row
-//! out, the capture's own columns lead each row, a document's attributes land
-//! typed on the bridge's own tags, and the batched read agrees with the line
-//! read on every tag both can answer.
+//! The capture is what a ULBridge writes - each line under the row header
+//! [`yggdryl::ULBRIDGE_ROWHEADER`] names, a Jolokia exchange whose answer is
+//! a configuration document, framed FIX either side of a plugin's prose, a
+//! bridge row keyed by name, and the sentences between them. The text reader
+//! frames and classifies every line; the codec reads every framed body into
+//! the one row shape the dictionary decides before a byte is read. This is
+//! the acceptance test for that composition: the schema never depends on the
+//! data, a line in is a row out, the capture's own columns lead each row and
+//! the captures named after fields fill them instead, every row is stamped
+//! by its header's clock, a document's attributes land typed on the bridge's
+//! own tags, and the batched read agrees with the line read on every tag
+//! both can answer.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,7 +24,7 @@ use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
 use yggdryl::{
     FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, Scalar,
-    Timezone, Url, fix_schema, fix_schema_carrying,
+    TimeUnit, Timezone, Url, fix_schema, fix_schema_carrying,
 };
 
 /// The committed dictionary beside the bridge's own vocabulary.
@@ -39,9 +41,6 @@ fn registry() -> Arc<FixRegistry> {
     )
 }
 
-/// The row header every line of the log opens with.
-const ROWHEADER: &str = r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<thread>[^\]]+)\] \[(?P<plugin>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
-
 /// The Jolokia answer, which is the one line that is a document.
 const RESPONSE: &str = concat!(
     r#"2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},"#,
@@ -50,13 +49,14 @@ const RESPONSE: &str = concat!(
     r#""Name":"Router_TradeCapture","Version":"4.7.0","State":"logged","Type":"I","ExtendedActions":[{"name":"send-test-request","enabled":true}],"Enrichments":[]},"timestamp":1755153982,"status":200}"#,
 );
 
-/// A heartbeat the bridge sent.
+/// A heartbeat the bridge sent, under a bracket holding the thread alone.
 const HEARTBEAT: &str = "2026-08-14 06:46:30.416 [15261] [OMS_X1_TradeCapture] (DEBUG) Sending : 8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|";
 
 /// A fill the bridge received, wide enough to fill the body columns.
 const FILL: &str = "2026-08-14 06:46:36.887 [653] [Spot_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=VENUEADC|56=CLIENTFIS|52=20260814-04:46:36|1=client|6=547.771791547861|11=20260814_TP1_CLIENT_1003|14=982|15=INR|17=E-20260814-4507|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=XX0000000001|54=1|55=EXAMPLECO|58=Filled|59=0|60=20260814-04:46:36|75=20260814|150=2|151=0|10=197|";
 
-/// The same fill as the bridge routes it, keyed by name.
+/// The same fill as the bridge routes it, keyed by name, under a bracket
+/// stating the session, the message context and the sequence number.
 const ROUTED: &str = "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=client|AVGPX=547.771791547861|CLORDID=20260814_TP1_CLIENT_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=BRKR|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=EXAMPLECO|TRANSACTTIME=20260814-04:46:36|";
 
 /// Every line the log interleaves, in the order it writes them.
@@ -94,22 +94,40 @@ fn corpus(lines: &[&str]) -> Buffer {
     )
 }
 
-/// The text options a bridge log is read under.
-fn text() -> RecordOptions {
+/// The text options a bridge log is read under: the bridge's own row header,
+/// its clock read in UTC, and each line numbered, classified and read for
+/// its direction.
+fn text_options() -> TextOptions {
     let mut options = TextOptions::new()
-        .try_with_rowheader(ROWHEADER)
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
     options.with_rownum = Some(1);
     options.with_direction = true;
     options.with_mimetype = true;
     options.with_msgtype = true;
-    options.into()
+    options
+}
+
+/// The same, as the record options a read takes.
+fn text() -> RecordOptions {
+    text_options().into()
 }
 
 /// The codec options: the bridge's own dialect, pinned for the whole run.
 fn options() -> FixOptions {
     FixOptions::new().with_branch(FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+}
+
+/// The first stage alone, as one batch: what the text reader hands the codec.
+fn text_stage(lines: &[&str]) -> RecordBatch {
+    let batches: Vec<RecordBatch> = corpus(lines)
+        .read_arrow_reader(&text())
+        .expect("a reader")
+        .map(|batch| batch.expect("a batch"))
+        .collect();
+    assert_eq!(batches.len(), 1, "one batch, under the byte target");
+    batches.into_iter().next().expect("the batch")
 }
 
 /// The whole path, as one batch: the capture is far under the byte target.
@@ -127,12 +145,8 @@ fn read(lines: &[&str]) -> RecordBatch {
     batches.into_iter().next().expect("the batch")
 }
 
-/// One column of one batch, by name, as the values it holds.
-fn column(batch: &RecordBatch, name: &str) -> Vec<Scalar> {
-    let at = batch
-        .schema()
-        .index_of(name)
-        .unwrap_or_else(|_| panic!("a {name} column"));
+/// One column of one batch, by position, as the values it holds.
+fn column_at(batch: &RecordBatch, at: usize) -> Vec<Scalar> {
     let rows = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
     rows.as_sequence()
         .expect("rows")
@@ -141,16 +155,39 @@ fn column(batch: &RecordBatch, name: &str) -> Vec<Scalar> {
         .collect()
 }
 
-/// One column's text per row, null where it states none.
-fn text_column(batch: &RecordBatch, name: &str) -> Vec<Option<String>> {
-    column(batch, name)
-        .iter()
+/// One column of one batch, by name.
+fn column(batch: &RecordBatch, name: &str) -> Vec<Scalar> {
+    let at = batch
+        .schema()
+        .index_of(name)
+        .unwrap_or_else(|_| panic!("a {name} column"));
+    column_at(batch, at)
+}
+
+/// One column of one batch, by the tag its field carries.
+fn tag_column(batch: &RecordBatch, tag: i32) -> Vec<Scalar> {
+    column_at(batch, super::tag_index(batch, tag))
+}
+
+/// Each value's text, null where it states none.
+fn texts(held: &[Scalar]) -> Vec<Option<String>> {
+    held.iter()
         .map(|held| held.as_str().map(ToOwned::to_owned))
         .collect()
 }
 
+/// One column's text per row, by name.
+fn text_column(batch: &RecordBatch, name: &str) -> Vec<Option<String>> {
+    texts(&column(batch, name))
+}
+
+/// One column's text per row, by the tag its field carries.
+fn tag_text(batch: &RecordBatch, tag: i32) -> Vec<Option<String>> {
+    texts(&tag_column(batch, tag))
+}
+
 #[test]
-fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_data() {
+fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_the_data() {
     let registry = registry();
     let held = read(&CAPTURE);
     let schema = held.schema();
@@ -161,40 +198,73 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
         .collect();
 
     // The text reader's own columns lead the row - where the line came from,
-    // which line it was, what it was, the line itself and the four captures
-    // the row header typed - and the tags follow.
+    // which line it was, what it was, the line itself and the header's
+    // captures - and the fixed columns follow. A capture whose folded name a
+    // fixed column takes is not carried in front, it fills that column: the
+    // reader's `msgtype`, and the header's `timestamp`, `sessionId` and
+    // `msgCtxId`. `seqNum` is carried, since no fixed column is spelled so,
+    // and fills `msgseqnum` besides.
     assert_eq!(
-        &names[..10],
+        &names[..9],
         [
             "url",
             "rownum",
             "direction",
             "mimetype",
-            "msgtype",
             "body",
-            "ts",
-            "thread",
+            "threadId",
+            "seqNum",
             "plugin",
             "level"
         ],
         "{names:?}"
     );
-    assert_eq!(&names[10..13], ["8", "9", "35"], "{names:?}");
+    assert_eq!(
+        &names[9..12],
+        ["beginstring", "bodylength", "msgtype"],
+        "{names:?}"
+    );
+    for once in ["msgtype", "timestamp", "sessionid", "msgctxid", "msgseqnum"] {
+        assert_eq!(
+            names.iter().filter(|held| **held == once).count(),
+            1,
+            "{once} is one column"
+        );
+    }
+    // The text reader's `direction` and FIX's own `msgdirection` are two
+    // names, so both are here.
+    assert!(names.contains(&"msgdirection"), "{names:?}");
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"]
     );
 
     // The timestamp capture was typed from its pattern before a byte was
-    // read, and took the zone the options declared.
-    let ts = schema.field_with_name("ts").expect("the timestamp");
+    // read and took the zone the options declared; the fixed column it
+    // stamps is an instant too, and one every row has.
+    let stage = text_stage(&CAPTURE);
+    let captured = stage.schema();
+    let clock = captured
+        .field_with_name("timestamp")
+        .expect("the timestamp capture");
     assert!(
         matches!(
-            ts.data_type(),
+            clock.data_type(),
             arrow_schema::DataType::Timestamp(_, Some(_))
         ),
-        "{ts:?}"
+        "{clock:?}"
     );
+    let stamp = schema
+        .field_with_name("timestamp")
+        .expect("the clock column");
+    assert!(
+        matches!(
+            stamp.data_type(),
+            arrow_schema::DataType::Timestamp(_, Some(_))
+        ),
+        "{stamp:?}"
+    );
+    assert!(!stamp.is_nullable(), "every row is stamped");
 
     // The shape is a function of the options and the dictionary alone: a
     // capture of two lines and one of eleven answer the same schema, and it
@@ -202,25 +272,12 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
     let two = read(&CAPTURE[..2]);
     assert_eq!(two.schema(), held.schema());
     let composed = fix_schema_carrying(
-        &TextOptions::new()
-            .try_with_rowheader(ROWHEADER)
-            .expect("the row header compiles")
-            .with_timezone(Timezone::UTC)
-            .source_field()
-            .expect("the text root"),
+        &text_options().source_field().expect("the text root"),
         &fix_schema(&registry, "fix").expect("the fixed root"),
     )
     .expect("the composition");
-    // `source_field` on fresh options omits the four optional columns the
-    // read switched on, so the composition is compared past them.
-    let composed: Vec<String> = composed
-        .fields()
-        .iter()
-        .map(|held| held.name().to_owned())
-        .collect();
-    assert_eq!(composed[0], "url");
-    assert_eq!(&composed[1..2], ["body"]);
-    assert_eq!(&composed[6..], &names[10..], "the tags follow in one order");
+    let composed: Vec<&str> = composed.fields().iter().map(yggdryl::Field::name).collect();
+    assert_eq!(composed, names, "the composition the two halves publish");
 }
 
 #[test]
@@ -237,7 +294,9 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
         (1..=11).collect::<Vec<i64>>()
     );
 
-    // The row header's captures survive the codec untouched.
+    // The row header's captures survive the codec untouched: the thread that
+    // wrote the line, the plugin and the level, and the bracket's sequence
+    // number - null where the bracket held only the thread.
     assert_eq!(
         text_column(&read, "plugin")[HEARTBEAT_ROW].as_deref(),
         Some("OMS_X1_TradeCapture")
@@ -246,10 +305,29 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
         text_column(&read, "level")[FILL_ROW].as_deref(),
         Some("INFO")
     );
-    assert_eq!(
-        text_column(&read, "thread")[ROUTED_ROW].as_deref(),
-        Some("15333-e7254b22:9f015ee861:4507")
-    );
+    let thread = column(&read, "threadId");
+    assert_eq!(thread[ROUTED_ROW].as_i64(), Some(15_333));
+    assert_eq!(thread[HEARTBEAT_ROW].as_i64(), Some(15_261));
+    let seq = column(&read, "seqNum");
+    assert_eq!(seq[ROUTED_ROW].as_i64(), Some(4_507));
+    assert!(seq[HEARTBEAT_ROW].is_null(), "no session, no sequence");
+
+    // The bracket's session and context are captures named after the crate's
+    // own fields, so they land in those columns rather than in front: the
+    // routed row's bracket stated them, the heartbeat's did not.
+    let session = tag_text(&read, yggdryl::SESSIONID_TAG);
+    let context = tag_text(&read, yggdryl::MSGCTXID_TAG);
+    assert_eq!(session[ROUTED_ROW].as_deref(), Some("e7254b22"));
+    assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
+    assert_eq!(session[HEARTBEAT_ROW], None);
+    assert_eq!(context[HEARTBEAT_ROW], None);
+
+    // The bracket's sequence number fills `MsgSeqNum` where the line stated
+    // none - the routed row is keyed by name and carries no 34 - and never
+    // where it did: the heartbeat keeps its own.
+    let msgseqnum = tag_column(&read, 34);
+    assert_eq!(msgseqnum[ROUTED_ROW].as_i64(), Some(4_507));
+    assert_eq!(msgseqnum[HEARTBEAT_ROW].as_i64(), Some(696));
 
     // What each line was, read once by the text reader and carried through.
     let mimetype = text_column(&read, "mimetype");
@@ -267,10 +345,11 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(direction[FILL_ROW].as_deref(), Some("RECV"));
     assert_eq!(direction[RESPONSE_ROW].as_deref(), Some("RECV"));
     assert_eq!(direction[2], None, "a sentence states no direction");
-    // And the column read as a parameter is still carried into the row: the
-    // FIX direction column agrees with the text reader's wherever the text
-    // reader answered, and fills the default where it did not.
-    let fix_direction = text_column(&read, "385");
+    // And the column read as a parameter is still carried into the row: FIX's
+    // own `msgdirection` - a name of its own beside the text reader's
+    // `direction` - agrees with the text reader's wherever the text reader
+    // answered, and fills the default where it did not.
+    let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG);
     assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("SENT"));
     assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("RECV"));
     assert_eq!(fix_direction[RESPONSE_ROW].as_deref(), Some("RECV"));
@@ -281,7 +360,7 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
 fn every_framed_line_fills_its_tag_columns_typed() {
     let read = read(&CAPTURE);
 
-    let msgtype = text_column(&read, "35");
+    let msgtype = tag_text(&read, 35);
     assert_eq!(msgtype[HEARTBEAT_ROW].as_deref(), Some("0"));
     assert_eq!(msgtype[FILL_ROW].as_deref(), Some("8"));
     assert_eq!(
@@ -292,15 +371,15 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(msgtype[0], None, "prose states no type");
 
     // Header facts, by tag.
-    let sender = text_column(&read, "49");
+    let sender = tag_text(&read, 49);
     assert_eq!(sender[HEARTBEAT_ROW].as_deref(), Some("CLIAUDITX1"));
     assert_eq!(sender[FILL_ROW].as_deref(), Some("VENUEADC"));
-    let seq = column(&read, "34");
+    let seq = tag_column(&read, 34);
     assert_eq!(seq[HEARTBEAT_ROW].as_i64(), Some(696));
     assert_eq!(seq[FILL_ROW].as_i64(), Some(4507));
 
     // A sending time is an instant, not the text it arrived as.
-    let sent = column(&read, "52");
+    let sent = tag_column(&read, 52);
     assert!(
         matches!(sent[HEARTBEAT_ROW], Scalar::Temporal(_)),
         "{:?}",
@@ -309,36 +388,33 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert!(sent[2].is_null(), "prose states no time");
 
     // The fill's body: symbol, side, quantities and prices, typed.
+    assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
+    assert_eq!(tag_text(&read, 54)[FILL_ROW].as_deref(), Some("1"));
+    assert_eq!(tag_column(&read, 38)[FILL_ROW].as_f64(), Some(982.0));
     assert_eq!(
-        text_column(&read, "55")[FILL_ROW].as_deref(),
-        Some("EXAMPLECO")
-    );
-    assert_eq!(text_column(&read, "54")[FILL_ROW].as_deref(), Some("1"));
-    assert_eq!(column(&read, "38")[FILL_ROW].as_f64(), Some(982.0));
-    assert_eq!(
-        column(&read, "44")[FILL_ROW].as_f64(),
+        tag_column(&read, 44)[FILL_ROW].as_f64(),
         Some(547.771791547861)
     );
-    assert_eq!(column(&read, "151")[FILL_ROW].as_f64(), Some(0.0));
-    assert_eq!(text_column(&read, "150")[FILL_ROW].as_deref(), Some("2"));
+    assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
+    assert_eq!(tag_text(&read, 150)[FILL_ROW].as_deref(), Some("2"));
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
     assert_eq!(
-        text_column(&read, "55")[ROUTED_ROW].as_deref(),
+        tag_text(&read, 55)[ROUTED_ROW].as_deref(),
         Some("EXAMPLECO")
     );
     assert_eq!(
-        text_column(&read, "11")[ROUTED_ROW].as_deref(),
+        tag_text(&read, 11)[ROUTED_ROW].as_deref(),
         Some("20260814_TP1_CLIENT_1003")
     );
-    assert_eq!(column(&read, "38")[ROUTED_ROW].as_f64(), Some(982.0));
-    assert_eq!(column(&read, "31")[ROUTED_ROW].as_f64(), Some(547.77));
+    assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
+    assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
     // The crate's own columns: a digest for every row that carried anything -
     // the framed fill and the routed row state different tag sets, so they
-    // digest apart - and the market clock read from each transaction time.
-    let digest = column(&read, "30001");
+    // digest apart - and the clock every row is stamped with.
+    let digest = tag_column(&read, yggdryl::MSGHASH_TAG);
     assert!(
         digest[FILL_ROW]
             .as_bytes()
@@ -350,14 +426,64 @@ fn every_framed_line_fills_its_tag_columns_typed() {
             .is_some_and(|held| held.len() == 16)
     );
     assert_ne!(digest[FILL_ROW], digest[ROUTED_ROW]);
-    assert!(matches!(
-        column(&read, "30004")[FILL_ROW],
-        Scalar::Temporal(_)
-    ));
-    assert!(matches!(
-        column(&read, "30004")[ROUTED_ROW],
-        Scalar::Temporal(_)
-    ));
+    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG);
+    assert!(matches!(stamp[FILL_ROW], Scalar::Temporal(_)));
+    assert!(matches!(stamp[ROUTED_ROW], Scalar::Temporal(_)));
+}
+
+#[test]
+fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() {
+    let read = read(&CAPTURE);
+    let stage = text_stage(&CAPTURE);
+
+    // The row's own clock outranks every clock the message carries - the fill
+    // states 04:46:36 and is stamped when the bridge wrote its line,
+    // 06:46:36.887 - and a line carrying no clock at all is stamped too. The
+    // text read declared UTC, so the capture and the stamp are one instant,
+    // on every row.
+    let clock = column(&stage, "timestamp");
+    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG);
+    for row in 0..CAPTURE.len() {
+        assert!(!stamp[row].is_null(), "row {row} is stamped");
+        assert_eq!(
+            stamp[row].temporal_count_at(TimeUnit::Nanosecond),
+            clock[row].temporal_count_at(TimeUnit::Nanosecond),
+            "row {row} is stamped by its header clock",
+        );
+    }
+    let millis = |row: usize| stamp[row].temporal_count_at(TimeUnit::Millisecond);
+    assert_eq!(millis(HEARTBEAT_ROW), Some(1_786_689_990_416));
+    assert_eq!(millis(FILL_ROW), Some(1_786_689_996_887));
+    assert_eq!(millis(ROUTED_ROW), Some(1_786_689_997_153));
+
+    // The partition the stamp falls in, floored from the clock's own
+    // nanoseconds so a millisecond clock still has one - on every row.
+    let partition = tag_column(&read, yggdryl::UNIXPARTITION_TAG);
+    for row in 0..CAPTURE.len() {
+        assert!(!partition[row].is_null(), "row {row} has a partition");
+    }
+    let seconds = 1_786_689_996_i64;
+    assert_eq!(
+        partition[FILL_ROW].as_i64(),
+        Some(seconds - seconds % yggdryl::DEFAULT_PARTITION_SECONDS)
+    );
+
+    // Every row says which FIX it was read as: the wire's own `BeginString`
+    // where the frame stated one, and `FIX.` and the version the row was read
+    // at where it did not - the routed row keyed by name, and the prose.
+    let version = tag_text(&read, 8);
+    for row in 0..CAPTURE.len() {
+        assert!(version[row].is_some(), "row {row} states a version");
+    }
+    assert_eq!(version[HEARTBEAT_ROW].as_deref(), Some("FIX.4.4"));
+    assert_eq!(version[FILL_ROW].as_deref(), Some("FIX.4.2"));
+    assert!(
+        version[ROUTED_ROW]
+            .as_deref()
+            .is_some_and(|held| held.starts_with("FIX.")),
+        "{:?}",
+        version[ROUTED_ROW]
+    );
 }
 
 #[test]
@@ -481,8 +607,8 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // The text reader's bodies are what the codec reads, so the line read
     // runs over them rather than over the raw lines.
     let bodies = column(&read, "body");
-    for tag in [8, 35, 49, 56, 34, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
-        let held = column(&read, &tag.to_string());
+    for tag in [8, 35, 49, 56, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
+        let held = tag_column(&read, tag);
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_bytes().expect("a body");
             let message = codec
@@ -504,9 +630,44 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         }
     }
 
+    // The one tag the batch answers and the line read cannot: the sequence
+    // number the row header stated for a line that carried none. It is a
+    // fill, never an entry - and neither are the session, the context or the
+    // clock - so the arrival record is still the line alone.
+    let routed = bodies[ROUTED_ROW].as_bytes().expect("a body");
+    let alone = codec
+        .transform_line(routed, false)
+        .expect("the routed row");
+    assert!(alone.get_by_tag(34).is_none());
+    assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
+    let entries = column(&read, "nofixentries");
+    let recorded: Vec<i64> = entries[ROUTED_ROW]
+        .as_sequence()
+        .expect("the entries")
+        .iter()
+        .map(|entry| {
+            entry.as_sequence().expect("an entry")[0]
+                .as_i64()
+                .unwrap_or_default()
+        })
+        .collect();
+    assert_eq!(recorded.len(), alone.entries().len());
+    for filled in [
+        34,
+        yggdryl::SESSIONID_TAG,
+        yggdryl::MSGCTXID_TAG,
+        yggdryl::TIMESTAMP_TAG,
+    ] {
+        assert!(
+            !recorded.contains(&i64::from(filled)),
+            "tag {filled} is a fill, never an entry"
+        );
+    }
+
     // The wire is rebuilt from each row's arrival record: every framed line
     // comes back byte for byte behind the prose the text reader left in
-    // front of it.
+    // front of it - the routed row too, because what the row filled from its
+    // header is not an entry and so is not re-emitted.
     let mut written: Vec<u8> = Vec::new();
     let mut emitting = FixOptions::new();
     emitting.separator = b'|';
@@ -525,8 +686,12 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         .expect("text")
         .lines()
         .collect();
-    for (row, line) in [(HEARTBEAT_ROW, HEARTBEAT), (FILL_ROW, FILL)] {
-        let frame = &line[line.find("8=FIX").expect("a frame")..];
+    for (row, line, opens) in [
+        (HEARTBEAT_ROW, HEARTBEAT, "8=FIX"),
+        (FILL_ROW, FILL, "8=FIX"),
+        (ROUTED_ROW, ROUTED, "ACCOUNT="),
+    ] {
+        let frame = &line[line.find(opens).expect("a frame")..];
         assert_eq!(lines[row], frame, "row {row} re-emits its frame");
     }
 }

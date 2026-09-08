@@ -1326,8 +1326,15 @@ mod tests {
         let held = tagged("Held", 1);
         let incoming = tagged("Incoming", 2);
         let mut registry = FixRegistry::from_fields([held.clone()]).unwrap();
+        // The crate's own fields sit in front of it, so its position is
+        // found rather than assumed to be the first.
+        let at = registry
+            .fields
+            .iter()
+            .position(|field| field.name() == held.name())
+            .expect("the held field");
         let collided = name_digest(&FixBranch::STANDARD, incoming.name(), NAME_SEED);
-        registry.names.insert(collided, 0);
+        registry.names.insert(collided, at);
 
         assert!(
             registry

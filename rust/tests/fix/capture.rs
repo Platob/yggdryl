@@ -140,6 +140,16 @@ fn column(batch: &arrow_array::RecordBatch, name: &str) -> Vec<Scalar> {
         .schema()
         .index_of(name)
         .unwrap_or_else(|_| panic!("a {name} column"));
+    column_at(batch, at)
+}
+
+/// One column of one batch, by the tag its field carries.
+fn tag_column(batch: &arrow_array::RecordBatch, tag: i32) -> Vec<Scalar> {
+    column_at(batch, super::tag_index(batch, tag))
+}
+
+/// One column of one batch, by position.
+fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
     let held = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
     held.as_sequence()
         .expect("rows")
@@ -197,11 +207,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     // boundary rather than the read.
     let batch = &batched[0];
     for tag in [11, 55, 37, 17, 39, 151, 6, 120] {
-        let name = tag.to_string();
-        if batch.schema().index_of(&name).is_err() {
-            continue;
-        }
-        let column = column(batch, &name);
+        let column = tag_column(batch, tag);
         for (at, message) in one_at_a_time.iter().enumerate() {
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             assert_eq!(
@@ -403,7 +409,7 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
     assert_eq!(directions[5].as_str(), Some("RECV"));
 
     // And the enrichment is visible in the columns, not just on the message.
-    let leaves = column(&batch, "151");
+    let leaves = tag_column(&batch, 151);
     assert_eq!(leaves[1], Scalar::from(60.0_f64), "the part-filled report");
     assert_eq!(leaves[2], Scalar::from(0.0_f64), "the closing fill");
 }

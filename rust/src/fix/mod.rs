@@ -211,8 +211,8 @@ pub use ulbridge::{
 };
 
 pub use schema::{
-    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN, fix_schema,
-    fix_schema_carrying, fix_schema_tags,
+    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN,
+    fix_column_of, fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 
 /// The absent branch occupies four zero bytes in every standard identifier.
