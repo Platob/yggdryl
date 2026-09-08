@@ -459,8 +459,8 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
     // The partition the stamp falls in, floored from the clock's own
     // nanoseconds so a millisecond clock still has one - on every row.
     let partition = tag_column(&read, yggdryl::UNIXPARTITION_TAG);
-    for row in 0..CAPTURE.len() {
-        assert!(!partition[row].is_null(), "row {row} has a partition");
+    for (row, held) in partition.iter().enumerate() {
+        assert!(!held.is_null(), "row {row} has a partition");
     }
     let seconds = 1_786_689_996_i64;
     assert_eq!(
@@ -472,8 +472,8 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
     // where the frame stated one, and `FIX.` and the version the row was read
     // at where it did not - the routed row keyed by name, and the prose.
     let version = tag_text(&read, 8);
-    for row in 0..CAPTURE.len() {
-        assert!(version[row].is_some(), "row {row} states a version");
+    for (row, held) in version.iter().enumerate() {
+        assert!(held.is_some(), "row {row} states a version");
     }
     assert_eq!(version[HEARTBEAT_ROW].as_deref(), Some("FIX.4.4"));
     assert_eq!(version[FILL_ROW].as_deref(), Some("FIX.4.2"));
