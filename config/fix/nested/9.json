@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "compid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "metadata": {
       "description": "Number of CompID entries in a repeating group.",
       "display": "NoCompIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocompids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocompids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "936"
     }
   },
@@ -87,7 +87,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "collinquiryqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -111,7 +111,7 @@
     "metadata": {
       "description": "Number of CollInquiryQualifier entries in a repeating group.",
       "display": "NoCollInquiryQualifier",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocollinquiryqualifier\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocollinquiryqualifier\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "938"
     }
   },
@@ -120,7 +120,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested3partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -174,7 +174,7 @@
     "metadata": {
       "description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
       "display": "NoNested3PartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "948"
     }
   },
@@ -183,7 +183,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested3partysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -217,7 +217,7 @@
     "metadata": {
       "description": "Number of Nested3PartySubIDs (953) entries",
       "display": "NoNested3PartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested3partysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "952"
     }
   },
@@ -226,7 +226,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "strategyparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -270,7 +270,7 @@
     "metadata": {
       "description": "Indicates number of strategy parameters",
       "display": "NoStrategyParameters",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nostrategyparameters\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nostrategyparameters\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "957"
     }
   },
@@ -279,7 +279,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "expiration",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -313,7 +313,7 @@
     "metadata": {
       "description": "Number of Expiration Qty entries",
       "display": "NoExpiration",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noexpiration\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noexpiration\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "981"
     }
   },
@@ -322,7 +322,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingamount",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -349,7 +349,8 @@
             {
               "name": "underlyingsettlementdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -376,7 +377,7 @@
     "metadata": {
       "description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
       "display": "NoUnderlyingAmounts",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingamounts\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingamounts\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "984"
     }
   }

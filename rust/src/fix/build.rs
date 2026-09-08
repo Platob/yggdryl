@@ -29,7 +29,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
 use super::project::{Projections, is_binary};
-use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
+use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -161,16 +161,47 @@ impl<'registry> Builder<'registry> {
     }
 
     /// The registry field one key names, and the tag it carries.
+    ///
+    /// A name is looked for in this message's branch and then in the standard
+    /// one, which is the tier [`FixMsg`](super::FixMsg) reads a built message
+    /// by: a row transcribed against a venue's dictionary names that venue's
+    /// fields by the venue's spellings while still carrying `MsgType`,
+    /// `SenderCompID` and every other specification field. Building it under
+    /// one branch alone would drop exactly those identities before a reader
+    /// could ask for them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.registry.get_primitive_field(tag)
         } else {
-            self.registry
-                .get_field_by_path(key, Some(&self.branch))
+            self.by_path(key, &self.branch)
+                .or_else(|| {
+                    (!self.branch.is_standard())
+                        .then(|| self.by_path(key, &super::FixBranch::STANDARD))
+                        .flatten()
+                })
                 .filter(|field| !super::registry::is_nested(field))
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
         Some((field, tag))
+    }
+
+    /// One name looked for in exactly one dictionary.
+    fn by_path(&self, key: &str, branch: &FixBranch) -> Option<&'registry Field> {
+        self.registry.get_field_by_path(key, Some(branch))
+    }
+
+    /// A group's own field, under the same tier a member resolves by.
+    fn by_group(&self, group: &str) -> Option<&'registry Field> {
+        self.registry
+            .get_field_by_name(group, Some(&self.branch))
+            .or_else(|| {
+                (!self.branch.is_standard())
+                    .then(|| {
+                        self.registry
+                            .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                    })
+                    .flatten()
+            })
     }
 
     /// The field a key builds under, cloned and projected to the version.
@@ -210,6 +241,14 @@ impl<'registry> Builder<'registry> {
     /// answers `Ok`. A parse error is for input that is not a message at all.
     fn typed(&self, field: &Field, raw: &[u8], text: &str) -> Scalar {
         let view = field.as_fix();
+        // A spelling this field states as its own absence types as null while
+        // the entry keeps the text: which spelling means "nothing was sent" is
+        // a fact about the field, and the row is the interpretation where the
+        // entries are what arrived. The capture-wide list is the other half of
+        // the pair and was applied before this key was resolved at all.
+        if view.is_null_value(text) {
+            return Scalar::Null;
+        }
         let translated = match self.version {
             Some(at) => view.code_value_at(at, text),
             None => view.code_value(text),
@@ -298,7 +337,6 @@ impl<'registry> Builder<'registry> {
     ) {
         let (member_field, member_tag) = self.field_for(member);
         let value = self.typed(&member_field, raw, text);
-        self.record(key, text, member_tag);
 
         // The same resolution the flat counter uses, so a group addressed by
         // its tag and one addressed by its name reach one slot: `FixKey` reads
@@ -308,7 +346,7 @@ impl<'registry> Builder<'registry> {
         // carrying one tag.
         let (group_field, group_tag) = match self.counter(group) {
             Some(held) => held,
-            None => match self.registry.get_field_by_name(group, Some(&self.branch)) {
+            None => match self.by_group(group) {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
                     (self.project(known), tag)
@@ -319,6 +357,9 @@ impl<'registry> Builder<'registry> {
                 ),
             },
         };
+        // Recorded after the group resolves, so the entry can ride under the
+        // counter pair that heads it - when that pair actually arrived.
+        self.record_under(group_tag, key, text, member_tag);
         let slot = self.slot_for(group_field, group_tag);
         slot.group = true;
         while slot.occurrences.len() <= occurrence {
@@ -348,8 +389,37 @@ impl<'registry> Builder<'registry> {
         }
     }
 
+    /// Records what arrived under the counter that heads it, where one did.
+    ///
+    /// The counter pair itself must have arrived: an entry is the arrival
+    /// record, and a parent nobody sent would be an invention. A member whose
+    /// counter never arrived stays flat at the top, exactly as a wire with no
+    /// stated structure keeps it, and the latest arrival of the counter is
+    /// the one that takes the member - which is what nests each occurrence
+    /// under its own heading.
+    fn record_under(&mut self, counter_tag: i32, key: &str, value: &str, tag: i32) {
+        let entry = FixEntry::new(tag, key, value);
+        let mut entry = if tag == 0 {
+            entry
+        } else {
+            entry.with_branch(&self.branch)
+        };
+        if counter_tag != 0 {
+            for root in self.entries.iter_mut().rev() {
+                match root.adopt(counter_tag, entry) {
+                    None => return,
+                    Some(back) => entry = back,
+                }
+            }
+        }
+        self.entries.push(entry);
+    }
+
     /// Records what arrived, whatever the row made of it.
     fn record(&mut self, key: &str, value: &str, tag: i32) {
+        // A key that named no field resolved in no dialect, so it keeps the
+        // standard digest the constructor set; anything the dictionary
+        // answered carries the branch that answered it.
         let entry = FixEntry::new(tag, key, value);
         let entry = if tag == 0 {
             entry
@@ -423,7 +493,9 @@ impl Slot {
             // They have no field of their own, so they are what `field_for`
             // typed them as - text.
             let absent = self.values.iter().any(Scalar::is_null);
-            let item = DataType::Utf8.named_field("item", absent);
+            // One group has one occurrence name whatever the occurrence's
+            // type, so the stand-in is named exactly as a member-bearing one.
+            let item = DataType::Utf8.named_field(occurrence_name(&self.field), absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
             let _ = list.set_metadata(self.field.as_metadata().iter());
@@ -445,7 +517,10 @@ impl Slot {
             // A tag appearing twice stays two occurrences in input order: a
             // map keyed by tag would lose a repeating group. Indices may be
             // gapped, and a gap is null, so the item takes that nullability.
-            let mut item = self.field.clone().with_name("item");
+            // Not a group: no counter arrived, so there is no component to
+            // name. The occurrence takes the repeated field's own name, which
+            // is what keeps this shape distinguishable from a repeating group.
+            let mut item = self.field.clone().with_name(self.field.name().to_owned());
             item.set_nullable(absent);
             let values = Scalar::from_sequence(self.values);
             let mut list = DataType::list(item).required_field(self.field.name());
@@ -469,7 +544,8 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from_fields(member_fields.clone())?.required_field("item");
+        let mut item = DataType::from_fields(member_fields.clone())?
+            .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if self.occurrences.iter().any(Vec::is_empty) {
             item.set_nullable(true);
@@ -533,7 +609,25 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime64 { .. } => {
+        DataType::DateTime64 { timezone, .. } => {
+            // The zone a value states outranks the column's, and a column
+            // stating none takes no zone rather than Z: a `LocalMktDate` and
+            // a `LocalMktDatetime` are local market values, and rendering
+            // them as instants would make the reading claim a zone the wire
+            // never sent.
+            let implied = if timezone.is_naive() { "" } else { "Z" };
+            // A date states no clock, so it reads as that day at midnight.
+            // This is what makes `UTCDateOnly` and `LocalMktDate` instants
+            // rather than a second temporal type to cast through.
+            if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) {
+                let rendered = format_smolstr!(
+                    "{}-{}-{}T00:00:00{implied}",
+                    &text[..4],
+                    &text[4..6],
+                    &text[6..8],
+                );
+                return Some(Scalar::from(rendered.as_str()));
+            }
             let dated = fix_date(text);
             let (clock, zone) = zoned(dated.as_ref().map_or(text, |(_, rest)| *rest));
             let date = match dated.as_ref() {
@@ -548,7 +642,7 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             // `HH:MM` is the one width a FIX clock may stop at, and only a
             // `TZTimeOnly` does; anything else is left to fail the read.
             let seconds = if clock.len() == 5 { ":00" } else { "" };
-            let zone = zone.unwrap_or("Z");
+            let zone = zone.unwrap_or(implied);
             let rendered = format_smolstr!("{date}T{clock}{seconds}{zone}");
             Some(Scalar::from(rendered.as_str()))
         }

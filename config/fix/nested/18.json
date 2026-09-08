@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "disclosureinstruction",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "crossleg",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -133,7 +133,8 @@
             {
               "name": "legsettldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -228,7 +229,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradepricecondition",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -260,7 +261,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradeqty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -302,7 +303,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradeallocamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -374,7 +375,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relatedtrade",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -411,7 +412,8 @@
             {
               "name": "relatedtradedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -456,7 +458,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "relatedposition",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -483,7 +485,8 @@
             {
               "name": "relatedpositiondate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -508,7 +511,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "valuecheck",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -550,7 +553,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "instrmtmatchside",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -682,7 +685,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "trdmatchside",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1184,7 +1187,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legexec",
         "dtype": {
           "type": "struct",
           "fields": [

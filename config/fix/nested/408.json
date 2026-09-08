@@ -4,14 +4,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nondeliverablefixingdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "nondeliverablefixingdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -46,7 +47,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -93,7 +94,8 @@
             {
               "name": "paymentschedulestartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -103,7 +105,8 @@
             {
               "name": "paymentscheduleenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -363,7 +366,8 @@
             {
               "name": "paymentschedulefixingdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -453,7 +457,8 @@
             {
               "name": "paymentschedulefixingdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -503,8 +508,8 @@
             {
               "name": "paymentschedulefixingtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -574,7 +579,8 @@
             {
               "name": "paymentscheduleinterimexchangedateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -599,7 +605,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentscheduleratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -651,7 +657,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstub",
         "dtype": {
           "type": "struct",
           "fields": [

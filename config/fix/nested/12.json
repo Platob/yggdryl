@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "strikerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -68,7 +68,7 @@
     "metadata": {
       "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
       "display": "NoStrikeRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostrikerules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostrikerules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1201"
     }
   },
@@ -77,7 +77,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tickrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -161,7 +161,7 @@
     "metadata": {
       "description": "Number of tick rules. This block specifies the rules for determining how a security ticks, i.e. the price increments at which it can be quoted and traded, depending on the current price of the security",
       "display": "NoTickRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notickrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notickrules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1205"
     }
   },
@@ -170,7 +170,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativesecurityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -204,7 +204,7 @@
     "metadata": {
       "description": "Number of alternate derivative security IDs.",
       "display": "NoDerivativeSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativesecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativesecurityaltid\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1218"
     }
   },
@@ -213,7 +213,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "execinstrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -237,7 +237,7 @@
     "metadata": {
       "description": "Number of execution instructions",
       "display": "NoExecInstRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noexecinstrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noexecinstrules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1232"
     }
   },
@@ -246,7 +246,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "lottyperule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -280,7 +280,7 @@
     "metadata": {
       "description": "Number of Lot Type Rules",
       "display": "NoLotTypeRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nolottyperules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nolottyperules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1234"
     }
   },
@@ -289,7 +289,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "matchrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -343,7 +343,7 @@
     "metadata": {
       "description": "Number of Match Rules",
       "display": "NoMatchRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomatchrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomatchrules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1235"
     }
   },
@@ -352,7 +352,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "maturityrule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -428,7 +428,7 @@
     "metadata": {
       "description": "Number of maturity rules in MarurityRules component block",
       "display": "NoMaturityRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomaturityrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomaturityrules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1236"
     }
   },
@@ -437,7 +437,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ordtyperule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -461,7 +461,7 @@
     "metadata": {
       "description": "Number of order types",
       "display": "NoOrdTypeRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noordtyperules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noordtyperules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1237"
     }
   },
@@ -470,7 +470,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "timeinforcerule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -494,7 +494,7 @@
     "metadata": {
       "description": "Number of time in force techniques",
       "display": "NoTimeInForceRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notimeinforcerules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notimeinforcerules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1239"
     }
   },
@@ -503,7 +503,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -520,7 +520,8 @@
             {
               "name": "derivativeeventdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -569,7 +570,7 @@
     "metadata": {
       "description": "Number of repeating DerivativeEventType entries.",
       "display": "NoDerivativeEvents",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeevents\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeevents\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1286"
     }
   },
@@ -578,7 +579,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeinstrumentparty",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -632,7 +633,7 @@
     "metadata": {
       "description": "Number of repeating derivative instrument party entries.",
       "display": "NoDerivativeInstrumentParties",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentparties\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentparties\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1292"
     }
   },
@@ -641,7 +642,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "derivativeinstrumentpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -675,7 +676,7 @@
     "metadata": {
       "description": "Number of derivative instrument party sub IDs.",
       "display": "NoDerivativeInstrumentPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrumentpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1296"
     }
   }

@@ -88,7 +88,12 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     );
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
-    assert_eq!(DataType::from_str("utc_date_only")?, DataType::Date32);
+    // A FIX date is that day's midnight, so it resolves to an instant rather
+    // than to a day a consumer would have to cast before comparing it.
+    assert_eq!(
+        DataType::from_str("utc_date_only")?,
+        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC },
+    );
     assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
 
     // Three of the names also prebuild the vocabulary their codes come from.
@@ -116,7 +121,8 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert row["at"].dtype == DataType('datetime64(ns,"UTC")')
 
     # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
-    assert DataType("utc_date_only") == DataType("date32")
+    # A FIX date is that day's midnight, so it resolves to an instant.
+    assert DataType("utc_date_only") == DataType("datetime64(ns, UTC)")
     assert DataType.logical_names()["currency"] == DataType("currency")
 
     # Three of the names also prebuild the vocabulary their codes come from.
@@ -145,7 +151,8 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(row.getField('at').dtype.toString(), 'datetime64(ns,"UTC")')
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
-    assert.equal(DataType.from('utc_date_only').id, 'date32')
+    // A FIX date is that day's midnight, so it resolves to an instant.
+    assert.equal(DataType.from('utc_date_only').id, 'datetime64')
     assert.equal(DataType.logicalNames().currency.id, 'currency')
 
     // Three of the names also prebuild the vocabulary their codes come from.
@@ -185,9 +192,10 @@ The registry is the FIX Latest table plus `mic` and `cfi`; `currency`, `country`
 | `UTCTimestamp` | String | `datetime64(ns,"UTC")` | the instant, at the finest FIX width |
 | `TZTimestamp` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant |
 | `UTCTimeOnly` | String | `time64(ns)` | a time of day with a fraction |
-| `LocalMktTime` | String | `time32(s)` | `HH:MM:SS`, no fraction |
-| `UTCDateOnly`, `utcdate` | String | `date32` | a calendar day |
-| `LocalMktDate` | String | `date32` | a calendar day |
+| `LocalMktTime` | String | `time64(ns)` | a time of day, one type with `UTCTimeOnly` |
+| `UTCDateOnly`, `utcdate` | String | `datetime64(ns, UTC)` | that day at midnight, in UTC |
+| `LocalMktDate` | String | `datetime64(ns)` | that day at midnight, stating no zone |
+| `LocalMktDatetime` | String | `datetime64(ns)` | a local instant, stating no zone |
 | `TZTimeOnly` | String | `datetime64(ns,"UTC")` | the offset resolves into the instant, on the epoch day |
 | `MultipleCharValue` | char | `utf8` | space-delimited members |
 | `MultipleStringValue` | String | `utf8` | space-delimited members |

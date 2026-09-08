@@ -464,7 +464,7 @@ impl<'field> FixField<'field>
   pub fn description(&self) -> Option<&'field str>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
-  pub fn set_id(&mut self, id: &FixId) -> Result<()>
+  pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
@@ -488,20 +488,22 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   impl FromStr for FixBranch  (Err = Error)
   impl AsRef<str> for FixBranch
   impl fmt::Display for FixBranch
-  pub struct FixId
-  pub const STANDARD_TAG_LIMIT: i32
-  pub fn standard(tag: i32) -> Self
-  pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self>
+  pub struct FixId  (a tag i32 beside a branch digest i32, eight bytes)
+  pub const USER_TAG_MIN: i32
+  pub const USER_TAG_MAX: i32
+  pub const fn standard(tag: i32) -> Self
+  pub fn from_parts(branch: &FixBranch, tag: i32) -> Result<Self>
   pub fn from_str(text: &str) -> Result<Self>
-  pub const fn branch(&self) -> &FixBranch
-  pub const fn tag(&self) -> i32
-  pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is branch-major)
+  pub const fn tag(self) -> i32
+  pub const fn branch(self) -> i32  (the digest signed, as an entry stores it)
+  pub const fn branch_digest(self) -> u32
+  pub const fn is_standard(self) -> bool
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is tag-major, then the signed branch digest)
   impl FromStr for FixId  (Err = Error)
-  impl fmt::Display for FixId  (always "<branch>:<tag>")
-  pub enum FixKey<'a>  (Tag(i32) | Id(&'a FixId) | Name(&'a str))
+  impl fmt::Display for FixId  ("<tag>:" in the standard branch, else "<tag>:#<digest hex>")
+  pub enum FixKey<'a>  (Tag(i32) | Id(FixId) | Name(&'a str))
   impl From<i32> for FixKey<'_>
-  impl<'a> From<&'a FixId> for FixKey<'a>
+  impl From<FixId> for FixKey<'_>
   impl<'a> From<&'a str> for FixKey<'a>
   impl<'a> From<&'a String> for FixKey<'a>
   impl fmt::Display for FixKey<'_>
@@ -514,8 +516,8 @@ pub struct FixMsg
   pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
   pub const fn as_value(&self) -> &Scalar
-  pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar>
-  pub fn by_id(&self, id: &FixId) -> Result<&Scalar>
+  pub fn get_by_id(&self, id: FixId) -> Option<&Scalar>
+  pub fn by_id(&self, id: FixId) -> Result<&Scalar>
   pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar>
   pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<&Scalar>
@@ -530,8 +532,8 @@ pub struct FixMsg
 pub struct FixRegistry
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
-  pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field>
-  pub fn field_by_id(&self, id: &FixId) -> Result<&Field>
+  pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
+  pub fn field_by_id(&self, id: FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
   pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
@@ -544,7 +546,13 @@ pub struct FixRegistry
   pub fn insert(&mut self, field: Field) -> Result<Option<Field>>
   pub fn update(&mut self, field: Field) -> Result<()>
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
-  pub fn next_field_after(&self, after: Option<&FixId>) -> Option<&Field>
+  pub fn branch_of(&self, id: FixId) -> Option<&FixBranch>
+  pub fn get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch>
+  pub fn branch_by_bid(&self, bid: i64) -> Result<&FixBranch>
+  pub fn branch_named(&self, name: &str) -> Option<&FixBranch>
+  pub fn branches(&self) -> impl Iterator<Item = &FixBranch>
+  pub fn set_branch(&mut self, branch: FixBranch) -> Result<()>
+  pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>
   pub fn iter(&self) -> FixFieldIter<'_>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -557,6 +565,20 @@ pub struct FixRegistry
 impl FixRegistry
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
+
+### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
+pub const ULBRIDGE_BRANCH: &str = "ulbridge";
+pub const ULBRIDGE_TAG_MIN: i32 = 20_001;
+pub const MBEAN_TAG: i32 = 20_001;
+pub const OPERATION_TAG: i32 = 20_002;
+pub const STATUS_TAG: i32 = 20_003;
+pub const ERROR_TAG: i32 = 20_004;
+pub const SESSIONINTERFACES_TAG: i32 = 20_005;
+pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
+impl FixRegistry
+  pub fn with_ulbridge_fields(mut self) -> Result<Self>
+impl FixCodec
+  pub fn read_ulconfig_line(&self, body: &[u8]) -> Result<FixMsg>
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer
@@ -1438,6 +1460,12 @@ pub struct MimeType(MimeTypeValue);
   pub const ORC: Self = Self(MimeTypeValue::Orc);
   pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
   pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
+  pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
+  pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
+  pub const ULCONFIG: Self = Self(MimeTypeValue::Ulconfig);
+  pub const FIX: Self = Self(MimeTypeValue::Fix);
+  pub const FIXUL: Self = Self(MimeTypeValue::Fixul);
+  pub const FIXML: Self = Self(MimeTypeValue::Fixml);
   pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
   pub const HTML: Self = Self(MimeTypeValue::Html);
   pub const CSS: Self = Self(MimeTypeValue::Css);
@@ -1483,6 +1511,8 @@ pub struct MimeType(MimeTypeValue);
   pub const TAR: Self = Self(MimeTypeValue::Tar);
   pub const DIRECTORY: Self = Self(MimeTypeValue::Directory);
   pub const FILE: Self = Self(MimeTypeValue::File);
+  pub fn infer_bytes(line: &[u8]) -> Self
+  pub fn infer_text(line: &str) -> Self
   pub fn from_local_path(path: impl AsRef<Path>) -> Self
   pub const fn is_filesystem(&self) -> bool
   pub const fn is_directory(&self) -> bool
@@ -1905,11 +1935,23 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Side, MsgType, MsgDirection
   pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> i32  // FixedAscii only
+  pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
+  pub fn coerce(spelling: &str) -> Self  // MsgType only
+  pub fn is_synthetic(&self) -> bool  // MsgType only
+  pub fn infer_bytes(line: &[u8]) -> Option<&[u8]>  // MsgType only
+  pub fn infer_text(line: &str) -> Option<&str>  // MsgType only
+  pub const SENT: &'static str = "SENT";  // MsgDirection only
+  pub const RECV: &'static str = "RECV";  // MsgDirection only
+  pub fn infer_bytes(line: &[u8]) -> Option<&'static str>  // MsgDirection only
+  pub fn infer_text(line: &str) -> Option<&'static str>  // MsgDirection only
+  pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8])  // MsgDirection only
+  pub fn split_text(line: &str) -> (Option<&'static str>, &str)  // MsgDirection only
+  pub fn at_payload(line: &[u8], payload_at: usize, default: Option<&'static str>) -> Option<&'static str>  // MsgDirection only
   pub enum AsciiFamily
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr

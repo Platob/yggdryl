@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingstreamcommoditysettlperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -156,7 +156,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingadditionalterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -198,7 +198,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcashsettldealer",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -230,7 +230,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcashsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -277,8 +277,8 @@
             {
               "name": "underlyingcashsettlvaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -453,7 +453,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingphysicalsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -515,7 +515,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingphysicalsettldeliverableobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -557,7 +557,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprotectionterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -659,7 +659,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprotectiontermevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -751,7 +751,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprotectiontermeventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -783,7 +783,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprotectiontermobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -825,7 +825,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprotectiontermeventnewssource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -857,14 +857,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisioncashsettlpaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingprovisioncashsettlpaymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

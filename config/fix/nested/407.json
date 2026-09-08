@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentscheduleratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingpaymentstub",
         "dtype": {
           "type": "struct",
           "fields": [

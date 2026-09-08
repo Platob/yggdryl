@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcashsettldatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendaccrualpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -68,7 +68,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendfxtriggerdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -100,7 +100,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -117,7 +117,8 @@
             {
               "name": "legdividendperiodstartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -127,7 +128,8 @@
             {
               "name": "legdividendperiodenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -167,7 +169,8 @@
             {
               "name": "legdividendperiodvaluationdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -217,7 +220,8 @@
             {
               "name": "legdividendperiodvaluationdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -227,7 +231,8 @@
             {
               "name": "legdividendperiodpaymentdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -277,7 +282,8 @@
             {
               "name": "legdividendperiodpaymentdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -312,7 +318,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdividendperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -344,7 +350,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legextraordinaryevent",
         "dtype": {
           "type": "struct",
           "fields": [

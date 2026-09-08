@@ -290,7 +290,8 @@
   {
     "name": "underlyingdividendaccrualpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -315,7 +316,8 @@
   {
     "name": "underlyingdividendaccrualpaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -624,7 +626,8 @@
   {
     "name": "underlyingdividendfxtriggerdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -649,7 +652,8 @@
   {
     "name": "underlyingdividendfxtriggerdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -673,7 +677,8 @@
   {
     "name": "underlyingdividendpaymentdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -757,7 +762,8 @@
   {
     "name": "underlyingdividendperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -769,7 +775,8 @@
   {
     "name": "underlyingdividendperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -818,7 +825,8 @@
   {
     "name": "underlyingdividendperiodvaluationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -880,7 +888,8 @@
   {
     "name": "underlyingdividendperiodvaluationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -892,7 +901,8 @@
   {
     "name": "underlyingdividendperiodpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -954,7 +964,8 @@
   {
     "name": "underlyingdividendperiodpaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -972,7 +983,7 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "UnderlyingDividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingdividendperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingdividendperiodxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingdividendperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42881"
     }
   },
@@ -1028,7 +1039,8 @@
   {
     "name": "underlyingmakewholedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1132,7 +1144,7 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "UnderlyingPaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42896"
     }
   },

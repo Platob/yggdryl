@@ -14,6 +14,8 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("side", DataType::Side),
         ("msgtype", DataType::MsgType),
         ("msgdirection", DataType::MsgDirection),
+        ("state", DataType::State),
+        ("timeinforce", DataType::TimeInForce),
         ("direction", DataType::MsgDirection),
         ("language", DataType::FixedAscii(2)),
         ("monthyear", DataType::FixedAscii(8)),
@@ -47,10 +49,35 @@ fn registered() -> Vec<(&'static str, DataType)> {
             },
         ),
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
-        ("localmkttime", DataType::Time32(TimeUnit::Second)),
-        ("utcdate", DataType::Date32),
-        ("utcdateonly", DataType::Date32),
-        ("localmktdate", DataType::Date32),
+        ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
+        (
+            "utcdate",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
+        (
+            "utcdateonly",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
+        (
+            "localmktdate",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        ),
+        (
+            "localmktdatetime",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        ),
         (
             "tztimeonly",
             DataType::DateTime64 {
@@ -116,8 +143,14 @@ fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
         ("Amt", DataType::Float64),
         ("SeqNum", DataType::Int64),
         ("DayOfMonth", DataType::Int8),
-        ("LocalMktDate", DataType::Date32),
-        ("LocalMktTime", DataType::Time32(TimeUnit::Second)),
+        (
+            "LocalMktDate",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        ),
+        ("LocalMktTime", DataType::Time64(TimeUnit::Nanosecond)),
         ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
         ("XMLData", DataType::Binary),
         ("data", DataType::Binary),

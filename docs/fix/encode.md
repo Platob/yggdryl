@@ -28,11 +28,11 @@ A message re-emits exactly what arrived, so a frame written by hand and read bac
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
     let frame = "8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|";
 
-    let message = reader.read_line(frame.as_bytes())?;
+    let message = reader.transform_line(frame.as_bytes(), false)?;
     // The emit is the wire record, so a translated code cannot leak into it.
     assert_eq!(message.into_text('|')?, frame);
     // Read back, the round trip is the same message and not merely the same text.
-    assert_eq!(reader.read_line(message.into_text('|')?.as_bytes())?, message);
+    assert_eq!(reader.transform_line(message.into_text('|')?.as_bytes(), false)?, message);
     ```
 
 === "Python"
@@ -45,9 +45,9 @@ A message re-emits exactly what arrived, so a frame written by hand and read bac
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
     frame = "8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|"
 
-    message = reader.read_line(frame.encode())
+    message = reader.transform_line(frame.encode())
     assert message.to_bytes(ord("|")) == frame.encode()
-    assert reader.read_line(frame.encode()) == message
+    assert reader.transform_line(frame.encode()) == message
     ```
 
 === "JavaScript"
@@ -60,9 +60,9 @@ A message re-emits exactly what arrived, so a frame written by hand and read bac
     const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
     const frame = '8=FIX.4.4|9=56|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|10=043|'
 
-    const message = reader.readLine(Buffer.from(frame))
+    const message = reader.transformLine(Buffer.from(frame))
     assert.equal(Buffer.from(message.toBytes(0x7c)).toString(), frame)
-    assert.ok(reader.readLine(Buffer.from(frame)).equals(message))
+    assert.ok(reader.transformLine(Buffer.from(frame)).equals(message))
     ```
 
 ## Write a frame

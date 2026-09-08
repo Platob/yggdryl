@@ -448,7 +448,8 @@
   {
     "name": "underlyingpaymentstreampaymentdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -485,7 +486,8 @@
   {
     "name": "underlyingpaymentstreampricingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -547,7 +549,8 @@
   {
     "name": "underlyingpricingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -572,7 +575,8 @@
   {
     "name": "underlyingpricingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -584,14 +588,14 @@
   {
     "name": "underlyingpricingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The local market pricing or fixing time.",
       "display": "UnderlyingPricingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpricingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingpricingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpricingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41952"
     }
   },
@@ -610,7 +614,8 @@
   {
     "name": "underlyingstreamcalculationperioddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -641,7 +646,7 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCalculationPeriodDatesXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcalculationperioddatesxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcalculationperioddatesxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcalculationperioddatesxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41957"
     }
   },
@@ -654,7 +659,7 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "UnderlyingStreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcalculationperioddatesxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcalculationperioddatesxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcalculationperioddatesxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41958"
     }
   },
@@ -917,7 +922,8 @@
   {
     "name": "underlyingstreamcommoditysettldateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -942,7 +948,8 @@
   {
     "name": "underlyingstreamcommoditysettldateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1010,7 +1017,7 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommodityxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcommodityxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommodityxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41988"
     }
   },
@@ -1023,7 +1030,7 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "UnderlyingStreamCommodityXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommodityxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcommodityxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommodityxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41989"
     }
   },

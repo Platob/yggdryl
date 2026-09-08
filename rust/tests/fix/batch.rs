@@ -84,7 +84,10 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     // Columns are named by tag, because a tag is the one name a field has in
     // every version and every dialect.
     assert_eq!(&names[..5], ["8", "9", "35", "49", "56"], "{names:?}");
-    assert_eq!(&names[names.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(
+        &names[names.len() - 2..],
+        ["nofixentries", "nounmappedfixentries"],
+    );
     // The standard header, the body a consumer queries, the groups worth
     // keeping whole, the trailer, and this crate's own derived facts.
     for tag in [
@@ -186,7 +189,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch
     // lossless rather than one reader's summary.
-    let entries = column(&batch, "entries");
+    let entries = column(&batch, "nofixentries");
     assert!(entries.is_valid(0));
     assert_eq!(entries.len(), 1);
 }
@@ -233,6 +236,113 @@ fn a_batch_closes_on_bytes_first_and_rows_second() {
 }
 
 #[test]
+fn a_capture_batches_by_size_rather_than_by_count() {
+    let registry = registry();
+    // Two shapes three orders of magnitude apart, which is what a row bound
+    // alone cannot hold steady: batching by count makes one batch a few
+    // kilobytes and the other tens of megabytes.
+    let thin = |count: usize| -> Vec<yggdryl::Result<Vec<u8>>> {
+        (0..count)
+            .map(|index| Ok(format!("8=FIX.4.4|35=0|34={index}|10=0|").into_bytes()))
+            .collect()
+    };
+    let fat = |count: usize| -> Vec<yggdryl::Result<Vec<u8>>> {
+        (0..count)
+            .map(|index| {
+                Ok(format!(
+                    "8=FIX.4.4|35=D|11=ORDER-{index:06}|58={}|10=0|",
+                    "x".repeat(2_000)
+                )
+                .into_bytes())
+            })
+            .collect()
+    };
+
+    // The default target, stated once and read here so a change to it is a
+    // change to this assertion.
+    assert_eq!(
+        FixOptions::new().batch_byte_size(),
+        Some(yggdryl::DEFAULT_BATCH_BYTE_SIZE)
+    );
+    assert_eq!(yggdryl::DEFAULT_BATCH_BYTE_SIZE, 128 * 1024 * 1024);
+
+    // Under the target, whatever the shape: one batch, no premature cut.
+    for rows in [thin(2_000), fat(200)] {
+        let held = FixBatchReader::from_rows(Arc::clone(&registry), rows, FixOptions::new())
+            .unwrap()
+            .count();
+        assert_eq!(held, 1);
+    }
+
+    // The estimate is what makes the target hold across shapes. Against a
+    // bound small enough to close many batches, every closed batch's own
+    // Arrow accounting lands within a small factor of what was asked for -
+    // which is the whole claim: a running per-row estimate is cheap and near
+    // enough, where measuring an in-progress builder exactly would cost more
+    // than the parse that produced the row.
+    const BOUND: u64 = 64 * 1024;
+    for rows in [thin(4_000), fat(400)] {
+        let options = FixOptions::new().with_batch_byte_size(BOUND);
+        let batches: Vec<_> = FixBatchReader::from_rows(Arc::clone(&registry), rows, options)
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect();
+        assert!(batches.len() > 2, "{} batches", batches.len());
+        // The last batch is whatever was left over, so it is not held to the
+        // target; every batch the bound actually closed is.
+        for batch in &batches[..batches.len() - 1] {
+            let held = batch.get_array_memory_size() as u64;
+            assert!(
+                (BOUND / 8..=BOUND * 8).contains(&held),
+                "{held} bytes against a {BOUND} target over {} rows",
+                batch.num_rows(),
+            );
+        }
+    }
+}
+
+#[test]
+fn an_enriching_reader_fills_the_columns_a_message_implies() {
+    let registry = registry();
+    let rows = || -> Vec<yggdryl::Result<Vec<u8>>> {
+        vec![Ok(
+            b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|".to_vec(),
+        )]
+    };
+
+    // The reader that does not fill leaves the implied columns null.
+    let bare = FixBatchReader::from_rows(Arc::clone(&registry), rows(), FixOptions::new())
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    assert_eq!(first_value(&bare, "151"), Scalar::Null);
+
+    // The same reader, asked to fill, states what the message implied - and
+    // the arrival record is untouched, so the wire still re-emits exactly.
+    let mut options = FixOptions::new();
+    options.enrich = true;
+    let filled = FixBatchReader::from_rows(registry, rows(), options)
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    assert_eq!(first_value(&filled, "151"), Scalar::from(60.0_f64));
+    // One fill, so the average is that fill's price.
+    assert_eq!(first_value(&filled, "6"), Scalar::from(10.5_f64));
+    // A derived tag the fixed row does not carry - `GrossTradeAmt(381)` is
+    // one - is filled on the message and simply has no column to appear in.
+    // The row is a projection of the message, not the whole of it.
+    assert!(!yggdryl::fix_schema_tags().contains(&381));
+    // The arrival record is untouched either way, so the wire re-emits the
+    // same bytes whether the row was filled or not.
+    assert_eq!(
+        first_value(&bare, "nofixentries"),
+        first_value(&filled, "nofixentries"),
+    );
+}
+
+#[test]
 fn byte_in_byte_out_over_the_whole_corpus() {
     let registry = registry();
     // The convention that drops a stated absence is deliberately not
@@ -254,7 +364,7 @@ fn byte_in_byte_out_over_the_whole_corpus() {
     let plain =
         yggdryl::FixCodec::new(Arc::clone(&registry)).with_null_values::<[&str; 0], &str>([]);
     for (line, source) in back.iter().zip(CAPTURE) {
-        let read = plain.read_line(source.as_bytes()).unwrap();
+        let read = plain.transform_line(source.as_bytes(), false).unwrap();
         let expected = String::from_utf8(read.into_bytes(b'|')).unwrap();
         assert_eq!(*line, expected, "{source}");
     }
@@ -349,7 +459,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
             [Ok(first)],
             std::sync::Arc::clone(&schema),
         )),
-        "entries",
+        "nofixentries",
         FixOptions::new(),
     )
     .unwrap();
@@ -369,7 +479,7 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         DataType::Binary.required_field("body"),
         // A name a FIX column already takes, which yields to it: one column
         // per name, and the FIX one is what a reader spelling it means.
-        DataType::Utf8.nullable_field("entries"),
+        DataType::Utf8.nullable_field("nofixentries"),
     ])
     .expect("a capture root")
     .required_field("line");
@@ -399,7 +509,10 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         "the capture leads the row"
     );
     assert_eq!(
-        columns.iter().filter(|held| *held == "entries").count(),
+        columns
+            .iter()
+            .filter(|held| *held == "nofixentries")
+            .count(),
         1,
         "the clashing capture column yielded to the FIX one"
     );

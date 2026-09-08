@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "optionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,14 +36,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "optionexercisedate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "optionexercisedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -78,7 +79,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "optionexerciseexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,14 +111,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "optionexerciseexpirationdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "optionexerciseexpirationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -152,7 +154,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentschedulefixingday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -194,7 +196,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreampricingbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

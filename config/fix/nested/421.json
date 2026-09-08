@@ -4,14 +4,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionoptionexercisefixeddate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingprovisionoptionexercisefixeddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -46,7 +47,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovision",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -63,7 +64,8 @@
             {
               "name": "underlyingprovisiondateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -83,7 +85,8 @@
             {
               "name": "underlyingprovisiondateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -318,7 +321,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -380,7 +383,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -422,7 +425,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisioncashsettlpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -454,7 +457,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisioncashsettlvaluedatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -486,7 +489,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -518,7 +521,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionoptionexpirationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -550,7 +553,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisionoptionrelevantunderlyingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -582,7 +585,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingprovisiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -614,7 +617,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcontractualdefinition",
         "dtype": {
           "type": "struct",
           "fields": [

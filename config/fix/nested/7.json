@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "position",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -61,7 +61,8 @@
             {
               "name": "quantitydate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -108,7 +109,7 @@
     "metadata": {
       "description": "Number of position entries.",
       "display": "NoPositions",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopositions\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopositions\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "702"
     }
   },
@@ -117,7 +118,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlying",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -171,7 +172,7 @@
     "metadata": {
       "description": "Number of underlying legs that make up the security.",
       "display": "NoUnderlyings",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyings\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyings\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "711"
     }
   },
@@ -180,7 +181,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quotequalifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -204,7 +205,7 @@
     "metadata": {
       "description": "Number of repeating groups of QuoteQualifiers (695).",
       "display": "NoQuoteQualifiers",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noquotequalifiers\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noquotequalifiers\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "735"
     }
   },
@@ -213,7 +214,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "posamt",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -347,7 +348,7 @@
     "metadata": {
       "description": "Number of position amount entries.",
       "display": "NoPosAmt",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noposamt\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noposamt\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "753"
     }
   },
@@ -356,7 +357,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "nested2partyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -410,7 +411,7 @@
     "metadata": {
       "description": "Number of Nested2PartyID (757), Nested2PartyIDSource (758), and Nested2PartyRole (759) entries",
       "display": "NoNested2PartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "756"
     }
   },
@@ -419,7 +420,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "trdregtimestamp",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -555,7 +556,7 @@
     "metadata": {
       "description": "Number of timestamp entries.",
       "display": "NoTrdRegTimestamps",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrdregtimestamps\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrdregtimestamps\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "768"
     }
   },
@@ -564,7 +565,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlinst",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -747,7 +748,8 @@
             {
               "name": "cardstartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -757,7 +759,8 @@
             {
               "name": "cardexpdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -777,7 +780,8 @@
             {
               "name": "paymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -804,7 +808,7 @@
     "metadata": {
       "description": "Number of settlement instructions within repeating group.",
       "display": "NoSettlInst",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlinst\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlinst\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "778"
     }
   },
@@ -813,7 +817,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -867,7 +871,7 @@
     "metadata": {
       "description": "Number of SettlPartyID (782), SettlPartyIDSource (783), and SettlPartyRole (784) entries",
       "display": "NoSettlPartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "781"
     }
   }

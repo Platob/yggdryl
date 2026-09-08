@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstubstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnratedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -93,7 +93,8 @@
             {
               "name": "returnratevaluationstartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -143,7 +144,8 @@
             {
               "name": "returnratevaluationstartdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -153,7 +155,8 @@
             {
               "name": "returnratevaluationenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -203,7 +206,8 @@
             {
               "name": "returnratevaluationenddateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -268,7 +272,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnratefxconversion",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -320,7 +324,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnrate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -457,8 +461,8 @@
             {
               "name": "returnratequotetime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -468,7 +472,8 @@
             {
               "name": "returnratequotedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -478,8 +483,8 @@
             {
               "name": "returnratequoteexpirationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -539,8 +544,8 @@
             {
               "name": "returnratevaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -595,7 +600,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnrateinformationsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -647,7 +652,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnrateprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -709,7 +714,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnratevaluationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -741,14 +746,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "returnratevaluationdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "returnratevaluationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -783,7 +789,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlmethodelectiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -815,7 +821,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcashsettldatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -847,7 +853,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendaccrualpaymentdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

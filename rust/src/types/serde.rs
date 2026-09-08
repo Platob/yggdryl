@@ -123,6 +123,9 @@ enum DataTypeRef<'a> {
     // snake_case the rest of this enum derives.
     #[serde(rename = "msgdirection")]
     MsgDirection {},
+    State {},
+    #[serde(rename = "timeinforce")]
+    TimeInForce {},
     Uuid {},
     Version {},
     List {
@@ -253,6 +256,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Side => Self::Side {},
             D::MsgType => Self::MsgType {},
             D::MsgDirection => Self::MsgDirection {},
+            D::State => Self::State {},
+            D::TimeInForce => Self::TimeInForce {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::List(field) => Self::List { field },
@@ -375,6 +380,10 @@ enum DataTypeValue {
     // snake_case the rest of this enum derives.
     #[serde(rename = "msgdirection")]
     MsgDirection {},
+    #[serde(rename = "state")]
+    State {},
+    #[serde(rename = "timeinforce")]
+    TimeInForce {},
     Uuid {},
     Version {},
     List {
@@ -489,6 +498,8 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Side {} => Self::Side,
             DataTypeValue::MsgType {} => Self::MsgType,
             DataTypeValue::MsgDirection {} => Self::MsgDirection,
+            DataTypeValue::State {} => Self::State,
+            DataTypeValue::TimeInForce {} => Self::TimeInForce,
             DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::Version {} => Self::Version,
             DataTypeValue::List { field } => Self::list(field),
@@ -619,6 +630,8 @@ impl DataType {
             D::Side => tag("side"),
             D::MsgType => tag("msgtype"),
             D::MsgDirection => tag("msgdirection"),
+            D::State => tag("state"),
+            D::TimeInForce => tag("timeinforce"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::DateTime64 { unit, timezone } => {
@@ -859,6 +872,8 @@ impl DataType {
             // `direction` was this datatype's first spelling; a schema
             // written under it still reads.
             "msgdirection" | "direction" => Self::MsgDirection,
+            "state" => Self::State,
+            "timeinforce" => Self::TimeInForce,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
             "datetime64" => {

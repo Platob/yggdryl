@@ -2,6 +2,7 @@ mod common;
 
 pub mod batch;
 pub mod cblock;
+pub mod classify;
 pub mod codes;
 pub mod lift;
 pub mod lineage;

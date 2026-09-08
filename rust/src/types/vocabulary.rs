@@ -122,6 +122,10 @@ impl DataType {
         ("side", DataType::Side),
         ("msgtype", DataType::MsgType),
         ("msgdirection", DataType::MsgDirection),
+        // What state one thing is in, and how long an order stands. Neither
+        // is a word the Arrow or SQL grammar owns.
+        ("state", DataType::State),
+        ("timeinforce", DataType::TimeInForce),
         // The spelling this datatype was first published under.
         ("direction", DataType::MsgDirection),
         // The rest are names over an ASCII width, which is all they need.
@@ -178,11 +182,49 @@ impl DataType {
                 timezone: Timezone::UTC,
             },
         ),
+        // Every zone-less time of day is one type. A FIX time is ASCII
+        // whatever the version, and the two names differ in which clock the
+        // value is read against rather than in what it can hold - so pinning
+        // one to seconds makes a capture carrying both cast per row to
+        // compare them, and loses a millisecond the wire actually sent.
         ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
-        ("localmkttime", DataType::Time32(TimeUnit::Second)),
-        ("utcdate", DataType::Date32),
-        ("utcdateonly", DataType::Date32),
-        ("localmktdate", DataType::Date32),
+        ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
+        // A FIX date is a day, and a day is an instant at midnight rather
+        // than a second type to cast through: a capture joining a settlement
+        // date to a transact time compares them directly, and a venue that
+        // starts sending a time on a field that carried a date widens no
+        // column. The zone is the one the name states - a UTC date is UTC,
+        // and a local market date states none, so it must not claim one.
+        (
+            "utcdate",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
+        (
+            "utcdateonly",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            },
+        ),
+        (
+            "localmktdate",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        ),
+        // A local market value states no zone, so it must not claim one.
+        // `Naive` is that statement made explicitly rather than by omission.
+        (
+            "localmktdatetime",
+            DataType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::NAIVE,
+            },
+        ),
         (
             "tztimeonly",
             DataType::DateTime64 {
@@ -230,7 +272,14 @@ impl DataType {
     /// );
     ///
     /// // Separators and case are folded, exactly as elsewhere in the grammar.
-    /// assert_eq!(DataType::from_logical_name(" utc_date_only ")?, DataType::Date32);
+    /// // A FIX date is that day's midnight, so it resolves to an instant.
+    /// assert_eq!(
+    ///     DataType::from_logical_name(" utc_date_only ")?,
+    ///     DataType::DateTime64 {
+    ///         unit: TimeUnit::Nanosecond,
+    ///         timezone: Timezone::UTC,
+    ///     }
+    /// );
     /// # Ok(())
     /// # }
     /// ```

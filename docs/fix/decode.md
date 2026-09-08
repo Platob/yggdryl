@@ -9,7 +9,7 @@ Paste a captured line and read it: every tag named, every coded value translated
 | Input | A FIX frame in any separator a log writes it with — SOH, `\|`, `^A`, `;`, or one pair per line — with or without a direction verb in front |
 | Reads | Splits the pairs, names each key from `assets/fix.json`, translates each value through its code set, gathers occurrences under their counter, recomputes `BodyLength(9)` and `CheckSum(10)` |
 | States | Nothing the package did not answer: the names, types, wording, codes and layouts are the generated manifests, and the typed row, digest, facets and anomalies are shown only where the corpus holds the frame |
-| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; five entry points, one per shape a capture holds |
+| Package | [`FixCodec`](capture.md#a-reader-is-the-whole-parse-surface) is the whole parse surface; six entry points, one per shape a capture holds |
 | Pages | [Explorer](explorer.md) explores the dictionary, [Encode](encode.md) writes a frame |
 
 ## Use
@@ -26,7 +26,7 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let message = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")?;
+    let message = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|", false)?;
 
     assert_eq!(message.as_field().name(), "D");
     assert_eq!(message.by_tag(55)?.as_str(), Some("AAPL"));
@@ -47,7 +47,7 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     from yggdryl.fix import FixCodec, FixRegistry
 
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
-    message = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")
+    message = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|")
 
     assert message.field.name == "D"
     assert message.by_tag(55).as_py() == "AAPL"
@@ -63,7 +63,7 @@ The reader takes a captured line whatever it is wrapped in, and answers a messag
     const { fix } = require('yggdryl')
 
     const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
-    const message = reader.readLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|'))
+    const message = reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|'))
 
     assert.equal(message.field.name, 'D')
     assert.equal(message.byTag(55).toJSON(), 'AAPL')
@@ -101,7 +101,7 @@ The typed row, the message digest, the derived facets and the anomalies are the 
 
 ## Every shape a capture holds
 
-One line per shape, read by the real package at build time: a numeric frame, a bridge frame with name keys, a frame carrying both, an enriched line with no frame at all, and the lines that do not add up.
+One line per shape, read by the real package at build time: a numeric frame, a bridge frame with name keys, a frame carrying both, an enriched line with no frame at all, and the lines that do not add up. A [bridge configuration document](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) is the sixth, and is not in this corpus.
 
 <div class="ygg-fx" data-fix="frames" markdown="1">
 This section renders `assets/fix.json` and needs JavaScript.

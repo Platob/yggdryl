@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventaveragingobservation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventcreditevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -138,7 +138,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventcrediteventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -170,14 +170,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventperioddatetime",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingcomplexeventperioddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -187,8 +188,8 @@
             {
               "name": "underlyingcomplexeventperiodtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -213,7 +214,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -255,7 +256,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -317,7 +318,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -349,7 +350,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventcrediteventsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -381,14 +382,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventschedule",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingcomplexeventschedulestartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -398,7 +400,8 @@
             {
               "name": "underlyingcomplexeventscheduleenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -453,7 +456,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdeliveryschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -605,7 +608,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdeliveryschedulesettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -647,7 +650,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdeliveryschedulesettltime",
         "dtype": {
           "type": "struct",
           "fields": [

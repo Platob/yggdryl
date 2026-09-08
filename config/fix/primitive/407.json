@@ -40,7 +40,8 @@
   {
     "name": "underlyingpaymentscheduleinterimexchangedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -676,7 +677,8 @@
   {
     "name": "paymentstreamfirstpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -688,7 +690,8 @@
   {
     "name": "paymentstreamlastregularpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -887,7 +890,8 @@
   {
     "name": "paymentstreaminitialfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -974,7 +978,8 @@
   {
     "name": "paymentstreamfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1072,7 +1077,8 @@
   {
     "name": "paymentstreamfuturevaluedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

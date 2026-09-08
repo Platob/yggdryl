@@ -30,7 +30,13 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
                 "at",
                 &ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
             ),
-            ("day", &ArrowDataType::Date32),
+            // A FIX date is that day's midnight, and a local market date
+            // states no zone - so it crosses as a zone-less timestamp rather
+            // than as a day a consumer would have to cast to compare.
+            (
+                "day",
+                &ArrowDataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, None)
+            ),
             ("seq", &ArrowDataType::Int64),
         ]
     );
@@ -61,7 +67,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     // the registration earns its keep: the name typed the column, and the
     // column typed the string.
     let message = r#"{"ccy":"USD","venue":"XCME","px":"101.25","qty":"7",
-        "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04","seq":9}"#;
+        "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04T00:00:00","seq":9}"#;
     let value = yggdryl::text::json::from_utf8_with_field(message, &row).unwrap();
     let columns = value.as_sequence().expect("a canonical row");
 
@@ -81,12 +87,15 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     assert_eq!(at.count(), 1_788_516_000_000_000_001);
     assert_eq!(at.unit(), TimeUnit::Nanosecond);
     let day = columns[5].as_temporal().expect("a temporal reading");
-    assert_eq!(day.count(), 20_700);
+    // The same day, now counted from the epoch in nanoseconds because a date
+    // is an instant at midnight.
+    assert_eq!(day.count(), 20_700 * 86_400 * 1_000_000_000);
+    assert_eq!(day.unit(), TimeUnit::Nanosecond);
 
     // A value that does not fit the resolved datatype is refused by that
     // datatype, never by the name that spelled it.
     let refused = yggdryl::text::json::from_utf8_with_field(
-        r#"{"ccy":"EURO!","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04","seq":1}"#,
+        r#"{"ccy":"EURO!","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04T00:00:00","seq":1}"#,
         &row,
     )
     .unwrap_err()

@@ -516,7 +516,7 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "LegComplexEventCreditEventsXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventcrediteventsxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventcrediteventsxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventcrediteventsxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2242"
     }
   },
@@ -591,7 +591,7 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "LegComplexEventXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2248"
     }
   },
@@ -604,14 +604,16 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "LegComplexEventXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2249"
     }
   },
   {
     "name": "legcomplexeventstartdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {
@@ -623,7 +625,9 @@
   {
     "name": "legcomplexeventenddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {
@@ -901,7 +905,7 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "UnderlyingComplexEventCreditEventsXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventcrediteventsxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingcomplexeventcrediteventsxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventcrediteventsxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2277"
     }
   },
@@ -963,7 +967,7 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "UnderlyingComplexEventXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingcomplexeventxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2282"
     }
   },
@@ -976,7 +980,7 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "UnderlyingComplexEventXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingcomplexeventxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2283"
     }
   },

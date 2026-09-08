@@ -443,7 +443,14 @@ impl FixRegistry {
 fn branch_into_value(branch: &FixBranch) -> Result<Scalar> {
     let mut record = vec![
         ("name", Scalar::from(branch.name())),
-        ("digest", Scalar::from(branch.digest())),
+        // The published join key, not a cache: the folded-name derivation is
+        // a one-way XXH32, so an external reader joining a capture's `branch`
+        // column to this manifest could not reproduce it otherwise. Spelled
+        // and typed exactly as that column is.
+        (
+            "branch",
+            Scalar::from(super::entry::signed(branch.digest())),
+        ),
         ("version", Scalar::from(branch.version())),
     ];
     // Written only when there are any, so a dictionary that declares no
@@ -470,7 +477,7 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
             reason: crate::text::expected_got("a FIX branch record", value.kind()),
         });
     };
-    const KEYS: [&str; 4] = ["name", "digest", "version", "aliases"];
+    const KEYS: [&str; 4] = ["name", "branch", "version", "aliases"];
     if let Some(key) = record.keys().find(|key| !KEYS.contains(&key.as_str())) {
         return Err(Error::InvalidRecord {
             path: key.clone(),
@@ -516,19 +523,22 @@ fn branch_from_value(value: &Scalar) -> Result<FixBranch> {
         }
         branch = branch.with_aliases(held)?;
     }
-    if let Some(digest) = record.get("digest") {
-        let declared = digest
-            .as_u64()
-            .and_then(|value| u32::try_from(value).ok())
+    if let Some(declared) = record.get("branch") {
+        let declared = declared
+            .as_i64()
+            .and_then(|value| i32::try_from(value).ok())
             .ok_or_else(|| Error::InvalidRecord {
-                path: "digest".into(),
-                reason: "a branch digest must be a uint32".into(),
+                path: "branch".into(),
+                reason: "a branch digest must fit an int32".into(),
             })?;
-        if declared != branch.digest() {
+        if super::entry::unsigned(declared) != branch.digest() {
             return Err(Error::InvalidRecord {
                 path: branch.name().into(),
                 reason: crate::text::expected_got(
-                    format_args!("the derived digest {}", branch.digest()),
+                    format_args!(
+                        "the derived digest {}",
+                        super::entry::signed(branch.digest())
+                    ),
                     format_args!("declared digest {declared}"),
                 ),
             });

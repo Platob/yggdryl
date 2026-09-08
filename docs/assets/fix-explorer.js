@@ -1685,7 +1685,7 @@
         actions,
         call(
           `const reader = new fix.FixCodec(registry)\n` +
-            `reader.readLine(Buffer.from(${JSON.stringify(full)}, 'binary')).toBytes(0x01)`,
+            `reader.transformLine(Buffer.from(${JSON.stringify(full)}, 'binary')).toBytes(0x01)`,
         ),
       )
     }

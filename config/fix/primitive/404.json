@@ -52,7 +52,8 @@
   {
     "name": "legpaymentschedulefixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -64,14 +65,14 @@
   {
     "name": "legpaymentschedulefixingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The fxing time associated with the step schedule.",
       "display": "LegPaymentScheduleFixingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpaymentschedulefixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legpaymentschedulefixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpaymentschedulefixingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40405"
     }
   },
@@ -165,7 +166,8 @@
   {
     "name": "legpaymentscheduleinterimexchangedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -590,7 +592,8 @@
   {
     "name": "legprovisiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -627,7 +630,8 @@
   {
     "name": "legprovisiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -875,7 +879,8 @@
   {
     "name": "legprovisioncashsettlpaymentdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -975,7 +980,8 @@
   {
     "name": "legprovisionoptionexercisestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1037,7 +1043,8 @@
   {
     "name": "legprovisionoptionexercisestartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1061,7 +1068,8 @@
   {
     "name": "legprovisionoptionexerciseboundsfirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1073,7 +1081,8 @@
   {
     "name": "legprovisionoptionexerciseboundslastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1085,14 +1094,14 @@
   {
     "name": "legprovisionoptionexerciseearliesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "LegProvisionOptionExerciseEarliestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexerciseearliesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisionoptionexerciseearliesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexerciseearliesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40491"
     }
   },
@@ -1111,14 +1120,14 @@
   {
     "name": "legprovisionoptionexerciselatesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "LegProvisionOptionExerciseLatestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexerciselatesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisionoptionexerciselatesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexerciselatesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40493"
     }
   },
@@ -1137,7 +1146,8 @@
   {
     "name": "legprovisionoptionexercisefixeddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1162,7 +1172,8 @@
   {
     "name": "legprovisionoptionexpirationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

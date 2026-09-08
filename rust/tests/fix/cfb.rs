@@ -282,7 +282,14 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
         (9, DataType::Int32),
         (6, DataType::Float32),
         (10001, DataType::Boolean),
-        (10015, DataType::Date32),
+        // `utc-date` is a day, and a day is that day's midnight in UTC.
+        (
+            10015,
+            DataType::DateTime64 {
+                unit: yggdryl::TimeUnit::Nanosecond,
+                timezone: yggdryl::Timezone::UTC,
+            },
+        ),
         (273, DataType::Time64(yggdryl::TimeUnit::Nanosecond)),
     ] {
         assert_eq!(
@@ -361,7 +368,9 @@ fn a_nested_grammar_is_a_group_whose_counter_names_it_and_is_consumed() {
     let DataType::List(item) = group.dtype() else {
         panic!("a list, got {}", group.dtype());
     };
-    assert_eq!(item.name(), "item");
+    // The occurrence carries the component the counter heads: `NoLegs`
+    // heads occurrences called `Leg`.
+    assert_eq!(item.name(), "leg");
     assert!(!item.is_nullable());
 
     // Everything after the counter, in document order, by the same rules.

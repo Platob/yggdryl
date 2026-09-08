@@ -8,7 +8,7 @@
     "metadata": {
       "description": "Identifier of this LegStream for cross referencing elsewhere in the message.",
       "display": "LegStreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41700"
     }
   },
@@ -34,7 +34,7 @@
     "metadata": {
       "description": "Cross reference to another LegStream notional for duplicating its properties.",
       "display": "LegStreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamnotionalxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamnotionalxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41702"
     }
   },
@@ -288,7 +288,8 @@
   {
     "name": "underlyingcomplexeventperioddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -300,14 +301,14 @@
   {
     "name": "underlyingcomplexeventperiodtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The averaging time for an Asian option.",
       "display": "UnderlyingComplexEventPeriodTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventperiodtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingcomplexeventperiodtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventperiodtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41728"
     }
   },
@@ -401,7 +402,8 @@
   {
     "name": "underlyingcomplexeventdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -476,7 +478,8 @@
   {
     "name": "underlyingcomplexeventdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -488,14 +491,14 @@
   {
     "name": "underlyingcomplexeventfixingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The local market fixing time.",
       "display": "UnderlyingComplexEventFixingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventfixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingcomplexeventfixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcomplexeventfixingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41746"
     }
   },
@@ -526,7 +529,8 @@
   {
     "name": "underlyingcomplexeventschedulestartdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -538,7 +542,8 @@
   {
     "name": "underlyingcomplexeventscheduleenddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -607,7 +612,7 @@
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingDeliveryScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingdeliveryschedulexid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingdeliveryschedulexid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingdeliveryschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41758"
     }
   },

@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mandatoryclearingjurisdiction",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legadditionaltermbondref",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -163,7 +163,8 @@
             {
               "name": "legadditionaltermbondmaturitydate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -238,7 +239,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legadditionalterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -280,7 +281,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingadditionaltermbondref",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -407,7 +408,8 @@
             {
               "name": "underlyingadditionaltermbondmaturitydate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -482,7 +484,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcashsettldealer",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -514,7 +516,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcashsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -561,8 +563,8 @@
             {
               "name": "legcashsettlvaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -737,7 +739,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventaveragingobservation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -779,7 +781,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventcreditevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -871,7 +873,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventcrediteventqualifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -903,14 +905,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventperioddatetime",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "legcomplexeventperioddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -920,8 +923,8 @@
             {
               "name": "legcomplexeventperiodtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -946,7 +949,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -988,7 +991,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1050,7 +1053,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1082,7 +1085,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventcrediteventsource",
         "dtype": {
           "type": "struct",
           "fields": [

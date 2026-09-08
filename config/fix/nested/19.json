@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "regulatorytradeid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -86,7 +86,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "allocregulatorytradeid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -168,7 +168,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "clearingaccounttype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -200,7 +200,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "pricemovementvalue",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -252,7 +252,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "sideregulatorytradeid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -334,7 +334,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "secondaryassetclass",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -396,7 +396,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -413,7 +413,8 @@
             {
               "name": "underlyingeventdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

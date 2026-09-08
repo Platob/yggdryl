@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlementamount",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "collateralamount",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -228,7 +228,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paycollect",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -340,7 +340,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "partyentitlement",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -432,7 +432,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "entitlement",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -489,7 +489,8 @@
             {
               "name": "entitlementstartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -499,7 +500,8 @@
             {
               "name": "entitlementenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -524,7 +526,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "entitlementattrib",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -596,7 +598,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "targetmarketsegment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -628,7 +630,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "affectedmarketsegment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -660,7 +662,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "notaffectedmarketsegment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -692,7 +694,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "orderevent",
         "dtype": {
           "type": "struct",
           "fields": [

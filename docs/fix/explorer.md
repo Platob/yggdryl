@@ -113,7 +113,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 - The explorer states nothing the package did not answer. A value it cannot show — a typed row, a digest, a derived facet, an anomaly — is shown only for the frames in the generated corpus, where the package's own answer is carried in the manifest.
 - The code sets and the lineages are a second manifest, fetched behind the first paint; a field panel says so while it waits.
-- A group's own datatype spells its whole `item` Struct, so the index carries the shape and the member tags rather than the transcription.
+- A group's own datatype spells its whole occurrence Struct - named for the component the counter heads, `NoPartyIDs` giving `PartyID` - so the index carries the shape and the member tags rather than the transcription.
 - The search list renders sixty matches at a time. The count above it is the whole result, not what is drawn.
 
 ## Commands

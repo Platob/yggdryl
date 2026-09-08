@@ -136,6 +136,189 @@ ascii_code_leaf!(Cfi, 6);
 ascii_code_leaf!(Side, 4);
 ascii_code_leaf!(MsgType, 8);
 ascii_code_leaf!(MsgDirection, 4);
+ascii_code_leaf!(State, 8);
+ascii_code_leaf!(TimeInForce, 8);
+
+impl State {
+    /// The rank a stored state opens with, first to terminal.
+    ///
+    /// The byte itself, so a caller comparing two states compares one byte
+    /// and a sort of the raw column is already in lifecycle order.
+    #[must_use]
+    pub fn rank(&self) -> Option<u8> {
+        self.as_str().bytes().next()
+    }
+
+    /// Whether this state can still change.
+    ///
+    /// Every rank below the three terminal ones. A reader asking "is this
+    /// still going" asks this rather than listing names.
+    #[must_use]
+    pub fn is_live(&self) -> bool {
+        self.rank().is_some_and(|rank| rank < b'8')
+    }
+
+    /// Whether this state ended having done what was asked.
+    #[must_use]
+    pub fn is_done(&self) -> bool {
+        self.rank() == Some(b'8')
+    }
+
+    /// Whether this state ended because someone stopped it.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.rank() == Some(b'9')
+    }
+
+    /// Whether this state ended because it could not be done.
+    #[must_use]
+    pub fn is_failed(&self) -> bool {
+        self.rank() == Some(b'A')
+    }
+
+    /// The state one spelling names, or `None` where none does.
+    ///
+    /// Three vocabularies reach one value, because they name one thing:
+    ///
+    /// - a FIX `OrdStatus(39)` or `ExecType(150)` wire code - `0`, `1`, `F`;
+    /// - the specification's own name for it - `PartiallyFilled`, `DoneForDay`;
+    /// - the word a scheduler uses - `running`, `succeeded`, `timed out`.
+    ///
+    /// Names fold the way every other name in this crate folds: ASCII case
+    /// insensitive, with `_`, `-` and spaces ignored, so `DoneForDay`,
+    /// `done_for_day` and `DONE FOR DAY` are one spelling. A wire code does
+    /// **not** fold, because `A` and `a` are different codes in FIX and a
+    /// folded lookup would answer the wrong state for one of them.
+    ///
+    /// ```
+    /// use yggdryl::types::State;
+    ///
+    /// // The wire code, the specification's name and the scheduler's word.
+    /// assert_eq!(State::from_spelling("1").unwrap().as_str(), "4PARTFIL");
+    /// assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "4PARTFIL");
+    /// assert_eq!(State::from_spelling("running").unwrap().as_str(), "3RUNNING");
+    ///
+    /// // The stored bytes sort from the first state to the terminal ones,
+    /// // which is the whole reason the rank leads.
+    /// let mut held = ["8FILLED", "2NEW", "AREJECTD", "4PARTFIL"];
+    /// held.sort_unstable();
+    /// assert_eq!(held, ["2NEW", "4PARTFIL", "8FILLED", "AREJECTD"]);
+    ///
+    /// // And the three endings are told apart without reading the name.
+    /// assert!(State::from_spelling("New").unwrap().is_live());
+    /// assert!(State::from_spelling("Filled").unwrap().is_done());
+    /// assert!(State::from_spelling("Rejected").unwrap().is_failed());
+    /// ```
+    #[must_use]
+    pub fn from_spelling(spelling: &str) -> Option<Self> {
+        // A stored value names itself, which is what makes reading one back
+        // free and the whole mapping idempotent.
+        if crate::types::AsciiEnum::STATES.contains(&spelling) {
+            return Self::new(spelling).ok();
+        }
+        if let Some(held) = STATE_CODES
+            .iter()
+            .find(|(code, _)| *code == spelling)
+            .map(|(_, state)| *state)
+        {
+            return Self::new(held).ok();
+        }
+        let folded = folded_spelling(spelling);
+        STATE_NAMES
+            .iter()
+            .find(|(name, _)| *name == folded.as_str())
+            .map(|(_, state)| *state)
+            .and_then(|held| Self::new(held).ok())
+    }
+}
+
+/// One spelling folded the way every name in this crate folds.
+fn folded_spelling(spelling: &str) -> SmolStr {
+    let mut held = String::with_capacity(spelling.len());
+    for byte in spelling.bytes() {
+        if matches!(byte, b'_' | b'-' | b' ') {
+            continue;
+        }
+        held.push(char::from(byte.to_ascii_lowercase()));
+    }
+    SmolStr::new(held)
+}
+
+/// FIX's `OrdStatus(39)` and `ExecType(150)` wire codes, unfolded.
+///
+/// The two code sets agree on every value they share, which is why one table
+/// answers both: `0` is New in each, `1` PartiallyFilled, `2` Filled. Where
+/// only `ExecType` defines a value - `F` Trade, `L` Triggered - the state is
+/// what that report says the order is doing.
+static STATE_CODES: &[(&str, &str)] = &[
+    ("0", "2NEW"),
+    ("1", "4PARTFIL"),
+    ("2", "8FILLED"),
+    ("3", "8DONEDAY"),
+    ("4", "9CANCELD"),
+    ("5", "7REPLACD"),
+    ("6", "6PENDCXL"),
+    ("7", "5STOPPED"),
+    ("8", "AREJECTD"),
+    ("9", "5SUSPEND"),
+    ("A", "1PENDNEW"),
+    ("B", "8CALCULD"),
+    ("C", "AEXPIRED"),
+    ("D", "2ACCEPTD"),
+    ("E", "6PENDRPL"),
+    ("F", "4TRADE"),
+    ("G", "4TRDCORR"),
+    ("H", "4TRDCXL"),
+    ("I", "3STATUS"),
+    ("J", "4TRDHOLD"),
+    ("K", "8TRDRELS"),
+    ("L", "3TRIGGER"),
+];
+
+/// Every name that reaches a state, folded, FIX's beside a scheduler's.
+static STATE_NAMES: &[(&str, &str)] = &[
+    ("accepted", "2ACCEPTD"),
+    ("acceptedforbidding", "2ACCEPTD"),
+    ("calculated", "8CALCULD"),
+    ("canceled", "9CANCELD"),
+    ("cancelled", "9CANCELD"),
+    ("complete", "8COMPLET"),
+    ("completed", "8COMPLET"),
+    ("doneforday", "8DONEDAY"),
+    ("expired", "AEXPIRED"),
+    ("failed", "AFAILED"),
+    ("failure", "AFAILED"),
+    ("filled", "8FILLED"),
+    ("inprogress", "4INPROGR"),
+    ("new", "2NEW"),
+    ("orderstatus", "3STATUS"),
+    ("partiallyfilled", "4PARTFIL"),
+    ("paused", "5PAUSED"),
+    ("pending", "1PENDING"),
+    ("pendingcancel", "6PENDCXL"),
+    ("pendingnew", "1PENDNEW"),
+    ("pendingreplace", "6PENDRPL"),
+    ("queued", "1QUEUED"),
+    ("rejected", "AREJECTD"),
+    ("replaced", "7REPLACD"),
+    ("restated", "7REPLACD"),
+    ("running", "3RUNNING"),
+    ("starting", "2STARTNG"),
+    ("stopped", "5STOPPED"),
+    ("submitted", "2SUBMITD"),
+    ("succeeded", "8SUCCESS"),
+    ("success", "8SUCCESS"),
+    ("suspended", "5SUSPEND"),
+    ("timedout", "ATIMEOUT"),
+    ("timeout", "ATIMEOUT"),
+    ("trade", "4TRADE"),
+    ("tradecancel", "4TRDCXL"),
+    ("tradecorrect", "4TRDCORR"),
+    ("tradehasbeenreleasedtoclearing", "8TRDRELS"),
+    ("tradeinaclearinghold", "4TRDHOLD"),
+    ("triggeredoractivatedbysystem", "3TRIGGER"),
+    ("unknown", "0UNKNOWN"),
+];
 
 impl MsgType {
     /// The alphabet a synthesized message type is rendered in.
@@ -234,10 +417,17 @@ impl MsgType {
     /// a bridge writes its own type in front of a frame it relays. FIX's
     /// user-defined `U*` range routes through one dictionary root.
     ///
+    /// A [bridge configuration](crate::MimeType::ULCONFIG) document declares
+    /// its own, and only where the line wrote neither of those. The ObjectName
+    /// of the first MBean it names carries a `type=` segment - `Plugin` or
+    /// `ConfigurationPlugin` - which is what that entry *is*; failing one, the
+    /// Jolokia request's own `type` is the operation the document came from.
+    ///
     /// The answer is a slice of the caller's bytes: no message is parsed and
     /// nothing is allocated. It is deliberately not validated to this type's
     /// width, because a line may carry anything and a classifier must not
-    /// refuse what it was asked to read.
+    /// refuse what it was asked to read - [`Self::coerce`] is what makes a
+    /// reading fit a column.
     ///
     /// ```
     /// use yggdryl::types::MsgType;
@@ -247,6 +437,14 @@ impl MsgType {
     /// // The user-defined range routes through one root.
     /// assert_eq!(MsgType::infer_bytes(b"35=U7|"), Some(&b"UDF"[..]));
     /// assert_eq!(MsgType::infer_bytes(b"no pairs here"), None);
+    ///
+    /// // A bridge configuration answers what the entry is, and `plugin-type=`
+    /// // is not that segment however alike its last five bytes look.
+    /// let entry = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"status":200}"#;
+    /// assert_eq!(MsgType::infer_bytes(entry), Some(&b"Plugin"[..]));
+    /// // A wildcard read names no type of its own, so the operation answers.
+    /// let wildcard = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":200}"#;
+    /// assert_eq!(MsgType::infer_bytes(wildcard), Some(&b"read"[..]));
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Option<&[u8]> {
@@ -283,7 +481,12 @@ impl MsgDirection {
     ///
     /// A prefix carrying both verbs, and one carrying neither, both answer
     /// nothing: there is no verb the reading can prefer, and inventing one
-    /// would be a guess.
+    /// would be a guess. Except where the payload is a document that states
+    /// its own half of an exchange - a
+    /// [bridge configuration](crate::MimeType::ULCONFIG) echoing back the
+    /// request it answers came back, and one that is a bare request went out.
+    /// A verb the transport wrote still wins over what the document says
+    /// about itself.
     ///
     /// ```
     /// use yggdryl::types::MsgDirection;
@@ -304,6 +507,13 @@ impl MsgDirection {
     /// // English that merely contains the letters is not a marker.
     /// assert_eq!(MsgDirection::infer_bytes(b"sending in session 3"), None);
     /// assert_eq!(MsgDirection::infer_bytes(b"received out of order"), None);
+    ///
+    /// // A document answered by a status came back, and the words its own
+    /// // payload spells - `send-test-request` here - are never the marker.
+    /// let answered = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"name":"send-test-request"},"status":200}"#;
+    /// assert_eq!(MsgDirection::infer_bytes(answered), Some(MsgDirection::RECV));
+    /// let asked = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
+    /// assert_eq!(MsgDirection::infer_bytes(asked), Some(MsgDirection::SENT));
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Option<&'static str> {
@@ -337,8 +547,23 @@ impl MsgDirection {
     /// ```
     #[must_use]
     pub fn split_bytes(line: &[u8]) -> (Option<&'static str>, &[u8]) {
-        let bound = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-        Self::split_within(line, bound)
+        let (bound, stated) = crate::mime_type::line::payload(line);
+        let (marked, rest) = Self::split_within(line, bound.unwrap_or(line.len()));
+        // A document states its own half of an exchange, and states it with no
+        // marker to take off: what is read there leaves the line whole.
+        (marked.or_else(|| Self::stated(stated)), rest)
+    }
+
+    /// The direction a payload that states its own half of an exchange took.
+    ///
+    /// The reading is the document's, so the vocabulary stays here: the scan
+    /// answers which half it is and this names the half.
+    const fn stated(answered: Option<bool>) -> Option<&'static str> {
+        match answered {
+            Some(true) => Some(Self::RECV),
+            Some(false) => Some(Self::SENT),
+            None => None,
+        }
     }
 
     /// Reads which way a line moved, given where its payload starts.
@@ -348,9 +573,10 @@ impl MsgDirection {
     /// locating it twice is the only cost the bounded reading has.
     ///
     /// The default fills silence and never overrides a statement: a line
-    /// carrying a verb answers that verb, and only a line carrying none - or
-    /// carrying both, which is a line no reading can prefer one of - takes
-    /// the default. FIX parsing passes [`MsgDirection::SENT`], because a
+    /// carrying a verb answers that verb, a payload that states its own half
+    /// of an exchange answers that, and only a line stating neither - or
+    /// carrying both verbs, which is a line no reading can prefer one of -
+    /// takes the default. FIX parsing passes [`MsgDirection::SENT`], because a
     /// session's own log is written by the side doing the sending and its
     /// unmarked lines are the ones it sent.
     ///
@@ -379,6 +605,7 @@ impl MsgDirection {
     ) -> Option<&'static str> {
         Self::split_within(line, payload_at.min(line.len()))
             .0
+            .or_else(|| Self::stated(crate::mime_type::line::payload(line).1))
             .or(default)
     }
 
@@ -535,6 +762,10 @@ pub enum AsciiFamily {
     MsgType(MsgType),
     /// Which way a captured line moved.
     MsgDirection(MsgDirection),
+    /// What state one thing is in, ranked so the bytes sort by lifecycle.
+    State(State),
+    /// How long an order stands.
+    TimeInForce(TimeInForce),
 }
 
 impl AsciiFamily {
@@ -550,6 +781,8 @@ impl AsciiFamily {
             Self::Side(value) => value.as_str(),
             Self::MsgType(value) => value.as_str(),
             Self::MsgDirection(value) => value.as_str(),
+            Self::State(value) => value.as_str(),
+            Self::TimeInForce(value) => value.as_str(),
         }
     }
 
@@ -568,6 +801,8 @@ impl AsciiFamily {
             Self::Side(value) => value.storage(),
             Self::MsgType(value) => value.storage(),
             Self::MsgDirection(value) => value.storage(),
+            Self::State(value) => value.storage(),
+            Self::TimeInForce(value) => value.storage(),
         }
     }
 }
@@ -751,6 +986,8 @@ impl ScalarFamily for AsciiFamily {
             Self::Side(_) => DataTypeId::Side,
             Self::MsgType(_) => DataTypeId::MsgType,
             Self::MsgDirection(_) => DataTypeId::MsgDirection,
+            Self::State(_) => DataTypeId::State,
+            Self::TimeInForce(_) => DataTypeId::TimeInForce,
         }
     }
 
@@ -765,6 +1002,8 @@ impl ScalarFamily for AsciiFamily {
             Self::Side(_) => Ok(DataType::Side),
             Self::MsgType(_) => Ok(DataType::MsgType),
             Self::MsgDirection(_) => Ok(DataType::MsgDirection),
+            Self::State(_) => Ok(DataType::State),
+            Self::TimeInForce(_) => Ok(DataType::TimeInForce),
         }
     }
 
@@ -813,4 +1052,16 @@ define_scalar_type!(
     super::MsgDirectionType,
     "direction",
     crate::DataType::MsgDirection
+);
+define_scalar_type!(
+    StateScalar,
+    super::StateType,
+    "state",
+    crate::DataType::State
+);
+define_scalar_type!(
+    TimeInForceScalar,
+    super::TimeInForceType,
+    "timeinforce",
+    crate::DataType::TimeInForce
 );

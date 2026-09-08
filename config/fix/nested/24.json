@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "orderentry",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -186,7 +186,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "targetpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -228,7 +228,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mdstatistic",
         "dtype": {
           "type": "struct",
           "fields": [

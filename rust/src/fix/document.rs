@@ -198,6 +198,42 @@ impl<'doc> Cursor<'doc> {
         Ok(word)
     }
 
+    /// Reads one nested object, handing back its whole text.
+    ///
+    /// A datatype is the one value these documents hold that is a document
+    /// itself, because it is stored exactly as the field's own datatype is
+    /// and a parameterized one carries its parameters as keys. The braces
+    /// are balanced by scanning, strings skipped whole so a `{` inside one is
+    /// not counted, and the slice handed back is the input's own bytes - so
+    /// the crate's JSON reader parses it later without this scan allocating.
+    pub(super) fn read_document(&mut self, key: &'static str) -> Scan<&'doc str> {
+        let start = self.position;
+        self.expect(b'{')?;
+        let mut depth = 1_usize;
+        while depth > 0 {
+            match self.peek() {
+                Some(b'"') => {
+                    self.read_string()?;
+                    continue;
+                }
+                Some(b'{') => depth += 1,
+                Some(b'}') => depth -= 1,
+                Some(_) => {}
+                None => {
+                    self.position = start;
+                    return Err(Refusal::Unclosed);
+                }
+            }
+            self.position += 1;
+        }
+        let body = &self.document[start..self.position];
+        if body.len() < 2 {
+            self.position = start;
+            return Err(Refusal::NotANumber(key));
+        }
+        Ok(body)
+    }
+
     /// Reads one non-negative decimal number.
     #[inline]
     pub(super) fn read_number(&mut self, key: &'static str) -> Scan<u32> {
@@ -466,6 +502,15 @@ impl Writer {
         self.text
             .push_str(&crate::text::json::into_utf8(&Scalar::from(value))?);
         Ok(())
+    }
+
+    /// Writes one key whose value is an already-rendered document.
+    ///
+    /// The text comes from the crate's own JSON writer, so it is spliced
+    /// rather than re-escaped: escaping a document would make it a string.
+    pub(super) fn document(&mut self, first: bool, key: &str, value: &str) {
+        self.key(first, key);
+        self.text.push_str(value);
     }
 
     /// Writes one number-valued key.

@@ -21,7 +21,7 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "StreamCommoditySettlPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommoditysettlperiodxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41301"
     }
   },
@@ -34,7 +34,7 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "StreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommoditysettlperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommoditysettlperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41302"
     }
   },
@@ -47,7 +47,7 @@
     "metadata": {
       "description": "Identifier of this Stream for cross referencing elsewhere in the message.",
       "display": "StreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41303"
     }
   },
@@ -72,7 +72,7 @@
     "metadata": {
       "description": "Cross reference to another Stream notional for duplicating its properties.",
       "display": "StreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamnotionalxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamnotionalxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41305"
     }
   },
@@ -173,7 +173,7 @@
     "metadata": {
       "description": "Reference to the protection terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the ProtectionTerms repeating group that applies to this Underlying.",
       "display": "UnderlyingProtectionTermXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprotectiontermxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"underlyingprotectiontermxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprotectiontermxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41314"
     }
   },
@@ -186,7 +186,7 @@
     "metadata": {
       "description": "Reference to the cash or physical settlement terms applicable to this entity or obligation. Contains the same XID named string value of the instance in the appropriate repeating group that applies to this Underlying.",
       "display": "UnderlyingSettlTermXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingsettltermxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"underlyingsettltermxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingsettltermxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41315"
     }
   },
@@ -340,7 +340,8 @@
   {
     "name": "legadditionaltermbondmaturitydate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -534,14 +535,14 @@
   {
     "name": "legcashsettlvaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "Time of valuation.",
       "display": "LegCashSettlValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettlvaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcashsettlvaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettlvaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41349"
     }
   },
@@ -700,7 +701,7 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegCashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcashsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41362"
     }
   },
@@ -830,7 +831,8 @@
   {
     "name": "legcomplexeventperioddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -842,14 +844,14 @@
   {
     "name": "legcomplexeventperiodtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "Averaging time for an Asian option.",
       "display": "LegComplexEventPeriodTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventperiodtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventperiodtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventperiodtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41378"
     }
   },
@@ -943,7 +945,8 @@
   {
     "name": "legcomplexeventdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1018,7 +1021,8 @@
   {
     "name": "legcomplexeventdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1030,14 +1034,14 @@
   {
     "name": "legcomplexeventfixingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The local market fixing time.",
       "display": "LegComplexEventFixingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventfixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legcomplexeventfixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legcomplexeventfixingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41396"
     }
   },

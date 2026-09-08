@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "protectiontermobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "physicalsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -108,7 +108,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "physicalsettldeliverableobligation",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -150,7 +150,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "payment",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -367,7 +367,8 @@
             {
               "name": "paymentdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -427,7 +428,8 @@
             {
               "name": "paymentdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -552,7 +554,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentsettl",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -594,7 +596,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentsettlpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -656,7 +658,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentsettlpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -698,7 +700,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstream",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -745,7 +747,8 @@
             {
               "name": "legstreamversioneffectivedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -930,7 +933,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "cashsettldealer",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -962,7 +965,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "businesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

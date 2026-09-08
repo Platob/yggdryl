@@ -437,6 +437,8 @@ impl PyDataType {
             "side" => CoreDataType::Side,
             "msgtype" => CoreDataType::MsgType,
             "msgdirection" => CoreDataType::MsgDirection,
+            "state" => CoreDataType::State,
+            "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             _ => {

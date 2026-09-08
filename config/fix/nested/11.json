@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "rootpartyid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -58,7 +58,7 @@
     "metadata": {
       "description": "Number of RootPartyID (1117), RootPartyIDSource (1118), and RootPartyRole (1119) entries",
       "display": "NoRootPartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1116"
     }
   },
@@ -67,7 +67,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "rootpartysubid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -101,7 +101,7 @@
     "metadata": {
       "description": "Number of RootPartySubID (1121) and RootPartySubIDType (1122) entries",
       "display": "NoRootPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"norootpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1120"
     }
   },
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "mdfeedtype",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -234,7 +234,7 @@
     "metadata": {
       "description": "The number of feed types and corresponding book depths associated with a security",
       "display": "NoMDFeedTypes",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomdfeedtypes\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomdfeedtypes\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1141"
     }
   },
@@ -243,7 +243,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settldetail",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -297,7 +297,7 @@
     "metadata": {
       "description": "Used to group Each Settlement Party",
       "display": "NoSettlDetails",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettldetails\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettldetails\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1158"
     }
   },
@@ -306,7 +306,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settloblig",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -423,7 +423,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -476,7 +477,7 @@
     "metadata": {
       "description": "Number of settlement obligations",
       "display": "NoSettlOblig",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettloblig\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nosettloblig\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1165"
     }
   },
@@ -485,7 +486,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "statsindicator",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -509,7 +510,7 @@
     "metadata": {
       "description": "Number of statistics indicator repeating group entries",
       "display": "NoStatsIndicators",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostatsindicators\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nostatsindicators\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1175"
     }
   },
@@ -518,7 +519,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "ofsecsize",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -552,7 +553,7 @@
     "metadata": {
       "description": "The number of secondary sizes specifies in this entry",
       "display": "NoOfSecSizes",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noofsecsizes\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noofsecsizes\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1177"
     }
   }

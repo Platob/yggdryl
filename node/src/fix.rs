@@ -53,7 +53,7 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
     CoreFixId::from_str(text).map_err(napi_error)
 }
 
-/// Retain branch text beside a packed identifier for a field write.
+/// Retain branch text beside the identifier for a field write.
 ///
 /// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
 /// the colon first would answer a malformed identifier with a message of this
@@ -434,6 +434,34 @@ impl JsFixRegistry {
         Ok(self.inner_mut()?.remove(id).map(JsField::from_core))
     }
 
+    /// The branch one digest names, or `null`.
+    ///
+    /// An arrival entry carries its dialect as the digest `branch`, so this is
+    /// the table that turns a capture's column back into the branch it was
+    /// read under. The digest is one way, which is why the registry publishes
+    /// the resolution rather than leaving a reader to reproduce the hash. A
+    /// branch crosses as its name here, as it does everywhere else in this
+    /// binding.
+    #[napi]
+    pub fn get_branch_by_digest(&self, digest: i32) -> Option<String> {
+        self.inner
+            .get_branch_by_digest(digest)
+            .map(|branch| branch.name().to_owned())
+    }
+
+    /// The branch one digest names.
+    ///
+    /// # Errors
+    ///
+    /// Throws naming the digest when no branch carries it.
+    #[napi]
+    pub fn branch_by_digest(&self, digest: i32) -> Result<String> {
+        self.inner
+            .branch_by_digest(digest)
+            .map(|branch| branch.name().to_owned())
+            .map_err(napi_error)
+    }
+
     /// The fields in ascending canonical-identifier order, lazily.
     ///
     /// The order is the core's: tag-major, then by branch digest. The iterator holds
@@ -540,6 +568,27 @@ impl Generator for JsFixFieldIterator {
         // sharing the registry as promptly as a drained one.
         self.registry = None;
         None
+    }
+}
+
+/// Every arrival entry, pre-order, as the tuple JavaScript reads.
+///
+/// The native record nests a group's members under the counter that heads
+/// them; a binding is a view, so it flattens rather than inventing a second
+/// shape. Order is the wire's.
+///
+/// A branch digest is an XXH32 held signed, and every `i32` is an exact
+/// `f64`, so the number JavaScript reads is the digest rather than a rounding
+/// of it.
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, f64, String, String)>) {
+    for entry in entries {
+        out.push((
+            f64::from(entry.tag()),
+            f64::from(entry.branch()),
+            entry.key().to_owned(),
+            entry.value().to_owned(),
+        ));
+        flatten_entries(entry.children(), out);
     }
 }
 
@@ -831,26 +880,24 @@ impl JsFixMsg {
     }
 
     /// What arrived, in arrival order, untranslated.
-    #[napi(ts_return_type = "Array<[number, string | null, string, string]>")]
-    pub fn arrivals(&self) -> Vec<(f64, Option<String>, String, String)> {
-        self.inner
-            .entries()
-            .iter()
-            .map(|entry| {
-                (
-                    f64::from(entry.tag()),
-                    entry.branch().map(ToOwned::to_owned),
-                    entry.key().to_owned(),
-                    entry.value().to_owned(),
-                )
-            })
-            .collect()
+    ///
+    /// Flattened pre-order: a group's members follow the counter pair that
+    /// heads them, so a caller reading the array reads the wire. The dialect
+    /// crosses as its digest, which `FixRegistry.branchByDigest` resolves.
+    #[napi(ts_return_type = "Array<[number, number, string, string]>")]
+    pub fn arrivals(&self) -> Vec<(f64, f64, String, String)> {
+        let mut held = Vec::new();
+        flatten_entries(self.inner.entries(), &mut held);
+        held
     }
 
     /// This message as the fixed row a table holds.
     #[napi]
-    pub fn to_row(&self, projection: &JsFixProjection) -> JsScalar {
-        JsScalar::from_core(self.inner.to_row(&projection.inner))
+    pub fn to_row(&self, projection: &JsFixProjection) -> Result<JsScalar> {
+        self.inner
+            .to_row(&projection.inner)
+            .map(JsScalar::from_core)
+            .map_err(napi_error)
     }
 
     /// Re-emit this message on the wire, separated by `separator`.
@@ -1001,16 +1048,21 @@ impl JsFixCodec {
 
     /// One captured line, whatever it is wrapped in.
     #[napi]
-    pub fn read_line(&self, row: Buffer) -> Result<JsFixMsg> {
+    pub fn transform_line(&self, row: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
         self.inner
-            .read_line(&row)
+            .transform_line(&row, enrich.unwrap_or(false))
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One numeric frame, split on the separator stated or inferred.
     #[napi]
-    pub fn read_fix_line(&self, body: Buffer, separator: Option<f64>) -> Result<JsFixMsg> {
+    pub fn transform_fix_line(
+        &self,
+        body: Buffer,
+        separator: Option<f64>,
+        enrich: Option<bool>,
+    ) -> Result<JsFixMsg> {
         let codec = match separator {
             Some(held) => self
                 .inner
@@ -1019,38 +1071,56 @@ impl JsFixCodec {
             None => self.inner.clone(),
         };
         codec
-            .read_fix_line(&body)
+            .transform_fix_line(&body, enrich.unwrap_or(false))
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
     #[napi]
-    pub fn read_ullink_line(&self, body: Buffer) -> Result<JsFixMsg> {
+    pub fn transform_ullink_line(&self, body: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
         self.inner
-            .read_ullink_line(&body)
+            .transform_ullink_line(&body, enrich.unwrap_or(false))
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// One FIXML row, whose fields are XML attributes.
     #[napi]
-    pub fn read_fixml_line(&self, body: Buffer) -> Result<JsFixMsg> {
+    pub fn transform_fixml_line(&self, body: Buffer, enrich: Option<bool>) -> Result<JsFixMsg> {
         self.inner
-            .read_fixml_line(&body)
+            .transform_fixml_line(&body, enrich.unwrap_or(false))
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
     /// Pairs a caller already holds, in the order they arrived.
     #[napi(ts_args_type = "pairs: Array<[string, string]>")]
-    pub fn read_pairs(&self, pairs: Vec<(String, String)>) -> Result<JsFixMsg> {
+    pub fn transform_pairs(
+        &self,
+        pairs: Vec<(String, String)>,
+        enrich: Option<bool>,
+    ) -> Result<JsFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .read_pairs(borrowed)
+            .transform_pairs(borrowed, enrich.unwrap_or(false))
+            .map(JsFixMsg::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Fills what one message implies but did not carry.
+    ///
+    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
+    /// Only the row is filled: the arrival record is what the wire carried and
+    /// is left alone, so `toBytes` re-emits the received line either way, and
+    /// a stated value is never replaced.
+    #[napi]
+    pub fn enrich_fixmsg(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
+        self.inner
+            .enrich_fixmsg(message.inner.clone())
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }

@@ -206,7 +206,7 @@
       "description": "The type of assignment being affected in the Stream Assignment Report.",
       "display": "StreamAsgnType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Assignment\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":1,\"doc\":\"Assignment\"},{\"value\":\"2\",\"name\":\"Rejected\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":2,\"doc\":\"Rejected\"},{\"value\":\"3\",\"name\":\"Terminate\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":3,\"doc\":\"Terminate/Unassign\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgntype\",\"type\":\"int\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgntype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1617"
     }
   },

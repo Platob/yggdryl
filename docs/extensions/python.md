@@ -1175,6 +1175,8 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | lookups | `field_by_name` and `field_by_path` take the branch after the name it qualifies, defaulting to the standard one; `field_by_tag` means the standard branch |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a write creates `primitive/<branch>/` and `nested/<branch>/` |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
+| branch digests | `branch_by_bid` / `get_branch_by_bid` take the `int` an arrival entry carries and answer the `FixBranch` it names; only a declared branch resolves |
+| `FixMsg.entries()` | `(tag, bid, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | immutable: equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
@@ -1317,7 +1319,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 - `remove` -> reaches the standard branch only; `remove_by_id` is how a vendor field leaves.
 - `msg.by_id` / `msg.get_by_id` -> name one dictionary exactly and do not tier; `msg.branch` comes from the root field.
 - iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.
-- a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's item.
+- a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's occurrence.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
 
 ```python

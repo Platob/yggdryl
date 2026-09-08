@@ -64,7 +64,8 @@
   {
     "name": "legprovisionoptionexpirationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -76,14 +77,14 @@
   {
     "name": "legprovisionoptionexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The latest time for exercise on the expiration date.",
       "display": "LegProvisionOptionExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisionoptionexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisionoptionexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40506"
     }
   },
@@ -102,7 +103,8 @@
   {
     "name": "legprovisionoptionrelevantunderlyingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -189,7 +191,8 @@
   {
     "name": "legprovisionoptionrelevantunderlyingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -276,7 +279,8 @@
   {
     "name": "legprovisioncashsettlpaymentdaterangefirst",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -288,7 +292,8 @@
   {
     "name": "legprovisioncashsettlpaymentdaterangelast",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -300,14 +305,14 @@
   {
     "name": "legprovisioncashsettlvaluetime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "LegProvisionCashSettlValueTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisioncashsettlvaluetime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"legprovisioncashsettlvaluetime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprovisioncashsettlvaluetime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40524"
     }
   },
@@ -401,7 +406,8 @@
   {
     "name": "legprovisioncashsettlvaluedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -563,7 +569,8 @@
   {
     "name": "underlyingstreamterminationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -650,7 +657,8 @@
   {
     "name": "underlyingstreamterminationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -687,7 +695,8 @@
   {
     "name": "underlyingstreamfirstperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -724,7 +733,8 @@
   {
     "name": "underlyingstreamfirstperiodstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -736,7 +746,8 @@
   {
     "name": "underlyingstreamfirstregularperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -748,7 +759,8 @@
   {
     "name": "underlyingstreamfirstcompoundingperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -760,7 +772,8 @@
   {
     "name": "underlyingstreamlastregularperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1034,7 +1047,8 @@
   {
     "name": "underlyingpaymentstreamfirstpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1046,7 +1060,8 @@
   {
     "name": "underlyingpaymentstreamlastregularpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

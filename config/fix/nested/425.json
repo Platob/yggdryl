@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstubstartdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,7 +36,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratedate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -93,7 +93,8 @@
             {
               "name": "legreturnratevaluationstartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -143,7 +144,8 @@
             {
               "name": "legreturnratevaluationstartdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -153,7 +155,8 @@
             {
               "name": "legreturnratevaluationenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -203,7 +206,8 @@
             {
               "name": "legreturnratevaluationenddateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -268,7 +272,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratefxconversion",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -320,7 +324,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -457,8 +461,8 @@
             {
               "name": "legreturnratequotetime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -468,7 +472,8 @@
             {
               "name": "legreturnratequotedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -478,8 +483,8 @@
             {
               "name": "legreturnratequoteexpirationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -539,8 +544,8 @@
             {
               "name": "legreturnratevaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -595,7 +600,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrateinformationsource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -647,7 +652,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnrateprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -709,7 +714,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratevaluationdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -741,14 +746,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legreturnratevaluationdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "legreturnratevaluationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -783,7 +789,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsettlmethodelectiondatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -4,14 +4,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreampaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "paymentstreampaymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -46,14 +47,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreampricingdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "paymentstreampricingdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -88,7 +90,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "paymentstreampricingday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -130,7 +132,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "pricingdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -162,7 +164,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -214,14 +216,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcalculationperioddate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "streamcalculationperioddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -256,7 +259,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommoditysettlbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -288,7 +291,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommodityaltid",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -330,7 +333,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommoditydatasource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -372,7 +375,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommoditysettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -414,7 +417,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommoditysettltime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -466,7 +469,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "streamcommoditysettlperiod",
         "dtype": {
           "type": "struct",
           "fields": [

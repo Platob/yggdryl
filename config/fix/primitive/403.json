@@ -190,7 +190,8 @@
   {
     "name": "legpaymentstreaminitialfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -277,7 +278,8 @@
   {
     "name": "legpaymentstreamfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -375,7 +377,8 @@
   {
     "name": "legpaymentstreamfuturevaluedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -839,7 +842,8 @@
   {
     "name": "legnondeliverablefixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -940,7 +944,8 @@
   {
     "name": "legpaymentschedulestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -952,7 +957,8 @@
   {
     "name": "legpaymentscheduleenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1174,7 +1180,8 @@
   {
     "name": "legpaymentschedulefixingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

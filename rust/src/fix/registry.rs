@@ -1,9 +1,9 @@
 //! The FIX registry: one field vector, four compact indexes, and one branch
 //! table.
 //!
-//! Canonical and alternate identifiers are keyed directly by packed
-//! [`FixId`] values. Canonical names and aliases are keyed by independent
-//! seeded XXH64 digests; every hit is rechecked against the field, so a digest
+//! Canonical and alternate identifiers are keyed directly by [`FixId`]
+//! values, both halves reaching the hasher. Canonical names and aliases are
+//! keyed by independent seeded XXH64 digests; every hit is rechecked against the field, so a digest
 //! collision is a miss on read and a typed conflict on mutation. Ordered
 //! iteration is kept separately as sorted field positions. The registry is
 //! built rarely and resolved constantly, so that `O(n)` insertion trade is
@@ -34,6 +34,18 @@ impl Mix {
         value ^= value >> 33;
         value
     }
+
+    /// Folds one integer write into the state instead of replacing it.
+    ///
+    /// A key written in parts keeps every part: a [`FixId`] hashes its tag
+    /// and then its branch, and the rotation lands them in the two halves of
+    /// the state, so two tags in one dictionary are two keys rather than one
+    /// bucket. A key written once is unchanged by the fold, the state being
+    /// zero until then. Two 32-bit halves is exactly what it separates: a
+    /// third such write folds back over the first.
+    fn fold(&mut self, value: u64) {
+        self.0 = self.0.rotate_left(32) ^ value;
+    }
 }
 
 /// The field a dotted path reaches under one resolved head, folding as it goes.
@@ -41,9 +53,19 @@ impl Mix {
 /// The generic walk matches a child's name exactly, which is right for a schema
 /// a caller wrote and wrong for a dictionary: the head already folded, so
 /// `NoPartyIDs.PartyID` resolving its first segment and refusing its second is
-/// one function disagreeing with itself. The exact walk is still tried first,
-/// because it is the cheap answer and the common one.
+/// one function disagreeing with itself.
+///
+/// A list is stepped through before anything else, including the exact walk.
+/// A repeating group's occurrence is not a path segment - nobody spelling a
+/// path names it - so consulting [`Field::get_field_by_path`] first would let
+/// the occurrence match by its own name, which is exactly what this walk must
+/// not allow now that the occurrence carries the component's name. The exact
+/// walk still runs under the list, because it is the cheap answer and the
+/// common one.
 fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
+    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+        return descend(item, path);
+    }
     if let Some(held) = field.get_field_by_path(path) {
         return Some(held);
     }
@@ -58,15 +80,18 @@ fn descend<'field>(field: &'field Field, path: &str) -> Option<&'field Field> {
     }
 }
 
-/// One child by folded name, reaching through a group's item where it has one.
+/// One child by folded name, reaching through a group's occurrence.
 ///
-/// A repeating group is a List of one `item` Struct, so a member is the item's
-/// child and not the list's - and nobody spelling a path says `item`.
+/// A repeating group is a List of one Struct, so a member is that struct's
+/// child and not the list's. The occurrence is transparent: it is recursed
+/// through without consuming a segment and it is never matched by its own
+/// name, because that name is the component's - `NoPartyIDs.PartyID` names
+/// tag 448 and must never answer the struct that happens to share its
+/// spelling. 269 of the 521 shipped groups derive a name a member of their own
+/// struct already carries, so matching the occurrence would shadow every one
+/// of them silently.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
     if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
-        if crate::types::folds_equal(item.name(), name) {
-            return Some(item);
-        }
         return folded_child(item, name);
     }
     field
@@ -76,8 +101,10 @@ fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Fiel
 }
 
 #[cfg(test)]
-pub(super) const fn control_byte(id: FixId) -> u8 {
-    (Mix::finalise(id.0 as u64) >> 57) as u8
+pub(super) fn control_byte(id: FixId) -> u8 {
+    let mut state = Mix::default();
+    std::hash::Hash::hash(&id, &mut state);
+    (state.finish() >> 57) as u8
 }
 
 impl Hasher for Mix {
@@ -96,19 +123,19 @@ impl Hasher for Mix {
     }
 
     fn write_u32(&mut self, value: u32) {
-        self.0 = u64::from(value);
+        self.fold(u64::from(value));
     }
 
     fn write_i32(&mut self, value: i32) {
-        self.0 = value as u32 as u64;
+        self.fold(value as u32 as u64);
     }
 
     fn write_u64(&mut self, value: u64) {
-        self.0 = value;
+        self.fold(value);
     }
 
     fn write_i64(&mut self, value: i64) {
-        self.0 = value as u64;
+        self.fold(value as u64);
     }
 }
 
@@ -217,7 +244,7 @@ pub(super) fn is_nested(field: &Field) -> bool {
     field.dtype().is_nested()
 }
 
-/// FIX field definitions resolved by packed identity or folded name.
+/// FIX field definitions resolved by identity or folded name.
 #[derive(Clone, Default)]
 pub struct FixRegistry {
     fields: Vec<Field>,
@@ -250,7 +277,7 @@ impl FixRegistry {
         Ok(registry)
     }
 
-    /// Returns the field a canonical or alternate packed identifier names.
+    /// Returns the field a canonical or alternate identifier names.
     pub fn get_field_by_id(&self, id: FixId) -> Option<&Field> {
         self.position_by_id(id)
             .and_then(|position| self.fields.get(position))
@@ -466,6 +493,31 @@ impl FixRegistry {
     /// Returns the branch for `id`.
     pub fn branch_of(&self, id: FixId) -> Option<&FixBranch> {
         self.branches.get(&id.branch_digest())
+    }
+
+    /// Returns the branch one digest names, or `None`.
+    ///
+    /// The reverse of the digest an entry stores: a capture's `branch` column
+    /// joins to a whole dialect declaration through this, which is what makes
+    /// the capture self-describing rather than merely legible. The argument is
+    /// the entry's own signed reading of the XXH32, so a digest above
+    /// `i32::MAX` arrives negative and resolves exactly as it stored.
+    pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch> {
+        self.branches.get(&super::entry::unsigned(digest))
+    }
+
+    /// Returns the branch one digest names, raising absence.
+    ///
+    /// # Errors
+    ///
+    /// Returns absence naming the digest when no branch carries it.
+    pub fn branch_by_digest(&self, digest: i32) -> Result<&FixBranch> {
+        self.get_branch_by_digest(digest).ok_or_else(|| {
+            absent(format_args!(
+                "branch #{:08x}",
+                super::entry::unsigned(digest)
+            ))
+        })
     }
 
     /// Returns the branch `name` reaches, canonically or by an alias.

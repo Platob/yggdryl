@@ -49,8 +49,8 @@ use crate::{DataType, Error, Field, Level, Metadata, Result, Scalar, Version};
 
 use super::codec::FixCodec;
 use super::msg::FixMsg;
-use super::record::{column, column_bytes, column_text, empty, read_record};
-use super::{FixBranch, FixRegistry};
+use super::record::{column, column_bytes, column_text, empty, transform_record};
+use super::{ENTRIES_COLUMN, FixBranch, FixRegistry};
 
 /// The column a payload is read from when the options name none.
 ///
@@ -125,7 +125,30 @@ pub struct FixOptions {
     /// source by position and cannot be joined back to it. What went is
     /// counted rather than silent.
     pub dedup: bool,
+    /// Whether each message is filled with what it implies.
+    ///
+    /// Off by default: a derived value is indistinguishable from a stated one
+    /// once it is in the row, so filling has to be asked for. See
+    /// [`FixCodec::enrich_fixmsg`](super::FixCodec::enrich_fixmsg).
+    pub enrich: bool,
 }
+
+/// The batch size a FIX read targets when the caller states none.
+///
+/// A capture is tens of millions of lines and the row shape varies by three
+/// orders of magnitude between a heartbeat and a market-data snapshot, so a
+/// row bound alone makes memory unpredictable: the same bound is a few
+/// megabytes of one and gigabytes of the other. Targeting bytes instead keeps
+/// a batch about the same size whatever arrived, and 128 MiB is large enough
+/// that the per-batch cost - building the arrays, crossing a reader boundary,
+/// writing a row group - is amortized to nothing, while still leaving several
+/// batches in flight on an ordinary machine.
+///
+/// It is a target rather than a ceiling. The estimate accumulates per row
+/// from what was appended, because an in-progress builder cannot be measured
+/// the way a finished batch can, and a non-zero bound always yields at least
+/// one row - so one enormous message can never produce an empty batch.
+pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;
 
 impl Default for FixOptions {
     fn default() -> Self {
@@ -134,7 +157,7 @@ impl Default for FixOptions {
             dtype: None,
             metadata: Metadata::default(),
             safe: true,
-            batch_byte_size: None,
+            batch_byte_size: Some(DEFAULT_BATCH_BYTE_SIZE),
             batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
@@ -153,6 +176,7 @@ impl Default for FixOptions {
                 .collect(),
             direction: Some(MsgDirection::SENT),
             dedup: false,
+            enrich: false,
         }
     }
 }
@@ -283,12 +307,15 @@ impl FixBatchReader {
         let field = options.source_field(&registry)?;
         let reader = options.reader(Arc::clone(&registry));
         let default = options.direction;
+        let enrich = options.enrich;
         let messages = rows.into_iter().map(move |row| {
             let row = row?;
             // A row in is a row out: a line the reader refuses is not a line
             // lost, it is a message with nothing in it, and the count still
             // matches the capture's.
-            let message = reader.read_line(&row).unwrap_or_else(|_| empty(&reader));
+            let message = reader
+                .transform_line(&row, enrich)
+                .unwrap_or_else(|_| empty(&reader));
             let direction = direction_of(&row, default);
             Ok((message, direction, Vec::new()))
         });
@@ -321,10 +348,10 @@ impl FixBatchReader {
         options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .read_arrow_reader(source, &options)
+            .transform_arrow_reader(source, &options, options.enrich)
     }
 
-    /// The body [`FixCodec::read_arrow_reader`] is, with the codec in hand.
+    /// The body [`FixCodec::transform_arrow_reader`] is, with the codec in hand.
     pub(super) fn from_codec(
         reader: &FixCodec,
         source: BatchReader,
@@ -351,6 +378,7 @@ impl FixBatchReader {
         let reader = options.reader(Arc::clone(&registry));
         let payload = options.payload_column.clone();
         let default = options.direction;
+        let enrich = options.enrich;
 
         let records = source
             .flat_map(move |batch| match batch {
@@ -369,7 +397,7 @@ impl FixBatchReader {
             .map(move |row| {
                 let record = named(&names, &row?);
                 let bytes = column_bytes(&record, &payload).unwrap_or_default();
-                let message = read_record(&reader, &record, &bytes)?;
+                let message = transform_record(&reader, &record, &bytes, enrich)?;
                 let direction = stated(&record).or_else(|| direction_of(&bytes, default));
                 // By position: the columns kept were decided from the schema,
                 // and a row of that schema arrives in that order.
@@ -437,7 +465,7 @@ fn row_of(
     // carries no tag, so it comes back null and is filled here rather than
     // spliced in, which keeps `position_of` an index into the row itself.
     let mut held = message
-        .to_row(projection)
+        .to_row(projection)?
         .as_sequence()
         .map(<[Scalar]>::to_vec)
         .unwrap_or_default();
@@ -540,11 +568,56 @@ fn payload_lines(column: &ArrayRef) -> Result<Vec<&[u8]>> {
 
 /// The direction a whole captured line moved.
 fn direction_of(line: &[u8], default: Option<&'static str>) -> Option<&'static str> {
-    let at = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-    MsgDirection::at_payload(line, at, default)
+    MsgDirection::infer_bytes(line).or(default)
 }
 
 /// One row's values beside the names its schema gave them.
+/// Emits one arrival entry and everything under it, in wire order.
+///
+/// The materialized levels are walked as they stand; the binary leaf is
+/// decoded through the crate's one JSON parser and walked the same way. A
+/// leaf that cannot be decoded is rejected, never skipped, because a
+/// re-emitted line must reproduce a line that actually arrived - a hole where
+/// a pair was is a different message.
+///
+/// # Errors
+///
+/// Returns the JSON reader's failure on an undecodable leaf.
+fn emit_entry(pair: &[Scalar], separator: u8, line: &mut Vec<u8>) -> Result<()> {
+    if let (Some(key), Some(value)) = (
+        pair.get(2).and_then(Scalar::as_str),
+        pair.get(3).and_then(Scalar::as_str),
+    ) {
+        line.extend_from_slice(key.as_bytes());
+        line.push(b'=');
+        line.extend_from_slice(value.as_bytes());
+        line.push(separator);
+    }
+    let Some(tail) = pair.get(4) else {
+        return Ok(());
+    };
+    if let Some(children) = tail.as_sequence() {
+        for child in children {
+            if let Some(held) = child.as_sequence() {
+                emit_entry(held, separator, line)?;
+            }
+        }
+        return Ok(());
+    }
+    if let Some(bytes) = tail.as_bytes() {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let decoded = crate::from_json_scalar(bytes)?;
+        for child in decoded.as_sequence().unwrap_or_default() {
+            if let Some(held) = child.as_sequence() {
+                emit_entry(held, separator, line)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn named(names: &[SmolStr], row: &Scalar) -> Vec<(SmolStr, Scalar)> {
     let Some(values) = row.as_sequence() else {
         return Vec::new();
@@ -592,7 +665,7 @@ impl FixMsg {
         options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .read_record(record)
+            .transform_record(record, options.enrich)
     }
 }
 
@@ -626,9 +699,9 @@ pub fn write_fix(
                 .collect()
         })
         .unwrap_or_default();
-    if !names.iter().any(|held| held == "entries") {
+    if !names.iter().any(|held| held == ENTRIES_COLUMN) {
         return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("entries"),
+            path: SmolStr::new(ENTRIES_COLUMN),
             reason: crate::text::expected_got(
                 "a batch carrying its arrival record",
                 "one holding only lifted columns",
@@ -641,7 +714,7 @@ pub fn write_fix(
         let rows = crate::arrow::batch_to_value(&batch)?;
         for row in rows.as_sequence().unwrap_or_default() {
             let record = named(&names, row);
-            let Some(held) = column(&record, "entries").and_then(Scalar::as_sequence) else {
+            let Some(held) = column(&record, ENTRIES_COLUMN).and_then(Scalar::as_sequence) else {
                 continue;
             };
             let mut line = Vec::new();
@@ -649,16 +722,7 @@ pub fn write_fix(
                 let Some(pair) = entry.as_sequence() else {
                     continue;
                 };
-                let (Some(key), Some(value)) = (
-                    pair.get(2).and_then(Scalar::as_str),
-                    pair.get(3).and_then(Scalar::as_str),
-                ) else {
-                    continue;
-                };
-                line.extend_from_slice(key.as_bytes());
-                line.push(b'=');
-                line.extend_from_slice(value.as_bytes());
-                line.push(options.separator);
+                emit_entry(pair, options.separator, &mut line)?;
             }
             line.push(b'\n');
             sink.write_all(&line)?;

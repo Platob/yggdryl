@@ -57,6 +57,23 @@ fn read_cfb<T>(
     read(located_holder(&url)?.as_io()).map_err(value_error)
 }
 
+/// Every arrival entry, pre-order, as the tuple Python reads.
+///
+/// The native record nests a group's members under the counter that heads
+/// them; a binding is a view, so it flattens rather than inventing a second
+/// shape. Order is the wire's.
+fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(i32, i32, String, String)>) {
+    for entry in entries {
+        out.push((
+            entry.tag(),
+            entry.branch(),
+            entry.key().to_owned(),
+            entry.value().to_owned(),
+        ));
+        flatten_entries(entry.children(), out);
+    }
+}
+
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
 ///
 /// `bool` is an `int` in Python and never a tag, so it is refused by name
@@ -96,7 +113,7 @@ pub(crate) fn id_from_py(text: &str) -> PyResult<CoreFixId> {
     CoreFixId::from_str(text).map_err(value_error)
 }
 
-/// Retain the branch spelling beside the packed identifier for a field write.
+/// Retain the branch spelling beside the identifier for a field write.
 pub(crate) fn id_parts_from_py(text: &str) -> PyResult<(CoreFixBranch, CoreFixId)> {
     let id = id_from_py(text)?;
     let branch = text
@@ -490,6 +507,32 @@ impl PyFixRegistry {
             .branch_of(id)
             .cloned()
             .map(PyFixBranch::from_core))
+    }
+
+    /// The branch one digest resolves to, or `None`.
+    ///
+    /// An arrival entry carries its dialect as the digest `branch`, so this is
+    /// the table that turns a capture's column back into the branch it was
+    /// read under. The digest is one way, which is why the registry publishes
+    /// the resolution rather than leaving a reader to reproduce the hash.
+    fn get_branch_by_digest(&self, digest: i32) -> Option<PyFixBranch> {
+        self.inner
+            .get_branch_by_digest(digest)
+            .cloned()
+            .map(PyFixBranch::from_core)
+    }
+
+    /// The branch one digest resolves to.
+    ///
+    /// # Errors
+    ///
+    /// Raises `ValueError` naming the digest when no branch carries it.
+    fn branch_by_digest(&self, digest: i32) -> PyResult<PyFixBranch> {
+        self.inner
+            .branch_by_digest(digest)
+            .cloned()
+            .map(PyFixBranch::from_core)
+            .map_err(value_error)
     }
 
     /// The branch declared under one canonical name, or `None`.
@@ -1029,19 +1072,15 @@ impl PyFixMsg {
     }
 
     /// What arrived, in arrival order, untranslated.
-    fn entries(&self) -> Vec<(i32, Option<String>, String, String)> {
-        self.inner
-            .entries()
-            .iter()
-            .map(|entry| {
-                (
-                    entry.tag(),
-                    entry.branch().map(ToOwned::to_owned),
-                    entry.key().to_owned(),
-                    entry.value().to_owned(),
-                )
-            })
-            .collect()
+    ///
+    /// Flattened pre-order: a group's members follow the counter pair that
+    /// heads them, so a caller reading the sequence reads the wire. The
+    /// dialect crosses as its digest, which `FixRegistry.branch_by_digest`
+    /// resolves.
+    fn entries(&self) -> Vec<(i32, i32, String, String)> {
+        let mut held = Vec::new();
+        flatten_entries(self.inner.entries(), &mut held);
+        held
     }
 
     /// This message as the fixed row a table holds.
@@ -1051,8 +1090,11 @@ impl PyFixMsg {
     /// shifting its neighbours - which is what makes two rows of one capture
     /// comparable at all. A carried column answers null: it is the capture's,
     /// and nothing in the message says what it held.
-    fn to_row(&self, projection: &PyFixProjection) -> PyScalar {
-        PyScalar::from_inner(self.inner.to_row(&projection.inner))
+    fn to_row(&self, projection: &PyFixProjection) -> PyResult<PyScalar> {
+        self.inner
+            .to_row(&projection.inner)
+            .map(PyScalar::from_inner)
+            .map_err(value_error)
     }
 
     /// Re-emit this message on the wire, separated by `separator`.
@@ -1137,38 +1179,46 @@ impl PyFixCodec {
     }
 
     /// One captured line, whatever it is wrapped in.
-    fn read_line(&self, row: &[u8]) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (row, enrich=false))]
+    fn transform_line(&self, row: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
         self.inner
-            .read_line(row)
+            .transform_line(row, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One numeric frame, split on the separator stated or inferred.
-    #[pyo3(signature = (body, separator=None))]
-    fn read_fix_line(&self, body: &[u8], separator: Option<u8>) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (body, separator=None, enrich=false))]
+    fn transform_fix_line(
+        &self,
+        body: &[u8],
+        separator: Option<u8>,
+        enrich: bool,
+    ) -> PyResult<PyFixMsg> {
         let codec = match separator {
             Some(held) => self.inner.clone().with_separator(held),
             None => self.inner.clone(),
         };
         codec
-            .read_fix_line(body)
+            .transform_fix_line(body, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One bridge frame, whose keys are names rather than tags.
-    fn read_ullink_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (body, enrich=false))]
+    fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
         self.inner
-            .read_ullink_line(body)
+            .transform_ullink_line(body, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
 
     /// One FIXML row, whose fields are XML attributes.
-    fn read_fixml_line(&self, body: &[u8]) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (body, enrich=false))]
+    fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> PyResult<PyFixMsg> {
         self.inner
-            .read_fixml_line(body)
+            .transform_fixml_line(body, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
     }
@@ -1178,15 +1228,43 @@ impl PyFixCodec {
     /// Taken by value because the borrowed pairs the core reads point into
     /// these strings, so they have to outlive the call rather than the caller.
     #[allow(clippy::needless_pass_by_value)]
-    fn read_pairs(&self, pairs: Vec<(String, String)>) -> PyResult<PyFixMsg> {
+    #[pyo3(signature = (pairs, enrich=false))]
+    fn transform_pairs(&self, pairs: Vec<(String, String)>, enrich: bool) -> PyResult<PyFixMsg> {
         let borrowed: Vec<(&[u8], &[u8])> = pairs
             .iter()
             .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
             .collect();
         self.inner
-            .read_pairs(borrowed)
+            .transform_pairs(borrowed, enrich)
             .map(PyFixMsg::from_inner)
             .map_err(value_error)
+    }
+
+    /// Fills what one message implies but did not carry.
+    ///
+    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
+    /// Only the row is filled: the arrival record is what the wire carried
+    /// and is left alone, so `to_bytes` re-emits the received line either
+    /// way, and a stated value is never replaced.
+    fn enrich_fixmsg(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
+        self.inner
+            .enrich_fixmsg(message.inner.clone())
+            .map(PyFixMsg::from_inner)
+            .map_err(value_error)
+    }
+
+    /// Fills a sequence of messages.
+    #[allow(clippy::needless_pass_by_value)]
+    fn enrich_fixmsgs(&self, messages: Vec<PyRef<'_, PyFixMsg>>) -> PyResult<Vec<PyFixMsg>> {
+        messages
+            .into_iter()
+            .map(|held| {
+                self.inner
+                    .enrich_fixmsg(held.inner.clone())
+                    .map(PyFixMsg::from_inner)
+                    .map_err(value_error)
+            })
+            .collect()
     }
 
     fn __copy__(&self) -> Self {
@@ -1662,15 +1740,21 @@ impl PyFixBranch {
         self.inner.is_standard()
     }
 
-    /// The identity packed into every identifier of this branch.
-    fn digest(&self) -> u32 {
-        self.inner.digest()
+    /// The identity every identifier of this branch carries.
+    ///
+    /// The signed reading of the XXH32, which is exactly what an arrival
+    /// entry's `branch` carries and what `FixRegistry.branch_by_digest`
+    /// takes, so a capture's column joins to a declaration without a
+    /// conversion in between. A digest above `i32::MAX` therefore reads
+    /// negative; it is the same four bytes either way.
+    fn digest(&self) -> i32 {
+        self.inner.digest_signed()
     }
 
     /// The deterministic cross-language hash of the whole declaration.
     ///
     /// Equality is the whole declaration, so the hash is too; `digest` is the
-    /// narrower answer, the name identity a packed identifier carries.
+    /// narrower answer, the name identity an identifier carries.
     fn stable_hash(&self) -> u64 {
         Scalar::from_sequence([
             Scalar::from(self.inner.name()),

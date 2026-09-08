@@ -80,11 +80,13 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "side": types.side("value"),
         "msgtype": types.msgtype("value"),
         "msgdirection": types.msgdirection("value"),
+        "state": types.state("value"),
+        "timeinforce": types.timeinforce("value"),
         "geometry": types.geometry("value"),
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 56
+    assert len(values_by_kind) == 58
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }

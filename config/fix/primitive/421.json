@@ -2,7 +2,8 @@
   {
     "name": "underlyingprovisioncashsettlpaymentdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -52,14 +53,14 @@
   {
     "name": "underlyingprovisioncashsettlvaluetime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "display": "UnderlyingProvisionCashSettlValueTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisioncashsettlvaluetime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingprovisioncashsettlvaluetime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisioncashsettlvaluetime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42104"
     }
   },
@@ -141,7 +142,8 @@
   {
     "name": "underlyingprovisioncashsettlvaluedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -153,7 +155,8 @@
   {
     "name": "underlyingprovisionoptionexercisefixeddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -241,7 +244,8 @@
   {
     "name": "underlyingprovisionoptionexercisestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +307,8 @@
   {
     "name": "underlyingprovisionoptionexercisestartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -327,7 +332,8 @@
   {
     "name": "underlyingprovisionoptionexerciseboundsfirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -339,7 +345,8 @@
   {
     "name": "underlyingprovisionoptionexerciseboundslastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -351,14 +358,14 @@
   {
     "name": "underlyingprovisionoptionexerciseearliesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "UnderlyingProvisionOptionExerciseEarliestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexerciseearliesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingprovisionoptionexerciseearliesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexerciseearliesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42129"
     }
   },
@@ -377,14 +384,14 @@
   {
     "name": "underlyingprovisionoptionexerciselatesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "display": "UnderlyingProvisionOptionExerciseLatestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexerciselatesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingprovisionoptionexerciselatesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexerciselatesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42131"
     }
   },
@@ -403,7 +410,8 @@
   {
     "name": "underlyingprovisionoptionexpirationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -478,7 +486,8 @@
   {
     "name": "underlyingprovisionoptionexpirationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -490,14 +499,14 @@
   {
     "name": "underlyingprovisionoptionexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The latest time for exercise on the expiration date.",
       "display": "UnderlyingProvisionOptionExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingprovisionoptionexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprovisionoptionexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42140"
     }
   },
@@ -516,7 +525,8 @@
   {
     "name": "underlyingprovisionoptionrelevantunderlyingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -591,7 +601,8 @@
   {
     "name": "underlyingprovisionoptionrelevantunderlyingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -616,7 +627,8 @@
   {
     "name": "underlyingprovisiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -641,7 +653,8 @@
   {
     "name": "underlyingprovisiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

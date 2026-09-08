@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "additionaltermbondref",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -131,7 +131,8 @@
             {
               "name": "additionaltermbondmaturitydate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -206,7 +207,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "additionalterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -248,7 +249,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "cashsettlterm",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -295,8 +296,8 @@
             {
               "name": "cashsettlvaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -471,7 +472,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contractualdefinition",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -503,7 +504,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "contractualmatrix",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -520,7 +521,8 @@
             {
               "name": "contractualmatrixdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -555,7 +557,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "financingtermsupplement",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -572,7 +574,8 @@
             {
               "name": "financingtermsupplementdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -597,7 +600,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "stream",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -644,7 +647,8 @@
             {
               "name": "streamversioneffectivedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -829,7 +833,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "settlratefallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -881,7 +885,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "provision",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -898,7 +902,8 @@
             {
               "name": "provisiondateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -918,7 +923,8 @@
             {
               "name": "provisiondateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

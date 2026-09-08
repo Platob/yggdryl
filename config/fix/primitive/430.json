@@ -51,7 +51,8 @@
   {
     "name": "underlyingratespreadstepdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -138,7 +139,8 @@
   {
     "name": "underlyingreturnratevaluationstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -200,7 +202,8 @@
   {
     "name": "underlyingreturnratevaluationstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -212,7 +215,8 @@
   {
     "name": "underlyingreturnratevaluationenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -274,7 +278,8 @@
   {
     "name": "underlyingreturnratevaluationenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -534,7 +539,8 @@
   {
     "name": "underlyingreturnratequotetime",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -546,7 +552,8 @@
   {
     "name": "underlyingreturnratequotedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -558,14 +565,14 @@
   {
     "name": "underlyingreturnratequoteexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "UnderlyingReturnRateQuoteExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratequoteexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingreturnratequoteexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratequoteexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "43050"
     }
   },
@@ -633,14 +640,14 @@
   {
     "name": "underlyingreturnratevaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "UnderlyingReturnRateValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratevaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingreturnratevaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingreturnratevaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "43056"
     }
   },
@@ -784,7 +791,8 @@
   {
     "name": "underlyingreturnratevaluationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -821,7 +829,8 @@
   {
     "name": "underlyingsettlmethodelectiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -896,7 +905,8 @@
   {
     "name": "underlyingsettlmethodelectiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -920,7 +930,8 @@
   {
     "name": "underlyingstreamversioneffectivedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

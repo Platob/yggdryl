@@ -315,7 +315,8 @@
   {
     "name": "nondeliverablefixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -366,7 +367,8 @@
   {
     "name": "paymentschedulestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -378,7 +380,8 @@
   {
     "name": "paymentscheduleenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -600,7 +603,8 @@
   {
     "name": "paymentschedulefixingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -699,7 +703,8 @@
   {
     "name": "paymentschedulefixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -711,14 +716,14 @@
   {
     "name": "paymentschedulefixingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The fixing time associated with the step schedule.",
       "display": "PaymentScheduleFixingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"paymentschedulefixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"paymentschedulefixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"paymentschedulefixingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40859"
     }
   },
@@ -812,7 +817,8 @@
   {
     "name": "paymentscheduleinterimexchangedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

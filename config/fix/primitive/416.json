@@ -8,7 +8,7 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "LegPhysicalSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legphysicalsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legphysicalsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legphysicalsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41600"
     }
   },
@@ -87,7 +87,8 @@
   {
     "name": "legpricingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -112,7 +113,8 @@
   {
     "name": "legpricingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -124,14 +126,14 @@
   {
     "name": "legpricingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The local market pricing or fixing time.",
       "display": "LegPricingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpricingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legpricingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpricingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41612"
     }
   },
@@ -168,7 +170,7 @@
     "metadata": {
       "description": "A named string value referenced from UnderlyingProtectionTermXIDRef(41314).",
       "display": "LegProtectionTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprotectiontermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legprotectiontermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legprotectiontermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41617"
     }
   },
@@ -382,7 +384,8 @@
   {
     "name": "legstreamcalculationperioddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -413,7 +416,7 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "LegStreamCalculationPeriodDatesXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcalculationperioddatesxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcalculationperioddatesxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcalculationperioddatesxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41641"
     }
   },
@@ -426,7 +429,7 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "LegStreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcalculationperioddatesxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcalculationperioddatesxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcalculationperioddatesxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41642"
     }
   },
@@ -689,7 +692,8 @@
   {
     "name": "legstreamcommoditysettldateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -714,7 +718,8 @@
   {
     "name": "legstreamcommoditysettldateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -782,7 +787,7 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "LegStreamCommodityXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommodityxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcommodityxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommodityxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41672"
     }
   },
@@ -795,7 +800,7 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "LegStreamCommodityXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommodityxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcommodityxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommodityxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41673"
     }
   },
@@ -1043,7 +1048,7 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "LegStreamCommoditySettlPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommoditysettlperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcommoditysettlperiodxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommoditysettlperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41698"
     }
   },
@@ -1056,7 +1061,7 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "LegStreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommoditysettlperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legstreamcommoditysettlperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legstreamcommoditysettlperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41699"
     }
   }

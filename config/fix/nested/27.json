@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "quoteattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -46,7 +46,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "pricequalifier",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -78,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "indexrollmonth",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -110,7 +110,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "referencedatadate",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -154,7 +154,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "matchexception",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -276,7 +276,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "matchingdatapoint",
         "dtype": {
           "type": "struct",
           "fields": [

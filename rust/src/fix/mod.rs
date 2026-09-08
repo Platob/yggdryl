@@ -25,12 +25,12 @@
 //!
 //! # Identity
 //!
-//! [`FixId`] packs one tag and one branch digest into an `i64`. It is derived
-//! on every read from `fix:branch` and `fix:tag` and never stored: there is no
-//! `fix:id` key on disk. [`FixId::from_parts`] is the one admissibility gate:
-//! a non-standard branch may claim only [`FixId::USER_TAG_MIN`] through
-//! [`FixId::USER_TAG_MAX`] (exclusive), while [`FixBranch::STANDARD`] may
-//! hold every non-negative tag.
+//! [`FixId`] is one tag beside one branch digest, two `i32` halves in eight
+//! bytes. It is derived on every read from `fix:branch` and `fix:tag` and
+//! never stored: there is no `fix:id` key on disk. [`FixId::from_parts`] is
+//! the one admissibility gate: a non-standard branch may claim only
+//! [`FixId::USER_TAG_MIN`] through [`FixId::USER_TAG_MAX`] (exclusive), while
+//! [`FixBranch::STANDARD`] may hold every non-negative tag.
 //!
 //! # Resolution
 //!
@@ -42,10 +42,11 @@
 //! 2. canonical name folded, then aliases folded.
 //!
 //! The four hash indexes hold positions into one field vector: identifiers
-//! are their packed keys, while canonical names and aliases use independent
-//! seeded, ASCII-folded XXH64 digests. Every digest hit is rechecked against
-//! the field, so a collision is a miss on read and a typed conflict on
-//! mutation. A separate sorted position vector makes iteration tag-major.
+//! are their own keys, both halves reaching the hasher, while canonical names
+//! and aliases use independent seeded, ASCII-folded XXH64 digests. Every
+//! digest hit is rechecked against the field, so a collision is a miss on
+//! read and a typed conflict on mutation. A separate sorted position vector
+//! makes iteration tag-major.
 //!
 //! # Versions
 //!
@@ -158,10 +159,12 @@ mod build;
 mod cfb;
 mod codec;
 mod codes;
+mod component;
 mod constants;
 mod crated;
 mod digest;
 mod document;
+mod enrich;
 mod entry;
 mod field;
 mod global;
@@ -177,14 +180,17 @@ mod schema;
 mod store;
 #[cfg(test)]
 mod tests;
+mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
 #[cfg(feature = "arrow")]
 pub use batch::{
-    DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
+    DEFAULT_BATCH_BYTE_SIZE, DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH,
+    classify_arrow_array, write_fix,
 };
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
+pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     CRATE_BRANCH, DEFAULT_PARTITION_SECONDS, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG,
@@ -194,11 +200,16 @@ pub use crated::{
 pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
-pub use field::FixAliases;
+pub use field::FixSpellings;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
 pub use registry::{FixFieldIter, FixRegistry};
+pub use ulbridge::{
+    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, SESSIONINTERFACES_TAG, STATUS_TAG, ULBRIDGE_BRANCH,
+    ULBRIDGE_TAG_MIN, fix_ulbridge_fields,
+};
+
 pub use schema::{
     BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
     UNMAPPED_COLUMN, fix_schema, fix_schema_tags,
@@ -232,8 +243,8 @@ const STANDARD_BRANCH_DIGEST: u32 = 0;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FixBranch {
     // Identity comes first. The digest is a pure cache of the name and every
-    // other member describes that dictionary rather than participating in
-    // the packed field identifier.
+    // other member describes that dictionary rather than reaching a field
+    // identifier, which holds this digest and nothing else of a branch.
     name: SmolStr,
     digest: u32,
     version: Version,
@@ -285,7 +296,7 @@ impl FixBranch {
     /// dictionary should answer to all of them without becoming several
     /// dictionaries. An alias is a *lookup* spelling and nothing more: the
     /// canonical name is what a field stores, what a
-    /// [`FixId`] packs and what every digest is taken over, so adding one
+    /// [`FixId`] digests and what every digest is taken over, so adding one
     /// changes no identity and moves no field.
     ///
     /// Each alias is held to the branch grammar and folded exactly as a name
@@ -366,6 +377,17 @@ impl FixBranch {
     /// Returns whether this is the FIX specification's own dictionary.
     pub fn is_standard(&self) -> bool {
         self.name.is_empty()
+    }
+
+    /// The same identity an arrival entry stores, read signed.
+    ///
+    /// Four bytes either way: this is the reading an entry's `branch` column
+    /// carries and the one [`FixRegistry::branch_by_digest`] takes, so a
+    /// capture's column joins to a declaration with nothing in between. A
+    /// digest above `i32::MAX` reads negative here and is the same digest.
+    #[must_use]
+    pub const fn digest_signed(&self) -> i32 {
+        entry::signed(self.digest())
     }
 
     /// The cached XXH32 identity of the canonical spelling.
@@ -457,12 +479,14 @@ const IDENTIFIER_SEPARATOR: char = ':';
 /// What an identifier is, spelled once for every refusal.
 const IDENTIFIER_SHAPE: &str = "a fix identifier is a decimal tag, a colon, and a branch";
 
-/// One FIX field's packed tag and branch digest.
+/// One FIX field's tag beside its branch digest.
 ///
 /// Derived from `fix:branch` and `fix:tag` on every read and never stored,
-/// so changing this representation changes no shard. The tag occupies the
-/// high 32 bits and the branch's XXH32 digest the low 32 bits. Consequently
-/// the value is its own compact hash key and its natural order is tag-major.
+/// so changing this representation changes no shard. The two halves are the
+/// two `i32` columns a capture already carries - [`FixEntry::tag`] and
+/// [`FixEntry::branch`] - so an identifier is those columns and nothing
+/// beside them: eight bytes, `Copy`, its own compact hash key, and ordered
+/// tag-major then by branch.
 ///
 /// ```
 /// use yggdryl::{FixBranch, FixId};
@@ -472,6 +496,7 @@ const IDENTIFIER_SHAPE: &str = "a fix identifier is a decimal tag, a colon, and 
 /// let id = FixId::from_parts(&branch, 5001)?;
 /// assert!(id.to_string().ends_with(&format!("#{:08x}", id.branch_digest())));
 /// assert_eq!(id.tag(), 5001);
+/// assert_eq!(id.branch(), branch.digest_signed());
 /// assert_eq!(FixId::standard(35).to_string(), "35:");
 /// assert!(!id.is_standard());
 ///
@@ -481,11 +506,16 @@ const IDENTIFIER_SHAPE: &str = "a fix identifier is a decimal tag, a colon, and 
 /// # Ok(())
 /// # }
 /// ```
-#[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FixId(i64);
+pub struct FixId {
+    // The tag leads: `Ord` and `Hash` derive in declaration order, so this is
+    // what makes the order tag-major and what puts the tag in the high half
+    // of the hasher's state.
+    tag: i32,
+    branch: i32,
+}
 
-const _: () = assert!(size_of::<FixId>() == size_of::<i64>());
+const _: () = assert!(size_of::<FixId>() == 2 * size_of::<i32>());
 
 impl FixId {
     /// The inclusive lower bound of FIX's user-defined tag range.
@@ -496,7 +526,7 @@ impl FixId {
 
     /// The identifier of `tag` in the standard branch.
     pub const fn standard(tag: i32) -> Self {
-        Self::pack(STANDARD_BRANCH_DIGEST, tag)
+        Self::new(tag, entry::signed(STANDARD_BRANCH_DIGEST))
     }
 
     /// Builds an identifier from a branch and tag.
@@ -542,14 +572,14 @@ impl FixId {
                 ),
             });
         }
-        Ok(Self::pack(branch.digest(), tag))
+        Ok(Self::new(tag, branch.digest_signed()))
     }
 
     /// Parses `tag:branch`.
     ///
     /// The branch grammar forbids `:`, so the split is unambiguous, and the
     /// tag is decimal digits only. The branch text is intentionally consumed:
-    /// a bare packed id cannot recover it from a one-way digest.
+    /// a bare identifier cannot recover it from a one-way digest.
     ///
     /// # Errors
     ///
@@ -562,12 +592,25 @@ impl FixId {
 
     /// Returns the tag.
     pub const fn tag(self) -> i32 {
-        (self.0 >> 32) as i32
+        self.tag
+    }
+
+    /// Returns the branch digest read the way a capture stores it.
+    ///
+    /// The same four bytes and the same signed reading as
+    /// [`FixEntry::branch`] and [`FixBranch::digest_signed`], so an
+    /// identifier's half feeds [`FixRegistry::branch_by_digest`] and joins a
+    /// capture's column with nothing in between.
+    pub const fn branch(self) -> i32 {
+        self.branch
     }
 
     /// Returns the cached XXH32 digest identifying the dictionary branch.
+    ///
+    /// [`Self::branch`] read unsigned, which is [`FixBranch::digest`]'s own
+    /// reading of the same four bytes.
     pub const fn branch_digest(self) -> u32 {
-        self.0 as u32
+        entry::unsigned(self.branch)
     }
 
     /// Returns whether this identifier is in the standard branch.
@@ -580,8 +623,14 @@ impl FixId {
         branch.is_standard() || (Self::USER_TAG_MIN..Self::USER_TAG_MAX).contains(&tag)
     }
 
-    const fn pack(branch_digest: u32, tag: i32) -> Self {
-        Self((tag as i64) << 32 | branch_digest as i64)
+    /// The identifier one tag and one stored branch digest name.
+    ///
+    /// Admissibility is [`Self::from_parts`]'s to decide, so this stays
+    /// inside the module: the only callers are the standard branch, whose
+    /// digest is fixed, and an entry, which resolved through that gate
+    /// already.
+    pub(super) const fn new(tag: i32, branch: i32) -> Self {
+        Self { tag, branch }
     }
 }
 

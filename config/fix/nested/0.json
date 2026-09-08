@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "linesoftext",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -49,7 +49,7 @@
       "description": "Identifies number of lines of text body",
       "display": "NoLinesOfText",
       "fix:aliases": "linesoftext",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"linesoftext\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"linesoftext\",\"type\":\"NumInGroup\"},{\"since\":\"4.4\",\"name\":\"nolinesoftext\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"linesoftext\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.4\",\"name\":\"nolinesoftext\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "33"
     }
   },
@@ -58,7 +58,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "order",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -115,7 +115,8 @@
             {
               "name": "tradeoriginationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -125,7 +126,8 @@
             {
               "name": "tradedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -215,7 +217,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -599,7 +602,8 @@
             {
               "name": "expiredate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -761,7 +765,8 @@
             {
               "name": "settldate2",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1070,7 +1075,7 @@
     "metadata": {
       "description": "Indicates number of orders to be combined for average pricing and allocation.",
       "display": "NoOrders",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noorders\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noorders\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noorders\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "73"
     }
   },
@@ -1079,7 +1084,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "alloc",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1316,7 +1321,8 @@
             {
               "name": "versuspurchasedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1623,7 +1629,7 @@
     "metadata": {
       "description": "Number of repeating AllocAccount (79)/AllocPrice (366) entries.",
       "display": "NoAllocs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noallocs\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noallocs\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"noallocs\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "78"
     }
   },
@@ -1632,7 +1638,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "dlvyinst",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -1666,7 +1672,7 @@
     "metadata": {
       "description": "Number of delivery instruction fields in repeating group.",
       "display": "NoDlvyInst",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"nodlvyinst\",\"type\":\"int\"},{\"since\":\"4.4\",\"name\":\"nodlvyinst\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"nodlvyinst\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "85"
     }
   }

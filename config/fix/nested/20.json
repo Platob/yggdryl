@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -406,14 +406,16 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingcomplexeventstartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -423,7 +425,9 @@
             {
               "name": "underlyingcomplexeventenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -448,7 +452,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingcomplexeventtime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -492,7 +496,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -509,7 +513,8 @@
             {
               "name": "legeventdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -617,7 +622,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legsecondaryassetclass",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -679,7 +684,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingsecondaryassetclass",
         "dtype": {
           "type": "struct",
           "fields": [

@@ -4,14 +4,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legcomplexeventschedule",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "legcomplexeventschedulestartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -21,7 +22,8 @@
             {
               "name": "legcomplexeventscheduleenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -76,7 +78,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedule",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -228,7 +230,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedulesettlday",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -270,7 +272,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliveryschedulesettltime",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -322,7 +324,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legstreamassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -374,7 +376,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliverystreamcycle",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -426,7 +428,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legdeliverystreamcommoditysource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -458,7 +460,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionevent",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -500,7 +502,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionfallback",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -542,7 +544,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legmarketdisruptionfallbackreferenceprice",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -654,7 +656,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legoptionexercisebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [

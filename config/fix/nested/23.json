@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "assetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -108,7 +108,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingassetattribute",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -160,7 +160,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "entitlementtype",
         "dtype": {
           "type": "struct",
           "fields": [

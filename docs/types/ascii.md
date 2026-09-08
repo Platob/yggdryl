@@ -61,6 +61,8 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             ("side", DataType::Side, 4),
             ("msgtype", DataType::MsgType, 8),
             ("msgdirection", DataType::MsgDirection, 4),
+            ("state", DataType::State, 8),
+            ("timeinforce", DataType::TimeInForce, 8),
         ]
     );
 
@@ -300,6 +302,34 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert.throws(() => DataType.ascii(0), /at least 1 byte, got 0/)
     ```
 
+## A reading wider than the type
+
+`msgtype` holds eight bytes, which covers every type FIX publishes and most a venue invents. It does not cover the composite keys a bridge writes — `P Report Ack` is twelve, and a ULBridge `ConfigurationPlugin` is nineteen — and such a value cannot simply be truncated, because two keys sharing a prefix would become one message type.
+
+`MsgType::coerce` is the one way a reading becomes a value: what fits is itself, unchanged; what does not is hashed into eight bytes that open with `~`, a byte outside the alphabet and outside every type FIX publishes. The mapping is stable across processes and versions, and one-way — the spelling it came from is kept by whoever registers it, never recovered from the value. `is_synthetic` says which kind a value is.
+
+This is what [`FixRegistry::register_msgtype`](../fix/registry.md) adds to a dictionary's code set, and what a [`msgtype` capture column](../media/text.md#classifying-each-record) takes, so a type the capture carried lands rather than falling to null.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::types::MsgType;
+
+    // What fits is itself.
+    assert_eq!(MsgType::coerce("D").as_str(), "D");
+    assert!(!MsgType::coerce("D").is_synthetic());
+
+    // What does not is stable, marked, and never two things at once.
+    let held = MsgType::coerce("ConfigurationPlugin");
+    assert_eq!(held, MsgType::coerce("ConfigurationPlugin"));
+    assert_ne!(held, MsgType::coerce("Plugin"));
+    assert!(held.is_synthetic());
+    assert_eq!(held.as_str().len(), 8);
+    assert!(held.as_str().starts_with('~'));
+    ```
+
+Rust only: neither binding exposes the coercion, which a reader reaches through the capture column instead.
+
 ## Declared vocabulary and generated enum
 
 `ascii_packed` is the storage bytes read big-endian: one integer everywhere, ordered as the text, never negative.
@@ -470,6 +500,67 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
 
 Python-only enum bases: [Python boundary](../extensions/python.md).
 
+## A state sorts by its lifecycle
+
+`state` is one vocabulary over two worlds: FIX names an order's state twice -
+`OrdStatus(39)` says where the order stands and `ExecType(150)` says what the
+report is - and a scheduler names a job's state in ordinary English. They are
+the same shape, so a capture and the pipeline reading it need one vocabulary
+rather than two and a join.
+
+A value is a **rank character then a name**, eight ASCII bytes. The rank is
+what makes the stored bytes sort from the first state to the terminal ones,
+and that matters because most things that sort a column are not this crate: a
+Parquet row group's bounds, an external sort, an `ORDER BY` in whatever reads
+the file. Sorting by name would put `CANCELD` before `NEW`.
+
+| rank | meaning | members |
+| --- | --- | --- |
+| `0` | stated, but not a state anything reached | `0UNKNOWN` |
+| `1` | asked for, not yet acknowledged | `1PENDING`, `1PENDNEW`, `1QUEUED` |
+| `2` | acknowledged, not yet working | `2ACCEPTD`, `2NEW`, `2STARTNG`, `2SUBMITD` |
+| `3` | working | `3RUNNING`, `3STATUS`, `3TRIGGER` |
+| `4` | working, and something has happened | `4INPROGR`, `4PARTFIL`, `4TRADE`, `4TRDCORR`, `4TRDCXL`, `4TRDHOLD` |
+| `5` | halted, and able to resume | `5PAUSED`, `5STOPPED`, `5SUSPEND` |
+| `6` | a change is outstanding | `6PENDCXL`, `6PENDRPL` |
+| `7` | changed, and the new thing carries on | `7REPLACD` |
+| `8` | ended, having done what was asked | `8CALCULD`, `8COMPLET`, `8DONEDAY`, `8FILLED`, `8SUCCESS`, `8TRDRELS` |
+| `9` | ended, because someone stopped it | `9CANCELD` |
+| `A` | ended, because it could not be done | `AEXPIRED`, `AFAILED`, `AREJECTD`, `ATIMEOUT` |
+
+The three endings are ranked apart deliberately: "did it finish" and "did it
+work" are different questions, and one terminal rank would answer neither
+without reading the name.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::types::State;
+
+    # fn main() -> yggdryl::Result<()> {
+    // Three vocabularies reach one value: the wire code an ExecutionReport
+    // carries, the specification's name for it, and a scheduler's word.
+    assert_eq!(State::from_spelling("1").unwrap().as_str(), "4PARTFIL");
+    assert_eq!(State::from_spelling("PartiallyFilled").unwrap().as_str(), "4PARTFIL");
+    assert_eq!(State::from_spelling("running").unwrap().as_str(), "3RUNNING");
+
+    // The stored bytes sort by lifecycle, which is the whole reason the rank
+    // leads - nothing but ASCII order is needed to read it back.
+    let mut held = ["8FILLED", "2NEW", "AREJECTD", "4PARTFIL"];
+    held.sort_unstable();
+    assert_eq!(held, ["2NEW", "4PARTFIL", "8FILLED", "AREJECTD"]);
+
+    // And the three endings are told apart without reading a name.
+    assert!(State::from_spelling("New").unwrap().is_live());
+    assert!(State::from_spelling("Filled").unwrap().is_done());
+    assert!(State::from_spelling("Rejected").unwrap().is_failed());
+    # Ok(())
+    # }
+    ```
+
+`timeinforce` is the same eight bytes over FIX's `TimeInForce(59)` code set,
+stored as the wire value rather than a name for it, exactly as `side` is.
+
 ## Edges
 
 - `ascii(0)` -> refused, `at least 1 byte, got 0`.
@@ -487,6 +578,10 @@ Python-only enum bases: [Python boundary](../extensions/python.md).
 - `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so an ASCII column arrives as stored bytes; declare `utf8` to read text.
+- `MsgType::coerce` on a spelling past eight bytes -> a `~`-marked synthesized value; `DataType::MsgType.scalar` on the same spelling -> refused, because a stored value is held to the width and only the coercion decides what a wide reading becomes.
+- A wire code never folds: `A` is `PendingNew` and `a` names no state, because
+- A stored value names itself, so resolving one twice is resolving it once.
+- A spelling nothing publishes answers nothing rather than a guess.
 
 ## Commands
 

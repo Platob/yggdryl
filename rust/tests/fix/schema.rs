@@ -43,7 +43,10 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
     // `32` in both.
     assert_eq!(&names[..3], ["8", "9", "35"]);
     assert_eq!(projection.position_of(35), Some(2));
-    assert_eq!(&names[names.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(
+        &names[names.len() - 2..],
+        ["nofixentries", "nounmappedfixentries"],
+    );
 
     // The dictionary's own typing reaches the column, so a currency column is
     // the packed currency and a side is the packed side.
@@ -86,9 +89,9 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let projection = FixProjection::new(&registry, "fix").unwrap();
 
     let order = reader
-        .read_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|")
+        .transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|", false)
         .unwrap();
-    let row = order.to_row(&projection);
+    let row = order.to_row(&projection).unwrap();
     assert_eq!(at(&row, &projection, 35).as_str(), Some("D"));
     assert_eq!(at(&row, &projection, 11).as_str(), Some("ORDER-1"));
     assert_eq!(at(&row, &projection, 55).as_str(), Some("AAPL"));
@@ -97,8 +100,10 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.
-    let bare = reader.read_line(b"8=FIX.4.4|35=0|10=0|").unwrap();
-    let thin = bare.to_row(&projection);
+    let bare = reader
+        .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
+        .unwrap();
+    let thin = bare.to_row(&projection).unwrap();
     assert_eq!(
         thin.as_sequence().map(<[Scalar]>::len),
         row.as_sequence().map(<[Scalar]>::len),
@@ -115,9 +120,12 @@ fn the_derived_columns_are_computed_and_never_stored() {
     let (registry, reader) = reader();
     let projection = FixProjection::new(&registry, "fix").unwrap();
     let order = reader
-        .read_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|")
+        .transform_line(
+            b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|",
+            false,
+        )
         .unwrap();
-    let row = order.to_row(&projection);
+    let row = order.to_row(&projection).unwrap();
 
     // The digest is sixteen bytes of value, not a rendered string.
     let digest = at(&row, &projection, yggdryl::MSGHASH_TAG);
@@ -151,11 +159,13 @@ fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
     let (_, reader) = reader();
     // A plain ticker is itself; an identifier is qualified by the scheme that
     // numbers it, because `US0378331005` does not say it is an ISIN.
-    let ticker = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").unwrap();
+    let ticker = reader
+        .transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|", false)
+        .unwrap();
     assert_eq!(ticker.symbol_ticker().as_str(), Some("AAPL"));
 
     let identified = reader
-        .read_line(b"8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|10=0|")
+        .transform_line(b"8=FIX.4.4|35=D|48=US0378331005|22=4|207=XNAS|10=0|", false)
         .unwrap();
     assert_eq!(
         identified.symbol_ticker().as_str(),
@@ -163,7 +173,9 @@ fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
     );
 
     // A message naming no instrument answers nothing rather than a guess.
-    let none = reader.read_line(b"8=FIX.4.4|35=0|10=0|").unwrap();
+    let none = reader
+        .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
+        .unwrap();
     assert!(none.symbol_ticker().is_null());
 }
 
@@ -175,25 +187,25 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     // A buy order at a price is a party willing to pay it, so the bid lane it
     // never wrote is filled and the ask lane is not.
     let buy = reader
-        .read_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|")
+        .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|", false)
         .unwrap();
-    let row = buy.to_row(&projection);
+    let row = buy.to_row(&projection).unwrap();
     assert_eq!(at(&row, &projection, 132), &Scalar::from(12.5_f64));
     assert_eq!(at(&row, &projection, 134), &Scalar::from(100.0_f64));
     assert!(at(&row, &projection, 133).is_null(), "no ask lane on a buy");
 
     // A one-sided quote implies the side it never wrote.
     let quote = reader
-        .read_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|")
+        .transform_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
         .unwrap();
-    let row = quote.to_row(&projection);
+    let row = quote.to_row(&projection).unwrap();
     assert_eq!(at(&row, &projection, 54).as_str(), Some("1"));
 
     // And a stated column is never overwritten by a derivation.
     let stated = reader
-        .read_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
+        .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
         .unwrap();
-    let row = stated.to_row(&projection);
+    let row = stated.to_row(&projection).unwrap();
     assert_eq!(at(&row, &projection, 132), &Scalar::from(99.0_f64));
 }
 
@@ -202,9 +214,10 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let (registry, reader) = reader();
     let projection = FixProjection::new(&registry, "fix").unwrap();
     let row = reader
-        .read_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|")
+        .transform_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|", false)
         .unwrap()
-        .to_row(&projection);
+        .to_row(&projection)
+        .unwrap();
     let held = row.as_sequence().expect("a row");
     let entries = held[held.len() - 2].as_sequence().expect("the record");
     let unmapped = held[held.len() - 1].as_sequence().expect("the unmapped");

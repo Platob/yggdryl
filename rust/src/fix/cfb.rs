@@ -70,7 +70,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
-use super::{FixBranch, FixCode, FixId, FixRegistry};
+use super::{FixBranch, FixCode, FixId, FixRegistry, occurrence_name};
 
 /// How deep a grammar may nest before the parse refuses.
 ///
@@ -732,7 +732,7 @@ impl<'doc> Parse<'doc> {
                 "one opening with another grammar",
             ));
         }
-        let item = DataType::from_fields(children)?.required_field("item");
+        let item = DataType::from_fields(children)?.required_field(occurrence_name(&counter));
         let mut group = DataType::list(item).nullable_field(counter.name());
         group.set_nullable(counter.is_nullable());
         group.set_metadata(counter.as_metadata().iter())?;

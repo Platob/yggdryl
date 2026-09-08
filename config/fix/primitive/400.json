@@ -149,7 +149,8 @@
   {
     "name": "additionaltermbondmaturitydate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -271,14 +272,14 @@
   {
     "name": "cashsettlvaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time of valuation.",
       "display": "CashSettlValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettlvaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"cashsettlvaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettlvaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40025"
     }
   },
@@ -449,7 +450,7 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "CashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"cashsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"cashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "40039"
     }
   },
@@ -480,7 +481,8 @@
   {
     "name": "contractualmatrixdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -516,7 +518,8 @@
   {
     "name": "financingtermsupplementdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -615,7 +618,8 @@
   {
     "name": "underlyingstreameffectivedateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -702,7 +706,8 @@
   {
     "name": "underlyingstreameffectivedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -714,7 +719,8 @@
   {
     "name": "streamterminationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -801,7 +807,8 @@
   {
     "name": "streamterminationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -838,7 +845,8 @@
   {
     "name": "streamfirstperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -875,7 +883,8 @@
   {
     "name": "streamfirstperiodstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -887,7 +896,8 @@
   {
     "name": "streamfirstregularperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -899,7 +909,8 @@
   {
     "name": "streamfirstcompoundingperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -911,7 +922,8 @@
   {
     "name": "streamlastregularperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1024,7 +1036,8 @@
   {
     "name": "provisiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1061,7 +1074,8 @@
   {
     "name": "provisiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

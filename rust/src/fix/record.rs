@@ -9,7 +9,7 @@
 //! This is not the Arrow surface. [`super::batch`] reads a column of payloads
 //! and writes a column of rows, and it is gated on `arrow` because it speaks
 //! Arrow's types. Reading one record speaks none of them, so it lives here
-//! instead and a schema-only build keeps [`FixCodec::read_record`] - the same
+//! instead and a schema-only build keeps [`FixCodec::transform_record`] - the same
 //! split the Avro codec already draws between its scalar and record surfaces.
 
 use smol_str::SmolStr;
@@ -58,18 +58,19 @@ pub(super) fn column_text(record: &[(SmolStr, Scalar)], name: &str) -> Option<St
 /// A row nobody could read, which is still a row.
 pub(super) fn empty(reader: &FixCodec) -> FixMsg {
     reader
-        .read_pairs(std::iter::empty::<(&[u8], &[u8])>())
+        .transform_pairs(std::iter::empty::<(&[u8], &[u8])>(), false)
         .expect("an empty message builds")
 }
 
 /// One record read against one codec, the payload taken from `payload`.
 ///
-/// [`FixCodec::read_record`] is the door; this is where the row's own columns
-/// are applied, beside the option-driven path the batch reader takes.
-pub(super) fn read_record_with(
+/// [`FixCodec::transform_record`] is the door; this is where the row's own
+/// columns are applied, beside the option-driven path the batch reader takes.
+pub(super) fn transform_record_with(
     reader: &FixCodec,
     record: &Scalar,
     payload: &str,
+    enrich: bool,
 ) -> Result<FixMsg> {
     let Some(held) = record.as_record() else {
         return Err(Error::Parse {
@@ -83,14 +84,15 @@ pub(super) fn read_record_with(
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
     let bytes = column_bytes(&row, payload).unwrap_or_default();
-    read_record(reader, &row, &bytes)
+    transform_record(reader, &row, &bytes, enrich)
 }
 
 /// Reads one record through the byte readers, per-row columns applied.
-pub(super) fn read_record(
+pub(super) fn transform_record(
     reader: &FixCodec,
     record: &[(SmolStr, Scalar)],
     bytes: &[u8],
+    enrich: bool,
 ) -> Result<FixMsg> {
     // A column is the caller speaking per row and an option is the caller
     // speaking per stream, so both outrank the inference the readers fall back
@@ -120,8 +122,8 @@ pub(super) fn read_record(
         Some(separator) => reader
             .clone()
             .with_separator(separator)
-            .read_fix_line(bytes),
-        None => reader.read_line(bytes),
+            .transform_fix_line(bytes, enrich),
+        None => reader.transform_line(bytes, enrich),
     };
     Ok(built.unwrap_or_else(|_| empty(&reader)))
 }

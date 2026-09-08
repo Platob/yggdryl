@@ -8,7 +8,7 @@
     "metadata": {
       "description": "The identifier or name of the price stream.",
       "display": "MDStreamID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"mdstreamid\",\"type\":\"String\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"mdstreamid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "1500"
     }
   },
@@ -21,7 +21,7 @@
     "metadata": {
       "description": "Unique identifier of the stream assignment report provided by the respondent.",
       "display": "StreamAsgnRptID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnrptid\",\"type\":\"String\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnrptid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "1501"
     }
   },
@@ -35,7 +35,7 @@
       "description": "Reason code for stream assignment request reject.",
       "display": "StreamAsgnRejReason",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"UnknownClient\",\"since\":\"5.0SP1\",\"ep\":93,\"doc\":\"Unknown client\"},{\"value\":\"1\",\"name\":\"ExceedsMaximumSize\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":1,\"doc\":\"Exceeds maximum size\"},{\"value\":\"2\",\"name\":\"UnknownOrInvalidCurrencyPair\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":2,\"doc\":\"Unknown or Invalid currency pair\"},{\"value\":\"3\",\"name\":\"NoAvailableStream\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":3,\"doc\":\"No available stream\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnrejreason\",\"type\":\"int\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnrejreason\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1502"
     }
   },
@@ -49,7 +49,7 @@
       "description": "Type of acknowledgement.",
       "display": "StreamAsgnAckType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AssignmentAccepted\",\"since\":\"5.0SP1\",\"ep\":93,\"doc\":\"Assignment Accepted\"},{\"value\":\"1\",\"name\":\"AssignmentRejected\",\"since\":\"5.0SP1\",\"ep\":93,\"sort\":1,\"doc\":\"Assignment Rejected\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnacktype\",\"type\":\"int\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"streamasgnacktype\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1503"
     }
   },
@@ -64,7 +64,7 @@
     "metadata": {
       "description": "See TransactTime(60)",
       "display": "RelSymTransactTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"relsymtransacttime\",\"type\":\"UTCTimestamp\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP1\",\"name\":\"relsymtransacttime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
       "fix:tag": "1504"
     }
   },
@@ -549,7 +549,7 @@
     "metadata": {
       "description": "Used to limit instrument scope to specified maturity time.",
       "display": "InstrumentScopeMaturityTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"instrumentscopematuritytime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":105,\"name\":\"instrumentscopematuritytime\",\"type\":\"TZTimeOnly\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"instrumentscopematuritytime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
       "fix:tag": "1550"
     }
   },

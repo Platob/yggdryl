@@ -15,10 +15,10 @@ const PARTIED: &str = "MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100
 pub fn benchmarks(criterion: &mut Criterion) {
     let reader = FixCodec::new(Arc::new(seed()));
     let order = reader
-        .read_line(ORDER.as_bytes())
+        .transform_line(ORDER.as_bytes(), false)
         .expect("a readable order");
     let partied = reader
-        .read_line(PARTIED.as_bytes())
+        .transform_line(PARTIED.as_bytes(), false)
         .expect("a readable bridge row");
     let mut group = criterion.benchmark_group("fix/lift");
 

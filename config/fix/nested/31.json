@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -71,7 +71,8 @@
             {
               "name": "legfxbenchmarkdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -81,8 +82,8 @@
             {
               "name": "legfxbenchmarktime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -117,7 +118,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testsuiteparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -169,7 +170,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "testscenarioparameter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -221,7 +222,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "tradingservice",
         "dtype": {
           "type": "struct",
           "fields": [

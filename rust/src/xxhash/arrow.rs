@@ -1010,6 +1010,8 @@ fn feed_cell(
         | DataType::Side
         | DataType::MsgType
         | DataType::MsgDirection
+        | DataType::State
+        | DataType::TimeInForce
         | DataType::Uuid
         | DataType::Version
         | DataType::List(_)

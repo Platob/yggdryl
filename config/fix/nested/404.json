@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentscheduleratesource",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -56,7 +56,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legpaymentstub",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -368,7 +368,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovision",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -385,7 +385,8 @@
             {
               "name": "legprovisiondateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -405,7 +406,8 @@
             {
               "name": "legprovisiondateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -640,14 +642,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisioncashsettlpaymentdate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "legprovisioncashsettlpaymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -682,14 +685,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "legprovisionoptionexercisefixeddate",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "legprovisionoptionexercisefixeddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

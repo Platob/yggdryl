@@ -14,6 +14,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `with_rownum` / `withRownum` | optional signed 64-bit first row number; unset omits the column |
+| `with_mimetype`, `with_msgtype`, `with_direction` | Rust-only; classify each record and add the column named, off by default |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
@@ -136,6 +137,9 @@ The source field is complete before any source bytes are read.
 | --- | --- | --- |
 | `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
 | `rownum` | `int64` | present only when `with_rownum` is set; first value is exactly that setting |
+| `direction` | `msgdirection` | nullable; present only with `with_direction` |
+| `mimetype` | `utf8` | present only with `with_mimetype` |
+| `msgtype` | `msgtype` | nullable; present only with `with_msgtype` |
 | `body` | `binary` | required retained record bytes |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped |
 
@@ -143,6 +147,14 @@ Named `rowheader` captures follow these columns and stay nullable in both modes.
 [`DataType::from_regex`](../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
 datetimes.
+
+### Classifying each record
+
+The three classification columns are the [capture readings](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is, the message type it declares, and which way it moved. They need no dictionary and cost one shallow scan per record, which is why they are opt-in per column — a read that only needs rows should not pay for them. Rust only: neither binding reaches these flags today.
+
+`with_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. `msgtype` is the `msgtype` datatype, so a reading wider than its eight bytes — a bridge's `ConfigurationPlugin`, a composite key — is [coerced](../types/ascii.md#a-reading-wider-than-the-type) into the stable synthesized value rather than dropped to null.
+
+Measured in [Classifying a capture](../fix/registry.md#classifying-a-capture).
 
 ## Framing
 

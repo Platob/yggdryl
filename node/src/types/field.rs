@@ -1946,6 +1946,34 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
+    /// The spellings that mean "nothing was sent" for this field.
+    ///
+    /// A value the list names types as null in a row while the arrival record
+    /// keeps it exactly as it arrived. Assigning an empty array removes the
+    /// property.
+    #[napi(getter)]
+    pub fn nulls(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "nulls")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .nulls()
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    /// Record the spellings; an empty array removes the property.
+    #[napi(setter)]
+    pub fn set_nulls(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "nulls")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_nulls(values)
+            .map_err(napi_error)
+    }
+
     /// The specification's own wording for this field.
     #[napi(getter)]
     pub fn description(&self, env: Env) -> Result<Option<String>> {

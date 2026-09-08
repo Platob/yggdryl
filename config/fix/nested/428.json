@@ -4,7 +4,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendfxtriggerdatebusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -36,14 +36,15 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendpayment",
         "dtype": {
           "type": "struct",
           "fields": [
             {
               "name": "underlyingdividendpaymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -98,7 +99,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendperiod",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -115,7 +116,8 @@
             {
               "name": "underlyingdividendperiodstartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -125,7 +127,8 @@
             {
               "name": "underlyingdividendperiodenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -165,7 +168,8 @@
             {
               "name": "underlyingdividendperiodvaluationdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -215,7 +219,8 @@
             {
               "name": "underlyingdividendperiodvaluationdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -225,7 +230,8 @@
             {
               "name": "underlyingdividendperiodpaymentdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -275,7 +281,8 @@
             {
               "name": "underlyingdividendperiodpaymentdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -310,7 +317,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingdividendperiodbusinesscenter",
         "dtype": {
           "type": "struct",
           "fields": [
@@ -342,7 +349,7 @@
     "dtype": {
       "type": "list",
       "field": {
-        "name": "item",
+        "name": "underlyingextraordinaryevent",
         "dtype": {
           "type": "struct",
           "fields": [

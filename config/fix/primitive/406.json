@@ -52,7 +52,8 @@
   {
     "name": "underlyingpaymentstreaminitialfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -139,7 +140,8 @@
   {
     "name": "underlyingpaymentstreamfixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -237,7 +239,8 @@
   {
     "name": "underlyingpaymentstreamfuturevaluedateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -700,7 +703,8 @@
   {
     "name": "underlyingnondeliverablefixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -801,7 +805,8 @@
   {
     "name": "underlyingpaymentschedulestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -813,7 +818,8 @@
   {
     "name": "underlyingpaymentscheduleenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1035,7 +1041,8 @@
   {
     "name": "underlyingpaymentschedulefixingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1134,7 +1141,8 @@
   {
     "name": "underlyingpaymentschedulefixingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1146,14 +1154,14 @@
   {
     "name": "underlyingpaymentschedulefixingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The fixing time.",
       "display": "UnderlyingPaymentScheduleFixingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulefixingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":161,\"name\":\"underlyingpaymentschedulefixingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulefixingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "40695"
     }
   },
