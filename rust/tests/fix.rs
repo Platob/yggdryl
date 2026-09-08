@@ -20,6 +20,8 @@ mod global_home;
 mod global_install;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/pipeline.rs"]
+mod pipeline;
 #[path = "fix/schema.rs"]
 mod schema;
 #[path = "fix/store.rs"]

@@ -621,7 +621,7 @@ pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn read_ulconfig_line(&self, body: &[u8]) -> Result<FixMsg>
+  pub fn transform_ulconfig_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg>
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer

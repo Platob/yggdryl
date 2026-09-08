@@ -7,6 +7,7 @@ pub mod codes;
 pub mod lift;
 pub mod lineage;
 pub mod mutate;
+pub mod pipeline;
 pub mod read;
 pub mod resolve;
 pub mod store;
