@@ -34,6 +34,7 @@ enum DefaultPlan {
     Uuid,
     /// The minimum canonical version.
     Version,
+    Url,
 }
 
 struct Planned {
@@ -239,6 +240,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::TimeInForce
             | DataType::Uuid
             | DataType::Version
+            | DataType::Url
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -315,6 +317,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // spelling like every other UUID value.
         D::Uuid => scalar(DefaultPlan::Uuid, false),
         D::Version => scalar(DefaultPlan::Version, false),
+        // A location has no zero, so the default is the shortest one the
+        // validator accepts: the filesystem root.
+        D::Url => scalar(DefaultPlan::Url, false),
         D::FixedSizeBinary(width) => {
             let width = usize::try_from(*width)
                 .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
@@ -635,8 +640,14 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
             .map(|value| Scalar::Geospatial(crate::types::Geospatial::Geometry(value))),
         DefaultPlan::Uuid => Ok(Scalar::Uuid(crate::types::Uuid::new(0))),
         DefaultPlan::Version => Ok(Scalar::Version(crate::Version::MIN)),
+        DefaultPlan::Url => {
+            crate::Url::from_str(DEFAULT_URL).map(|url| Scalar::Url(std::sync::Arc::new(url)))
+        }
     }
 }
+
+/// The filesystem root, which is the shortest URL the validator accepts.
+pub(crate) const DEFAULT_URL: &str = "file:///";
 
 /// `POINT EMPTY` in little-endian ISO WKB: order byte, type 1, NaN NaN.
 pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
@@ -713,6 +724,9 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         },
         DefaultPlan::Version => {
             matches!(value, Scalar::Version(version) if version == &crate::Version::MIN)
+        }
+        DefaultPlan::Url => {
+            matches!(value, Scalar::Url(url) if url.to_string() == DEFAULT_URL)
         }
     }
 }

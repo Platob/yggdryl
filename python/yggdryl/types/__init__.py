@@ -144,6 +144,7 @@ from .temporal import (
     time64,
     datetime64,
 )
+from .url import UrlField, url
 from .version import VersionField, version
 
 __all__ = [
@@ -214,6 +215,7 @@ __all__ = [
     "UInt64Field",
     "UnionField",
     "VariantField",
+    "UrlField",
     "VersionField",
     "Utf8Field",
     "Utf8ViewField",
@@ -280,5 +282,6 @@ __all__ = [
     "utf8_view",
     "uuid",
     "variant",
+    "url",
     "version",
 ]

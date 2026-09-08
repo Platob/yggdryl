@@ -93,6 +93,7 @@ impl fmt::Display for DataType {
             D::MsgDirection => formatter.write_str("msgdirection"),
             D::Uuid => formatter.write_str("uuid"),
             D::Version => formatter.write_str("version"),
+            D::Url => formatter.write_str("url"),
             D::List(field) => fmt_single_field_type(formatter, "list", field),
             D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
             D::FixedSizeList(field, length) => {
@@ -366,6 +367,7 @@ impl<'a> Parser<'a> {
 
             "uuid" => DataType::Uuid,
             "version" => DataType::Version,
+            "url" => DataType::Url,
             // Bare `ascii` is the variable shape; `ascii(N)` is the fixed
             // one of exactly N bytes.
             "fixedascii" => {

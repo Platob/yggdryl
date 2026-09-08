@@ -33,7 +33,21 @@ pub(crate) fn read_arrow_reader(
     options.require_framing_rowheader()?;
     options.source_field()?;
     let url = handle.url().cloned();
-    read_owned_arrow_reader_at(owned_handle(handle)?, url, options)
+    // Read from the handle the caller gave, before `owned_handle` may answer
+    // with a copy: a buffered copy of the bytes is not the object whose
+    // modification time this is.
+    let mtime = handle_mtime(handle, options);
+    read_owned_arrow_reader_at(owned_handle(handle)?, url, mtime, options)
+}
+
+/// The handle's own modification time, asked for only when a column wants it.
+fn handle_mtime(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Option<Scalar> {
+    if !options.parse_mtime {
+        return None;
+    }
+    handle
+        .mtime()
+        .and_then(|count| Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).ok())
 }
 
 /// Decode an owned leaf without retaining decoded pages in its caller.
@@ -42,27 +56,22 @@ pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<BatchReader> {
     let url = handle.url().cloned();
-    read_owned_arrow_reader_at(handle, url, options)
+    let mtime = handle_mtime(&handle, options);
+    read_owned_arrow_reader_at(handle, url, mtime, options)
 }
 
 fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     handle: H,
     url: Option<Url>,
+    mtime: Option<Scalar>,
     options: &TextOptions,
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
     let field = options.source_field()?;
-    // The captures close the root, after every fixed column the options
-    // switched on, so they are read off its end: counting the fixed columns
-    // instead has to know every one of them, and a count that missed the
-    // classification columns typed the first capture as the message type.
-    let captures = options.capture_names().len();
-    let capture_dtypes = field
-        .fields()
-        .iter()
-        .skip(field.fields().len() - captures)
-        .map(|capture| capture.dtype().clone())
-        .collect();
+    // The options own the capture types independently of the fixed columns
+    // around them, including a consumed `mtime` capture that has no separate
+    // schema column.
+    let capture_dtypes = options.capture_dtypes();
     let codings = handle.media_type().encodings().to_vec();
     let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
         Some(bound) => Box::new(BoundReader::new(bound, codings)),
@@ -75,6 +84,7 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     let rows = Records {
         raw: RawRows::new(source, url, Arc::new(options.clone())),
         capture_dtypes,
+        mtime,
         timezone: options.timezone().copied(),
     };
     // The outer media pipeline applies a total row limit after projection and
@@ -100,7 +110,8 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<u64> {
     options.require_framing_rowheader()?;
     let mut counting = options.clone();
-    counting.with_rownum = None;
+    counting.start_rownum = None;
+    counting.parse_mtime = false;
     counting.set_lstrip::<[&str; 0], &str>([])?;
     counting.set_rstrip::<[&str; 0], &str>([])?;
     counting.set_max_record_byte_size(Some(0));
@@ -495,7 +506,7 @@ impl<R: Read> RawRows<R> {
     ) -> Self {
         let url_value = url
             .as_ref()
-            .map_or_else(|| Scalar::from(""), |url| Scalar::from(url.to_string()));
+            .map_or(Scalar::Null, |url| Scalar::Url(Arc::new(url.clone())));
         let header_dfa = options
             .max_record_byte_size()
             .and_then(|_| options.rowheader())
@@ -609,7 +620,7 @@ impl<R: Read> RawRows<R> {
         // The direction marker is transport prose in front of the payload, so
         // reading it takes it off the body: a body that kept it would carry a
         // word no protocol sent.
-        let direction = if options.with_direction {
+        let direction = if options.parse_direction {
             let (direction, kept) = crate::types::MsgDirection::split_bytes(&body[start..end]);
             start = end - kept.len();
             direction
@@ -906,6 +917,8 @@ impl<R: Read> Iterator for RawRows<R> {
 struct Records<R> {
     raw: RawRows<R>,
     capture_dtypes: Vec<DataType>,
+    /// The handle's own modification time, the fallback every row shares.
+    mtime: Option<Scalar>,
     timezone: Option<Timezone>,
 }
 
@@ -922,17 +935,23 @@ impl<R: Read> Records<R> {
     fn convert(&self, row: RawRow) -> Result<Scalar> {
         let mut entries = Vec::with_capacity(4 + row.captures.len());
         entries.push((SmolStr::new_static("url"), self.raw.url_value.clone()));
-        let rownum = physical_rownum(self.raw.options.with_rownum, row.index)?;
+        let rownum = physical_rownum(self.raw.options.start_rownum, row.index)?;
         if let Some(rownum) = rownum {
             entries.push((SmolStr::new_static("rownum"), Scalar::from(rownum)));
+        }
+        if self.raw.options.parse_mtime {
+            entries.push((
+                SmolStr::new_static(super::options::MTIME_COLUMN),
+                self.row_mtime(&row, rownum)?,
+            ));
         }
         // Classification is one shallow scan over bytes the reader already
         // holds, and every column it fills is a fact about the line rather
         // than about the protocol inside it. One scan answers both readings,
         // so a capture asking for both pays for one.
-        let classified = (self.raw.options.with_mimetype || self.raw.options.with_msgtype)
+        let classified = (self.raw.options.parse_mimetype || self.raw.options.parse_msgtype)
             .then(|| crate::mime_type::line::classify(&row.body));
-        if self.raw.options.with_direction {
+        if self.raw.options.parse_direction {
             entries.push((
                 SmolStr::new_static("direction"),
                 row.direction.map_or(Scalar::Null, |direction| {
@@ -942,7 +961,7 @@ impl<R: Read> Records<R> {
                 }),
             ));
         }
-        if self.raw.options.with_mimetype {
+        if self.raw.options.parse_mimetype {
             entries.push((
                 SmolStr::new_static("mimetype"),
                 Scalar::from(
@@ -953,7 +972,7 @@ impl<R: Read> Records<R> {
                 ),
             ));
         }
-        if self.raw.options.with_msgtype {
+        if self.raw.options.parse_msgtype {
             entries.push((
                 SmolStr::new_static("msgtype"),
                 classified
@@ -975,13 +994,17 @@ impl<R: Read> Records<R> {
                 row.dropped_byte_size.map_or(Scalar::Null, Scalar::from),
             ));
         }
-        for ((name, value), dtype) in self
+        for (index, ((name, value), dtype)) in self
             .raw
             .options
             .capture_names()
             .zip(row.captures)
             .zip(&self.capture_dtypes)
+            .enumerate()
         {
+            if self.raw.options.consumes_capture(index) {
+                continue;
+            }
             let value = match value {
                 Some(value) => {
                     let value = std::str::from_utf8(&value).map_err(|error| {
@@ -1005,6 +1028,48 @@ impl<R: Read> Records<R> {
             entries.push((SmolStr::new(name), value));
         }
         Scalar::from_record(entries)
+    }
+}
+
+impl<R: Read> Records<R> {
+    /// The record's modification time: its own captured reading when the row
+    /// header declares one, and the handle's otherwise.
+    ///
+    /// A header that declares the capture but does not match it on this line
+    /// falls back too - a line the expression did not date is exactly the case
+    /// the handle's own time is there to answer.
+    fn row_mtime(&self, row: &RawRow, rownum: Option<i64>) -> Result<Scalar> {
+        let Some(index) =
+            (0..row.captures.len()).find(|index| self.raw.options.consumes_capture(*index))
+        else {
+            return Ok(self.mtime.clone().unwrap_or(Scalar::Null));
+        };
+        let Some(Some(raw)) = row.captures.get(index) else {
+            return Ok(self.mtime.clone().unwrap_or(Scalar::Null));
+        };
+        let text = std::str::from_utf8(raw).map_err(|error| {
+            row_error(
+                row.index,
+                rownum,
+                self.raw.url.as_ref(),
+                super::options::MTIME_COLUMN,
+                format_smolstr!(
+                    "expected a UTF-8 row-header capture, got invalid byte at {}",
+                    error.valid_up_to()
+                ),
+            )
+        })?;
+        parse_capture(text, &super::options::mtime_dtype(), self.timezone.as_ref()).map_err(
+            |reason| {
+                row_error(
+                    row.index,
+                    rownum,
+                    self.raw.url.as_ref(),
+                    super::options::MTIME_COLUMN,
+                    reason,
+                )
+            },
+        )
     }
 }
 

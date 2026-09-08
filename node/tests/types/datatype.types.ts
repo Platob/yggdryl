@@ -32,6 +32,8 @@ const fixedAsciiType: DataType = DataType.ascii(3)
 const asciiWidth: number | null = fixedAsciiType.asciiWidth
 const currencyType: DataType = new DataType('currency')
 const currencyTypeWidth: number | null = currencyType.asciiWidth
+const urlType: DataType = new DataType('url')
+const urlTypeWidth: number | null = urlType.asciiWidth
 
 void child
 void indexedChild
@@ -50,6 +52,8 @@ void asciiType
 void asciiWidth
 void currencyType
 void currencyTypeWidth
+void urlType
+void urlTypeWidth
 
 const prebuiltLists: Record<string, string[]> = AsciiEnum.prebuilt()
 const prebuiltMics: AsciiEnum = AsciiEnum.fromLogicalName('mic')

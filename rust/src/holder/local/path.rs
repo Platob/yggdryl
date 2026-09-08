@@ -229,6 +229,11 @@ impl IOBase for Path {
         self.with_resolved(0, |handle| handle.size()).unwrap_or(0)
     }
 
+    fn mtime(&self) -> Option<i64> {
+        self.with_resolved(None, |handle| handle.mtime())
+            .unwrap_or(None)
+    }
+
     fn capacity(&self) -> u64 {
         self.with_resolved(0, |handle| handle.capacity())
             .unwrap_or(0)

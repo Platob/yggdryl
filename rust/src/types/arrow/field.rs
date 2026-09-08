@@ -13,9 +13,9 @@ use arrow_schema::{
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{
-    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
-    VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension,
-    is_variant_storage,
+    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, URL_EXTENSION_NAME, UUID_EXTENSION_NAME,
+    VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts,
+    code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
@@ -409,6 +409,8 @@ pub(crate) enum RecognizedExtension {
     Uuid,
     /// The canonical version text over Utf8.
     Version,
+    /// The canonical URL text over Utf8.
+    Url,
 }
 
 impl RecognizedExtension {
@@ -426,6 +428,7 @@ impl RecognizedExtension {
             Self::Ascii(dtype) | Self::Code(dtype) => dtype,
             Self::Uuid => DataType::Uuid,
             Self::Version => DataType::Version,
+            Self::Url => DataType::Url,
         }
     }
 }
@@ -496,6 +499,9 @@ pub(crate) fn recognized_arrow_extension(
         }
         VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))
+        }
+        URL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Url))
         }
         code if document.unwrap_or("").is_empty() => Ok(match storage {
             ArrowDataType::FixedSizeBinary(width) => {

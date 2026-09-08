@@ -31,7 +31,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Record encodings and tables | [media](docs/media/index.md) |
 | Structured text | [text](docs/text/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [xxhash](docs/xxhash/index.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [xxhash](docs/xxhash/index.md), [txhash](docs/txhash/index.md), [fix](docs/fix/index.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
@@ -55,7 +55,7 @@ rust/                    The core crate
   src/coding/            gzip, zlib/deflate, and Zstandard
   src/media/             IPC, Parquet, Avro, text records, and Iceberg
   src/text/              JSON, YAML, TOML, limits, and inference
-  src/{uri,arrow,expression,xxhash,fix}/
+  src/{uri,arrow,expression,xxhash,txhash,fix}/
                          The remaining core layers
   tests/                 Edge tests, categorized like the source
   benchmarks/            Criterion targets, categorized like the source

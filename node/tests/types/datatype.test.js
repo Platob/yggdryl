@@ -212,6 +212,26 @@ test('version is canonical numerically ordered text', () => {
   assert.ok(Field.fromJSON(field.toJSON()).equals(field))
 })
 
+test('url is a validated canonical location', () => {
+  const url = new DataType('url')
+
+  assert.equal(url.id, 'url')
+  assert.equal(url.kind, 'text')
+  assert.equal(url.toString(), 'url')
+  assert.equal(url.asciiWidth, null)
+  assert.ok(DataType.from('url').equals(url))
+  assert.ok(DataType.fromString(url.toString()).equals(url))
+
+  const field = new Field('url', url, false)
+  assert.ok(Field.fromJSON(field.toJSON()).equals(field))
+  assert.ok(Field.fromString(field.toString()).equals(field))
+  assert.equal(new Field('url', 'url', false).dtype.id, 'url')
+
+  // A location has no zero, so the default is the shortest URL the validator
+  // accepts: the filesystem root.
+  assert.equal(field.defaultJSValue(), 'file:///')
+})
+
 test('recursive datatypes expose fields as a collection', () => {
   const nested = DataType.fromString(
     'struct<id: bigint not null, payload: array<struct<name: string, score: decimal(18, 4)>>>',

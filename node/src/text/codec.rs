@@ -1994,14 +1994,7 @@ impl<'env> JsEncoder<'env> {
 
     /// Encode a `Date` as the UTC millisecond instant it already is.
     fn encode_date(&self, object: &Object<'env>) -> Result<Scalar> {
-        let millis = self.date_get_time.apply(object, ())?;
-        if !millis.is_finite() {
-            return Err(napi_error(
-                "an invalid Date has no instant; encode a valid Date or null",
-            ));
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        Scalar::datetime64(millis as i64, TimeUnit::Millisecond, Timezone::UTC).map_err(napi_error)
+        scalar_from_date_millis(self.date_get_time.apply(object, ())?)
     }
 
     fn encode_branded_object(
@@ -2370,6 +2363,8 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Ascii(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(JsonValue::String(value.to_string())),
+        // A location crosses as the canonical text it validated to.
+        Scalar::Url(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
@@ -2752,4 +2747,19 @@ fn marker<const N: usize>(kind: &str, fields: [(&str, JsonValue); N]) -> JsonVal
         object.insert(key.to_owned(), value);
     }
     JsonValue::Object(object)
+}
+
+/// The instant a `Date` names: its millisecond count, UTC.
+///
+/// Every crossing that reads a `Date` - the value codec and an instant intake
+/// alike - arrives here, so an invalid `Date` is refused the same way
+/// everywhere.
+pub(crate) fn scalar_from_date_millis(millis: f64) -> Result<Scalar> {
+    if !millis.is_finite() {
+        return Err(napi_error(
+            "an invalid Date has no instant; encode a valid Date or null",
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Scalar::datetime64(millis as i64, TimeUnit::Millisecond, Timezone::UTC).map_err(napi_error)
 }

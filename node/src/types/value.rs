@@ -102,7 +102,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Mic
         | D::Cfi
         | D::Uuid
-        | D::Version => JsValueHint::String,
+        | D::Version
+        | D::Url => JsValueHint::String,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
@@ -325,6 +326,12 @@ fn text_or_binary_to_js<'env>(
         D::Version => match value {
             Scalar::Version(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native version record value")),
+        },
+        // A location crosses as the canonical text it validated to, exactly as
+        // the other parsed text families do.
+        D::Url => match value {
+            Scalar::Url(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native url record value")),
         },
         // A geospatial value is its Well-Known Binary payload, so it crosses
         // exactly as the binary family does.

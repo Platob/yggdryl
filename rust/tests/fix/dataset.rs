@@ -60,10 +60,10 @@ fn reading() -> RecordOptions {
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the bridge's row header compiles")
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(1);
-    options.with_direction = true;
-    options.with_mimetype = true;
-    options.with_msgtype = true;
+    options.start_rownum = Some(1);
+    options.parse_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
     options.into()
 }
 

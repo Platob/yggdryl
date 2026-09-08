@@ -891,8 +891,9 @@ mod validation;
 pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
-    parse_ascii_enum, parse_content_length, parse_field_id, parse_reserved_bool, parse_source_list,
-    property_key, property_name, protocol_metadata_prefix, render_source_list, write_json_string,
+    ALL_SOURCES, parse_ascii_enum, parse_content_length, parse_field_id, parse_reserved_bool,
+    parse_source_list, property_key, property_name, protocol_metadata_prefix, render_source_list,
+    write_json_string,
 };
 // Read only by `xxhash::arrow` and `media::partition`, both of which the
 // `arrow` feature gates, so the names it carries are gated the same way.

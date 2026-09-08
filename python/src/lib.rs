@@ -33,6 +33,7 @@ mod iobase;
 mod iomedia;
 mod media;
 mod text;
+mod txhash;
 mod types;
 mod uri;
 mod xxhash;
@@ -470,6 +471,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PyDataFile>()?;
     media::partition::register(module)?;
     xxhash::register(module)?;
+    txhash::register(module)?;
     Ok(())
 }
 

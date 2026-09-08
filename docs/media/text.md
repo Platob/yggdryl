@@ -13,8 +13,9 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `max_record_byte_size` / `maxRecordByteSize` | retained decoded-body byte limit per record; unset is unlimited |
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
-| `with_rownum` / `withRownum` | optional signed 64-bit first row number; unset omits the column |
-| `with_mimetype`, `with_msgtype`, `with_direction` | Rust-only; classify each record and add the column named, off by default |
+| `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
+| `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
+| `parse_mimetype`, `parse_msgtype`, `parse_direction` | Rust-only; classify each record and add the column named, off by default |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
 
@@ -36,7 +37,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
     .with_media_type(Url::from_str("file:///app.log")?.media_type());
 
     let mut text_options = TextOptions::new();
-    text_options.with_rownum = Some(1);
+    text_options.start_rownum = Some(1);
     text_options.set_rowheader(Some(r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "))?;
     text_options.set_framing(true);
     let text_source = text_source.into_text_with(text_options);
@@ -46,7 +47,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    assert_eq!(text_batch.schema().fields().len(), 5);
+    assert_eq!(text_batch.schema().fields().len(), 6);
     assert_eq!(
         text_batch
             .column(1)
@@ -58,7 +59,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
     );
     assert_eq!(
         text_batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -82,7 +83,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         )
 
         options = TextOptions()
-        options.with_rownum = 1
+        options.start_rownum = 1
         options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
         options.framing = True
 
@@ -113,7 +114,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
     )
 
     const textOptions = new TextOptions()
-    textOptions.withRownum = 1n
+    textOptions.startRownum = 1n
     textOptions.rowheader = '^\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+) '
     textOptions.framing = true
 
@@ -135,11 +136,12 @@ The source field is complete before any source bytes are read.
 
 | column | datatype | value |
 | --- | --- | --- |
-| `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
-| `rownum` | `int64` | present only when `with_rownum` is set; first value is exactly that setting |
-| `direction` | `msgdirection` | nullable; present only with `with_direction` |
-| `mimetype` | `utf8` | present only with `with_mimetype` |
-| `msgtype` | `msgtype` | nullable; present only with `with_msgtype` |
+| `url` | `url` | nullable; the source location, and null for an unlocated buffer |
+| `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
+| `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
+| `direction` | `msgdirection` | nullable; present only with `parse_direction` |
+| `mimetype` | `utf8` | present only with `parse_mimetype` |
+| `msgtype` | `msgtype` | nullable; present only with `parse_msgtype` |
 | `body` | `binary` | required retained record bytes |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped |
 
@@ -152,9 +154,11 @@ when the read goes on into a FIX batch.
 
 ### Classifying each record
 
+`mtime` says when the record was written, and has two sources for one column. A row header that declares an `mtime` capture dates each line from the line itself, and the capture fills the column rather than appearing beside it — so a capture spelled that way is read at `datetime64(ns, UTC)` whatever its own syntax suggests, and a reading that names no offset is resolved through `timezone`. A header that declares no such capture, or a line the header did not match, falls back to [`IOBase::mtime`](../holder/iobase/bytes.md#modification-time) — the handle's own modification time, read once per read and shared by every row. Neither available is null, which is what an unlocated buffer answers. Turning `parse_mtime` off removes the column, and frees the name for an ordinary capture.
+
 The three classification columns are the [capture readings](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is, the message type it declares, and which way it moved. They need no dictionary and cost one shallow scan per record, which is why they are opt-in per column — a read that only needs rows should not pay for them. Rust only: neither binding reaches these flags today.
 
-`with_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. `msgtype` is the `msgtype` datatype, so a reading wider than its eight bytes — a bridge's `ConfigurationPlugin`, a composite key — is [coerced](../types/ascii.md#a-reading-wider-than-the-type) into the stable synthesized value rather than dropped to null.
+`parse_direction` also takes the marker off the body, because a verb in front of the payload is transport prose rather than payload. `msgtype` is the `msgtype` datatype, so a reading wider than its eight bytes — a bridge's `ConfigurationPlugin`, a composite key — is [coerced](../types/ascii.md#a-reading-wider-than-the-type) into the stable synthesized value rather than dropped to null.
 
 Measured in [Classifying a capture](../fix/registry.md#classifying-a-capture).
 
@@ -209,6 +213,9 @@ column and appending the terminator.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever `msgtype` read before it.
+- an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
+- Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
+- a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - `body` holding the terminator -> write refused.
 - keyed merge -> unsupported; overwrite and append only.

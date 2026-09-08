@@ -4,6 +4,9 @@ use std::collections::HashSet;
 
 use crate::Scalar;
 use crate::expression::Function;
+use crate::txhash::{
+    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
+};
 use crate::xxhash::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
     canonicalize_digest_algorithm,
@@ -247,6 +250,11 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         LOCATION_KEY => Url::from_str(&value)?.to_string(),
         DIGEST_ALGORITHM_KEY => canonicalize_digest_algorithm(&value)?,
         DIGEST_SOURCES_KEY => canonicalize_source_list(DIGEST_SOURCES_KEY, &value)?,
+        DIGEST_TIME_KEY => {
+            validate_digest_time(&value)?;
+            value
+        }
+        DIGEST_UNIT_KEY => canonicalize_digest_unit(&value)?,
         PARTITION_SOURCES_KEY => canonicalize_source_list(PARTITION_SOURCES_KEY, &value)?,
         PARTITION_TRANSFORM_KEY => {
             canonicalize_partition_transform(PARTITION_TRANSFORM_KEY, &value)?

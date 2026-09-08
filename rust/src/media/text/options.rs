@@ -14,6 +14,26 @@ use super::{LeadingFragment, LineSep};
 /// Reserved columns emitted before decoded row-header captures.
 pub(crate) const BASE_COLUMNS: [&str; 4] = ["url", "rownum", "body", "dropped_byte_size"];
 
+/// The column stating when a record was written, and the row-header capture
+/// that fills it.
+///
+/// Not a reserved name: with `parse_mtime` off there is no such column and a
+/// capture spelled this way is an ordinary one, so the flag alone decides
+/// whether the name belongs to the reader or to the expression.
+pub(crate) const MTIME_COLUMN: &str = "mtime";
+
+/// The one datatype the `mtime` column is read and stored at.
+///
+/// Nanoseconds in UTC: a capture's own offset is resolved into it, and a
+/// handle's modification time is already counted in it, so the two sources
+/// answer one column rather than two resolutions of it.
+pub(crate) fn mtime_dtype() -> DataType {
+    DataType::DateTime64 {
+        unit: crate::TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    }
+}
+
 /// A regex whose source, rather than its compiled automaton, is value identity.
 #[derive(Clone, Debug)]
 struct Expression {
@@ -100,14 +120,22 @@ pub struct TextOptions {
     /// Partition equalities a read is pruned and filtered by.
     pub filter_partitions: Vec<(String, String)>,
     /// First emitted row number; `None` omits the `rownum` column.
-    pub with_rownum: Option<i64>,
+    pub start_rownum: Option<i64>,
+    /// Whether to emit an `mtime` column stating when each record was written.
+    ///
+    /// On by default, because a captured line's own timestamp is the fact a
+    /// reader of a capture reaches for first. The value is the row header's
+    /// `mtime` capture when the expression declares one, and the handle's own
+    /// modification time when it does not - one column either way, so a
+    /// caller reads the same name whichever answered.
+    pub parse_mtime: bool,
     /// Whether to classify each line and emit a `mimetype` column.
-    pub with_mimetype: bool,
+    pub parse_mimetype: bool,
     /// Whether to read each line's message type and emit a `msgtype` column.
-    pub with_msgtype: bool,
+    pub parse_msgtype: bool,
     /// Whether to read each line's direction, emit a `direction` column, and
     /// take the marker off the body.
-    pub with_direction: bool,
+    pub parse_direction: bool,
     /// Whether to drop a row whose body repeats the row before it.
     ///
     /// A capture tool that published a line twice publishes it twice in a
@@ -150,10 +178,11 @@ impl TextOptions {
             merge_by_names: Vec::new(),
             select_by_names: Vec::new(),
             filter_partitions: Vec::new(),
-            with_rownum: None,
-            with_mimetype: false,
-            with_msgtype: false,
-            with_direction: false,
+            start_rownum: None,
+            parse_mtime: true,
+            parse_mimetype: false,
+            parse_msgtype: false,
+            parse_direction: false,
             dedup_adjacent: false,
             framing: false,
             leading_fragment: LeadingFragment::Keep,
@@ -458,7 +487,7 @@ impl TextOptions {
     /// One question, because every caller asking it is deciding whether the
     /// body it is about to hand on is the bytes it read.
     pub(crate) fn rewrites_body(&self) -> bool {
-        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.with_direction
+        !self.lstrip.is_empty() || !self.rstrip.is_empty() || self.parse_direction
     }
 
     pub(crate) fn output_linesep(&self) -> &[u8] {
@@ -482,28 +511,38 @@ impl TextOptions {
     pub fn source_field(&self) -> Result<Field> {
         let mut fields = Vec::with_capacity(7 + self.captures.len());
         fields.push(described(
-            DataType::Utf8.required_field("url"),
+            // Typed as the location it holds, so a column read out of a text
+            // table is a value a handle can be opened from rather than prose
+            // that looks like one. Nullable because an unlocated buffer has no
+            // URL, and the empty string is not one.
+            DataType::Url.nullable_field("url"),
             "The URL of the object this line was read from.",
         )?);
-        if self.with_rownum.is_some() {
+        if self.start_rownum.is_some() {
             fields.push(described(
                 DataType::Int64.required_field("rownum"),
                 "The physical line number within that object.",
             )?);
         }
-        if self.with_direction {
+        if self.parse_mtime {
+            fields.push(described(
+                mtime_dtype().nullable_field(MTIME_COLUMN),
+                "When the record was written: its own captured timestamp, or the handle's modification time when it declares none.",
+            )?);
+        }
+        if self.parse_direction {
             fields.push(described(
                 DataType::MsgDirection.nullable_field("direction"),
                 "Which way the line moved, read from the verb in front of it.",
             )?);
         }
-        if self.with_mimetype {
+        if self.parse_mimetype {
             fields.push(described(
                 DataType::Utf8.required_field("mimetype"),
                 "What the line was classified as.",
             )?);
         }
-        if self.with_msgtype {
+        if self.parse_msgtype {
             fields.push(described(
                 DataType::MsgType.nullable_field("msgtype"),
                 "The message type read from the line.",
@@ -519,25 +558,61 @@ impl TextOptions {
                 "How many bytes of this record went over the retained limit.",
             )?);
         }
-        fields.extend(self.captures.iter().map(|capture| {
-            let dtype = if self.autotype {
-                match (capture.dtype(), self.timezone) {
-                    (DataType::DateTime64 { unit, timezone }, Some(configured))
-                        if timezone.is_naive() =>
-                    {
-                        DataType::DateTime64 {
-                            unit: *unit,
-                            timezone: configured,
-                        }
-                    }
-                    (dtype, _) => dtype.clone(),
-                }
-            } else {
-                DataType::Utf8
-            };
-            dtype.nullable_field(capture.name())
-        }));
+        fields.extend(
+            self.captures
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| !self.consumes_capture(*index))
+                .map(|(index, capture)| self.capture_dtype(index).nullable_field(capture.name())),
+        );
         Ok(DataType::from_fields(fields)?.required_field(self.name.clone()))
+    }
+
+    /// Whether the `mtime` column, rather than a column of its own, is where
+    /// this capture's value goes.
+    ///
+    /// One owner per fact: with `parse_mtime` on, a capture spelled `mtime`
+    /// fills that column and is not repeated beside it; with it off, there is
+    /// no such column and the capture is an ordinary one.
+    pub(crate) fn consumes_capture(&self, index: usize) -> bool {
+        self.parse_mtime
+            && self
+                .captures
+                .get(index)
+                .is_some_and(|capture| capture.name() == MTIME_COLUMN)
+    }
+
+    /// The datatype one row-header capture is read at, in regex order.
+    ///
+    /// The schema and the row decoder ask the same question here rather than
+    /// each deriving it, because a decoder that disagreed with the schema
+    /// would parse a value into a column that cannot hold it.
+    pub(crate) fn capture_dtype(&self, index: usize) -> DataType {
+        if self.consumes_capture(index) {
+            return mtime_dtype();
+        }
+        let Some(capture) = self.captures.get(index) else {
+            return DataType::Utf8;
+        };
+        if !self.autotype {
+            return DataType::Utf8;
+        }
+        match (capture.dtype(), self.timezone) {
+            (DataType::DateTime64 { unit, timezone }, Some(configured)) if timezone.is_naive() => {
+                DataType::DateTime64 {
+                    unit: *unit,
+                    timezone: configured,
+                }
+            }
+            (dtype, _) => dtype.clone(),
+        }
+    }
+
+    /// Every capture's datatype, in the order the row header declares them.
+    pub(crate) fn capture_dtypes(&self) -> Vec<DataType> {
+        (0..self.captures.len())
+            .map(|index| self.capture_dtype(index))
+            .collect()
     }
 }
 

@@ -15,6 +15,7 @@ import {
   type MapField,
   type TimeField,
   type DateTime64Field,
+  type UrlField,
   type VariantField,
   type VersionField,
   type BatchReader,
@@ -54,6 +55,12 @@ const longDuration: Duration64Field = fields.duration64('long', 'us', {
 })
 const payload: VariantField = fields.variant('payload', { nullable: false })
 const release: VersionField = fields.version('release', { nullable: false })
+// A location column is text, and its values are the canonical URL spelling.
+const source: UrlField = fields.url('source', { nullable: false })
+const sourceId: 'url' = source.dtype.id
+const sourceKind: 'text' = source.dtype.kind
+const sourceValue: string = source.defaultJSValue()
+const nullableSource: string | null = fields.url('source').defaultJSValue()
 const payloadId: 'variant' = payload.dtype.id
 const shape: GeometryField = fields.geometry('shape', { nullable: false })
 const shapeKind: 'geospatial' = shape.dtype.kind
@@ -80,6 +87,11 @@ void sized
 void nullableCode
 void payloadId
 void release
+void source
+void sourceId
+void sourceKind
+void sourceValue
+void nullableSource
 void shapeKind
 void projectedShape
 void region

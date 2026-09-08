@@ -385,13 +385,14 @@ class TestFramedText:
         options.leading_fragment = "keep"
         options.max_record_byte_size = 64
         options.rowheader = r"^\[(?<kind>[A-Z])\] "
-        options.with_rownum = 1
+        options.start_rownum = 1
         options.batch_row_size = 1
 
         reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
         assert reader.schema.names == [
             "url",
             "rownum",
+            "mtime",
             "body",
             "dropped_byte_size",
             "kind",
@@ -436,7 +437,7 @@ class TestFramedText:
             options=options
         )
 
-        assert reader.schema.names == ["url", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.names == ["url", "mtime", "body", "dropped_byte_size", "kind"]
         assert reader.schema.field("dropped_byte_size").type == pa.uint64()
 
 

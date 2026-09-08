@@ -83,10 +83,10 @@ fn text(classify: bool) -> RecordOptions {
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(1);
-    options.with_direction = classify;
-    options.with_mimetype = classify;
-    options.with_msgtype = classify;
+    options.start_rownum = Some(1);
+    options.parse_direction = classify;
+    options.parse_mimetype = classify;
+    options.parse_msgtype = classify;
     options.into()
 }
 

@@ -3539,6 +3539,172 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
       return digestNative(toNativeContent(data), algorithm)
     },
   })
+
+  // An instant coupled with a digest. The instant intake is the loader's: a
+  // bigint or an integer number is the count already, and a Date, a string,
+  // or a Scalar crosses as the native value the core's one intake reads.
+  const txh32Native = binding._txh32Native
+  const txh64Native = binding._txh64Native
+  const txh3Native = binding._txh3Native
+  const txh128Native = binding._txh128Native
+  const txhashDigestNative = binding._txhashDigestNative
+  const unixNowNative = binding._txhashUnixNowNative
+  const unixOfNative = binding._txhashUnixOfNative
+  const restateUnixNative = binding._txhashRestateUnixNative
+  const widthNative = binding._txhashWidthNative
+  const dtypeNative = binding._txhashDtypeNative
+  const defaultUnit = binding._txhashDefaultUnitNative()
+  delete binding._txh32Native
+  delete binding._txh64Native
+  delete binding._txh3Native
+  delete binding._txh128Native
+  delete binding._txhashDigestNative
+  delete binding._txhashUnixNowNative
+  delete binding._txhashUnixOfNative
+  delete binding._txhashRestateUnixNative
+  delete binding._txhashWidthNative
+  delete binding._txhashDtypeNative
+  delete binding._txhashDefaultUnitNative
+
+  // Every shape crosses as itself; the native side owns the reading.
+  const asInstant = (value) => {
+    if (typeof value === 'bigint' || typeof value === 'number' || typeof value === 'string') {
+      return value
+    }
+    if (value instanceof Date || value instanceof binding.Scalar) return value
+    throw new TypeError(
+      'instant must be a bigint, a safe integer, a Date, a string, or a Scalar',
+    )
+  }
+  const asCount = (count) => {
+    if (typeof count === 'bigint') return count
+    if (typeof count === 'number' && Number.isSafeInteger(count)) {
+      return BigInt(count)
+    }
+    throw new TypeError('count must be a safe integer or a bigint')
+  }
+
+  // A native static is not deletable, so the published class is the public
+  // wrapper every other pivot class uses, with the private factory left off.
+  const NativeTxHash = binding.TxHash
+  const fromPartsNative = NativeTxHash._fromPartsNative.bind(NativeTxHash)
+  const TxHash = publicNativeClass(
+    NativeTxHash,
+    'TxHash',
+    new Set(['_fromPartsNative']),
+  )
+  Object.defineProperty(TxHash, 'fromParts', {
+    configurable: true,
+    value(unix, digest, unit) {
+      return fromPartsNative(asInstant(unix), digest, unit)
+    },
+  })
+  binding.TxHash = TxHash
+
+  const hasherDigestNative = binding.TxHasher.prototype._digestNative
+  const hasherDigestScalarNative = binding.TxHasher.prototype._digestScalarNative
+  const hasherUnixOfNative = binding.TxHasher.prototype._unixOfNative
+  const hasherApplyNative = binding.TxHasher.prototype._applyArrowBatchIpcNative
+  for (const [name, native] of [
+    ['_digestNative', hasherDigestNative],
+    ['_digestScalarNative', hasherDigestScalarNative],
+    ['_unixOfNative', hasherUnixOfNative],
+    ['_applyArrowBatchIpcNative', hasherApplyNative],
+  ]) {
+    if (typeof native !== 'function') {
+      throw new TypeError(`native binding is missing TxHasher.${name}`)
+    }
+    delete binding.TxHasher.prototype[name]
+  }
+  Object.defineProperties(binding.TxHasher.prototype, {
+    digest: {
+      configurable: true,
+      value(data, unix) {
+        return hasherDigestNative.call(this, toNativeContent(data), asInstant(unix))
+      },
+    },
+    digestScalar: {
+      configurable: true,
+      value(value, unix) {
+        return hasherDigestScalarNative.call(this, value, asInstant(unix))
+      },
+    },
+    unixOf: {
+      configurable: true,
+      value(unix) {
+        return hasherUnixOfNative.call(this, asInstant(unix))
+      },
+    },
+    applyArrowBatch: {
+      configurable: true,
+      value(root, batch, force = false) {
+        if (typeof force !== 'boolean') {
+          throw new TypeError('TxHasher.applyArrowBatch force must be a boolean')
+        }
+        return arrowBatchFromIPC(
+          hasherApplyNative.call(
+            this,
+            intoField(root),
+            arrowBatchIntoIPC(batch, 'TxHasher.applyArrowBatch input'),
+            force,
+          ),
+          'TxHasher.applyArrowBatch output',
+        )
+      },
+    },
+  })
+
+  binding.txhash = Object.freeze({
+    DEFAULT_UNIT: defaultUnit,
+    UNIX_WIDTH: 8,
+    TxHash,
+    TxHasher: binding.TxHasher,
+    txh32(data, unix, options) {
+      const seed = seedOf(options)
+      return txh32Native(
+        toNativeContent(data),
+        asInstant(unix),
+        seed == null ? undefined : Number(seed),
+      )
+    },
+    txh64(data, unix, options) {
+      return txh64Native(toNativeContent(data), asInstant(unix), asSeed(seedOf(options)))
+    },
+    txh3(data, unix, options) {
+      return txh3Native(
+        toNativeContent(data),
+        asInstant(unix),
+        asSeed(seedOf(options)),
+        asSecret(secretOf(options)),
+      )
+    },
+    txh128(data, unix, options) {
+      return txh128Native(
+        toNativeContent(data),
+        asInstant(unix),
+        asSeed(seedOf(options)),
+        asSecret(secretOf(options)),
+      )
+    },
+    digest(data, unix, algorithm) {
+      return txhashDigestNative(toNativeContent(data), asInstant(unix), algorithm)
+    },
+    unixNow(unit) {
+      return unixNowNative(unit)
+    },
+    unixOf(value, unit) {
+      return unixOfNative(asInstant(value), unit)
+    },
+    restateUnix(count, from, into) {
+      return restateUnixNative(asCount(count), from, into)
+    },
+    width(algorithm) {
+      return widthNative(algorithm)
+    },
+    dtype(algorithm) {
+      return dtypeNative(algorithm)
+    },
+  })
 }
 
 binding.codec = codec

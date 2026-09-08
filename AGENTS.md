@@ -513,8 +513,11 @@ payloads are signed over plain HTTP, unsigned over HTTPS.
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
 - Plain-text rows start with required `url: utf8` and `body: binary`;
-  `TextOptions.with_rownum: Option<i64>` inserts required `rownum: int64` between
-  them and names its first value. Flat `TextOptions` owns named `rowheader`
+  `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
+  them and names its first value. `parse_mtime`, on by default, inserts nullable
+  `mtime: datetime64(ns, UTC)` after it, filled by the row header's `mtime`
+  capture when the expression declares one and by `IOBase::mtime` when it does
+  not - one column whichever answered, and null when neither can. Flat `TextOptions` owns named `rowheader`
   captures, edge-only regex stripping, a line separator, and syntax-directed
   `autotype` via `DataType::from_regex`, so the full source field is known before
   a read. `timezone` stays a shared `RecordOptions` accessor over offset-free

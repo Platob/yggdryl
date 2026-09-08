@@ -17,7 +17,7 @@ from yggdryl import (
     scalar,
 )
 from yggdryl.text import json, toml, yaml
-from yggdryl.types import CurrencyField, StructField, VersionField
+from yggdryl.types import CurrencyField, StructField, UrlField, VersionField
 
 
 @scalar(frozen=True, slots=True)
@@ -63,6 +63,8 @@ currency: CurrencyField = types.currency("currency", nullable=False)
 currency_default_scalar: Scalar = currency.default_scalar()
 version: VersionField = types.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
+location: UrlField = types.url("url")
+location_dtype: DataType = location.dtype
 
 
 assert payload["order_id"] == 42
@@ -73,3 +75,4 @@ assert from_yaml == from_toml == from_json == order
 assert dynamic_class.field() is imported  # type: ignore[attr-defined]
 assert currency_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == "0"
+assert location_dtype == DataType("url")

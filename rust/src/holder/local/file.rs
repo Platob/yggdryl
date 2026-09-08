@@ -362,6 +362,17 @@ impl IOBase for File {
         std::fs::metadata(&self.path).map_or(0, |metadata| metadata.len())
     }
 
+    /// The file's modification time, read without mapping it.
+    ///
+    /// A mapped handle still asks the filesystem: the mapping carries the
+    /// bytes, not the stat the store keeps beside them.
+    fn mtime(&self) -> Option<i64> {
+        std::fs::metadata(&self.path)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(crate::holder::system_time_ns)
+    }
+
     fn capacity(&self) -> u64 {
         self.state.lock().map_or(0, |state| {
             state.as_ref().map_or(0, |mapped| {

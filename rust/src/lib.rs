@@ -42,6 +42,10 @@ mod scheme;
 pub mod text;
 mod time_unit;
 mod timezone;
+// An instant coupled with a digest. The value and its protocol vocabulary
+// need no Arrow, like the digest vocabulary they extend; only
+// `txhash/arrow.rs` is gated.
+pub mod txhash;
 pub mod types;
 mod union_mode;
 mod uri;
@@ -127,7 +131,8 @@ pub use types::{
 pub use types::{
     AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields, Version, VersionField, VersionScalar, VersionType,
+    TemporalType, TextType, UnionFields, UrlField, UrlScalar, UrlType, Version, VersionField,
+    VersionScalar, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

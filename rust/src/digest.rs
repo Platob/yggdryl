@@ -561,6 +561,23 @@ impl Digester {
     }
 }
 
+macro_rules! digester_from_state {
+    ($state:ty, $variant:ident) => {
+        impl From<$state> for Digester {
+            /// Carry a concrete state - its algorithm, seed, secret, and
+            /// everything fed so far - into the runtime dispatcher.
+            fn from(state: $state) -> Self {
+                Self(DigesterKind::$variant(state))
+            }
+        }
+    };
+}
+
+digester_from_state!(Xxh32, Xxh32);
+digester_from_state!(Xxh64, Xxh64);
+digester_from_state!(Xxh3, Xxh3);
+digester_from_state!(Xxh128, Xxh128);
+
 impl std::hash::Hasher for Digester {
     fn finish(&self) -> u64 {
         let digest = self.as_digest();

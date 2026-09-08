@@ -186,6 +186,16 @@ name = "xxhash"
 path = "benchmarks/xxhash.rs"
 harness = false
 
+# An instant coupled with a digest: the coupling beside the digest it wraps,
+# the value's projections, reading an instant out of a value, and the coupled
+# Arrow column beside the digest column and the holder fill. The value needs
+# no Arrow, so the target compiles in a default build; the column groups are
+# compiled in only when that feature is.
+[[bench]]
+name = "txhash"
+path = "benchmarks/txhash.rs"
+harness = false
+
 # Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against
 # the handle each backend wraps, record round trips, and listing. The vtable
 # adds no dependency, so this target compiles in a default build; the Parquet

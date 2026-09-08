@@ -1016,3 +1016,99 @@ fn planning_once_is_what_a_reused_plan_saves_per_batch() {
         "compiling per batch cost {planned} and reusing one plan cost {applied}"
     );
 }
+
+#[test]
+fn coupled_value_bytes_allocate_nothing() {
+    // A coupled value is an inline instant and an inline digest, so laying
+    // the two out, reading them back, and restating the resolution copies
+    // nothing to the heap. The one-shot XXH32 answer is inline too; XXH3
+    // keeps its secret on the heap, which is the algorithm's cost.
+    use yggdryl::txhash::{self, TxHash};
+    use yggdryl::{DigestAlgorithm, TimeUnit};
+
+    let value = txhash::txh128(b"AAPL", 1_700_000_000_000_000);
+    let bytes = value.into_bytes();
+    free("laying out a coupled value", || {
+        black_box(value.into_bytes().len());
+    });
+    free("reading a coupled value back", || {
+        black_box(
+            TxHash::from_bytes(TimeUnit::Microsecond, DigestAlgorithm::Xxh128, &bytes)
+                .expect("the exact width"),
+        );
+    });
+    free("restating a coupled instant", || {
+        black_box(value.with_unit(TimeUnit::Second).expect("a coarser unit"));
+    });
+    free("coupling an XXH32 one-shot", || {
+        black_box(txhash::txh32(black_box(b"AAPL"), 1));
+    });
+    free("projecting the instant as a datetime", || {
+        black_box(value.into_datetime());
+    });
+    costs("projecting the whole value as a byte scalar", 1, || {
+        black_box(value.into_scalar());
+    });
+}
+
+#[test]
+fn reading_an_instant_out_of_a_value_allocates_nothing() {
+    use yggdryl::txhash;
+    use yggdryl::{Scalar, TimeUnit, Timezone};
+
+    let integer = Scalar::from(1_700_000_000_000_000_i64);
+    let zoned = Scalar::from_datetime(1_700_000_000, TimeUnit::Second, Timezone::UTC)
+        .expect("a valid datetime");
+    let day = Scalar::date32(19_723);
+    for (label, value) in [
+        ("an integer", &integer),
+        ("a zoned datetime", &zoned),
+        ("a date", &day),
+    ] {
+        free(&format!("reading an instant out of {label}"), || {
+            black_box(
+                txhash::unix_from_scalar(black_box(value), TimeUnit::Microsecond)
+                    .expect("an instant"),
+            );
+        });
+    }
+    free("restating a unix count", || {
+        black_box(
+            txhash::restate_unix(
+                black_box(1_999),
+                TimeUnit::Nanosecond,
+                TimeUnit::Microsecond,
+            )
+            .expect("a coarser unit"),
+        );
+    });
+}
+
+#[test]
+fn a_same_unit_instant_column_shares_its_buffer() {
+    // An instant column already at the unit asked for is the answer already,
+    // so reading it as unix counts clones two reference-counted buffers and
+    // builds nothing; a column at another unit is one fresh buffer and the
+    // handle that shares it, however many rows it holds.
+    use arrow_array::{TimestampMicrosecondArray, TimestampSecondArray};
+    use yggdryl::{TimeUnit, txhash};
+
+    for rows in [16_i64, 4_096] {
+        let micros = TimestampMicrosecondArray::from_iter_values(0..rows).with_timezone("UTC");
+        free(&format!("reading {rows} same-unit instants"), || {
+            black_box(
+                txhash::arrow::unix_array(black_box(&micros), TimeUnit::Microsecond)
+                    .expect("an instant column")
+                    .len(),
+            );
+        });
+        let seconds = TimestampSecondArray::from_iter_values(0..rows);
+        costs(&format!("restating {rows} instants"), 2, || {
+            black_box(
+                txhash::arrow::unix_array(black_box(&seconds), TimeUnit::Microsecond)
+                    .expect("an instant column")
+                    .len(),
+            );
+        });
+    }
+}

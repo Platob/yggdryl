@@ -18,6 +18,8 @@ export {
   Statement,
   TextOptions,
   Timezone,
+  TxHash,
+  TxHasher,
   Uri,
   Url,
   Urn,
@@ -53,6 +55,8 @@ import type {
   Statement,
   TextOptions,
   Timezone,
+  TxHash,
+  TxHasher,
   Uri,
   Url,
   Urn,
@@ -205,6 +209,7 @@ export type DataTypeId =
   | 'cfi'
   | 'uuid'
   | 'version'
+  | 'url'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -282,6 +287,7 @@ interface DataTypeKindById {
   cfi: 'ascii'
   uuid: 'uuid'
   version: 'text'
+  url: 'text'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -480,6 +486,26 @@ declare module './index' {
       force?: boolean,
     ): ArrowRecordBatch
   }
+
+  namespace TxHash {
+    /** Couple an instant with a digest already computed, microseconds by default. */
+    function fromParts(unix: UnixLike, digest: Digest, unit?: string): TxHash
+  }
+
+  interface TxHasher {
+    /** Couple an instant with the digest of raw bytes or a string's UTF-8. */
+    digest(data: DigestContent, unix: UnixLike): TxHash
+    /** Couple an instant with a value's canonical feed. */
+    digestScalar(value: Scalar, unix: UnixLike): TxHash
+    /** Read any instant as a unix count of this hasher's resolution. */
+    unixOf(unix: UnixLike): bigint
+    /** Fill default digest holders in one Arrow batch under `root`. */
+    applyArrowBatch(
+      root: FieldLike,
+      batch: ArrowRecordBatch,
+      force?: boolean,
+    ): ArrowRecordBatch
+  }
 }
 
 declare const yggdrylValueType: unique symbol
@@ -621,6 +647,9 @@ export type VariantField = FieldOf<'variant', unknown>
 export type UuidField = FieldOf<'uuid', string>
 /** One canonical, numerically ordered version. */
 export type VersionField = FieldOf<'version', string>
+
+/** One validated, canonical location. */
+export type UrlField = FieldOf<'url', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -817,6 +846,7 @@ export interface FieldsNamespace {
   variant(name: string, options?: FieldOptions): VariantField
   uuid(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
+  url(name: string, options?: FieldOptions): UrlField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField
@@ -2046,6 +2076,51 @@ export declare const xxhash: {
   xxh128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
   /** Digest a complete value, carrying the algorithm with the answer. */
   digest(data: DigestContent, algorithm: DigestAlgorithm): Digest
+}
+
+/** Anything the loader reads an instant from. */
+export type UnixLike = bigint | number | Date | string | Scalar
+
+/**
+ * An instant coupled with an xxHash digest, in one sortable value.
+ *
+ * A `TxHash` is a unix count followed by a digest: the instant first,
+ * big-endian, so `bytes()` sorts by time and then by content; the digest
+ * after it, at its algorithm's exact width. The instant is always UTC and
+ * counted in microseconds unless a resolution is named, and the digest is
+ * what `xxhash` answers for the same bytes.
+ *
+ * Every `unix` argument reads the same way: a `bigint` or an integer
+ * `number` is the count already; a `Date` is its UTC millisecond instant; a
+ * string is timestamp text; a `Scalar` holds any of those.
+ */
+export declare const txhash: {
+  /** The resolution a unix count carries when a caller names none. */
+  readonly DEFAULT_UNIT: string
+  /** The bytes the instant takes at the front of every value. */
+  readonly UNIX_WIDTH: number
+  readonly TxHash: typeof TxHash
+  readonly TxHasher: typeof TxHasher
+  /** Couple a microsecond instant with XXH32 of a complete value. */
+  txh32(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+  /** Couple a microsecond instant with XXH64 of a complete value. */
+  txh64(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+  /** Couple a microsecond instant with XXH3-64 of a complete value. */
+  txh3(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+  /** Couple a microsecond instant with XXH3-128 of a complete value. */
+  txh128(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+  /** Couple a microsecond instant with a complete value's digest. */
+  digest(data: DigestContent, unix: UnixLike, algorithm: DigestAlgorithm): TxHash
+  /** Read the system clock as a unix count of `unit`, microseconds by default. */
+  unixNow(unit?: string): bigint
+  /** Read any instant as a unix count of `unit`, microseconds by default. */
+  unixOf(value: UnixLike, unit?: string): bigint
+  /** Restate a count of one resolution as a count of another. */
+  restateUnix(count: bigint | number, from: string, into: string): bigint
+  /** The width of a value coupling an instant with an algorithm's digest. */
+  width(algorithm: DigestAlgorithm): number
+  /** The datatype a column of coupled values is stored under. */
+  dtype(algorithm: DigestAlgorithm): DataType
 }
 
 export interface ArrowStringCompatible {

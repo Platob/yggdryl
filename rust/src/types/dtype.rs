@@ -127,6 +127,8 @@ pub enum DataType {
     Uuid,
     /// A canonical, numerically ordered software or protocol version.
     Version,
+    /// A validated, canonical location, stored as its canonical text.
+    Url,
     /// Variable list with 32-bit offsets.
     List(Arc<Field>),
     /// Variable list-view with 32-bit offsets.
@@ -265,6 +267,7 @@ impl DataType {
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
+            Self::Url => DataTypeId::Url,
             Self::List(_) => DataTypeId::List,
             Self::ListView(_) => DataTypeId::ListView,
             Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
@@ -561,6 +564,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::MsgDirection => 55,
         DataType::State => 56,
         DataType::TimeInForce => 57,
+        DataType::Url => 58,
     }
 }
 

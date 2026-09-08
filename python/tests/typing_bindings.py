@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime
+
 import os
 import io
 from collections.abc import Iterator, Mapping
@@ -37,6 +39,7 @@ from yggdryl import (
     Scalar,
     types,
     fix,
+    txhash,
     xxhash,
 )
 from yggdryl.coding import gzip, zlib, zstd
@@ -221,6 +224,27 @@ filled_digest_batch: pa.RecordBatch = xxhash.Xxh3().apply_arrow_batch(
     source_batch,
     force=True,
 )
+coupled_value: txhash.TxHash = txhash.txh3(b"AAPL", 1_700_000_000_000_000)
+coupled_unix: int = coupled_value.unix
+coupled_unit: str = coupled_value.unit
+coupled_digest_half: xxhash.Digest = coupled_value.digest
+coupled_bytes: bytes = bytes(coupled_value)
+coupled_instant: Scalar = coupled_value.into_datetime()
+coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
+coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
+coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
+coupled_hashed: txhash.TxHash = coupled_hasher.digest(b"AAPL", 1_700_000_000)
+coupled_scalar_hashed: txhash.TxHash = coupled_hasher.digest_scalar(Scalar.from_py("AAPL"), 1)
+coupled_unix_of: int = coupled_hasher.unix_of("2023-11-14T22:13:20Z")
+coupled_rows: pa.Array = txhash.row_txhashes(source_batch, pa.array([1], pa.int64()))
+coupled_split: tuple[pa.Array, pa.Array] = txhash.decompose(coupled_rows)
+coupled_joined: pa.Array = txhash.compose(coupled_split[0], coupled_split[1])
+coupled_now: int = txhash.unix_now("ms")
+coupled_width: int = txhash.width("xxh3-128")
+coupled_dtype: DataType = txhash.dtype("xxh32")
+coupled_time: str | None = field.digest.time
+coupled_holder_unit: str | None = field.digest.unit
+coupled_flag: bool = field.digest.is_coupled()
 default_dtype_native_scalar: Scalar = DataType("int32").default_scalar()
 default_field_native_scalar: Scalar = field.default_scalar()
 default_dtype_hint: object = DataType("int32").default_pyhint()
@@ -659,7 +683,8 @@ text_record_options.framing = True
 text_record_options.leading_fragment = "drop"
 text_record_options.max_record_byte_size = 4096
 text_record_options.rowheader = r"\[(?<level>[A-Z]+)\]"
-text_record_options.with_rownum = 1
+text_record_options.start_rownum = 1
+text_record_options.parse_mtime = True
 text_record_options.lstrip = r"^\s+"
 text_record_options.rstrip = r"\s+$"
 text_record_options.linesep = memoryview(b"\r\n")
@@ -676,7 +701,8 @@ text_rstrip: str | None = text_record_options.rstrip
 text_linesep: bytes | None = text_record_options.linesep
 text_autotype: bool = text_record_options.autotype
 text_timezone: Timezone | None = text_record_options.timezone
-text_rownum: int | None = text_record_options.with_rownum
+text_rownum: int | None = text_record_options.start_rownum
+text_parse_mtime: bool = text_record_options.parse_mtime
 regex_dtype: DataType = DataType.from_regex(r"(?<id>\d+)")
 text_handle: IOBase = IOBase(Path("app.log")).into_text(text_record_options)
 line_batches: pa.RecordBatchReader = text_handle.read_arrow_reader(

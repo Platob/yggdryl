@@ -83,9 +83,9 @@ fn handle(bytes: Vec<u8>) -> Buffer {
 /// Text options with the three classification columns on, or with none.
 fn options(classified: bool) -> RecordOptions {
     let mut options = TextOptions::new();
-    options.with_mimetype = classified;
-    options.with_msgtype = classified;
-    options.with_direction = classified;
+    options.parse_mimetype = classified;
+    options.parse_msgtype = classified;
+    options.parse_direction = classified;
     options.into()
 }
 

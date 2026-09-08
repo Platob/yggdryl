@@ -704,14 +704,14 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
 
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
-  options.withRownum = 10n
+  options.startRownum = 10n
   options.lstrip = ['^\\s+']
   options.rstrip = ['\\s+$']
 
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['url', 'rownum', 'body', 'level', 'id'],
+    ['url', 'rownum', 'mtime', 'body', 'level', 'id'],
   )
   assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
   assert.deepEqual(
@@ -737,7 +737,7 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   options.framing = true
   options.leadingFragment = 'drop'
   options.rowheader = '^\\[(?<level>[A-Z])\\] '
-  options.withRownum = 40n
+  options.startRownum = 40n
   options.batchRowSize = 1
   options.maxRecordByteSize = 8
 
@@ -752,12 +752,24 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   assert.deepEqual(
     batches[0].schema.fields.map((field) => [field.name, field.nullable]),
     [
-      ['url', false],
+      ['url', true],
       ['rownum', false],
+      ['mtime', true],
       ['body', false],
       ['dropped_byte_size', true],
       ['level', true],
     ],
+  )
+  // The url column is the `url` datatype over Utf8 storage, and every row
+  // carries the canonical URL text of the handle it was read from.
+  assert.equal(batches[0].schema.fields[0].type.toString(), 'Utf8')
+  assert.equal(
+    batches[0].schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.url',
+  )
+  assert.deepEqual(
+    batches.flatMap((batch) => [...batch.getChild('url')]),
+    Array(3).fill(source.url.toString()),
   )
   assert.deepEqual(
     batches.flatMap((batch) => [...batch.getChild('rownum')]),
@@ -794,7 +806,7 @@ test('text-only settings are flat native TextOptions value state', () => {
   options.linesep = '\\r\\n'
   options.autotype = false
   options.timezone = '+02:00'
-  options.withRownum = -3n
+  options.startRownum = -3n
 
   assert.equal(options.rowheader, '(?<stamp>\\S+)')
   assert.deepEqual(options.lstrip, ['^\\s+'])
@@ -802,7 +814,7 @@ test('text-only settings are flat native TextOptions value state', () => {
   assert.deepEqual(options.linesep, Buffer.from('\r\n'))
   assert.equal(options.autotype, false)
   assert.equal(options.timezone.toString(), '+02:00')
-  assert.equal(options.withRownum, -3n)
+  assert.equal(options.startRownum, -3n)
   assert.equal(options.framing, true)
   assert.equal(options.leadingFragment, 'drop')
   assert.equal(options.maxRecordByteSize, 4096)
@@ -827,10 +839,10 @@ test('text-only settings are flat native TextOptions value state', () => {
     options.rowheader = '(?<body>.+)'
   }, /distinct from url, rownum, body, and dropped_byte_size/)
   assert.throws(() => {
-    options.withRownum = 1
+    options.startRownum = 1
   })
   assert.throws(() => {
-    options.withRownum = 1n << 63n
+    options.startRownum = 1n << 63n
   }, /signed 64-bit integer/)
   const arrowOptions = RecordOptions.from('trades.arrows')
   assert.equal('autotype' in arrowOptions, false)
@@ -919,7 +931,7 @@ test('text folders decode coded leaves through the same record path', (t) => {
 
   const options = new TextOptions()
   options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
-  options.withRownum = 1n
+  options.startRownum = 1n
   options.lstrip = ['^\\s+']
   const rows = [...new IOBase(root).readRecords(options)]
 

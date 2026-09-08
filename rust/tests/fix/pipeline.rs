@@ -102,10 +102,10 @@ fn text_options() -> TextOptions {
         .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
         .expect("the row header compiles")
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(1);
-    options.with_direction = true;
-    options.with_mimetype = true;
-    options.with_msgtype = true;
+    options.start_rownum = Some(1);
+    options.parse_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
     options
 }
 
@@ -198,7 +198,8 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .collect();
 
     // The text reader's own columns lead the row - where the line came from,
-    // which line it was, what it was, the line itself and the header's
+    // which line it was, when it was written, what it was, the line itself
+    // and the header's
     // captures - and the fixed columns follow. A capture whose folded name a
     // fixed column takes is not carried in front, it fills that column: the
     // reader's `msgtype`, and the header's `timestamp` and `msgCtxId`.
@@ -206,10 +207,11 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // is spelled so; `seqNum` fills `msgseqnum` besides and `plugin` the
     // plugin session the line's direction names.
     assert_eq!(
-        &names[..10],
+        &names[..11],
         [
             "url",
             "rownum",
+            "mtime",
             "direction",
             "mimetype",
             "body",
@@ -222,7 +224,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "{names:?}"
     );
     assert_eq!(
-        &names[10..13],
+        &names[11..14],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );

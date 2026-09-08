@@ -62,7 +62,7 @@ impl Scalar {
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            Self::Null | Self::Nested(_) | Self::Version(_) => return None,
+            Self::Null | Self::Nested(_) | Self::Version(_) | Self::Url(_) => return None,
             Self::Text(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Ascii(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
@@ -281,6 +281,12 @@ impl Scalar {
                 write_tag(sink, DataTypeId::Version);
                 write_len(sink, value.rendered_len());
                 let _ = std::fmt::write(&mut HasherWriter(sink), format_args!("{value}"));
+            }
+            Self::Url(value) => {
+                write_tag(sink, DataTypeId::Url);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
             }
             Self::Enum(value) => {
                 write_tag(sink, DataTypeId::Dictionary);

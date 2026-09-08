@@ -148,11 +148,15 @@ pub enum DataTypeId {
     TimeInForce,
     /// Which way a captured line moved, four ASCII bytes.
     MsgDirection,
+    /// A validated, canonical location.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Url,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 60] = [
+    pub const ALL: [Self; 61] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -213,6 +217,7 @@ impl DataTypeId {
         Self::State,
         Self::TimeInForce,
         Self::MsgDirection,
+        Self::Url,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -292,6 +297,7 @@ impl DataTypeId {
             Self::Geometry => "geometry",
             Self::Geography => "geography",
             Self::Version => "version",
+            Self::Url => "url",
         }
     }
 
@@ -344,7 +350,9 @@ impl DataTypeId {
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Bytes
             }
-            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View | Self::Version => DataTypeKind::Text,
+            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View | Self::Version | Self::Url => {
+                DataTypeKind::Text
+            }
             Self::Ascii
             | Self::FixedAscii
             // A registered code is fixed-width ASCII text with an identity,
@@ -587,7 +595,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 60);
+        assert_eq!(DataTypeId::ALL.len(), 61);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,
@@ -677,6 +685,7 @@ mod tests {
         assert_eq!(DataTypeId::Geometry.as_u8(), 52);
         assert_eq!(DataTypeId::Geography.as_u8(), 53);
         assert_eq!(DataTypeId::Version.as_u8(), 54);
+        assert_eq!(DataTypeId::Url.as_u8(), 60);
     }
 
     #[test]

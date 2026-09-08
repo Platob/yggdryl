@@ -195,6 +195,16 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
+        DataType::Url => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::Url(url) => Ok(Some(url.to_string())),
+                    other => Err(invalid_value("url", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
         DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
             values
                 .iter()
@@ -429,6 +439,10 @@ pub(crate) fn value_from_array(
                 .parse()
                 .map_err(crate::arrow::Error::from)?,
         ),
+        DataType::Url => Scalar::Url(std::sync::Arc::new(
+            crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        )),
         // Fixed storage reads back trimmed: the padding is the layout, not
         // the text. Variable storage holds the bytes it was given.
         DataType::FixedAscii(width) => {

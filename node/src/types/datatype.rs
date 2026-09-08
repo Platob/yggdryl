@@ -115,6 +115,7 @@ impl JsDataType {
             "cfi" => CoreDataType::Cfi,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
+            "url" => CoreDataType::Url,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"

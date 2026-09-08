@@ -21,6 +21,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
 | `xxhash` | [xxHash](../xxhash/index.md) |
+| `txhash` | [TxHash](../txhash/index.md) |
 | `refresh_logging` | this page |
 | the `ygg` command, installed on PATH by the wheel | [CLI](../fix/cli.md) |
 
@@ -1106,6 +1107,20 @@ A `bytes` or `str` is hashed in place, and any other buffer is read through one 
 
 Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
 
+`yggdryl.txhash` couples an instant with that digest. Every `unix` argument is an `int`, a `datetime`, a `date`, timestamp text, or a `Scalar`, and the column functions take and answer `pyarrow` arrays ([TxHash](../txhash/index.md)).
+
+```python
+import datetime as dt
+
+from yggdryl import txhash, xxhash
+
+value = txhash.txh3(b"abc", dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc))
+assert value.unix == 1_700_000_000_000_000
+assert int(value.digest) == xxhash.xxh3(b"abc")
+assert bytes(value)[:8] == value.unix.to_bytes(8, "big", signed=True)
+assert txhash.TxHash(str(value)) == value
+```
+
 ## Watching what the core does
 
 The native core reports its work through `logging`, under this package's own logger. A record's name is the Rust module path it came from, so `yggdryl.media.iceberg.table` and its siblings all hang off `yggdryl` and one `setLevel` is the whole switch.
@@ -1259,7 +1274,7 @@ A `dict` is the obvious Python spelling of a named row, and the declared root is
 
 ## Edges
 
-- `TextOptions.with_rownum` -> `None` or a signed 64-bit `int`; a `bool` is a `TypeError`, out of range an `OverflowError`.
+- `TextOptions.start_rownum` -> `None` or a signed 64-bit `int`; a `bool` is a `TypeError`, out of range an `OverflowError`.
 - an empty output collection -> requires `field=`, because it cannot infer a type.
 - a zoned `datetime.time`, or a zone on `date`, `time`, `duration` -> refused by the core.
 - a decimal past 256 coefficient bits, or an exponent with no scale in `-128..=127` -> `OverflowError`.
@@ -1354,6 +1369,7 @@ else:
     python/.venv/bin/python -m pytest python/tests/uri
     python/.venv/bin/python -m pytest python/tests/expression
     python/.venv/bin/python -m pytest python/tests/xxhash
+    python/.venv/bin/python -m pytest python/tests/txhash
     python/.venv/bin/python -m pytest python/tests/arrow
     python/.venv/bin/python -m pytest python/tests/fix
     python scripts/check_docs_examples.py --lang python
