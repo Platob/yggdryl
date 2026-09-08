@@ -16,6 +16,7 @@ criterion_group!(
     fix_benches::classify::benchmarks,
     fix_benches::codes::benchmarks,
     fix_benches::mutate::benchmarks,
+    fix_benches::pipeline::benchmarks,
     fix_benches::read::benchmarks,
     fix_benches::store::benchmarks,
 );
