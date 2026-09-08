@@ -140,6 +140,13 @@ pub struct FixOptions {
     /// once it is in the row, so filling has to be asked for. See
     /// [`FixCodec::enrich_fixmsg`](super::FixCodec::enrich_fixmsg).
     pub enrich: bool,
+    /// Whether each message is stamped with the identities the stream implies.
+    ///
+    /// Off by default, and stateful when on: one
+    /// [`FixLifecycle`](super::FixLifecycle) runs over the whole read, so
+    /// the `persistentid` a message carries depends on the messages before
+    /// it. See [`FixCodec::lifecycle`](super::FixCodec::lifecycle).
+    pub lifecycle: bool,
 }
 
 /// The batch size a FIX read targets when the caller states none.
@@ -186,6 +193,7 @@ impl Default for FixOptions {
             direction: Some(MsgDirection::SENT),
             dedup: false,
             enrich: false,
+            lifecycle: false,
         }
     }
 }
@@ -247,6 +255,14 @@ impl FixOptions {
     #[must_use]
     pub const fn with_dedup(mut self, dedup: bool) -> Self {
         self.dedup = dedup;
+        self
+    }
+
+    /// Sets whether the read stamps each message with the identities the
+    /// stream implies.
+    #[must_use]
+    pub const fn with_lifecycle(mut self, lifecycle: bool) -> Self {
+        self.lifecycle = lifecycle;
         self
     }
 
@@ -331,6 +347,7 @@ impl FixBatchReader {
             let direction = direction_of(&row, default);
             Ok((message, direction, Vec::new()))
         });
+        let messages = lifecycled(messages, &registry, options.lifecycle);
         Self::stream(field, messages, &options)
     }
 
@@ -387,6 +404,7 @@ impl FixBatchReader {
             enrich: options.enrich,
             held: None,
         };
+        let rows = lifecycled(rows, &registry, options.lifecycle);
         Self::stream(field, rows, options)
     }
 
@@ -801,6 +819,27 @@ impl Iterator for Rows {
             }
         }
     }
+}
+
+/// The stream with each message stamped by one lifecycle, where asked.
+///
+/// One state for the whole read, carried by the closure: the chains alive
+/// are what the messages so far opened and did not close.
+fn lifecycled<I>(
+    messages: I,
+    registry: &Arc<FixRegistry>,
+    on: bool,
+) -> impl Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static
+where
+    I: Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static,
+{
+    let mut life = on.then(|| super::FixLifecycle::new(Arc::clone(registry)));
+    messages.map(move |held| match (held, life.as_mut()) {
+        (Ok((message, direction, front)), Some(life)) => life
+            .fill(message)
+            .map(|message| (message, direction, front)),
+        (other, _) => other,
+    })
 }
 
 /// The direction a whole captured line moved.

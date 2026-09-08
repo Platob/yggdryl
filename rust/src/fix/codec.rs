@@ -819,6 +819,25 @@ impl FixCodec {
             .map(move |message| self.enrich_fixmsg(message))
     }
 
+    /// Stamps a stream of messages with the identities it implies, in order.
+    ///
+    /// One [`FixLifecycle`](super::FixLifecycle) over the whole stream: each
+    /// message gets its `instid`, its `id` and - where it carries an order
+    /// identifier - the `persistentid` of the chain that identifier reaches,
+    /// and a terminal state closes the chain. Nothing is collected: the
+    /// iterator is the stream, and what is held is the orders still alive.
+    pub fn lifecycle<'codec, I>(
+        &'codec self,
+        messages: I,
+    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    where
+        I: IntoIterator<Item = FixMsg>,
+        I::IntoIter: 'codec,
+    {
+        let mut life = super::FixLifecycle::new(Arc::clone(&self.registry));
+        messages.into_iter().map(move |message| life.fill(message))
+    }
+
     /// Builds one message from pairs the caller already split.
     ///
     /// # Errors

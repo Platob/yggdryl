@@ -278,6 +278,9 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
             "isincode",
             "miccode",
             "state",
+            "instid",
+            "id",
+            "persistentid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -300,6 +303,9 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
             Some("ISINCode"),
             Some("MICCode"),
             Some("State"),
+            Some("InstId"),
+            Some("Id"),
+            Some("PersistentId"),
         ],
     );
 
@@ -309,10 +315,18 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
         held[0].dtype(),
         &DataType::fixed_size_binary(16).expect("a width")
     );
-    // The three columns a message answers from what it said are typed as the
-    // thing they hold, not as the text a venue spelled it in.
+    // The columns a message answers from what it said are typed as the thing
+    // they hold, not as the text a venue spelled it in; the three identities
+    // a stream stamps are sixteen bytes each, as the digest is.
+    assert_eq!(held[13].dtype(), &DataType::Isin);
     assert_eq!(held[14].dtype(), &DataType::Mic);
     assert_eq!(held[15].dtype(), &DataType::State);
+    for identity in &held[16..19] {
+        assert_eq!(
+            identity.dtype(),
+            &DataType::fixed_size_binary(16).expect("a width")
+        );
+    }
 
     // Every one is a standard field from 65000 up: one tag block, on the
     // branch every dictionary resolves through, so a bridge row spelling
@@ -328,6 +342,7 @@ fn the_crate_carries_fields_of_its_own_on_the_standard_branch_from_65000() {
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::MSGHASH_TAG, 65_000);
     assert_eq!(yggdryl::STATE_TAG, 65_015);
+    assert_eq!(yggdryl::PERSISTENTID_TAG, 65_018);
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[11..13];
     assert_eq!(

@@ -275,6 +275,38 @@ impl FixMsg {
     /// What a rebuild needs: the entries are what arrived and are carried
     /// through unchanged, so moving them costs nothing where cloning a whole
     /// capture's worth would.
+    /// This message with one more child, carrying `value`.
+    ///
+    /// Appended rather than inserted in tag order: the row's existing
+    /// positions are what every reader that already holds it addresses by,
+    /// and a derived field is found by tag rather than by position. The
+    /// entries are carried through untouched, because what arrived on the
+    /// line is not changed by what the row now says about it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the value contract's refusal when `value` does not fit
+    /// `field`, or the root's when it does not rebuild.
+    pub(super) fn appended(self, field: Field, value: Scalar) -> Result<Self> {
+        let registry = Arc::clone(&self.registry);
+        let root = self.field.clone();
+        let mut members: Vec<Field> = root
+            .dtype()
+            .as_fields()
+            .map(<[Field]>::to_vec)
+            .unwrap_or_default();
+        let mut values: Vec<Scalar> = self
+            .value
+            .as_sequence()
+            .map(<[Scalar]>::to_vec)
+            .unwrap_or_default();
+        members.push(field);
+        values.push(value);
+        let rebuilt = crate::DataType::from_fields(members)?.required_field(root.name());
+        let entries = self.into_entries();
+        Self::from_parts(registry, rebuilt, Scalar::from_sequence(values), entries)
+    }
+
     pub(super) fn into_entries(self) -> Vec<FixEntry> {
         self.entries
     }

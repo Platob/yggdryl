@@ -93,6 +93,15 @@ pub const MICCODE_TAG: i32 = 65_014;
 /// The tag carrying the state the order is in.
 pub const STATE_TAG: i32 = 65_015;
 
+/// The tag carrying the instrument's own identity.
+pub const INSTID_TAG: i32 = 65_016;
+
+/// The tag carrying the message's own time-coupled identity.
+pub const ID_TAG: i32 = 65_017;
+
+/// The tag carrying the order chain's identity.
+pub const PERSISTENTID_TAG: i32 = 65_018;
+
 /// The column the timestamp takes, which is also what its partition names.
 pub const TIMESTAMP_NAME: &str = "timestamp";
 
@@ -389,6 +398,35 @@ fn build() -> Result<Vec<Field>> {
             DataType::State,
             "The state the order is in: OrdStatus, else ExecType, read as one \
              lifecycle vocabulary.",
+        )?,
+        // The three identities a stream implies, stamped by the lifecycle
+        // pass: fixed binary, big-endian, for the reason `msghash` is. The
+        // two time-coupled ones open with the impact instant so they sort by
+        // the market's own clock.
+        crated(
+            "instid",
+            "InstId",
+            INSTID_TAG,
+            DataType::fixed_size_binary(DIGEST_WIDTH)?,
+            "The instrument's own identity: the xxh128 digest of its market, \
+             its classification, its ISIN - else its symbol - and its currency.",
+        )?,
+        crated(
+            "id",
+            "Id",
+            ID_TAG,
+            DataType::fixed_size_binary(DIGEST_WIDTH)?,
+            "The message's own identity: the instant closest to the market \
+             impact in microseconds, then the xxh3 digest of what it said.",
+        )?,
+        crated(
+            "persistentid",
+            "PersistentId",
+            PERSISTENTID_TAG,
+            DataType::fixed_size_binary(DIGEST_WIDTH)?,
+            "The order chain's identity: the instant it was created, then the \
+             xxh3 digest of its instrument and first identifier, carried by \
+             every later message sharing one of its identifiers.",
         )?,
     ])
 }

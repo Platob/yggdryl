@@ -168,6 +168,7 @@ mod enrich;
 mod entry;
 mod field;
 mod global;
+mod lifecycle;
 mod lift;
 mod lineage;
 mod msg;
@@ -192,16 +193,17 @@ pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ISINCODE_TAG, MICCODE_TAG, MSGCTXID_TAG,
-    MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG,
-    SENDERPLUGINID_TAG, SENDERPLUGINSESSION_TAG, SESSIONID_TAG, STATE_TAG, SYMBOLTICKER_TAG,
-    TARGETPLUGINID_TAG, TARGETPLUGINSESSION_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG, UNIXPARTITION_TAG,
-    VERSION_TAG, fix_crate_fields, is_crate_tag,
+    CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG, INSTID_TAG, ISINCODE_TAG, MICCODE_TAG,
+    MSGCTXID_TAG, MSGDIRECTION_TAG, MSGHASH_TAG, MSGTYPE_TAG, PARENTCLORDID_TAG, PARENTORDERID_TAG,
+    PERSISTENTID_TAG, SENDERPLUGINID_TAG, SENDERPLUGINSESSION_TAG, SESSIONID_TAG, STATE_TAG,
+    SYMBOLTICKER_TAG, TARGETPLUGINID_TAG, TARGETPLUGINSESSION_TAG, TIMESTAMP_NAME, TIMESTAMP_TAG,
+    UNIXPARTITION_TAG, VERSION_TAG, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
 pub use field::FixSpellings;
+pub use lifecycle::FixLifecycle;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;

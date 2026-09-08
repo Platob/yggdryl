@@ -841,7 +841,11 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
                     crate::types::MsgDirection::new(text)?,
                 )),
-                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::new(text)?)),
+                // A state is read by its spelling: the wire code, the
+                // specification's name or a stored value all reach the one
+                // ranked value, and a spelling that names no state is refused
+                // rather than stored unranked.
+                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::read(text)?)),
                 D::TimeInForce => Scalar::Ascii(AsciiFamily::TimeInForce(
                     crate::types::TimeInForce::new(text)?,
                 )),

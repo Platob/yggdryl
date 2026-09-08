@@ -346,6 +346,24 @@ impl State {
         matches!(self.rank(), Some(95..=99))
     }
 
+    /// The state one spelling names, refused where none does.
+    ///
+    /// [`Self::from_spelling`] as the value contract reads it: a column typed
+    /// `state` holds ranked values only, so text that names no state leaves
+    /// the column null rather than storing a value nothing can rank.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the spelling.
+    pub fn read(spelling: &str) -> Result<Self> {
+        Self::from_spelling(spelling).ok_or_else(|| crate::Error::InvalidDataType {
+            kind: "state",
+            reason: smol_str::format_smolstr!(
+                "expected a state code, name or stored value, got {spelling:?}"
+            ),
+        })
+    }
+
     /// The state one spelling names, or `None` where none does.
     ///
     /// Four vocabularies reach one value, because they name one thing:

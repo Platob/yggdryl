@@ -421,7 +421,9 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         Some(547.771791547861)
     );
     assert_eq!(tag_column(&read, 151)[FILL_ROW].as_f64(), Some(0.0));
-    assert_eq!(tag_text(&read, 150)[FILL_ROW].as_deref(), Some("2"));
+    // A state column holds the ranked spelling the code names, never the
+    // code: `2` is a filled order, and sorts after every live state.
+    assert_eq!(tag_text(&read, 150)[FILL_ROW].as_deref(), Some("80FILLED"));
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
