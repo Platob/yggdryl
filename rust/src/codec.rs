@@ -211,72 +211,6 @@ impl Codec {
         RestartScan::new(self)
     }
 
-    /// Encode a whole buffer, restarting every `stride` decoded bytes.
-    ///
-    /// The answer is the encoded payload and the map of where its units
-    /// begin, which is what turns a positional read of that payload into a
-    /// decode of one stride rather than of everything before the offset. A
-    /// stride of zero, an identity coding, and a coding with no restart point
-    /// all encode as [`dump_with_level`] does and answer an empty map.
-    ///
-    /// [`dump_with_level`]: Self::dump_with_level
-    ///
-    /// # Errors
-    ///
-    /// Returns the codec's encoding failure.
-    ///
-    /// ```
-    /// use yggdryl::{Codec, Level};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let payload = b"symbol,price\nAAPL,187.23\n".repeat(512);
-    /// let (encoded, restarts) =
-    ///     Codec::Deflate.dump_with_restarts(&payload, Level::DEFAULT, 4_096)?;
-    ///
-    /// // The whole payload still decodes as one stream.
-    /// assert_eq!(Codec::Deflate.load(&encoded)?, payload);
-    ///
-    /// // And a position inside it decodes from the point before it.
-    /// let (decoded, at) = restarts.before(10_000);
-    /// assert_eq!(decoded, 8_192);
-    /// let start = usize::try_from(at).expect("an in-memory offset");
-    /// assert_eq!(Codec::Deflate.load(&encoded[start..])?, payload[8_192..]);
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn dump_with_restarts(
-        self,
-        input: &[u8],
-        level: Level,
-        stride: u64,
-    ) -> Result<(Vec<u8>, Restarts)> {
-        let step = usize::try_from(stride).unwrap_or(usize::MAX);
-        if step == 0 || self.is_identity() || !self.has_restarts() {
-            return Ok((self.dump_with_level(input, level)?, Restarts::default()));
-        }
-        let mut encoded = Vec::new();
-        let mut points = Vec::new();
-        {
-            let written = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-            let mut encoder = self.writer_with_level(
-                Meter {
-                    target: &mut encoded,
-                    written: std::sync::Arc::clone(&written),
-                },
-                level,
-            );
-            for (index, chunk) in input.chunks(step).enumerate() {
-                if index > 0 {
-                    encoder.restart()?;
-                    points.push(written.load(std::sync::atomic::Ordering::Relaxed));
-                }
-                encoder.write_all(chunk)?;
-            }
-            encoder.finish()?;
-        }
-        Ok((encoded, Restarts::new(stride, points)))
-    }
-
     /// The pattern this coding's restart points are found by.
     const fn restart_marker(self) -> Option<Marker> {
         match self {
@@ -646,28 +580,6 @@ impl Restarts {
             (point as u64 + 1) * self.stride,
             self.points.get(point).copied().unwrap_or(0),
         )
-    }
-}
-
-/// A writer that reports how many bytes have reached the target.
-///
-/// An encoder owns its target, so the only way to learn where a restart point
-/// landed is to count the bytes on their way through.
-struct Meter<'target> {
-    target: &'target mut Vec<u8>,
-    written: std::sync::Arc<std::sync::atomic::AtomicU64>,
-}
-
-impl Write for Meter<'_> {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        let written = self.target.write(buffer)?;
-        self.written
-            .fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
-        Ok(written)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.target.flush()
     }
 }
 

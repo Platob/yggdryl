@@ -42,7 +42,7 @@ fn image(members: &[(Entry, Vec<u8>)], comment: &[u8]) -> Vec<u8> {
     let mut placed = Vec::new();
     for (entry, encoded) in members {
         let entry = entry.clone().with_header_offset(image.len() as u64);
-        format::write_local(&entry, &mut image);
+        format::write_local_with(&entry, false, &mut image);
         image.extend_from_slice(encoded);
         placed.push(entry);
     }
@@ -749,6 +749,133 @@ fn a_positional_write_grows_the_member_and_zero_fills_the_gap() {
         root.archive().read_member("blob.bin").expect("bytes"),
         b"\0\0\0\0tail"
     );
+}
+
+#[test]
+fn a_member_streams_in_from_a_reader_and_settles_its_own_header() {
+    // Larger than one write window, so the header goes out before the sizes
+    // are known and is settled once they are.
+    let payload = strided_payload(3 * 1024 * 1024);
+    let root = root();
+    let entry = root
+        .archive()
+        .write_member_from("blob.bin", std::io::Cursor::new(&payload), Codec::Identity)
+        .expect("the member streams in");
+    root.archive().flush().expect("publishes");
+
+    assert_eq!(entry.size(), payload.len() as u64);
+    assert_eq!(entry.compressed_size(), payload.len() as u64);
+
+    // The settled header is what a reader that never sees the directory has,
+    // so a fresh mount reads the member through it.
+    let remounted = mounted(bytes(root.archive()));
+    assert_eq!(
+        remounted
+            .as_leaf("blob.bin")
+            .expect("a member")
+            .read_all_bytes()
+            .expect("the member"),
+        payload
+    );
+    assert_eq!(
+        remounted
+            .as_leaf("blob.bin")
+            .expect("a member")
+            .read_range_bytes(2_500_000, 16)
+            .expect("a range"),
+        payload[2_500_000..2_500_016]
+    );
+}
+
+#[test]
+fn a_streamed_compressed_member_maps_the_points_it_wrote() {
+    let payload = strided_payload(2 * 1024 * 1024);
+    let root = Archive::new(Holder::buffer(Buffer::new()))
+        .with_restart_stride(64 * 1024)
+        .mount();
+    root.archive()
+        .write_member_from("blob.bin", std::io::Cursor::new(&payload), Codec::Deflate)
+        .expect("the member streams in");
+    root.archive().flush().expect("publishes");
+
+    let remounted = mounted(bytes(root.archive()));
+    let entry = remounted
+        .archive()
+        .get_entry("blob.bin")
+        .expect("the index")
+        .expect("the member");
+    assert_eq!(entry.restarts().stride(), 64 * 1024);
+    assert_eq!(entry.restarts().points().len(), 31);
+    for offset in [0_usize, 100_000, 1_000_000, 2 * 1024 * 1024 - 32] {
+        assert_eq!(
+            remounted
+                .as_leaf("blob.bin")
+                .expect("a member")
+                .read_range_bytes(offset as u64, 32)
+                .expect("a range"),
+            payload[offset..offset + 32],
+            "at {offset}"
+        );
+    }
+}
+
+#[test]
+fn a_streamed_write_holds_one_window_however_long_the_member() {
+    let payload = strided_payload(5 * 1024 * 1024);
+    let root = root();
+    let before = root.archive().handle_writes();
+    root.archive()
+        .write_member_from("blob.bin", std::io::Cursor::new(&payload), Codec::Identity)
+        .expect("the member streams in");
+    // One write per window it filled, and one that settles the header.
+    let writes = root.archive().handle_writes() - before;
+    assert_eq!(writes, 6, "five windows and one settle, got {writes}");
+
+    // A member that fits one window is still one write, header and all.
+    let before = root.archive().handle_writes();
+    root.archive()
+        .write_member_from("small.bin", std::io::Cursor::new(b"symbol"), Codec::Identity)
+        .expect("the member streams in");
+    assert_eq!(root.archive().handle_writes() - before, 1);
+}
+
+#[test]
+fn a_whole_write_never_decodes_the_member_it_replaces() {
+    let root = root();
+    let mut member = root.as_leaf("blob.bin").expect("a member");
+    member
+        .write_all_bytes(&strided_payload(64 * 1024))
+        .expect("writes");
+
+    // Replacing it reads the archive's directory, never the old bytes.
+    let before = root.archive().handle_reads();
+    member.write_all_bytes(b"symbol,price").expect("writes");
+    assert_eq!(root.archive().handle_reads(), before);
+    assert!(!member.opened(), "a whole write stages nothing");
+    assert_eq!(member.read_all_bytes().expect("the member"), b"symbol,price");
+}
+
+#[test]
+fn a_positional_write_through_a_location_stages_rather_than_publishing() {
+    let root = root();
+    let mut member = root
+        .child_by_path("notes.txt")
+        .expect("a member location");
+    for (index, byte) in b"symbol".iter().enumerate() {
+        member
+            .pwrite(index as u64, std::slice::from_ref(byte))
+            .expect("a positional write");
+    }
+    member.flush().expect("publishes");
+
+    // Six writes, one record: publishing per call would have left five dead
+    // copies of the member and five directories behind them.
+    assert_eq!(root.archive().entries().expect("the index").len(), 1);
+    assert_eq!(
+        root.archive().read_member("notes.txt").expect("the member"),
+        b"symbol"
+    );
+    assert!(root.archive().size() < 200, "one record, not six");
 }
 
 #[test]

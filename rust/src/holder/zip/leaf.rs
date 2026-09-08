@@ -183,7 +183,7 @@ impl Leaf {
         }
         let codec = self.write_codec()?;
         let plain = self.plain.take().unwrap_or_default();
-        self.archive.write_member_with(&self.name, &plain, codec)?;
+        self.archive.write_member_from(&self.name, &plain[..], codec)?;
         self.plain = Some(plain);
         self.dirty = false;
         self.archive.flush()
@@ -220,7 +220,7 @@ impl IOFile for Leaf {
             return Ok(());
         }
         let codec = self.write_codec()?;
-        self.archive.write_member_with(&self.name, &[], codec)?;
+        self.archive.write_member_from(&self.name, std::io::empty(), codec)?;
         self.archive.flush()
     }
 
@@ -282,6 +282,19 @@ impl IOBase for Leaf {
         ByteStream::from_reader(self.archive.entry_reader(&entry, position)?, batch_size)
     }
 
+    /// Replace the member, streaming the value into the archive.
+    ///
+    /// The member that was there is not decoded to be discarded, and the
+    /// value is not staged: it goes through the coding into the archive as it
+    /// is read, and the directory publishes it.
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let codec = self.write_codec()?;
+        self.archive.write_member_from(&self.name, bytes, codec)?;
+        self.plain = None;
+        self.dirty = false;
+        self.archive.flush()
+    }
+
     /// Read the member whole, verifying the digest its record states.
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
         if let Some(plain) = self.materialized() {
@@ -337,6 +350,13 @@ impl IOBase for Leaf {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         let size = usize::try_from(size).unwrap_or(usize::MAX);
+        if size == 0 {
+            // Emptying a member keeps nothing of it, so nothing is decoded to
+            // find that out.
+            self.plain = Some(Vec::new());
+            self.dirty = true;
+            return Ok(());
+        }
         let plain = self.decoded()?;
         if size < plain.len() {
             plain.truncate(size);

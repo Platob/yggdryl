@@ -43,6 +43,13 @@ pub struct Path {
     declared: Option<MediaType>,
     /// Inference from the member's compound name, computed on demand.
     inferred: OnceLock<MediaType>,
+    /// The byte role, built once and then reused.
+    ///
+    /// Every byte verb here is that role's, and building one costs the
+    /// member's location - a URL clone and a percent-encode. Holding it is
+    /// also what lets a positional write stage rather than publish, which is
+    /// what [`IOBase::pwrite`] means everywhere else.
+    leaf: OnceLock<Leaf>,
 }
 
 impl Path {
@@ -54,6 +61,7 @@ impl Path {
             name,
             declared: None,
             inferred: OnceLock::new(),
+            leaf: OnceLock::new(),
         }
     }
 
@@ -78,12 +86,22 @@ impl Path {
     }
 
     /// Treat this location as a byte member, whether or not it is one yet.
-    pub fn as_leaf(&self) -> Leaf {
-        let mut file = Leaf::new(Arc::clone(&self.archive), self.name.clone());
-        if let Some(media_type) = &self.declared {
-            file.set_media_type(media_type.clone());
-        }
-        file
+    pub fn as_leaf(&self) -> &Leaf {
+        self.leaf.get_or_init(|| {
+            let mut leaf = Leaf::new(Arc::clone(&self.archive), self.name.clone());
+            if let Some(media_type) = &self.declared {
+                leaf.set_media_type(media_type.clone());
+            }
+            leaf
+        })
+    }
+
+    /// The byte role, borrowed for a call that changes it.
+    fn as_leaf_mut(&mut self) -> &mut Leaf {
+        let _ = self.as_leaf();
+        self.leaf
+            .get_mut()
+            .expect("the role was built by the borrow above")
     }
 }
 
@@ -135,26 +153,21 @@ impl IOBase for Path {
         self.as_leaf().read_range_bytes(offset, length)
     }
 
-    /// Write through a member handle, publishing what this call staged.
+    /// Stage a write into the member this location resolves to.
     ///
-    /// A resolving location owns no staged member of its own, so the write is
-    /// published here rather than left for a flush the caller cannot reach.
+    /// The role is held, so the write stages exactly as it does on a member
+    /// handle and [`IOBase::flush`] publishes it. Publishing per call would
+    /// append a whole record per call.
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        let mut leaf = self.as_leaf();
-        let written = leaf.pwrite(offset, bytes)?;
-        leaf.flush()?;
-        Ok(written)
+        self.as_leaf_mut().pwrite(offset, bytes)
     }
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        self.as_leaf().write_all_bytes(bytes)
+        self.as_leaf_mut().write_all_bytes(bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
-        let mut leaf = self.as_leaf();
-        let offset = leaf.append_bytes(bytes)?;
-        leaf.flush()?;
-        Ok(offset)
+        self.as_leaf_mut().append_bytes(bytes)
     }
 
     fn size(&self) -> u64 {
@@ -173,9 +186,7 @@ impl IOBase for Path {
         if self.is_folder() {
             return self.as_node().truncate(size);
         }
-        let mut leaf = self.as_leaf();
-        leaf.truncate(size)?;
-        leaf.flush()
+        self.as_leaf_mut().truncate(size)
     }
 
     fn url(&self) -> Option<&Url> {
@@ -199,7 +210,11 @@ impl IOBase for Path {
         self.declared = Some(media_type);
     }
 
+    /// Publish what this location staged, and the directory that indexes it.
     fn flush(&mut self) -> Result<()> {
+        if self.leaf.get().is_some() {
+            return self.as_leaf_mut().flush();
+        }
         self.archive.flush()
     }
 
@@ -238,14 +253,14 @@ impl IOBase for Path {
         if self.is_folder() {
             return self.as_node().clear();
         }
-        self.as_leaf().clear()
+        self.as_leaf_mut().clear()
     }
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
         if self.is_folder() {
             return self.as_node().remove(recursive);
         }
-        self.as_leaf().remove(recursive)
+        self.as_leaf_mut().remove(recursive)
     }
 
     fn is_atomic(&self) -> bool {

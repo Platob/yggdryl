@@ -387,12 +387,18 @@ fn restart_extra(entry: &Entry) -> Vec<u8> {
 }
 
 /// Build the ZIP64 extra field a record needs, or nothing when it needs none.
+///
+/// A local header that states either size in the extra states *both*, which
+/// APPNOTE 6.3.10 requires of it: a reader that takes the pair as one unit
+/// would otherwise read the field behind it as the second half. A central
+/// record has no such rule and carries only the fields its own slots marked.
 fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
     let mut body = Vec::new();
-    if entry.size() >= u64::from(ZIP64_MARK_32) {
+    let both = local && settles_extra(entry);
+    if both || entry.size() >= u64::from(ZIP64_MARK_32) {
         put_u64(&mut body, entry.size());
     }
-    if entry.compressed_size() >= u64::from(ZIP64_MARK_32) {
+    if both || entry.compressed_size() >= u64::from(ZIP64_MARK_32) {
         put_u64(&mut body, entry.compressed_size());
     }
     // A local header states no offset of its own, so the field never travels
@@ -407,6 +413,21 @@ fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
     put_u16(&mut extra, ZIP64_EXTRA_ID);
     put_u16(&mut extra, body.len() as u16);
     extra.extend_from_slice(&body);
+    extra
+}
+
+/// Build the ZIP64 extra a header reserves before it knows the sizes.
+///
+/// A streamed member's sizes are only known once its last byte is encoded,
+/// and a header that grew to state them would move the bytes it introduces.
+/// So the room is taken up front and filled in afterwards, at the one length
+/// both spellings share.
+fn reserved_zip64_extra(entry: &Entry) -> Vec<u8> {
+    let mut extra = Vec::with_capacity(20);
+    put_u16(&mut extra, ZIP64_EXTRA_ID);
+    put_u16(&mut extra, 16);
+    put_u64(&mut extra, entry.size());
+    put_u64(&mut extra, entry.compressed_size());
     extra
 }
 
@@ -543,8 +564,17 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
 }
 
 /// Encode the local file header a member's bytes follow.
-pub(super) fn write_local(entry: &Entry, target: &mut Vec<u8>) {
-    let zip64 = zip64_extra(entry, true);
+///
+/// A write that does not yet know how long the member will be reserves the
+/// room, writes the bytes, and states the sizes into the header it already
+/// placed - which is only possible because the reserved shape has the length
+/// the settled one will have.
+pub(super) fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8>) {
+    let zip64 = if reserve {
+        reserved_zip64_extra(entry)
+    } else {
+        zip64_extra(entry, true)
+    };
     let timestamp = timestamp_extra(entry);
     let extra_len = zip64.len() + timestamp.len();
     let (date, time) = dos_datetime(entry.modified());
