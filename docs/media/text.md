@@ -206,6 +206,7 @@ column and appending the terminator.
 - `max_record_byte_size` unset -> no `dropped_byte_size` column; set but never exceeded -> null.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
+- classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever `msgtype` read before it.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - `body` holding the terminator -> write refused.
 - keyed merge -> unsupported; overwrite and append only.
