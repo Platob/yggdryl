@@ -128,6 +128,7 @@ enum DataTypeRef<'a> {
     TimeInForce {},
     Uuid {},
     Version {},
+    Url {},
     List {
         field: &'a Field,
     },
@@ -260,6 +261,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::TimeInForce => Self::TimeInForce {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
+            D::Url => Self::Url {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -386,6 +388,7 @@ enum DataTypeValue {
     TimeInForce {},
     Uuid {},
     Version {},
+    Url {},
     List {
         field: Field,
     },
@@ -502,6 +505,7 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::TimeInForce {} => Self::TimeInForce,
             DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::Version {} => Self::Version,
+            DataTypeValue::Url {} => Self::Url,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -634,6 +638,7 @@ impl DataType {
             D::TimeInForce => tag("timeinforce"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
+            D::Url => tag("url"),
             D::DateTime64 { unit, timezone } => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -876,6 +881,7 @@ impl DataType {
             "timeinforce" => Self::TimeInForce,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
+            "url" => Self::Url,
             "datetime64" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

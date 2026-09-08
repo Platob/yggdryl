@@ -907,7 +907,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 - the commit splitter -> slices batches as views and holds one cadence plus the current input remainder.
 - native row conversion -> bounded by the smaller of `batch_row_size` and `commit_row_size`, so a failed row keeps the committed prefix.
 - `TextOptions` `rowheader` -> frames logical records from its matches, with a bounded body prefix and an explicit leading-fragment policy.
-- `with_rownum` / `withRownum` -> records the first physical line of each result.
+- `start_rownum` / `startRownum` -> records the first physical line of each result.
 - generic `RecordOptions` -> keeps the shared timezone accessor.
 - plain folder -> earlier leaves stay published after a later leaf fails; see [Partitions](partitions.md).
 

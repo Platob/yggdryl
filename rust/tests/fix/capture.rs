@@ -79,9 +79,9 @@ fn handle() -> Buffer {
 /// The text options a capture is read under.
 fn text() -> RecordOptions {
     let mut options = TextOptions::new();
-    options.with_mimetype = true;
-    options.with_msgtype = true;
-    options.with_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
+    options.parse_direction = true;
     options.into()
 }
 

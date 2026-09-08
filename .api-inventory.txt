@@ -774,6 +774,7 @@ pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
   fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn read_range_digest(&self, offset: u64, length: usize, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest>
   fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64>
+  fn mtime(&self) -> Option<i64>
   fn read_scalar(&self, field: Option<&Field>) -> Result<Scalar>
   fn write_scalar(&mut self, value: &Scalar) -> Result<()>
   fn is_io(&self) -> bool
@@ -1377,6 +1378,16 @@ pub struct Text<H: IOBase>
   pub const fn into_text(self) -> Self
   pub fn into_text_with(self, options: TextOptions) -> Self
 
+### yggdryl::types::url  [rust\src\types\url\mod.rs]
+pub use fields::{UrlField, UrlScalar, UrlType};
+  pub type UrlField = TypedField<UrlType>;
+  pub struct UrlType
+  pub type UrlScalar = TypedScalar<UrlType>;
+  pub fn new(value: Scalar) -> Result<Self>
+  impl ScalarFamily for Url
+  impl ScalarValue for Url
+  impl From<Url> for Scalar
+
 ### yggdryl::media::text::leading  [rust\src\media\text\leading.rs]
 pub enum LeadingFragment
   pub const ALL: [Self; 3] = [Self::Keep, Self::Drop, Self::Error];
@@ -1385,7 +1396,8 @@ pub enum LeadingFragment
 
 ### yggdryl::media::text::options  [rust\src\media\text\options.rs]
 pub struct TextOptions
-  pub with_rownum: Option<i64>
+  pub start_rownum: Option<i64>
+  pub parse_mtime: bool
   pub fn new() -> Self
   pub const fn framing(&self) -> bool
   pub const fn set_framing(&mut self, framing: bool)

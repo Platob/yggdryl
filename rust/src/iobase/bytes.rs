@@ -142,7 +142,7 @@ macro_rules! delegate_iobase {
     ($handle:ident) => {
         $crate::delegate_iobase!(@methods $handle: pread, read_all_bytes, read_range_bytes,
             pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind, clear, remove, is_atomic, is_tabular, is_io);
     };
 
@@ -154,7 +154,7 @@ macro_rules! delegate_iobase {
     // five call sites.
     ($handle:ident, except_lifecycle) => {
         $crate::delegate_iobase!(@methods $handle: pread, pstream_bytes, pwrite, size, capacity, reserve,
-            truncate, url, bound_location, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
+            truncate, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent, child_by_path,
             ls, kind);
     };
 
@@ -233,6 +233,12 @@ macro_rules! delegate_iobase {
     (@method $handle:ident, bound_location) => {
         fn bound_location(&self) -> Option<&$crate::holder::fs::BoundLocation> {
             $crate::IOBase::bound_location(&self.$handle)
+        }
+    };
+
+    (@method $handle:ident, mtime) => {
+        fn mtime(&self) -> Option<i64> {
+            $crate::IOBase::mtime(&self.$handle)
         }
     };
 
@@ -566,6 +572,10 @@ impl IOBase for Box<dyn IOBase> {
 
     fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
         self.as_ref().bound_location()
+    }
+
+    fn mtime(&self) -> Option<i64> {
+        self.as_ref().mtime()
     }
 
     fn media_type(&self) -> &MediaType {

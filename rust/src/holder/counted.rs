@@ -109,6 +109,8 @@ pub enum Call {
     Url,
     /// [`IOBase::bound_location`].
     BoundLocation,
+    /// [`IOBase::mtime`].
+    Mtime,
     /// [`IOBase::media_type`].
     MediaType,
     /// [`IOBase::kind`].
@@ -173,6 +175,7 @@ impl Call {
         Self::Capacity,
         Self::Url,
         Self::BoundLocation,
+        Self::Mtime,
         Self::MediaType,
         Self::Kind,
         Self::IsContainer,
@@ -189,7 +192,7 @@ impl Call {
     ];
 
     /// How many distinct calls a tally holds.
-    pub const COUNT: usize = 31;
+    pub const COUNT: usize = 32;
 
     /// The method's name, spelled as the trait spells it.
     #[must_use]
@@ -213,6 +216,7 @@ impl Call {
             Self::Capacity => "capacity",
             Self::Url => "url",
             Self::BoundLocation => "bound_location",
+            Self::Mtime => "mtime",
             Self::MediaType => "media_type",
             Self::Kind => "kind",
             Self::IsContainer => "is_container",
@@ -251,6 +255,7 @@ impl Call {
             | Self::Capacity
             | Self::Url
             | Self::BoundLocation
+            | Self::Mtime
             | Self::MediaType
             | Self::Kind
             | Self::IsContainer
@@ -557,6 +562,10 @@ impl<H: IOBase> IOBase for Counted<H> {
 
     fn size(&self) -> u64 {
         self.record(Call::Size).size()
+    }
+
+    fn mtime(&self) -> Option<i64> {
+        self.record(Call::Mtime).mtime()
     }
 
     fn capacity(&self) -> u64 {

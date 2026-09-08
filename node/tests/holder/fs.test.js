@@ -954,9 +954,25 @@ test('handler-backed framed text resets at every leaf', () => {
   assert.deepEqual(
     table.schema.fields.map((field) => [field.name, field.nullable]),
     [
-      ['url', false],
+      ['url', true],
+      ['mtime', true],
       ['body', false],
       ['level', true],
+    ],
+  )
+  // The url column is the `url` datatype: Utf8 storage under the extension
+  // identity, and it names the leaf each row was actually read from.
+  assert.equal(table.schema.fields[0].type.toString(), 'Utf8')
+  assert.equal(
+    table.schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.url',
+  )
+  assert.deepEqual(
+    [...table.getChild('url')],
+    [
+      'memory://bound/bucket/logs/a.txt',
+      'memory://bound/bucket/logs/b.txt',
+      'memory://bound/bucket/logs/b.txt',
     ],
   )
   assert.deepEqual(

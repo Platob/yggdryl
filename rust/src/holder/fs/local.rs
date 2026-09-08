@@ -6,8 +6,8 @@ use std::collections::BinaryHeap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::holder::system_time_ns;
 use crate::{Error, IOKind, Result};
 
 use super::{
@@ -281,15 +281,6 @@ impl Iterator for LocalListing {
             }
         }
         Some(Ok(info))
-    }
-}
-
-fn system_time_ns(value: SystemTime) -> Option<i64> {
-    match value.duration_since(UNIX_EPOCH) {
-        Ok(duration) => i64::try_from(duration.as_nanos()).ok(),
-        Err(error) => i64::try_from(error.duration().as_nanos())
-            .ok()
-            .and_then(i64::checked_neg),
     }
 }
 

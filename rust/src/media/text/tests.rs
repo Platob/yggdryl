@@ -124,7 +124,7 @@ fn options_are_flat_and_validate_rowheader_names() {
         .with_max_record_byte_size(1_024)
         .with_autotype(false)
         .with_timezone(Timezone::UTC);
-    options.with_rownum = Some(-3);
+    options.start_rownum = Some(-3);
     options.set_batch_row_size(Some(7));
 
     assert_eq!(
@@ -139,7 +139,7 @@ fn options_are_flat_and_validate_rowheader_names() {
     assert_eq!(options.max_record_byte_size(), Some(1_024));
     assert!(!options.autotype());
     assert_eq!(options.timezone(), Some(&Timezone::UTC));
-    assert_eq!(options.with_rownum, Some(-3));
+    assert_eq!(options.start_rownum, Some(-3));
     assert_eq!(options.batch_row_size(), Some(7));
 
     let error = TextOptions::new()
@@ -156,7 +156,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
         b"  [INFO] id=7 first  \r\n[WARN] id=9 second\nplain\r",
     );
     let mut text = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
-    text.with_rownum = Some(10);
+    text.start_rownum = Some(10);
     text.set_lstrip(Some(r"^\s+")).unwrap();
     text.set_rstrip(Some(r"\s+$")).unwrap();
     let options = text.into();
@@ -170,9 +170,10 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     let batch = &batches[0];
     assert_eq!(batch.schema().field(0).name(), "url");
     assert_eq!(batch.schema().field(1).name(), "rownum");
-    assert_eq!(batch.schema().field(2).name(), "body");
+    assert_eq!(batch.schema().field(2).name(), "mtime");
+    assert_eq!(batch.schema().field(3).name(), "body");
     assert_eq!(
-        batch.schema().field(4).data_type(),
+        batch.schema().field(5).data_type(),
         &arrow_schema::DataType::Int64
     );
     assert_eq!(
@@ -186,7 +187,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -200,7 +201,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(4)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -232,7 +233,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Int64
     );
 
@@ -244,7 +245,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Utf8
     );
     assert_eq!(
@@ -254,14 +255,14 @@ fn capture_schema_is_derived_from_regex_before_reading() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "body", "value"]
+        ["url", "mtime", "body", "value"]
     );
 }
 
 #[test]
 fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
     let mut options = TextOptions::new();
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(1));
     let mut reader = named("rows.log", b"first\nsecond\n")
         .read_arrow_reader(&options.into())
@@ -323,12 +324,12 @@ fn autotyping_reads_a_session_clock_past_the_end_of_its_day() {
         .unwrap();
 
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<arrow_array::Time32SecondArray>()
             .unwrap()
@@ -362,12 +363,12 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(1)
+            .column(2)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -376,7 +377,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(4)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -385,7 +386,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(4)
+            .column(5)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -401,7 +402,7 @@ fn framing_normalizes_every_physical_terminator_and_keeps_start_rownums() {
         b"[A] first\ncontinuation one\r\n[B] second\rcontinuation two",
     );
     let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
-    options.with_rownum = Some(10);
+    options.start_rownum = Some(10);
     options.set_batch_row_size(Some(1));
 
     let batches = collect(&source, options);
@@ -452,7 +453,7 @@ fn text_row_size_counts_logical_records_when_framing_is_enabled() {
 fn text_row_size_ignores_row_value_conversion_and_retains_no_bodies() {
     let source = named("count-raw.log", b"A first\ncontinued\n\xFF second\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     let text = Text::new(source).with_options(options);
 
     // The second output row cannot be represented by the configured rownum,
@@ -464,7 +465,7 @@ fn text_row_size_ignores_row_value_conversion_and_retains_no_bodies() {
 fn a_result_row_limit_does_not_convert_the_following_record() {
     let source = named("limited-values.log", b"A first\n\xFF invalid\n");
     let mut options = framed(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
     options.set_max_row_size(Some(1));
 
@@ -477,7 +478,7 @@ fn a_result_row_limit_does_not_convert_the_following_record() {
 fn a_physical_row_limit_does_not_convert_the_following_line() {
     let source = named("limited-lines.log", b"A first\n\xFF invalid\n");
     let mut options = options(r"^(?<kind>(?-u:.)) ");
-    options.with_rownum = Some(i64::MAX);
+    options.start_rownum = Some(i64::MAX);
     options.set_batch_row_size(Some(8));
     options.set_max_row_size(Some(1));
 
@@ -505,7 +506,7 @@ fn leading_fragments_are_kept_dropped_or_rejected_and_eof_finishes_a_record() {
     let source = named("leading.log", b"before\nstill before\n[A] final");
 
     let mut keep = framed(r"^\[(?<kind>[A-Z])\] ");
-    keep.with_rownum = Some(1);
+    keep.start_rownum = Some(1);
     let kept = collect(&source, keep);
     assert_eq!(
         bodies(&kept),
@@ -668,7 +669,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "body", "dropped_byte_size", "kind"]
+        ["url", "mtime", "body", "dropped_byte_size", "kind"]
     );
     assert!(
         reader
@@ -695,7 +696,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            ["url", "body", "dropped_byte_size", "kind"]
+            ["url", "mtime", "body", "dropped_byte_size", "kind"]
         );
         assert!(
             reader
@@ -739,7 +740,7 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
     second.write_all_bytes(b"leading in b\n[B] second").unwrap();
 
     let mut options = framed(r"^\[(?<kind>[A-Z])\] ");
-    options.with_rownum = Some(1);
+    options.start_rownum = Some(1);
     let batches = collect(&folder, options);
     assert_eq!(
         bodies(&batches),
@@ -882,9 +883,9 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .concat(),
     );
     let mut options = TextOptions::new();
-    options.with_mimetype = true;
-    options.with_msgtype = true;
-    options.with_direction = true;
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
+    options.parse_direction = true;
 
     // The columns a classifying read declares, in order.
     let field = options.source_field().unwrap();
@@ -895,7 +896,10 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(names, ["url", "direction", "mimetype", "msgtype", "body"]);
+    assert_eq!(
+        names,
+        ["url", "mtime", "direction", "mimetype", "msgtype", "body"]
+    );
 
     let batches = collect(&source, options);
     assert_eq!(
@@ -1007,7 +1011,7 @@ fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
         b"sending >> 8=FIX.4.4|35=D|10=1|\nrecv >> 8=FIX.4.4|35=D|10=1|\n".to_vec(),
     );
     let mut options = TextOptions::new().try_with_lstrip([r"^>>\s*"]).unwrap();
-    options.with_direction = true;
+    options.parse_direction = true;
     options.dedup_adjacent = true;
     assert_eq!(bodies(&collect(&prefixed, options)).len(), 1);
 }
@@ -1275,4 +1279,123 @@ mod fetching {
             "emptiness is answered by the first window, not by a one-byte read"
         );
     }
+}
+
+#[test]
+fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
+    use arrow_array::TimestampNanosecondArray;
+
+    // The expression dates the line, so the column is the line's own reading
+    // resolved into UTC - not the moment the file happened to be written.
+    let source = named("dated.log", b"2020-01-02T03:04:05Z id=7 first\n");
+    let batch = collect(&source, options(r"^(?<mtime>\S+) id=(?<id>\d+) "))
+        .pop()
+        .unwrap();
+    let schema = batch.schema();
+    let names: Vec<&str> = schema
+        .fields()
+        .iter()
+        .map(|field| field.name().as_str())
+        .collect();
+    // One column, not two: the capture fills `mtime` rather than sitting
+    // beside it under the same name.
+    assert_eq!(names, ["url", "mtime", "body", "id"]);
+    assert_eq!(
+        batch.schema().field(1).data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
+    );
+    assert_eq!(
+        batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<TimestampNanosecondArray>()
+            .unwrap()
+            .value(0),
+        1_577_934_245_000_000_000
+    );
+}
+
+#[test]
+fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
+    use arrow_array::Array as _;
+
+    // A buffer records no such fact, and the reader says so rather than
+    // inventing a clock reading.
+    let batch = collect(&named("plain.log", b"first\nsecond\n"), TextOptions::new())
+        .pop()
+        .unwrap();
+    let mtime = batch.column_by_name("mtime").unwrap();
+    assert_eq!(mtime.len(), 2);
+    assert_eq!(mtime.null_count(), 2);
+}
+
+#[test]
+fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
+    use crate::holder::local::File;
+    use arrow_array::TimestampNanosecondArray;
+
+    let directory = std::env::temp_dir().join("yggdryl_text_mtime");
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("undated.log");
+    std::fs::write(&path, b"first\nsecond\n").unwrap();
+    let handle = File::new(&path).unwrap();
+    let expected = handle.mtime().expect("a filesystem modification time");
+
+    let batch = collect(&handle, TextOptions::new()).pop().unwrap();
+    let values = batch
+        .column_by_name("mtime")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<TimestampNanosecondArray>()
+        .unwrap();
+    // Every row shares the handle's answer: one fact about the object, read
+    // once and repeated, never one stat per line.
+    assert_eq!(values.values(), &[expected, expected]);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn the_mtime_column_is_off_when_the_flag_is_and_frees_its_name_for_a_capture() {
+    let mut plain = TextOptions::new();
+    plain.parse_mtime = false;
+    let batch = collect(&named("plain.log", b"first\n"), plain)
+        .pop()
+        .unwrap();
+    assert!(batch.column_by_name("mtime").is_none());
+
+    // With no column of that name, a capture spelled `mtime` is an ordinary
+    // one, typed by its own syntax rather than by the column it no longer
+    // fills.
+    let mut captured = options(r"^(?<mtime>\d+) ");
+    captured.parse_mtime = false;
+    let batch = collect(&named("counted.log", b"77 first\n"), captured)
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field(2).data_type(),
+        &arrow_schema::DataType::Int64
+    );
+}
+
+#[test]
+fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
+    // Every fixed column is optional, so a capture's datatype cannot be found
+    // by counting the ones in front of it: with the classification columns on,
+    // that count was wrong and a capture was parsed at another column's type.
+    let mut options = options(r"^(?<seen>\d{4}-\d{2}-\d{2}) id=(?<id>\d+) ");
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
+    options.parse_direction = true;
+    let batch = collect(&named("wide.log", b"2020-01-02 id=7 first\n"), options)
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field_with_name("seen").unwrap().data_type(),
+        &arrow_schema::DataType::Date32
+    );
+    assert_eq!(
+        batch.schema().field_with_name("id").unwrap().data_type(),
+        &arrow_schema::DataType::Int64
+    );
 }

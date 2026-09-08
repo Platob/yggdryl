@@ -192,8 +192,9 @@ impl DataType {
             return Ok(self.clone());
         }
         // A version has numeric ordering semantics that a text or numeric
-        // merge cannot preserve. Only the equal-type arm above may merge it.
-        if matches!(self, Self::Version) || matches!(other, Self::Version) {
+        // merge cannot preserve, and a URL carries a validation a text merge
+        // would silently drop. Only the equal-type arm above may merge either.
+        if matches!(self, Self::Version | Self::Url) || matches!(other, Self::Version | Self::Url) {
             return Err(unmergeable(self, other));
         }
         if let Some(merged) = merge_encoded(self, other, how, recode)? {

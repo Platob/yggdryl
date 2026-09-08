@@ -259,6 +259,14 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
+            Field::new("url", DataType::Url, true),
+            Scalar::from_sequence([
+                DataType::Url.scalar("https://example.com/a").unwrap(),
+                DataType::Url.scalar("file:///lake/part.txt").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("binary", DataType::Binary, true),
             Scalar::from_sequence([
                 Scalar::from(Arc::from(b"".as_slice())),

@@ -121,10 +121,15 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // ASCII, UUID, and Version carry value rules `PyArrow` does not own.
+    // ASCII, UUID, Version, and Url carry value rules `PyArrow` does not own.
     // Route them through the core once rather than letting Python's storage
     // shape silently bypass padding, parsing, or canonicalization.
-    if dtype.is_ascii() || matches!(dtype, CoreDataType::Uuid | CoreDataType::Version) {
+    if dtype.is_ascii()
+        || matches!(
+            dtype,
+            CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
+        )
+    {
         return core_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
@@ -133,7 +138,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
 
 /// Store one custom scalar through the core boundary.
 ///
-/// `PyArrow` does not own ASCII padding, UUID parsing, or Version
+/// `PyArrow` does not own ASCII padding, UUID parsing, URL validation, or Version
 /// canonicalization. A Python value therefore crosses as a `Scalar` and takes
 /// the core value contract; a `PyArrow` scalar takes the core cast plan. Both
 /// run under a nullable field so `None` stays null; the caller's field decides
@@ -441,6 +446,7 @@ impl PyDataType {
             "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
+            "url" => CoreDataType::Url,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"

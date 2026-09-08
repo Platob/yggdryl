@@ -129,6 +129,13 @@ impl IOBase for Path {
             .unwrap_or(0)
     }
 
+    fn mtime(&self) -> Option<i64> {
+        self.filesystem()
+            .file_info(self.path())
+            .ok()
+            .and_then(|info| info.mtime_ns)
+    }
+
     fn capacity(&self) -> u64 {
         self.size()
     }

@@ -910,6 +910,7 @@ static_field_constructor!(super::ascii::MsgDirectionType, DataType::MsgDirection
 static_field_constructor!(super::nested::VariantType, DataType::Variant);
 static_field_constructor!(super::uuid::UuidType, DataType::Uuid);
 static_field_constructor!(super::version::VersionType, DataType::Version);
+static_field_constructor!(super::url::UrlType, DataType::Url);
 
 #[cfg(test)]
 mod tests;

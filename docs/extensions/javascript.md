@@ -812,7 +812,7 @@ and validates a plain object. Resolution and merging are the core's, on the
   `loadsRaw`/`dumpsRaw` on `zlib`, reading and writing what `node:zlib` does.
 - A handle -> applies the coding its name declares without being told;
   `IOBase.codec` asks which one that is.
-- `TextOptions.withRownum` -> `bigint | null` over the whole signed 64-bit
+- `TextOptions.startRownum` -> `bigint | null` over the whole signed 64-bit
   range; a `number` is rejected, never silently narrowed.
 - `TextOptions` logical framing -> `framing`, `leadingFragment`, and
   `maxRecordByteSize`, contracted in [plain-text records](../media/text.md).

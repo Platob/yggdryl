@@ -262,21 +262,33 @@ impl JsTextOptions {
 
     /// The first emitted row number, or `null` when the column is omitted.
     #[napi(getter)]
-    pub fn with_rownum(&self) -> Option<BigInt> {
-        self.inner.with_rownum.map(BigInt::from)
+    pub fn start_rownum(&self) -> Option<BigInt> {
+        self.inner.start_rownum.map(BigInt::from)
     }
 
     /// Set or clear the exact signed 64-bit starting row number.
     #[napi(setter)]
-    pub fn set_with_rownum(&mut self, value: Option<BigInt>) -> Result<()> {
-        self.inner.with_rownum = value
+    pub fn set_start_rownum(&mut self, value: Option<BigInt>) -> Result<()> {
+        self.inner.start_rownum = value
             .map(|value| {
-                let value = crate::exact_i128(&value, "withRownum")?;
+                let value = crate::exact_i128(&value, "startRownum")?;
                 i64::try_from(value)
-                    .map_err(|_| Error::from_reason("withRownum must be a signed 64-bit integer"))
+                    .map_err(|_| Error::from_reason("startRownum must be a signed 64-bit integer"))
             })
             .transpose()?;
         Ok(())
+    }
+
+    /// Whether an `mtime` column states when each record was written.
+    #[napi(getter)]
+    pub fn parse_mtime(&self) -> bool {
+        self.inner.parse_mtime
+    }
+
+    /// Enable or disable the `mtime` column.
+    #[napi(setter)]
+    pub fn set_parse_mtime(&mut self, value: bool) {
+        self.inner.parse_mtime = value;
     }
 
     /// Return whether physical lines are framed into logical records.

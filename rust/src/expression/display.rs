@@ -425,6 +425,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Text(held) => Some(SmolStr::new(held.as_str())),
         Scalar::Ascii(held) => Some(SmolStr::new(held.as_str())),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the

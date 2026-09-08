@@ -231,6 +231,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['cfi', fields.cfi('value')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
+    ['url', fields.url('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -253,7 +254,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['geography', fields.geography('value', 'OGC:CRS84', 'vincenty')],
   ])
 
-  assert.equal(byId.size, 53)
+  assert.equal(byId.size, 54)
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
   // factories default the same way, so one declared schema cannot disagree
@@ -317,6 +318,63 @@ test('the ascii factories build the variable form and one fixed width', () => {
   assert.throws(
     () => fields.fixedAscii('code', 0),
     /expected an ASCII width of at least 1 byte, got 0/,
+  )
+})
+
+test('the url factory builds a validated, canonical location column', () => {
+  const location = fields.url('location')
+
+  assert.equal(location.dtype.id, 'url')
+  assert.equal(location.dtype.kind, 'text')
+  assert.equal(location.nullable, true)
+  assert.equal(fields.url('location', { nullable: false }).nullable, false)
+  assert.equal(
+    fields.url('location', { metadata: { role: 'source' } }).get('role'),
+    'source',
+  )
+  const declared = fields.url('location', { nullable: false })
+  assert.equal(location.defaultJSValue(), null)
+  // A location has no zero, so the non-null column's default is the shortest
+  // URL the validator accepts: the filesystem root.
+  assert.equal(declared.defaultJSValue(), 'file:///')
+
+  // A location is stored canonically, not as the caller happened to spell it:
+  // the scheme and host case fold, percent-escapes take their upper-case
+  // spelling, and a bare path is the file URL it names.
+  assert.deepEqual(
+    Array.from(
+      declared.castArrowArray(
+        arrow.vectorFromArray(
+          ['HTTPS://example.com/a%2fb', '/lake/part.txt'],
+          new arrow.Utf8(),
+        ),
+      ),
+    ),
+    ['https://example.com/a%2Fb', 'file:///lake/part.txt'],
+  )
+
+  // Relative text names no location, so it is refused rather than stored as
+  // itself - and the empty string is refused with the rest of it.
+  for (const relative of ['./rel', 'example.com/x', '']) {
+    assert.throws(
+      () =>
+        declared.castArrowArray(
+          arrow.vectorFromArray([relative], new arrow.Utf8()),
+        ),
+      /does not read as url/,
+      relative,
+    )
+  }
+
+  // Absence is still absence: a nullable location column holds nulls, which
+  // is what an unlocated handle writes instead of an empty string.
+  assert.deepEqual(
+    Array.from(
+      location.castArrowArray(
+        arrow.vectorFromArray([null, 'https://example.com/'], new arrow.Utf8()),
+      ),
+    ),
+    [null, 'https://example.com/'],
   )
 })
 

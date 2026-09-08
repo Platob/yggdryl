@@ -544,7 +544,7 @@ impl PyField {
         let scalar = if self.inner.dtype().is_ascii()
             || matches!(
                 self.inner.dtype(),
-                CoreDataType::Uuid | CoreDataType::Version
+                CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
             ) {
             core_arrow_scalar(py, value, self.inner.dtype(), safe)?
         } else {

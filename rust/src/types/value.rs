@@ -855,6 +855,18 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
+        D::Url => match value {
+            Scalar::Url(_) => Ok((value.clone(), false)),
+            // Text is canonicalized on the way in, so a column of URLs holds
+            // one spelling per location however it was written.
+            Scalar::Text(text) => crate::Url::from_str(text.as_str())
+                .map(|url| (Scalar::Url(std::sync::Arc::new(url)), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected url text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -1488,6 +1500,13 @@ fn validate_dtype_value(
                 .map(|_| ())
                 .map_err(|_| expected("version", value)),
             _ => Err(expected("version", value)),
+        },
+        D::Url => match value {
+            Scalar::Url(_) => Ok(()),
+            Scalar::Text(text) => crate::Url::from_str(text.as_str())
+                .map(|_| ())
+                .map_err(|_| expected("url", value)),
+            _ => Err(expected("url", value)),
         },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)

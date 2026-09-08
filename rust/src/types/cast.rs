@@ -324,6 +324,7 @@ enum ArrayCastKind {
     UuidText,
     /// Text entering a version is parsed and rewritten to its canonical text.
     VersionIngest,
+    UrlIngest,
     /// Text entering a decimal: every exposed value is read at the declared
     /// scale, and a digit that scale cannot state stays refused rather than
     /// rounded away - dropping a digit off a price is a value change.
@@ -498,6 +499,7 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
             ),
+            DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -678,6 +680,10 @@ impl ArrayCastPlan {
             (DataType::Version, source) if is_text_storage(source) => ArrayCastKind::VersionIngest,
             (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to version is not supported"),
+            },
+            (DataType::Url, source) if is_text_storage(source) => ArrayCastKind::UrlIngest,
+            (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to url is not supported"),
             },
             (
                 DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
@@ -1091,6 +1097,9 @@ impl ArrayCastPlan {
             ArrayCastKind::VersionIngest => {
                 ingest_version_array(&array, &self.field, exposure, budget)?
             }
+            ArrayCastKind::UrlIngest => {
+                crate::types::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
+            }
             ArrayCastKind::AsciiText => {
                 render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
@@ -1360,6 +1369,14 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         (other, RecognizedExtension::Version) => Err(Error::Unsupported {
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
+        }),
+        (
+            DataType::Url | DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
+            RecognizedExtension::Url,
+        ) => Ok(()),
+        (other, RecognizedExtension::Url) => Err(Error::Unsupported {
+            kind: "url",
+            reason: format!("casting url to {} is not supported", other.name()),
         }),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",

@@ -204,6 +204,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::State(_)) => Ok(DataType::State),
             Self::Ascii(AsciiFamily::TimeInForce(_)) => Ok(DataType::TimeInForce),
             Self::Version(_) => Ok(DataType::Version),
+            Self::Url(_) => Ok(DataType::Url),
             Self::Uuid(_) => Ok(DataType::Uuid),
             Self::Enum(_) => Ok(DataType::Utf8),
             Self::Bytes(Bytes::Binary(_)) => Ok(DataType::Binary),

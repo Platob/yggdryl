@@ -8,6 +8,7 @@ import {
   TextOptions,
   Timezone,
   Url,
+  fields,
   type BatchReader,
   type BufferedOptions,
   type Field,
@@ -16,6 +17,7 @@ import {
   type PartitionFilters,
   type ParquetFileStatistics,
   type ParquetGeospatialStatistics,
+  type UrlField,
 } from '../..'
 
 const location: LocationInput = 'file:///lake'
@@ -164,7 +166,9 @@ textOptions.leadingFragment = 'drop'
 textOptions.maxRecordByteSize = 4096
 textOptions.maxRecordByteSize = null
 textOptions.rowheader = '\\[(?<level>[A-Z]+)\\]'
-textOptions.withRownum = 1n
+textOptions.startRownum = 1n
+textOptions.parseMtime = false
+textOptions.parseMtime = true
 textOptions.lstrip = ['^\\s+']
 textOptions.rstrip = ['\\s+$']
 textOptions.linesep = new Uint8Array([13, 10])
@@ -184,7 +188,8 @@ const textRstrip: string[] = textOptions.rstrip
 const textLinesep: Buffer | null = textOptions.linesep
 const textAutotype: boolean = textOptions.autotype
 const textTimezone: Timezone | null = textOptions.timezone
-const textRownum: bigint | null = textOptions.withRownum
+const textRownum: bigint | null = textOptions.startRownum
+const textParseMtime: boolean = textOptions.parseMtime
 const lineBatches: BatchReader = handle.readArrowReader(textOptions)
 const lineRecords: IterableIterator<Record<string, unknown>> =
   handle.readRecords(textOptions)
@@ -204,10 +209,31 @@ void textLinesep
 void textAutotype
 void textTimezone
 void textRownum
+void textParseMtime
 void retainedText
+
+// The plain-text `url` column is the `url` datatype, and it is nullable: a
+// handle with no location has no URL text to write, so the column holds null
+// rather than the empty string, which is not a location at all.
+const textUrlColumn: UrlField = fields.url('url')
+const locatedUrlColumn: UrlField = fields.url('url', { nullable: false })
+const textUrlId: 'url' = textUrlColumn.dtype.id
+const textUrlKind: 'text' = textUrlColumn.dtype.kind
+const textUrlValue: string | null = textUrlColumn.defaultJSValue()
+const locatedUrlValue: string = locatedUrlColumn.defaultJSValue()
+
+void textUrlColumn
+void locatedUrlColumn
+void textUrlId
+void textUrlKind
+void textUrlValue
+void locatedUrlValue
 
 // @ts-expect-error leading fragments use the closed core vocabulary
 textOptions.leadingFragment = 'preserve'
+
+// @ts-expect-error the mtime column is on or off, never a column name
+textOptions.parseMtime = 'mtime'
 
 const coding: string | null = handle.codec
 const encoded: number = handle.compressInto(memory)

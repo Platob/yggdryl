@@ -10,7 +10,9 @@ itself.
 
 from __future__ import annotations
 
+import datetime
 import gzip as stdlib_gzip
+import os
 import pathlib
 import re
 
@@ -35,13 +37,17 @@ from yggdryl.holder import (
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 PLAIN = b"symbol,price\nAAPL,1\n"
+MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
 @pytest.fixture
 def log(tmp_path: pathlib.Path) -> pathlib.Path:
-    """A real gzip-compressed text file on disk."""
+    """A real gzip-compressed text file on disk, dated to the microsecond a
+    ``datetime`` holds."""
     location = tmp_path / "data.txt.gz"
     location.write_bytes(stdlib_gzip.compress(PLAIN))
+    stamp = int(MTIME.timestamp()) * 1_000_000_000 + MTIME.microsecond * 1_000
+    os.utime(location, ns=(stamp, stamp))
     return location
 
 
@@ -61,9 +67,11 @@ class TestTheNameComposesTheHandle:
         assert str(handle.media_type) == "text/plain"
         assert handle.codec == "gzip"
         assert handle.read_bytes() == PLAIN
-        assert [row["body"] for row in handle.read_records()] == [
-            b"symbol,price",
-            b"AAPL,1",
+        # The rows are the decoded ones, dated by the location holding the
+        # coded bytes, because that is the layer that has a modification time.
+        assert [(row["body"], row["mtime"]) for row in handle.read_records()] == [
+            (b"symbol,price", MTIME),
+            (b"AAPL,1", MTIME),
         ]
 
     def test_a_file_url_composes_exactly_as_the_path_does(
