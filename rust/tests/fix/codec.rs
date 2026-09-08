@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::holder::local::Folder;
+use yggdryl::types::State;
 use yggdryl::{DataType, FixCodec, FixEntry, FixRegistry, Scalar, Version};
 
 fn registry() -> Arc<FixRegistry> {
@@ -650,6 +651,39 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
         "the inner counter is no root column"
     );
     assert!(message.anomalies().next().is_none());
+}
+
+#[test]
+fn a_state_code_is_read_through_the_name_its_field_gives_it() {
+    let reader = reader();
+    // `D` is one letter in two code sets: Restated as an `ExecType`, which
+    // leaves the order replaced, and AcceptedForBidding as an `OrdStatus`,
+    // which is an acknowledgement. The column reads the name the field gives
+    // the code, so each lands where its own specification puts it.
+    let restated = reader
+        .transform_line(b"8=FIX.4.4|35=8|150=D|10=0|", true)
+        .unwrap();
+    assert_eq!(
+        restated.by_tag(150).unwrap().as_str(),
+        Some(State::from_spelling("Restated").unwrap().as_str())
+    );
+    // The derived state follows the typed column, not the letter.
+    assert_eq!(
+        restated.by_tag(yggdryl::STATE_TAG).unwrap().as_str(),
+        Some(State::from_spelling("Restated").unwrap().as_str())
+    );
+    let bidding = reader
+        .transform_line(b"8=FIX.4.4|35=8|39=D|10=0|", true)
+        .unwrap();
+    assert_eq!(
+        bidding.by_tag(39).unwrap().as_str(),
+        Some(State::from_spelling("AcceptedForBidding").unwrap().as_str())
+    );
+    // A code both sets spell alike reads alike, whichever field carries it.
+    let new = reader
+        .transform_line(b"8=FIX.4.4|35=8|39=0|150=0|10=0|", false)
+        .unwrap();
+    assert_eq!(new.by_tag(39).unwrap(), new.by_tag(150).unwrap());
 }
 
 #[test]

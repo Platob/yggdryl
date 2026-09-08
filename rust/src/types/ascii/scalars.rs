@@ -513,7 +513,7 @@ static STATE_NAMES: &[(&str, &str)] = &[
     ("reject", "95REJECTED"),
     ("rejected", "95REJECTED"),
     ("replaced", "70REPLACED"),
-    ("restated", "70REPLACED"),
+    ("restated", "70RESTATED"),
     ("running", "30RUNNING"),
     ("starting", "20STARTING"),
     ("stopped", "50STOPPED"),

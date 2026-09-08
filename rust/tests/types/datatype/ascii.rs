@@ -370,6 +370,7 @@ fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
         "40PARTFILL",
         "60PENDCXL",
         "70REPLACED",
+        "70RESTATED",
     ] {
         assert!(State::new(held).unwrap().is_live(), "{held}");
     }

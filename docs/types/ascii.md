@@ -518,7 +518,11 @@ Python-only enum bases: [Python boundary](../extensions/python.md).
 `OrdStatus(39)` says where the order stands and `ExecType(150)` says what the
 report is - and a scheduler names a job's state in ordinary English. They are
 the same shape, so a capture and the pipeline reading it need one vocabulary
-rather than two and a join.
+rather than two and a join. The two FIX code sets share their letters and not
+always their meaning - `D` is Restated in one and AcceptedForBidding in the
+other - so a [FIX column](../fix/capture.md) reads a code through the name its
+own field gives it before it reads the letter: `150=D` is `70RESTATED` and
+`39=D` is `20ACCEPTED`.
 
 A value is **two decimal digits of rank then a name**, ten ASCII bytes. The
 rank is what makes the stored bytes sort from the first state to the terminal
@@ -540,7 +544,7 @@ already stored. `State::rank` answers the two digits as the number they spell.
 | `40` | working, and something has happened | `40INPROGR`, `40PARTFILL`, `40TRADE`, `40TRDCORR`, `40TRDCXL`, `40TRDHOLD` |
 | `50` | halted, and able to resume | `50PAUSED`, `50STOPPED`, `50SUSPEND` |
 | `60` | a change is outstanding | `60PENDCXL`, `60PENDRPL` |
-| `70` | changed, and the new thing carries on | `70REPLACED` |
+| `70` | changed, and the new thing carries on | `70REPLACED`, `70RESTATED` |
 | `80` | ended, having done what was asked | `80CALCULAT`, `80COMPLETE`, `80DONEDAY`, `80FILLED`, `80SUCCESS`, `80TRDRELS` |
 | `90` | ended, because someone stopped it | `90CANCELED` |
 | `95` | ended, because it could not be done | `95EXPIRED`, `95FAILED`, `95REJECTED`, `95TIMEOUT` |

@@ -29,6 +29,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
 use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
+use crate::types::State;
+use crate::types::ascii::AsciiFamily;
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -498,6 +500,19 @@ impl<'registry> Builder<'registry> {
             return field
                 .scalar(Scalar::from(raw.to_vec()))
                 .unwrap_or(Scalar::Null);
+        }
+        // A state is read through the name the field gives its code before
+        // the code itself, because two fields share a letter and not a
+        // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
+        // an `OrdStatus`. The code answers where the dictionary names none.
+        if matches!(field.dtype(), DataType::State) {
+            let named = match self.version {
+                Some(at) => view.code_name_at(at, spelling),
+                None => view.code_name(spelling),
+            };
+            if let Some(state) = named.and_then(State::from_spelling) {
+                return Scalar::Ascii(AsciiFamily::State(state));
+            }
         }
         // Every wire value is text, and the generic value contract does not
         // read text as a number, an instant or a flag. Two of those it can

@@ -219,6 +219,7 @@ impl AsciiEnum {
         "60PENDCXL",
         "60PENDRPL",
         "70REPLACED",
+        "70RESTATED",
         "80CALCULAT",
         "80COMPLETE",
         "80DONEDAY",
