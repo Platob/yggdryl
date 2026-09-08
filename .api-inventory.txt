@@ -588,6 +588,27 @@ pub struct FixRegistry
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
+### yggdryl::fix::crated  [rust\src\fix\crated.rs]
+pub const CRATE_BRANCH: &str = "yggdryl";
+pub const MSGHASH_TAG: i32 = 30001;
+pub const VERSION_TAG: i32 = 30002;
+pub const SYMBOLTICKER_TAG: i32 = 30003;
+pub const TIMESTAMP_TAG: i32 = 30004;
+pub const UNIXPARTITION_TAG: i32 = 30005;
+pub const PARENTCLORDID_TAG: i32 = 30006;
+pub const PARENTORDERID_TAG: i32 = 30007;
+pub const SESSIONID_TAG: i32 = 30008;
+pub const MSGCTXID_TAG: i32 = 30009;
+pub const SENDERPLUGINID_TAG: i32 = 30010;
+pub const TARGETPLUGINID_TAG: i32 = 30011;
+pub const TIMESTAMP_NAME: &str = "timestamp";
+pub const MSGDIRECTION_TAG: i32 = 385;
+pub const MSGTYPE_TAG: i32 = 35;
+pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (eleven fields in tag order; every FixRegistry holds them from construction)
+impl FixRegistry
+  pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<MsgType>
+
 ### yggdryl::fix::schema  [rust\src\fix\schema.rs]
 pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
@@ -598,8 +619,10 @@ pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
 pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
+pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>
+pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>
 impl FixMsg
-  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
+  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its folded name and filled by its field's tag, so `schema.index_of("msgtype")` is where the type sits)
   pub fn symbol_ticker(&self) -> Scalar
   pub fn market_timestamp(&self) -> Scalar
   pub fn unix_partition(&self, seconds: i64) -> Scalar
@@ -617,6 +640,7 @@ pub const OPERATION_TAG: i32 = 20_002;
 pub const STATUS_TAG: i32 = 20_003;
 pub const ERROR_TAG: i32 = 20_004;
 pub const SESSIONINTERFACES_TAG: i32 = 20_005;
+pub const ULBRIDGE_ROWHEADER: &str  (the row header a bridge log writes: timestamp, threadId with optional sessionId, msgCtxId and seqNum, plugin, level)
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>

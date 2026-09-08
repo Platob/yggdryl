@@ -18,6 +18,7 @@
 use crate::{Error, Result, Scalar, Version};
 
 use super::FixBranch;
+use super::build::RowExtras;
 use super::codec::FixCodec;
 use super::msg::FixMsg;
 
@@ -32,11 +33,32 @@ pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 pub(super) const BRANCH_COLUMN: &str = "branch";
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
 pub(super) const SEPARATOR_COLUMN: &str = "sep";
+/// The column a row states its own clock in, which stamps the message.
+pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_NAME;
+/// The column a row states its direction in, read by the batch reader.
+pub(super) const DIRECTION_COLUMN: &str = "direction";
 
-/// What one row states for itself beside its payload, as the text it holds.
+/// Whether a column is one the readers take as a parameter or the payload,
+/// rather than one that could fill a field by its name.
+pub(super) fn is_parameter(name: &str, payload: &str) -> bool {
+    [
+        payload,
+        BRANCH_COLUMN,
+        BEGINSTRING_COLUMN,
+        SEPARATOR_COLUMN,
+        CLOCK_COLUMN,
+        DIRECTION_COLUMN,
+    ]
+    .iter()
+    .any(|held| crate::types::folds_equal(held, name))
+}
+
+/// What one row states for itself beside its payload.
 ///
-/// Absent is silence - a column that was not there, was null, or held no
-/// text - and silence is never an instruction and never an error.
+/// The three parameters are the text they hold; the clock and the fills are
+/// the values their columns carry. Absent is silence - a column that was not
+/// there, was null, or held no text - and silence is never an instruction
+/// and never an error.
 #[derive(Clone, Copy, Default)]
 pub(super) struct RowParameters<'row> {
     /// The dialect the row is read under.
@@ -45,12 +67,27 @@ pub(super) struct RowParameters<'row> {
     pub(super) beginstring: Option<&'row str>,
     /// The separator, whose first byte splits the payload as a numeric frame.
     pub(super) separator: Option<&'row str>,
+    /// The row's own clock, which stamps the message.
+    pub(super) clock: Option<&'row Scalar>,
+    /// The row's other columns, filling the fields their names reach.
+    pub(super) fills: &'row [(&'row str, &'row Scalar)],
 }
 
-/// A row nobody could read, which is still a row.
-pub(super) fn empty(reader: &FixCodec) -> FixMsg {
+impl<'row> RowParameters<'row> {
+    /// What the builder applies beside the pairs.
+    fn extras(&self) -> RowExtras<'row> {
+        RowExtras {
+            clock: self.clock,
+            fills: self.fills,
+        }
+    }
+}
+
+/// A row nobody could read, which is still a row - dated and versioned as
+/// every row is, by what the row itself stated.
+pub(super) fn empty(reader: &FixCodec, extras: RowExtras<'_>) -> FixMsg {
     reader
-        .transform_pairs(std::iter::empty::<(&[u8], &[u8])>(), false)
+        .build_pairs_with(&[], extras, false)
         .expect("an empty message builds")
 }
 
@@ -83,10 +120,19 @@ pub(super) fn transform_record_with(
     let bytes = column(payload)
         .and_then(|held| held.as_bytes().or_else(|| held.as_str().map(str::as_bytes)))
         .unwrap_or_default();
+    // Every other column the record carries is offered as a fill: one named
+    // after a field the dictionary knows lands on it, the rest are silence.
+    let fills: Vec<(&str, &Scalar)> = held
+        .iter()
+        .filter(|(name, value)| !is_parameter(name, payload) && !value.is_null())
+        .map(|(name, value)| (name.as_str(), value))
+        .collect();
     let parameters = RowParameters {
         branch: column(BRANCH_COLUMN).and_then(Scalar::as_str),
         beginstring: column(BEGINSTRING_COLUMN).and_then(Scalar::as_str),
         separator: column(SEPARATOR_COLUMN).and_then(Scalar::as_str),
+        clock: column(CLOCK_COLUMN),
+        fills: &fills,
     };
     transform_bytes(reader, parameters, bytes, enrich)
 }
@@ -129,15 +175,16 @@ pub(super) fn transform_bytes(
     } else {
         reader
     };
+    let extras = parameters.extras();
     if bytes.is_empty() {
-        return Ok(empty(reader));
+        return Ok(empty(reader, extras));
     }
     // A stated separator is read as a numeric frame with that separator; with
     // none stated the reader picks its own dialect from the frame, which is
     // what a record carrying only a payload has to do.
     let built = match parameters.separator.and_then(|held| held.bytes().next()) {
-        Some(separator) => reader.split_fix(bytes, separator, enrich),
-        None => reader.transform_line(bytes, enrich),
+        Some(separator) => reader.split_fix_with(bytes, separator, extras, enrich),
+        None => reader.transform_line_with(bytes, extras, enrich),
     };
-    Ok(built.unwrap_or_else(|_| empty(reader)))
+    Ok(built.unwrap_or_else(|_| empty(reader, extras)))
 }

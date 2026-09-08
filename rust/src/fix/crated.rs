@@ -2,10 +2,13 @@
 //!
 //! A capture states things about a message that no dictionary publishes: what
 //! its bytes hash to, which way its line moved, which version it was read at,
-//! and the two derived facts a store is organised by - one instrument symbol
-//! that is the same across venues, and one timestamp a partition is cut on.
-//! Each belongs in a column, so each is an ordinary field: they lift, column,
-//! serialize and resolve like every other field with no special case anywhere.
+//! the two derived facts a store is organised by - one instrument symbol
+//! that is the same across venues, and one timestamp a partition is cut on -
+//! and the four facts a bridge's own log states about the line it wrote: the
+//! session and the message context it handled the message under, and the
+//! plugins the message came from and went to. Each belongs in a column, so
+//! each is an ordinary field: they lift, column, serialize and resolve like
+//! every other field with no special case anywhere.
 //!
 //! # Why a branch
 //!
@@ -23,7 +26,16 @@
 //! adds there is the *type* - the packed four bytes rather than a string -
 //! which the dictionary carries like any other coded field.
 //!
-//! One mechanism, seven fields.
+//! # Every registry holds them
+//!
+//! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
+//! else, so a dictionary loaded from a store, built from fields or left empty
+//! answers `timestamp` and `sessionid` alike - and a store never writes them,
+//! because they are the crate's rather than the store's. A stored copy of
+//! this branch is read past for the same reason: the crate's own definition
+//! is the one that types a row.
+//!
+//! One mechanism, eleven fields.
 
 use std::sync::LazyLock;
 
@@ -54,6 +66,21 @@ pub const PARENTCLORDID_TAG: i32 = 30006;
 
 /// The tag carrying the venue order identifier this one descends from.
 pub const PARENTORDERID_TAG: i32 = 30007;
+
+/// The tag carrying the session a bridge handled the message under.
+pub const SESSIONID_TAG: i32 = 30008;
+
+/// The tag carrying the message context a bridge handled the message in.
+pub const MSGCTXID_TAG: i32 = 30009;
+
+/// The tag carrying the plugin a message came from, as a bridge names it.
+pub const SENDERPLUGINID_TAG: i32 = 30010;
+
+/// The tag carrying the plugin a message went to, as a bridge names it.
+pub const TARGETPLUGINID_TAG: i32 = 30011;
+
+/// The column the timestamp takes, which is also what its partition names.
+pub const TIMESTAMP_NAME: &str = "timestamp";
 
 /// FIX's own tag for which way a message moved.
 ///
@@ -152,7 +179,7 @@ fn build() -> Result<Vec<Field>> {
     // the metadata write validates it exactly as the setter's would.
     let sources = crate::metadata::render_source_list(
         crate::metadata::PARTITION_SOURCES_KEY,
-        [super::schema::rendered(TIMESTAMP_TAG)],
+        [TIMESTAMP_NAME.to_owned()],
     )?;
     unixpartition
         .as_partition_mut()
@@ -195,7 +222,7 @@ fn build() -> Result<Vec<Field>> {
         // The timestamp a capture is ordered by, in UTC because a capture
         // spans venues and a local time cannot be compared across them.
         crated(
-            "timestamp",
+            TIMESTAMP_NAME,
             "Timestamp",
             TIMESTAMP_TAG,
             DataType::DateTime64 {
@@ -228,6 +255,46 @@ fn build() -> Result<Vec<Field>> {
             "The venue order identifier this order descends from, which no \
              standard tag names.",
         )?,
+        // What a bridge's own log states about the line it wrote, in the
+        // bracket after its clock: the session and the message context the
+        // line was handled under. A row header captures them and the row
+        // fills them, so a monitor joins a bridge's own log on them.
+        crated(
+            "sessionid",
+            "SessionId",
+            SESSIONID_TAG,
+            DataType::Utf8,
+            "The session a bridge handled the message under, as its own log \
+             names it.",
+        )?,
+        crated(
+            "msgctxid",
+            "MsgCtxId",
+            MSGCTXID_TAG,
+            DataType::Utf8,
+            "The message context a bridge handled the message in, as its own \
+             log names it.",
+        )?,
+        // The plugins a message moved between, as a bridge names them. FIX
+        // publishes the counterparties in `SenderCompID` and `TargetCompID`;
+        // the plugin that carried a message inside a bridge is a fact about
+        // the bridge, and one FIX never states.
+        crated(
+            "senderpluginid",
+            "SenderPluginId",
+            SENDERPLUGINID_TAG,
+            DataType::Utf8,
+            "The plugin a message came from inside a bridge, as the bridge \
+             names it.",
+        )?,
+        crated(
+            "targetpluginid",
+            "TargetPluginId",
+            TARGETPLUGINID_TAG,
+            DataType::Utf8,
+            "The plugin a message went to inside a bridge, as the bridge \
+             names it.",
+        )?,
     ])
 }
 
@@ -241,9 +308,9 @@ fn partition_transform() -> String {
 
 /// The fields this crate defines, in tag order.
 ///
-/// Registering them is a caller's choice rather than a load-time side effect:
-/// a dictionary read from a store is what that store held, and a reader that
-/// silently gained seven fields would write them back out again.
+/// Every registry already holds them: [`FixRegistry::new`](super::FixRegistry::new)
+/// inserts them first, so this is the listing a schema or a document walks
+/// rather than something a caller registers.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -269,27 +336,6 @@ pub fn fix_crate_fields() -> Result<&'static [Field]> {
             path: CRATE_BRANCH.into(),
             reason: crate::text::expected_got("the crate's own fields", "a build failure"),
         })
-}
-
-impl super::FixRegistry {
-    /// Adds this crate's own fields, so they resolve by tag and by name.
-    ///
-    /// A dictionary that has them can type a `msghash` or `timestamp` column
-    /// from the registry like any other. One that does not is unchanged -
-    /// nothing in reading a message needs them, because all of them are facts
-    /// about the capture rather than about the wire.
-    ///
-    /// # Errors
-    ///
-    /// Returns the registry's own refusal when a field collides with
-    /// something already held, which cannot happen on a dictionary that does
-    /// not already declare this crate's branch.
-    pub fn with_crate_fields(mut self) -> Result<Self> {
-        for field in fix_crate_fields()? {
-            self.insert(field.clone())?;
-        }
-        Ok(self)
-    }
 }
 
 /// FIX's own tag for a message's type.

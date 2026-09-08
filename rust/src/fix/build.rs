@@ -109,6 +109,75 @@ struct Slot {
     occurrences: Vec<Vec<(Field, Scalar)>>,
 }
 
+/// What a row states beside its payload, applied when its message is built.
+///
+/// A clock and fills, both the caller speaking per row. The clock stamps the
+/// message where a clock the message carries otherwise would, because a row
+/// that says when its line was written outranks what the reader would derive
+/// - exactly as a stated direction outranks the reading of the line. Each
+/// fill lands on the field its name reaches - a capture named `sessionId`
+/// fills `sessionid`, one named `seqNum` fills `MsgSeqNum` - unless the
+/// message stated that field itself, because a stated value is never
+/// overridden. Neither touches the entries: the entries are what arrived on
+/// the line, and these arrived on the row.
+#[derive(Clone, Copy, Default)]
+pub(super) struct RowExtras<'row> {
+    /// The row's own clock.
+    pub(super) clock: Option<&'row Scalar>,
+    /// The row's own columns, by name, filling fields the message did not state.
+    pub(super) fills: &'row [(&'row str, &'row Scalar)],
+}
+
+impl RowExtras<'static> {
+    /// A row stating nothing beside its payload.
+    pub(super) const NONE: Self = Self {
+        clock: None,
+        fills: &[],
+    };
+}
+
+/// The registry field one of a row's own columns fills, and its tag.
+///
+/// Three tiers, each consulted only when the ones before it missed: the
+/// message's own branch and then the standard one, which is how every key
+/// resolves; then any dictionary the registry holds, because the crate's own
+/// `sessionid` is on the crate's branch and a capture named after it means
+/// it; then the bridge's own spellings of standard fields, because a bridge
+/// writes `seqNum` in its log where FIX says `MsgSeqNum`.
+pub(super) fn fill_field<'registry>(
+    registry: &'registry FixRegistry,
+    branch: &FixBranch,
+    key: &str,
+) -> Option<(&'registry Field, i32)> {
+    let key = key.trim();
+    if key.is_empty() || super::field::parse_tag(key).is_some() {
+        return None;
+    }
+    let named = registry
+        .get_field_by_path(key, Some(branch))
+        .or_else(|| {
+            (!branch.is_standard())
+                .then(|| registry.get_field_by_path(key, Some(&FixBranch::STANDARD)))
+                .flatten()
+        })
+        .or_else(|| registry.get_field_by_name(key, None));
+    if let Some(field) = named {
+        let tag = field.as_fix().tag().ok().flatten()?;
+        return Some((field, tag));
+    }
+    let tag = super::ulbridge::capture_tag(key)?;
+    let field = registry.get_primitive_field(tag)?;
+    Some((field, tag))
+}
+
+/// The version a message is said to be read at when nothing decided one.
+///
+/// FIX 4.4, which is the version the standard header is ordered by here and
+/// the one a bare capture with no dictionary lineage is most likely to be.
+fn default_version() -> Version {
+    "4.4".parse().unwrap_or(Version::MIN)
+}
+
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
@@ -177,6 +246,38 @@ impl<'registry> Builder<'registry> {
                 member,
             } => self.push_grouped(group, occurrence, member, located.text, &value_text, value),
         }
+    }
+
+    /// Fills one field from a row's own column, where the message did not
+    /// state it.
+    ///
+    /// Row only: no entry is recorded, because the entries are what arrived
+    /// on the line and this arrived on the row beside it. A value the field
+    /// cannot hold fills nothing rather than a null, so a column the row
+    /// carried in the wrong kind leaves the field to what the message said.
+    pub(super) fn fill(&mut self, key: &str, value: &Scalar) {
+        if value.is_null() {
+            return;
+        }
+        let Some((known, tag)) = fill_field(self.registry, &self.branch, key) else {
+            return;
+        };
+        if self.recorded.contains(&tag)
+            || self
+                .slots
+                .iter()
+                .any(|slot| slot.tag == tag && (slot.group || !slot.values.is_empty()))
+        {
+            return;
+        }
+        let field = stated(known);
+        let Ok(typed) = field.scalar(value.clone()) else {
+            return;
+        };
+        if typed.is_null() {
+            return;
+        }
+        self.slot_for(field, tag, true).values.push(typed);
     }
 
     /// The registry field one key names, and the tag it carries.
@@ -493,14 +594,56 @@ impl<'registry> Builder<'registry> {
     /// dictionary child's tag and its position, tag-major - because the
     /// builder resolved every tag once already and the message would only
     /// read them back out of the fields it just wrote.
-    pub(super) fn finish(self, name: &str) -> Result<Built> {
-        let Self { slots, entries, .. } = self;
+    ///
+    /// Two children every message has, whatever its line carried, and
+    /// neither is an entry because neither arrived. `BeginString` is filled
+    /// from the version the message was read at where the line stated none,
+    /// so a bridge row and a configuration document say which FIX they were
+    /// read as exactly as a frame does. The crate's `timestamp` closes the
+    /// message: `clock` where the row stated one, else the first clock the
+    /// message carries, else the epoch - so a row is always dated, and a row
+    /// nobody dated sorts first and visibly.
+    pub(super) fn finish(self, name: &str, clock: Option<&Scalar>) -> Result<Built> {
+        let Self {
+            registry,
+            version,
+            mut slots,
+            entries,
+            ..
+        } = self;
+        if !slots.iter().any(|slot| slot.tag == 8) {
+            let field = registry.get_field_by_tag(8).map_or_else(
+                || {
+                    let mut field = DataType::Utf8.required_field("beginstring");
+                    let _ = field.as_fix_mut().set_tag(8);
+                    field
+                },
+                stated,
+            );
+            let spelled = format_smolstr!("FIX.{}", version.unwrap_or_else(default_version));
+            let value = field
+                .scalar(Scalar::from(spelled.as_str()))
+                .unwrap_or_else(|_| Scalar::from(spelled.as_str()));
+            slots.push(Slot {
+                field,
+                tag: 8,
+                known: true,
+                values: vec![value],
+                group: false,
+                occurrences: Vec::new(),
+            });
+        }
+        let stamp = stamped(&slots, clock);
         // Each slot's place is read once, as a rank, rather than once per
         // comparison inside the sort.
         let mut ordered: Vec<(usize, Slot)> = Vec::with_capacity(slots.len());
         let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
         let mut trailing: Vec<(usize, Slot)> = Vec::new();
         for slot in slots {
+            if slot.tag == super::TIMESTAMP_TAG {
+                // Restamped below, in the one place the clock is decided.
+                continue;
+            }
             if let Some(rank) = rank_in(&STANDARD_HEADER_TAGS, slot.tag) {
                 ordered.push((rank, slot));
             } else if let Some(rank) = rank_in(&STANDARD_TRAILER_TAGS, slot.tag) {
@@ -511,12 +654,13 @@ impl<'registry> Builder<'registry> {
         }
         ordered.sort_by_key(|(rank, _)| *rank);
         trailing.sort_by_key(|(rank, _)| *rank);
-        let count = ordered.len() + rest.len() + trailing.len();
+        let count = ordered.len() + rest.len() + trailing.len() + 1;
         let ordered = ordered
             .into_iter()
             .map(|(_, slot)| slot)
             .chain(rest)
-            .chain(trailing.into_iter().map(|(_, slot)| slot));
+            .chain(trailing.into_iter().map(|(_, slot)| slot))
+            .chain(std::iter::once(stamp));
 
         let mut fields = Vec::with_capacity(count);
         let mut values = Vec::with_capacity(count);
@@ -547,6 +691,77 @@ pub(super) struct Built {
     pub(super) value: Scalar,
     pub(super) entries: Vec<FixEntry>,
     pub(super) tags: Vec<(i32, usize)>,
+}
+
+/// The `timestamp` child every built message closes with.
+///
+/// The row's clock outranks the message's own, because it is the caller
+/// speaking per row; a clock the message carries is next, read exactly as
+/// [`FixMsg::market_timestamp`](super::FixMsg::market_timestamp) reads it;
+/// and the epoch is where a message with no clock at all lands. A clock
+/// stated as text is read in FIX's own spelling first and in the column's
+/// own second, so a row header's ISO instant and a wire's `20240102-10:15:30`
+/// both stamp.
+fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
+    let field = super::fix_crate_fields()
+        .ok()
+        .and_then(|fields| {
+            fields
+                .iter()
+                .find(|field| field.as_fix().tag().ok().flatten() == Some(super::TIMESTAMP_TAG))
+        })
+        .map_or_else(
+            || {
+                let mut field =
+                    super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
+                let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG);
+                field
+            },
+            stated,
+        );
+    let stated_clock = clock.filter(|held| !held.is_null()).and_then(|held| {
+        let read = super::schema::as_instant(held.clone());
+        let read = if read.is_null() {
+            field.scalar(held.clone()).unwrap_or(Scalar::Null)
+        } else {
+            read
+        };
+        (!read.is_null()).then_some(read)
+    });
+    let carried = || {
+        slots
+            .iter()
+            .find(|slot| slot.tag == super::TIMESTAMP_TAG)
+            .and_then(|slot| slot.values.first())
+            .filter(|held| !held.is_null())
+            .cloned()
+    };
+    let wire = || {
+        super::schema::wire_clock(|tag| {
+            slots
+                .iter()
+                .find(|slot| slot.tag == tag)
+                .and_then(|slot| slot.values.first().cloned())
+        })
+    };
+    let value = stated_clock
+        .or_else(carried)
+        .map_or_else(wire, |held| held);
+    let value = if value.is_null() {
+        super::schema::epoch()
+    } else {
+        field
+            .scalar(value)
+            .unwrap_or_else(|_| super::schema::epoch())
+    };
+    Slot {
+        field,
+        tag: super::TIMESTAMP_TAG,
+        known: true,
+        values: vec![value],
+        group: false,
+        occurrences: Vec::new(),
+    }
 }
 
 /// Where one tag sits in a component's declared order, if it is in it.

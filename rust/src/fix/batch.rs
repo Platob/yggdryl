@@ -68,7 +68,7 @@ pub const SOH: u8 = 0x01;
 
 /// The column a row states its direction in, which outranks the reading the
 /// batch reader would otherwise make from the line.
-const DIRECTION_COLUMN: &str = "direction";
+use super::record::DIRECTION_COLUMN;
 
 /// How a capture is read into columns.
 ///
@@ -82,9 +82,8 @@ pub struct FixOptions {
     /// A declared datatype, which wins over the default shape.
     ///
     /// Its columns are filled the way every fixed row is: by the tag each
-    /// column's name spells, so a declared root names its columns `35` and
-    /// `55` rather than `msgtype` and `symbol`. A column no tag names is
-    /// left for whoever read the capture to fill.
+    /// column's field carries, or the one its name spells. A column carrying
+    /// neither is left for whoever read the capture to fill.
     pub dtype: Option<DataType>,
     /// Metadata carried onto the root.
     pub metadata: Metadata,
@@ -327,7 +326,7 @@ impl FixBatchReader {
             // matches the capture's.
             let message = reader
                 .transform_line(&row, enrich)
-                .unwrap_or_else(|_| empty(&reader));
+                .unwrap_or_else(|_| empty(&reader, super::build::RowExtras::NONE));
             let direction = direction_of(&row, default);
             Ok((message, direction, Vec::new()))
         });
@@ -377,11 +376,12 @@ impl FixBatchReader {
         // once here, from the schema, rather than per row.
         let kept = super::schema::carried(&carrier, &read);
         let field = super::fix_schema_carrying(&carrier, &read)?;
-        let columns = Columns::resolve(&carrier, &options.payload_column, kept);
+        let reader = options.reader(Arc::clone(&registry));
+        let columns = Columns::resolve(&carrier, &options.payload_column, kept, &reader);
         let rows = Rows {
             source,
             columns,
-            reader: options.reader(Arc::clone(&registry)),
+            reader,
             default: options.direction,
             enrich: options.enrich,
             held: None,
@@ -398,7 +398,7 @@ impl FixBatchReader {
         // The one column no message carries, found once: the direction is read
         // from the line in front of the frame, which is gone by the time a row
         // is built. Its two values are built once, as the column holds them.
-        let direction_at = field.index_of(&super::schema::rendered(super::MSGDIRECTION_TAG));
+        let direction_at = super::schema::fix_column_of(&field, super::MSGDIRECTION_TAG);
         let directions = direction_at.map(|at| {
             let column = &field.fields()[at];
             let held = |direction: &str| {
@@ -409,8 +409,10 @@ impl FixBatchReader {
             (held(MsgDirection::SENT), held(MsgDirection::RECV))
         });
         // The rows are filled against the same schema the reader publishes; a
-        // clone shares it rather than building a second one.
+        // clone shares it rather than building a second one, and the tag each
+        // column answers for is read off it once rather than once per row.
         let schema = field.clone();
+        let tags = super::schema::fix_column_tags(&schema);
         let mut last: Option<u128> = None;
         let rows = messages.filter_map(move |held| match held {
             Err(error) => Some(Err(error)),
@@ -427,7 +429,14 @@ impl FixBatchReader {
                     (Some(MsgDirection::RECV), Some((_, recv))) => recv.clone(),
                     _ => Scalar::Null,
                 };
-                Some(row_of(&message, &schema, direction_at, direction, front))
+                Some(row_of(
+                    &message,
+                    &schema,
+                    &tags,
+                    direction_at,
+                    direction,
+                    front,
+                ))
             }
         });
         // Every value in a row went through the contract of the field it
@@ -455,6 +464,7 @@ impl FixBatchReader {
 fn row_of(
     message: &FixMsg,
     schema: &Field,
+    tags: &[Option<i32>],
     direction_at: Option<usize>,
     direction: Scalar,
     front: Vec<Scalar>,
@@ -462,7 +472,7 @@ fn row_of(
     // The row is the schema's whole width already: a carried column is named
     // by no tag, so it comes back null and is filled here rather than spliced
     // in, which keeps a column position an index into the row itself.
-    let mut held = message.row_values(schema)?;
+    let mut held = message.row_values(schema, tags)?;
     for (slot, value) in held.iter_mut().zip(front) {
         *slot = value;
     }
@@ -601,26 +611,46 @@ struct Columns {
     beginstring: Option<usize>,
     separator: Option<usize>,
     direction: Option<usize>,
+    /// The column stating the row's own clock, which stamps the message.
+    clock: Option<usize>,
+    /// The columns whose names reach a field, so their cells fill it.
+    ///
+    /// Decided once from the schema and the dictionary: a column named after
+    /// nothing the dictionary knows is never read per row for it.
+    fills: Vec<usize>,
     kept: Vec<usize>,
+    /// Each source column's name, as a fill is offered under it.
+    names: Vec<SmolStr>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
 }
 
 impl Columns {
-    fn resolve(carrier: &Field, payload: &str, kept: Vec<usize>) -> Self {
+    fn resolve(carrier: &Field, payload: &str, kept: Vec<usize>, reader: &FixCodec) -> Self {
         let fields = carrier.fields();
         let named = |wanted: &str| {
             fields
                 .iter()
                 .position(|held| crate::types::folds_equal(held.name(), wanted))
         };
+        let fills = fields
+            .iter()
+            .enumerate()
+            .filter(|(_, held)| {
+                !super::record::is_parameter(held.name(), payload) && reader.fills(held.name())
+            })
+            .map(|(at, _)| at)
+            .collect();
         Self {
             payload: named(payload),
             branch: named(super::record::BRANCH_COLUMN),
             beginstring: named(super::record::BEGINSTRING_COLUMN),
             separator: named(super::record::SEPARATOR_COLUMN),
             direction: named(DIRECTION_COLUMN),
+            clock: named(super::record::CLOCK_COLUMN),
+            fills,
             kept,
+            names: fields.iter().map(|held| SmolStr::new(held.name())).collect(),
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         }
     }
@@ -670,10 +700,24 @@ impl Rows {
         let branch = stated(self.columns.branch)?;
         let beginstring = stated(self.columns.beginstring)?;
         let separator = stated(self.columns.separator)?;
+        let clock = stated(self.columns.clock)?;
+        // The cells that fill fields, read only where the row states them.
+        let mut filled: Vec<(usize, Scalar)> = Vec::with_capacity(self.columns.fills.len());
+        for at in &self.columns.fills {
+            if let Some(value) = stated(Some(*at))? {
+                filled.push((*at, value));
+            }
+        }
+        let fills: Vec<(&str, &Scalar)> = filled
+            .iter()
+            .map(|(at, value)| (self.columns.names[*at].as_str(), value))
+            .collect();
         let parameters = RowParameters {
             branch: branch.as_ref().and_then(Scalar::as_str),
             beginstring: beginstring.as_ref().and_then(Scalar::as_str),
             separator: separator.as_ref().and_then(Scalar::as_str),
+            clock: clock.as_ref(),
+            fills: &fills,
         };
         let message = transform_bytes(&self.reader, parameters, &payload, self.enrich)?;
         // The direction a row states outranks any reading of its line.
@@ -796,6 +840,8 @@ impl FixMsg {
     /// | `beginstring` | the source version |
     /// | `sep` | the separator |
     /// | `direction` | the direction, stated |
+    /// | `timestamp` | the row's own clock, which stamps the message |
+    /// | any column named after a field | that field, where the message did not state it |
     ///
     /// A record carrying only a payload column behaves exactly as the byte
     /// reader behaves, which is what makes this an entry point rather than a

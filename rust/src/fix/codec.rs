@@ -48,7 +48,7 @@ use smol_str::SmolStr;
 use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
-use super::build::{Builder, root_name};
+use super::build::{Builder, RowExtras, root_name};
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
@@ -170,6 +170,15 @@ impl FixCodec {
         self
     }
 
+    /// Whether a column named `name` fills a field under this codec.
+    ///
+    /// Decided the way the builder decides it, so a batch reader that asks
+    /// once per column and the builder that fills once per row agree.
+    pub(super) fn fills(&self, name: &str) -> bool {
+        let branch = self.branch.clone().unwrap_or_default();
+        super::build::fill_field(&self.registry, &branch, name).is_some()
+    }
+
     /// Whether one raw value is a stated absence rather than a value.
     fn is_absent(&self, value: &[u8]) -> bool {
         let trimmed = line::trim_ascii(value);
@@ -196,6 +205,16 @@ impl FixCodec {
     ///
     /// Returns [`Error::Parse`] for input that is not a row at all.
     pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMsg> {
+        self.transform_line_with(row, RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_line`], with what the row stated beside its line.
+    pub(super) fn transform_line_with(
+        &self,
+        row: &[u8],
+        extras: RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<FixMsg> {
         if row.is_empty() {
             return Err(Error::Parse {
                 target: "fix",
@@ -206,23 +225,23 @@ impl FixCodec {
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
         if numeric_frame(body) {
-            return self.transform_fix_line(body, enrich);
+            return self.fix_line_with(body, extras, enrich);
         }
         // A payload opening with `{` is a bridge configuration document, and
         // nothing else is: the locator points at a key, which starts with a
         // digit or a letter, and points at an object only where it found one.
         // So the test costs one byte rather than a second classification.
         if body.first() == Some(&b'{') {
-            return self.transform_ulconfig_line(body, enrich);
+            return self.ulconfig_with(body, extras, enrich);
         }
         // A FIXML row states no `key=value` frame, so the locator finds none
         // and leaves nothing to read. The document is the payload, and it
         // opens at the first tag - which is also how a prefix is dropped from
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
-            return self.transform_fixml_line(row, enrich);
+            return self.fixml_with(row, extras, enrich);
         }
-        self.transform_ullink_line(body, enrich)
+        self.ullink_with(body, extras, enrich)
     }
 
     /// Transforms one numeric FIX frame.
@@ -241,17 +260,28 @@ impl FixCodec {
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn transform_fix_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
+        self.fix_line_with(body, RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_fix_line`], with what the row stated beside its frame.
+    fn fix_line_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
         if let Some(separator) = self.separator {
-            return self.split_fix(body, separator, enrich);
+            return self.split_fix_with(body, separator, extras, enrich);
         }
         match unescaped(body) {
-            Some(held) => self.split_fix(&held, 0x01, enrich),
-            None => self.split_fix(body, separator_of(body), enrich),
+            Some(held) => self.split_fix_with(&held, 0x01, extras, enrich),
+            None => self.split_fix_with(body, separator_of(body), extras, enrich),
         }
     }
 
     /// One numeric frame split on one byte.
-    pub(super) fn split_fix(&self, body: &[u8], separator: u8, enrich: bool) -> Result<FixMsg> {
+    pub(super) fn split_fix_with(
+        &self,
+        body: &[u8],
+        separator: u8,
+        extras: RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<FixMsg> {
         let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
         for segment in split(body, separator) {
             let Some((key, value)) = split_pair(segment) else {
@@ -263,7 +293,7 @@ impl FixCodec {
                 break;
             }
         }
-        self.build(&pairs, enrich)
+        self.build(&pairs, extras, enrich)
     }
 
     /// Transforms one bridge row of `NAME=VALUE` pairs.
@@ -284,6 +314,11 @@ impl FixCodec {
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
+        self.ullink_with(body, RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_ullink_line`], with what the row stated beside its row.
+    fn ullink_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
         let separator = if memchr::memchr(b'|', body).is_some() {
             b'|'
         } else {
@@ -357,7 +392,7 @@ impl FixCodec {
             .iter()
             .map(|(key, value)| (key.as_ref(), *value))
             .collect();
-        self.build(&pairs, enrich)
+        self.build(&pairs, extras, enrich)
     }
 
     /// Transforms one FIXML row: every element's attributes, in document order.
@@ -377,6 +412,11 @@ impl FixCodec {
     /// Returns [`Error::Parse`] naming the byte position when the row is not
     /// well-formed XML, and the builder's refusal otherwise.
     pub fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
+        self.fixml_with(body, RowExtras::NONE, enrich)
+    }
+
+    /// [`Self::transform_fixml_line`], with what the row stated beside its document.
+    fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
         let mut reader = quick_xml::Reader::from_reader(body);
         let mut buffer = Vec::new();
         let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
@@ -409,7 +449,7 @@ impl FixCodec {
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        self.build(&pairs, enrich)
+        self.build(&pairs, extras, enrich)
     }
 
     /// Transforms one generic record: its payload column, under its own columns.
@@ -607,16 +647,24 @@ impl FixCodec {
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
         let held: Vec<(&[u8], &[u8])> = pairs.into_iter().collect();
-        self.build(&held, enrich)
+        self.build(&held, RowExtras::NONE, enrich)
     }
 
     /// The build a reader outside this module funnels into.
-    pub(super) fn build_pairs(&self, pairs: &[(&[u8], &[u8])], enrich: bool) -> Result<FixMsg> {
-        self.build(pairs, enrich)
+    pub(super) fn build_pairs_with(
+        &self,
+        pairs: &[(&[u8], &[u8])],
+        extras: RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<FixMsg> {
+        self.build(pairs, extras, enrich)
     }
 
     /// The one build every reader funnels into.
-    fn build(&self, pairs: &[(&[u8], &[u8])], enrich: bool) -> Result<FixMsg> {
+    ///
+    /// The pairs are the line; `extras` is the row the line came on, applied
+    /// after every pair so a stated value is never overridden by a fill.
+    fn build(&self, pairs: &[(&[u8], &[u8])], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
         // A row states no dialect, so the caller's pin is the only source: a
         // capture is one session and the branch is a fact about the run.
         let branch = self.branch.clone().unwrap_or_default();
@@ -633,7 +681,10 @@ impl FixCodec {
             }
             builder.push(key, value);
         }
-        let built = builder.finish(root_name(msgtype.as_deref()).as_str())?;
+        for (key, value) in extras.fills {
+            builder.fill(key, value);
+        }
+        let built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
         let built = FixMsg::from_built(Arc::clone(&self.registry), built)?;
         if enrich {
             return self.enrich_fixmsg(built);

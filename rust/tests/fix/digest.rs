@@ -269,6 +269,10 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             "unixpartition",
             "parentclordid",
             "parentorderid",
+            "sessionid",
+            "msgctxid",
+            "senderpluginid",
+            "targetpluginid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -282,6 +286,10 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             Some("UnixPartition"),
             Some("ParentClOrdID"),
             Some("ParentOrderID"),
+            Some("SessionId"),
+            Some("MsgCtxId"),
+            Some("SenderPluginId"),
+            Some("TargetPluginId"),
         ],
     );
 
@@ -306,10 +314,14 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
     assert!(!names.contains(&"msgdirection"));
     assert_eq!(yggdryl::MSGDIRECTION_TAG, 385);
 
-    // A dictionary that has them resolves them like any other field.
+    // Every registry holds them from construction, and inserting them again
+    // replaces rather than collides.
+    assert_eq!(FixRegistry::new().len(), held.len());
     let registry = FixRegistry::from_fields(held.iter().cloned())
-        .expect("the crate's own fields make a dictionary")
-        .with_crate_fields()
-        .expect("adding what is already there is not a collision");
+        .expect("the crate's own fields insert into a registry already holding them");
     assert_eq!(registry.len(), held.len());
+    for field in held {
+        let id = field.as_fix().id().unwrap().expect("an identity");
+        assert_eq!(registry.field_by_id(id).unwrap().name(), field.name());
+    }
 }

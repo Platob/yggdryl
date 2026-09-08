@@ -341,13 +341,6 @@ impl PyFixRegistry {
         })
     }
 
-    /// Add this crate's own fields, so they resolve by tag and by name.
-    fn with_crate_fields(&mut self) -> PyResult<()> {
-        let held = std::mem::take(self.inner_mut()?);
-        *self.inner_mut()? = held.with_crate_fields().map_err(value_error)?;
-        Ok(())
-    }
-
     /// Add `ULBridge`'s own fields, so a bridge configuration document types.
     ///
     /// A dictionary that has them reads a document's attributes as the ports,
@@ -1502,9 +1495,10 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The fields this crate defines on its own branch, in tag order.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
-/// partition it falls in, and the two parent order identifiers no standard tag
-/// names. Registering them is a caller's choice, which is what
-/// `FixRegistry.with_crate_fields` is for.
+/// partition it falls in, the two parent order identifiers no standard tag
+/// names, and the four facts a bridge's own log states about a line: its
+/// session, its message context, and the plugins it moved between. Every
+/// registry holds them from construction; this is the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

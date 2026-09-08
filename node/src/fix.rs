@@ -217,23 +217,6 @@ impl JsFixRegistry {
         ))
     }
 
-    /// Add the fields this crate defines on its own branch.
-    ///
-    /// A dictionary that has them can type a `msghash` or `timestamp` column
-    /// from the registry like any other. One that does not is unchanged:
-    /// nothing in reading a message needs them, because every one of them is a
-    /// fact about the capture rather than about the wire.
-    #[napi]
-    pub fn with_crate_fields(&mut self) -> Result<()> {
-        let held = self
-            .inner_mut()?
-            .clone()
-            .with_crate_fields()
-            .map_err(napi_error)?;
-        self.inner = Arc::new(held);
-        Ok(())
-    }
-
     /// Register one message type, answering the value it takes.
     ///
     /// A type the code set does not have is added to it rather than rejected,

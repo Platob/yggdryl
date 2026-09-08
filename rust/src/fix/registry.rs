@@ -245,7 +245,7 @@ pub(super) fn is_nested(field: &Field) -> bool {
 }
 
 /// FIX field definitions resolved by identity or folded name.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FixRegistry {
     fields: Vec<Field>,
     ids: Index<FixId>,
@@ -259,10 +259,40 @@ pub struct FixRegistry {
     resettle_newest: bool,
 }
 
+impl Default for FixRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FixRegistry {
-    /// The empty registry.
+    /// A registry holding nothing but this crate's own fields.
+    ///
+    /// Every registry starts here: the fields this crate defines - the
+    /// digest, the clock, the partition, the bridge's session and context -
+    /// are what a row is typed by, so a dictionary loaded from a store,
+    /// built from fields or left empty holds them alike. Inserting them into
+    /// nothing cannot collide, and a build failure of the crate's own fields
+    /// is a defect [`fix_crate_fields`](super::fix_crate_fields) reports;
+    /// here it leaves the registry without them rather than unable to exist.
+    #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        let mut registry = Self {
+            fields: Vec::new(),
+            ids: Index::default(),
+            alternate_ids: Index::default(),
+            names: Index::default(),
+            aliases: Index::default(),
+            positions_by_id: Vec::new(),
+            branches: BranchTable::default(),
+            branch_order: Vec::new(),
+            newest: None,
+            resettle_newest: false,
+        };
+        for field in super::fix_crate_fields().unwrap_or_default() {
+            let _ = registry.insert(field.clone());
+        }
+        registry
     }
 
     /// Builds a registry by inserting `fields` in order.
