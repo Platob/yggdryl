@@ -275,36 +275,68 @@ impl FixMsg {
     /// What a rebuild needs: the entries are what arrived and are carried
     /// through unchanged, so moving them costs nothing where cloning a whole
     /// capture's worth would.
-    /// This message with one more child, carrying `value`.
+    /// This message with more children, each carrying a value already typed
+    /// by its field.
     ///
     /// Appended rather than inserted in tag order: the row's existing
     /// positions are what every reader that already holds it addresses by,
     /// and a derived field is found by tag rather than by position. The
-    /// entries are carried through untouched, because what arrived on the
-    /// line is not changed by what the row now says about it.
+    /// root keeps its own metadata, the entries are carried through
+    /// untouched - what arrived on the line is not changed by what the row
+    /// now says about it - and the tag index grows by the children added
+    /// rather than being rebuilt, so a stamp costs the children it adds and
+    /// not a second reading of every child already there.
+    ///
+    /// The values are the caller's contract: each is what its field's
+    /// `scalar` answered, so nothing is canonicalized twice.
     ///
     /// # Errors
     ///
-    /// Returns the value contract's refusal when `value` does not fit
-    /// `field`, or the root's when it does not rebuild.
-    pub(super) fn appended(self, field: Field, value: Scalar) -> Result<Self> {
-        let registry = Arc::clone(&self.registry);
-        let root = self.field.clone();
-        let mut members: Vec<Field> = root
+    /// Returns the schema grammar's refusal when the children do not make a
+    /// root, which two children of one name would provoke.
+    pub(super) fn appended_many(self, extra: Vec<(Field, Scalar)>) -> Result<Self> {
+        if extra.is_empty() {
+            return Ok(self);
+        }
+        let Self {
+            registry,
+            entries,
+            branch,
+            mut tags,
+            fallback: _,
+            mut field,
+            value,
+        } = self;
+        let mut members: Vec<Field> = field
             .dtype()
             .as_fields()
             .map(<[Field]>::to_vec)
             .unwrap_or_default();
-        let mut values: Vec<Scalar> = self
-            .value
+        let mut values: Vec<Scalar> = value
             .as_sequence()
             .map(<[Scalar]>::to_vec)
             .unwrap_or_default();
-        members.push(field);
-        values.push(value);
-        let rebuilt = crate::DataType::from_fields(members)?.required_field(root.name());
-        let entries = self.into_entries();
-        Self::from_parts(registry, rebuilt, Scalar::from_sequence(values), entries)
+        members.reserve(extra.len());
+        values.reserve(extra.len());
+        for (child, held) in extra {
+            let index = members.len();
+            if let Ok(Some(tag)) = child.as_fix().tag() {
+                let at = tags.partition_point(|(known, _)| *known < tag);
+                tags.insert(at, (tag, index));
+            }
+            members.push(child);
+            values.push(held);
+        }
+        field.set_dtype(crate::DataType::from_fields(members)?)?;
+        Ok(Self {
+            registry,
+            entries,
+            branch,
+            tags,
+            fallback: OnceLock::new(),
+            field,
+            value: Scalar::from_sequence(values),
+        })
     }
 
     pub(super) fn into_entries(self) -> Vec<FixEntry> {

@@ -14,7 +14,7 @@ The whole committed dictionary, live: what it holds, what each field is, which m
 
 ## Use
 
-The counts below are the dictionary this repository ships, plus the sixteen fields of the crate's own that every registry holds. The same numbers come out of the package.
+The counts below are the dictionary this repository ships, plus the nineteen fields of the crate's own that every registry holds. The same numbers come out of the package.
 
 === "Rust"
 
@@ -24,7 +24,7 @@ The counts below are the dictionary this repository ships, plus the sixteen fiel
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_219);
+    assert_eq!(registry.len(), 6_222);
     assert_eq!(registry.field_by_tag(35)?.name(), "msgtype");
     // A repeating group is reached through its counter, and the crate's own
     // columns are standard fields from tag 65000, held by every registry.
@@ -43,7 +43,7 @@ The counts below are the dictionary this repository ships, plus the sixteen fiel
     from yggdryl.fix import STANDARD_BRANCH, FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_219
+    assert len(registry) == 6_222
     assert registry.field_by_tag(35).name == "msgtype"
     # A repeating group is reached through its counter, and the crate's own
     # columns are standard fields from tag 65000, held by every registry.
@@ -61,7 +61,7 @@ The counts below are the dictionary this repository ships, plus the sixteen fiel
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_219)
+    assert.equal(registry.size, 6_222)
     assert.equal(registry.fieldByTag(35).name, 'msgtype')
     // A repeating group is reached through its counter, and the crate's own
     // columns are standard fields from tag 65000, held by every registry.

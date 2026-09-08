@@ -15,7 +15,7 @@ A registry persists through one [`IOBase`](../holder/index.md) folder handle as 
 | Manifest | `branches.json`, a canonical JSON array ordered by branch name, holding every named branch; `aliases` is written only where a branch declares one, and absent is valid for the key and for the file |
 | Load | every shard of both trees on open; both trees optional; other leaves ignored; a missing folder loads as `FixRegistry::new()`, the crate's own fields alone |
 | Authority | the field's own `fix:branch` and datatype, never the folder it sits in; a standard field states no key |
-| Crate fields | the crate's own sixteen fields, standard tags from 65000, are never written - every registry holds them from construction - and a stored copy of one is read past |
+| Crate fields | the crate's own nineteen fields, standard tags from 65000, are never written - every registry holds them from construction - and a stored copy of one is read past |
 | Write | creates the root, writes populated shards whole, then removes empty shards, branch folders and trees |
 | Refused | a root still holding `records/`; no migration, no backward compatibility |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |

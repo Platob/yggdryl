@@ -225,11 +225,12 @@ impl FixLifecycle {
                 stamped.push((persistent_field.clone(), held));
             }
         }
-        let mut message = message;
+        let mut typed: Vec<(Field, Scalar)> = Vec::with_capacity(stamped.len());
         for (field, value) in stamped {
-            let typed = field.scalar(value)?;
-            message = message.appended(field, typed)?;
+            let held = field.scalar(value)?;
+            typed.push((field, held));
         }
+        let message = message.appended_many(typed)?;
         if is_terminal(&message) {
             // A stamped stream read again closes the chain its identifiers
             // reach, exactly as the first pass did.
