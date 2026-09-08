@@ -11,7 +11,7 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
-from yggdryl import AsciiEnum, DataType, Field
+from yggdryl import AsciiEnum, DataType, Field, types
 
 
 def test_dtype_infers_native_string_and_arrow_values() -> None:
@@ -383,6 +383,62 @@ def test_version_is_canonical_numeric_text_in_sixteen_native_bytes() -> None:
     assert Field.from_arrow(arrow) == field
     with pytest.raises(ValueError, match="version"):
         field.cast_arrow_array(pa.array(["5.0+"]))
+
+
+def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
+    dtype = DataType("url")
+    field = Field("url", dtype, nullable=False)
+
+    assert dtype.id == "url"
+    assert dtype.kind == "text"
+    assert str(dtype) == "url"
+    assert dtype.ascii_width is None
+    assert DataType("url") == dtype
+    assert eval(repr(dtype), {"DataType": DataType}) == dtype
+
+    # The value is a location, not the text that spelled it: the scheme folds
+    # to lower case, a percent escape takes its canonical upper-case digits,
+    # and a bare path is the `file:` URL that names it.
+    assert field.cast_arrow_array(
+        pa.array(["HTTPS://example.com/a%2fb", "/lake/part.txt"])
+    ).to_pylist() == [
+        "https://example.com/a%2Fb",
+        "file:///lake/part.txt",
+    ]
+    assert field.arrow_scalar("HTTPS://example.com/a%2fb") == pa.scalar(
+        "https://example.com/a%2Fb"
+    )
+    assert field.arrow_scalar("/lake/part.txt") == pa.scalar("file:///lake/part.txt")
+
+    # Nothing relative is a location, and the empty string names nothing at
+    # all, so none of them read as one.
+    for relative in ("./rel", "example.com/x", ""):
+        with pytest.raises(ValueError, match="does not read as url"):
+            field.cast_arrow_array(pa.array([relative]))
+        with pytest.raises(ValueError, match="expected url"):
+            field.arrow_scalar(relative)
+
+    # Storage is Utf8 under the `yggdryl.url` extension name, so a projection
+    # round-trips through Arrow without losing which datatype it is.
+    arrow = field.into_arrow()
+    assert arrow.type == pa.string()
+    assert arrow.metadata == {
+        b"ARROW:extension:name": b"yggdryl.url",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow) == field
+
+    # A column of locations is nullable by default, because a handle that is
+    # nowhere has no location to state.
+    located = types.url("location", metadata={"role": "source"})
+    assert type(located) is Field
+    assert located.dtype == dtype
+    assert located.nullable is True
+    assert located.metadata["role"] == "source"
+    assert types.url("location", nullable=False).nullable is False
+    assert located.cast_arrow_array(
+        pa.array(["HTTPS://example.com/a%2fb", None])
+    ).to_pylist() == ["https://example.com/a%2Fb", None]
 
 
 def test_ascii_is_one_variable_form_and_one_fixed_width() -> None:

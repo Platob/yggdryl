@@ -23,6 +23,22 @@ use crate::{MediaType, Result, Url};
 
 use crate::IOBase;
 
+/// One instant in UTC nanoseconds since the Unix epoch, from a system clock
+/// reading.
+///
+/// The one owner of that conversion: a store reports a modification time as a
+/// `SystemTime`, every column and accessor that carries one counts nanoseconds
+/// from the epoch, and a reading before the epoch counts backwards rather than
+/// saturating at it.
+pub(crate) fn system_time_ns(value: std::time::SystemTime) -> Option<i64> {
+    match value.duration_since(std::time::UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_nanos()).ok(),
+        Err(error) => i64::try_from(error.duration().as_nanos())
+            .ok()
+            .and_then(i64::checked_neg),
+    }
+}
+
 /// A concrete, sized value holding any core [`IOBase`] implementation.
 ///
 /// Hierarchy accessors such as [`IOBase::parent`], [`IOBase::child_by_path`], and
@@ -727,6 +743,10 @@ impl IOBase for Holder {
 
     fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
         self.as_io().bound_location()
+    }
+
+    fn mtime(&self) -> Option<i64> {
+        self.as_io().mtime()
     }
 
     fn media_type(&self) -> &MediaType {

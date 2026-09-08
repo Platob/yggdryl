@@ -170,9 +170,10 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     let batch = &batches[0];
     assert_eq!(batch.schema().field(0).name(), "url");
     assert_eq!(batch.schema().field(1).name(), "rownum");
-    assert_eq!(batch.schema().field(2).name(), "body");
+    assert_eq!(batch.schema().field(2).name(), "mtime");
+    assert_eq!(batch.schema().field(3).name(), "body");
     assert_eq!(
-        batch.schema().field(4).data_type(),
+        batch.schema().field(5).data_type(),
         &arrow_schema::DataType::Int64
     );
     assert_eq!(
@@ -186,7 +187,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -200,7 +201,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(4)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -232,7 +233,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Int64
     );
 
@@ -244,7 +245,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Utf8
     );
     assert_eq!(
@@ -254,7 +255,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "body", "value"]
+        ["url", "mtime", "body", "value"]
     );
 }
 
@@ -323,12 +324,12 @@ fn autotyping_reads_a_session_clock_past_the_end_of_its_day() {
         .unwrap();
 
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<arrow_array::Time32SecondArray>()
             .unwrap()
@@ -362,12 +363,12 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(3).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(1)
+            .column(2)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -376,7 +377,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(4)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -385,7 +386,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(4)
+            .column(5)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -668,7 +669,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "body", "dropped_byte_size", "kind"]
+        ["url", "mtime", "body", "dropped_byte_size", "kind"]
     );
     assert!(
         reader
@@ -695,7 +696,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            ["url", "body", "dropped_byte_size", "kind"]
+            ["url", "mtime", "body", "dropped_byte_size", "kind"]
         );
         assert!(
             reader
@@ -895,7 +896,10 @@ fn the_classification_columns_read_the_line_and_the_direction_leaves_the_body() 
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(names, ["url", "direction", "mimetype", "msgtype", "body"]);
+    assert_eq!(
+        names,
+        ["url", "mtime", "direction", "mimetype", "msgtype", "body"]
+    );
 
     let batches = collect(&source, options);
     assert_eq!(
@@ -1275,4 +1279,123 @@ mod fetching {
             "emptiness is answered by the first window, not by a one-byte read"
         );
     }
+}
+
+#[test]
+fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
+    use arrow_array::TimestampNanosecondArray;
+
+    // The expression dates the line, so the column is the line's own reading
+    // resolved into UTC - not the moment the file happened to be written.
+    let source = named("dated.log", b"2020-01-02T03:04:05Z id=7 first\n");
+    let batch = collect(&source, options(r"^(?<mtime>\S+) id=(?<id>\d+) "))
+        .pop()
+        .unwrap();
+    let schema = batch.schema();
+    let names: Vec<&str> = schema
+        .fields()
+        .iter()
+        .map(|field| field.name().as_str())
+        .collect();
+    // One column, not two: the capture fills `mtime` rather than sitting
+    // beside it under the same name.
+    assert_eq!(names, ["url", "mtime", "body", "id"]);
+    assert_eq!(
+        batch.schema().field(1).data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
+    );
+    assert_eq!(
+        batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<TimestampNanosecondArray>()
+            .unwrap()
+            .value(0),
+        1_577_934_245_000_000_000
+    );
+}
+
+#[test]
+fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
+    use arrow_array::Array as _;
+
+    // A buffer records no such fact, and the reader says so rather than
+    // inventing a clock reading.
+    let batch = collect(&named("plain.log", b"first\nsecond\n"), TextOptions::new())
+        .pop()
+        .unwrap();
+    let mtime = batch.column_by_name("mtime").unwrap();
+    assert_eq!(mtime.len(), 2);
+    assert_eq!(mtime.null_count(), 2);
+}
+
+#[test]
+fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
+    use crate::holder::local::File;
+    use arrow_array::TimestampNanosecondArray;
+
+    let directory = std::env::temp_dir().join("yggdryl_text_mtime");
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("undated.log");
+    std::fs::write(&path, b"first\nsecond\n").unwrap();
+    let handle = File::new(&path).unwrap();
+    let expected = handle.mtime().expect("a filesystem modification time");
+
+    let batch = collect(&handle, TextOptions::new()).pop().unwrap();
+    let values = batch
+        .column_by_name("mtime")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<TimestampNanosecondArray>()
+        .unwrap();
+    // Every row shares the handle's answer: one fact about the object, read
+    // once and repeated, never one stat per line.
+    assert_eq!(values.values(), &[expected, expected]);
+
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn the_mtime_column_is_off_when_the_flag_is_and_frees_its_name_for_a_capture() {
+    let mut plain = TextOptions::new();
+    plain.parse_mtime = false;
+    let batch = collect(&named("plain.log", b"first\n"), plain)
+        .pop()
+        .unwrap();
+    assert!(batch.column_by_name("mtime").is_none());
+
+    // With no column of that name, a capture spelled `mtime` is an ordinary
+    // one, typed by its own syntax rather than by the column it no longer
+    // fills.
+    let mut captured = options(r"^(?<mtime>\d+) ");
+    captured.parse_mtime = false;
+    let batch = collect(&named("counted.log", b"77 first\n"), captured)
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field(2).data_type(),
+        &arrow_schema::DataType::Int64
+    );
+}
+
+#[test]
+fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
+    // Every fixed column is optional, so a capture's datatype cannot be found
+    // by counting the ones in front of it: with the classification columns on,
+    // that count was wrong and a capture was parsed at another column's type.
+    let mut options = options(r"^(?<seen>\d{4}-\d{2}-\d{2}) id=(?<id>\d+) ");
+    options.parse_mimetype = true;
+    options.parse_msgtype = true;
+    options.parse_direction = true;
+    let batch = collect(&named("wide.log", b"2020-01-02 id=7 first\n"), options)
+        .pop()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field_with_name("seen").unwrap().data_type(),
+        &arrow_schema::DataType::Date32
+    );
+    assert_eq!(
+        batch.schema().field_with_name("id").unwrap().data_type(),
+        &arrow_schema::DataType::Int64
+    );
 }

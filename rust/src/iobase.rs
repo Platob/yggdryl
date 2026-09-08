@@ -177,6 +177,17 @@ pub trait IOBase: Send + IOMedia {
         None
     }
 
+    /// Return when the bytes were last modified, as UTC nanoseconds since the
+    /// Unix epoch.
+    ///
+    /// `None` is the honest answer, not a failure: an in-memory buffer records
+    /// no such fact, and a store that keeps one may still be asked before the
+    /// resource exists. A backend that records it overrides this; every other
+    /// handle keeps the default rather than inventing a clock reading.
+    fn mtime(&self) -> Option<i64> {
+        None
+    }
+
     /// Return the representation and content codings of the bytes.
     fn media_type(&self) -> &MediaType;
 

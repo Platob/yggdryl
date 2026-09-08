@@ -711,7 +711,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['url', 'rownum', 'body', 'level', 'id'],
+    ['url', 'rownum', 'mtime', 'body', 'level', 'id'],
   )
   assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
   assert.deepEqual(
@@ -752,12 +752,24 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   assert.deepEqual(
     batches[0].schema.fields.map((field) => [field.name, field.nullable]),
     [
-      ['url', false],
+      ['url', true],
       ['rownum', false],
+      ['mtime', true],
       ['body', false],
       ['dropped_byte_size', true],
       ['level', true],
     ],
+  )
+  // The url column is the `url` datatype over Utf8 storage, and every row
+  // carries the canonical URL text of the handle it was read from.
+  assert.equal(batches[0].schema.fields[0].type.toString(), 'Utf8')
+  assert.equal(
+    batches[0].schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.url',
+  )
+  assert.deepEqual(
+    batches.flatMap((batch) => [...batch.getChild('url')]),
+    Array(3).fill(source.url.toString()),
   )
   assert.deepEqual(
     batches.flatMap((batch) => [...batch.getChild('rownum')]),

@@ -320,6 +320,10 @@ impl IOBase for File {
         self.archive.member_size(&self.name)
     }
 
+    fn mtime(&self) -> Option<i64> {
+        self.archive.member_mtime(&self.name)
+    }
+
     fn capacity(&self) -> u64 {
         self.plain
             .as_ref()

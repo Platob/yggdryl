@@ -785,6 +785,19 @@ impl Archive {
         })
     }
 
+    /// One member's stored modification time, in UTC nanoseconds.
+    ///
+    /// The index holds it beside the length, so this costs the same lookup a
+    /// ranged read already pays.
+    pub(super) fn member_mtime(&self, name: &str) -> Option<i64> {
+        self.locked().ok().and_then(|mut guard| {
+            Self::index_of(&mut guard)
+                .ok()
+                .and_then(|index| index.entries.get(name))
+                .map(Entry::modified)
+        })
+    }
+
     /// Read from one member, when its bytes can pass straight through.
     ///
     /// A stored member is the archive's own bytes over a range, so the whole

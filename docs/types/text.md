@@ -1,6 +1,6 @@
 # Text & bytes
 
-Three UTF-8 spellings, four binary spellings, the version value, and the regex that turns named captures into a schema.
+Three UTF-8 spellings, four binary spellings, the version and URL values, and the regex that turns named captures into a schema.
 
 ## Contract
 
@@ -14,6 +14,7 @@ Three UTF-8 spellings, four binary spellings, the version value, and the regex t
 | `binary_view` | `BinaryView` | - |
 | `fixed_size_binary(n)` | `FixedSizeBinary(n)` | `fixed_binary(n)` |
 | `version` | `Version` | - |
+| `url` | `Url` | - |
 
 ## Use
 
@@ -121,6 +122,63 @@ zeroes and canonicalizes appended, dot-introduced, and hyphen-introduced qualifi
 | Ordering | hyphens are pre-release, other qualifiers post-release: `5.0-rc1 < 5 < 5.0SP1`, `SP2 < SP10` |
 | Storage | `Utf8` holding the canonical spelling, extension name `yggdryl.version` |
 | Sorting | Arrow string order stays lexicographic; `Version::cmp` is the ordering contract |
+
+## Locations
+
+`Url` is the crate's own [`Url`](../holder/index.md) carried as a column: a value read out of a table is a value a handle can be opened from, not prose that happens to look like one. Parsing canonicalizes and validates, so a column holds one spelling per location and nothing that is not a location.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Url};
+
+    let location = Url::from_str("HTTPS://example.com/a%2fb")?;
+    assert_eq!(location.to_string(), "https://example.com/a%2Fb");
+    // A bare platform path is a `file:` URL, which is what a local handle is.
+    assert_eq!(Url::from_str("/lake/part.txt")?.to_string(), "file:///lake/part.txt");
+
+    let field = Field::new("location", DataType::Url, false);
+    assert_eq!(field.scalar("HTTPS://example.com/a%2fb")?, Scalar::from(location));
+    // Relative text names no location, so it is not one.
+    assert!(field.scalar("./relative").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    dtype = DataType("url")
+    field = types.url("location", nullable=False)
+    value = json.loads('"HTTPS://example.com/a"', field=field, cls=Scalar)
+    assert dtype.kind == "text"
+    assert value.as_py() == "https://example.com/a"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const dtype = new DataType('url')
+    const value = json.loads('"HTTPS://example.com/a"', {
+      field: fields.url('location', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(dtype.kind, 'text')
+    assert.equal(value.asJs(), 'https://example.com/a')
+    ```
+
+| rule | behaviour |
+| --- | --- |
+| Kind | `text`; the aliases are `UrlField`, `types.url`, `fields.url` |
+| Value | `crate::Url` behind one shared pointer, so a row clone moves a reference count rather than a URI |
+| Storage | `Utf8` holding the canonical text, extension name `yggdryl.url` |
+| Ordering | the canonical text's, which is Arrow's own string order; there is no numeric component to sort by |
+| Default | `file:///`, the shortest URL the validator accepts, because a location has no zero |
+| Merging | only with itself: merging into text would drop the validation that makes it a URL |
 
 ## Edges
 

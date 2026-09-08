@@ -342,6 +342,13 @@ impl IOBase for Folder {
         0
     }
 
+    fn mtime(&self) -> Option<i64> {
+        std::fs::metadata(self.path().ok()?)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(crate::holder::system_time_ns)
+    }
+
     fn capacity(&self) -> u64 {
         0
     }

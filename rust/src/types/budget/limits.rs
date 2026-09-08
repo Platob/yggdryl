@@ -319,6 +319,7 @@ impl MaterializationBudget {
             DataType::Binary
             | DataType::Utf8
             | DataType::Version
+            | DataType::Url
             | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
@@ -428,6 +429,7 @@ impl MaterializationBudget {
             DataType::Binary
             | DataType::Utf8
             | DataType::Version
+            | DataType::Url
             | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)

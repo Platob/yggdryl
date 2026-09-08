@@ -171,6 +171,7 @@ function createFields(DataType, Field, native) {
     },
     uuid: simple('uuid'),
     version: simple('version'),
+    url: simple('url'),
     // Each registered code is a datatype of its own, storing the width its
     // standard fixes and carrying that identity across Arrow.
     country: simple('country'),

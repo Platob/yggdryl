@@ -14,6 +14,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `lstrip`, `rstrip` | byte regex removed only when its match touches the corresponding physical-line body edge |
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
+| `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
 | `parse_mimetype`, `parse_msgtype`, `parse_direction` | Rust-only; classify each record and add the column named, off by default |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
@@ -46,7 +47,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    assert_eq!(text_batch.schema().fields().len(), 5);
+    assert_eq!(text_batch.schema().fields().len(), 6);
     assert_eq!(
         text_batch
             .column(1)
@@ -58,7 +59,7 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
     );
     assert_eq!(
         text_batch
-            .column(2)
+            .column(3)
             .as_any()
             .downcast_ref::<BinaryArray>()
             .unwrap()
@@ -85,6 +86,10 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
         options.start_rownum = 1
         options.rowheader = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+) "
         options.framing = True
+        # A record hands back a `datetime`, which stops at microseconds, so the
+        # nanosecond time this file would date its rows with is read as a batch
+        # rather than here.
+        options.parse_mtime = False
 
         handle = IOBase(source).into_text(options)
         rows = list(handle.read_records())
@@ -135,8 +140,9 @@ The source field is complete before any source bytes are read.
 
 | column | datatype | value |
 | --- | --- | --- |
-| `url` | `utf8` | source URL, or an empty string for an unlocated buffer |
+| `url` | `url` | nullable; the source location, and null for an unlocated buffer |
 | `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
+| `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `direction` | `msgdirection` | nullable; present only with `parse_direction` |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
 | `msgtype` | `msgtype` | nullable; present only with `parse_msgtype` |
@@ -149,6 +155,8 @@ booleans, signed 64-bit integers, finite floats, ISO dates, times, and
 datetimes.
 
 ### Classifying each record
+
+`mtime` says when the record was written, and has two sources for one column. A row header that declares an `mtime` capture dates each line from the line itself, and the capture fills the column rather than appearing beside it — so a capture spelled that way is read at `datetime64(ns, UTC)` whatever its own syntax suggests, and a reading that names no offset is resolved through `timezone`. A header that declares no such capture, or a line the header did not match, falls back to [`IOBase::mtime`](../holder/iobase/bytes.md#modification-time) — the handle's own modification time, read once per read and shared by every row. Neither available is null, which is what an unlocated buffer answers. Turning `parse_mtime` off removes the column, and frees the name for an ordinary capture.
 
 The three classification columns are the [capture readings](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is, the message type it declares, and which way it moved. They need no dictionary and cost one shallow scan per record, which is why they are opt-in per column — a read that only needs rows should not pay for them. Rust only: neither binding reaches these flags today.
 
@@ -206,6 +214,9 @@ column and appending the terminator.
 - `max_record_byte_size` unset -> no `dropped_byte_size` column; set but never exceeded -> null.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
+- an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
+- Python `read_records()` over a file whose modification time is not a whole microsecond -> refused, because a record hands back a `datetime` and a `datetime` stops at microseconds. The batch path carries the full nanosecond reading; set `parse_mtime = False` when the record path is what you want.
+- a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - `body` holding the terminator -> write refused.
 - keyed merge -> unsupported; overwrite and append only.

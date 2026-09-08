@@ -207,6 +207,7 @@ export type DataTypeId =
   | 'cfi'
   | 'uuid'
   | 'version'
+  | 'url'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -284,6 +285,7 @@ interface DataTypeKindById {
   cfi: 'ascii'
   uuid: 'uuid'
   version: 'text'
+  url: 'text'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -623,6 +625,9 @@ export type VariantField = FieldOf<'variant', unknown>
 export type UuidField = FieldOf<'uuid', string>
 /** One canonical, numerically ordered version. */
 export type VersionField = FieldOf<'version', string>
+
+/** One validated, canonical location. */
+export type UrlField = FieldOf<'url', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -819,6 +824,7 @@ export interface FieldsNamespace {
   variant(name: string, options?: FieldOptions): VariantField
   uuid(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
+  url(name: string, options?: FieldOptions): UrlField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField

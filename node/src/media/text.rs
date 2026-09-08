@@ -279,6 +279,18 @@ impl JsTextOptions {
         Ok(())
     }
 
+    /// Whether an `mtime` column states when each record was written.
+    #[napi(getter)]
+    pub fn parse_mtime(&self) -> bool {
+        self.inner.parse_mtime
+    }
+
+    /// Enable or disable the `mtime` column.
+    #[napi(setter)]
+    pub fn set_parse_mtime(&mut self, value: bool) {
+        self.inner.parse_mtime = value;
+    }
+
     /// Return whether physical lines are framed into logical records.
     #[napi(getter)]
     pub fn framing(&self) -> bool {

@@ -2044,7 +2044,7 @@ impl<H: IOBase> IOBase for Table<H> {
     // `kind` is answered below: storage sees a folder, and this handle is
     // the table that folder holds.
     crate::delegate_iobase!(root: pread, pstream_bytes, pwrite, size, capacity, reserve,
-        truncate, url, bound_location, media_type, set_media_type, flush, parent,
+        truncate, url, bound_location, mtime, media_type, set_media_type, flush, parent,
         child_by_path, ls);
 
     /// A table folder is a container of its own kind: [`IOKind::Table`].

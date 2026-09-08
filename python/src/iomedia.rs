@@ -1166,6 +1166,7 @@ impl PyRecordOptions {
             state.set_item("leading_fragment", options.leading_fragment().as_str())?;
             state.set_item("max_record_byte_size", options.max_record_byte_size())?;
             state.set_item("start_rownum", options.start_rownum)?;
+            state.set_item("parse_mtime", options.parse_mtime)?;
             state.set_item("rowheader", options.rowheader())?;
             state.set_item("lstrip", options.lstrip().collect::<Vec<_>>())?;
             state.set_item("rstrip", options.rstrip().collect::<Vec<_>>())?;
@@ -1283,6 +1284,8 @@ impl PyRecordOptions {
                 }
                 Some(value.extract::<i64>()?)
             };
+
+            text.parse_mtime = required_record_pickle_item(state, "parse_mtime")?.extract()?;
 
             let value = required_record_pickle_item(state, "rowheader")?;
             let value = (!value.is_none())
@@ -2085,6 +2088,19 @@ impl PyTextOptions {
         } else {
             None
         };
+        Ok(())
+    }
+
+    /// Whether an `mtime` column states when each record was written.
+    #[getter]
+    fn parse_mtime(&self) -> bool {
+        self.inner.parse_mtime
+    }
+
+    #[setter]
+    fn set_parse_mtime(&mut self, value: bool) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.parse_mtime = value;
         Ok(())
     }
 

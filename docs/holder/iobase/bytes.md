@@ -69,6 +69,12 @@ Explicit offsets mean two readers never interfere and a footer-first container r
     assert.equal(handle.readRangeBytes(0, 6).toString(), 'symbol')
     ```
 
+## Modification time
+
+`mtime()` answers when the bytes were last written, as UTC nanoseconds since the Unix epoch, for a handle whose store records one. A local file and a foreign-filesystem file read it from the same stat their `size` comes from; a ZIP member reads it from the index the archive already holds; every other handle keeps the default `None`, because an in-memory buffer records no such fact and inventing a clock reading would be worse than saying so. It is the fallback behind the [`mtime` column](../../media/text.md#row-schema) of a plain-text read, asked once per read rather than once per row.
+
+Rust only: neither binding reaches the accessor today, though both reach the text column it fills through `parse_mtime` / `parseMtime`.
+
 ## Streamed bytes
 
 `pstream_bytes(position, batch_size)` yields owned arrays of at most `batch_size` bytes from a decoded position; construction is lazy and never asks for `size`.

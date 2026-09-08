@@ -196,7 +196,12 @@ impl PrimitiveType {
             | DataType::Country
             | DataType::Currency
             | DataType::Mic
-            | DataType::Cfi => Self::String,
+            | DataType::Cfi
+            // A URL orders by its canonical text, so writing it as text loses
+            // nothing but the name of the type - unlike `version`, whose
+            // numeric ordering text cannot carry, and which Iceberg therefore
+            // still refuses.
+            | DataType::Url => Self::String,
             DataType::Uuid => Self::Uuid,
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),
             DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,

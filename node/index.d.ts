@@ -3577,6 +3577,10 @@ export declare class TextOptions {
   get startRownum(): bigint | null
   /** Set or clear the exact signed 64-bit starting row number. */
   set startRownum(value: bigint | undefined | null)
+  /** Whether an `mtime` column states when each record was written. */
+  get parseMtime(): boolean
+  /** Enable or disable the `mtime` column. */
+  set parseMtime(value: boolean)
   /** Return whether physical lines are framed into logical records. */
   get framing(): boolean
   /** Enable or disable logical-record framing. */

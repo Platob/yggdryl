@@ -434,8 +434,10 @@ mod records {
 
     #[test]
     fn text_costs() {
-        // Plain-text rows are `url` and `body`, so this one is read rather
-        // than written from a batch.
+        // Plain-text rows are `url`, `mtime` and `body`, so this one is read
+        // rather than written from a batch. The one `mtime` call per read is
+        // the whole cost of the column: it is a fact about the handle, so
+        // every row shares the answer.
         let media_type = Url::from_str("file:///lake/part.txt")
             .expect("a location")
             .media_type();
@@ -448,7 +450,7 @@ mod records {
         costs(
             "text: the schema",
             &calls,
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1",
             || {
                 handle.read_arrow_field(&options).expect("a field");
             },
@@ -458,7 +460,7 @@ mod records {
             &calls,
             "size=1 media_type=1 is_container=2",
             || {
-                assert_eq!(handle.column_size().expect("columns"), 2);
+                assert_eq!(handle.column_size().expect("columns"), 3);
             },
         );
         costs(
@@ -472,7 +474,7 @@ mod records {
         costs(
             "text: a full read",
             &calls,
-            "pstream_bytes=1 url=1 bound_location=3 media_type=1 is_container=1 parent=1",
+            "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1",
             || {
                 let read: usize = handle
                     .read_arrow_reader(&options)

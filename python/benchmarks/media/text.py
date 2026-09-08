@@ -18,7 +18,7 @@ import statistics
 import tempfile
 import timeit
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable
 
 import pyarrow as pa
@@ -68,9 +68,14 @@ def native(target: pathlib.Path) -> int:
 def baseline(target: pathlib.Path) -> int:
     encoded = target.read_bytes()
     text = gzip.decompress(encoded).decode() if target.suffix == ".gz" else encoded.decode()
+    # The rowheader names no `mtime` capture, so the native read dates every row
+    # with the file's own modification time, read once. The baseline builds the
+    # same column the same way, so both sides carry the same field.
+    modified = datetime.fromtimestamp(target.stat().st_mtime, timezone.utc)
     columns: dict[str, list[object]] = {
         "url": [],
         "rownum": [],
+        "mtime": [],
         "body": [],
         "stamp": [],
         "level": [],
@@ -81,6 +86,7 @@ def baseline(target: pathlib.Path) -> int:
         assert found is not None
         columns["url"].append(target.as_uri())
         columns["rownum"].append(rownum)
+        columns["mtime"].append(modified)
         columns["body"].append((line[: found.start()] + line[found.end() :]).strip().encode())
         columns["stamp"].append(datetime.fromisoformat(found.group("stamp")))
         columns["level"].append(found.group("level"))

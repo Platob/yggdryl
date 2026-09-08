@@ -1014,6 +1014,7 @@ fn feed_cell(
         | DataType::TimeInForce
         | DataType::Uuid
         | DataType::Version
+        | DataType::Url
         | DataType::List(_)
         | DataType::ListView(_)
         | DataType::FixedSizeList(..)

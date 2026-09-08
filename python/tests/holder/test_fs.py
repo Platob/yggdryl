@@ -392,6 +392,7 @@ class TestFramedText:
         assert reader.schema.names == [
             "url",
             "rownum",
+            "mtime",
             "body",
             "dropped_byte_size",
             "kind",
@@ -436,7 +437,7 @@ class TestFramedText:
             options=options
         )
 
-        assert reader.schema.names == ["url", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.names == ["url", "mtime", "body", "dropped_byte_size", "kind"]
         assert reader.schema.field("dropped_byte_size").type == pa.uint64()
 
 

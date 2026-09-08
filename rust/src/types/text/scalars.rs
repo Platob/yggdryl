@@ -298,6 +298,7 @@ pub(crate) fn text_from_value(value: &Scalar) -> Option<Result<SmolStr>> {
         Scalar::Boolean(flag) => Ok(smol_str::format_smolstr!("{flag}")),
         Scalar::Uuid(uuid) => Ok(smol_str::format_smolstr!("{uuid}")),
         Scalar::Version(version) => Ok(smol_str::format_smolstr!("{version}")),
+        Scalar::Url(url) => Ok(smol_str::format_smolstr!("{url}")),
         // An interval has no classic spelling, so a temporal answers for the
         // seven that do and leaves the rest to the ordinary refusal.
         Scalar::Temporal(_) => return value.into_temporal_text().map(Ok),

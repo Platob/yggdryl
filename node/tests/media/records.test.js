@@ -406,6 +406,7 @@ test('text options value protocols include every flat text setting', () => {
   options.autotype = false
   options.timezone = '+02:00'
   options.startRownum = 7n
+  options.parseMtime = false
 
   const clone = options.clone()
   assert.ok(clone.equals(options))
@@ -414,6 +415,138 @@ test('text options value protocols include every flat text setting', () => {
   clone.safe = true
   assert.ok(!clone.equals(options))
   assert.notEqual(clone.compare(options), 0)
+
+  // The dating flag is part of the value too: it alone parts two settings.
+  const dated = options.clone()
+  dated.parseMtime = true
+  assert.ok(!dated.equals(options))
+  assert.notEqual(dated.compare(options), 0)
+  assert.notEqual(dated.stableHash(), options.stableHash())
+})
+
+test('plain text dates every row, and the flag takes the column away', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  const target = path.join(root, 'events.log')
+  fs.writeFileSync(target, 'first\nsecond\n')
+  const handle = new IOBase(target)
+
+  // The column is on by default and holds one fixed place, right after url.
+  const options = new TextOptions()
+  assert.equal(options.parseMtime, true)
+  const table = handle.readArrowReader(options).intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => [
+      field.name,
+      field.type.toString(),
+      field.nullable,
+    ]),
+    [
+      ['url', 'Utf8', true],
+      ['mtime', 'Timestamp<NANOSECOND, UTC>', true],
+      ['body', 'Binary', false],
+    ],
+  )
+  // The url column is the `url` datatype: Utf8 storage carrying the extension
+  // identity, and nullable because a handle without a location has no URL.
+  assert.equal(
+    table.schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.url',
+  )
+  // A located handle fills it with the canonical URL text of its location.
+  assert.deepEqual(
+    [...table.getChild('url')],
+    [handle.url.toString(), handle.url.toString()],
+  )
+
+  // One fact about the file, read once and repeated: every row carries the
+  // handle's own modification time, to the nanosecond it is stored at.
+  const stamped = fs.statSync(target, { bigint: true }).mtimeNs
+  assert.deepEqual([...table.getChild('mtime').toArray()], [stamped, stamped])
+  // The record path reads the same column as the batch path.
+  assert.deepEqual(
+    [...handle.readRecords(options)].map((row) => row.mtime),
+    [...table.getChild('mtime')],
+  )
+
+  // rownum still comes first when it is asked for, and captures still trail.
+  const numbered = new TextOptions()
+  numbered.startRownum = 1n
+  numbered.rowheader = '^(?<word>\\w+)'
+  assert.deepEqual(
+    handle
+      .readArrowReader(numbered)
+      .intoTable()
+      .schema.fields.map((field) => field.name),
+    ['url', 'rownum', 'mtime', 'body', 'word'],
+  )
+
+  // Turning the flag off takes the column away rather than nulling it.
+  const undated = new TextOptions()
+  undated.parseMtime = false
+  assert.deepEqual(
+    handle
+      .readArrowReader(undated)
+      .intoTable()
+      .schema.fields.map((field) => field.name),
+    ['url', 'body'],
+  )
+
+  // A buffer records no modification time, so the column is there and null:
+  // the reader says so rather than inventing a clock reading.
+  const buffer = IOBase.fromBytes(Buffer.from('first\nsecond\n'))
+  const held = buffer.readArrowReader(options).intoTable()
+  assert.deepEqual(
+    held.schema.fields.map((field) => field.name),
+    ['url', 'mtime', 'body'],
+  )
+  assert.deepEqual([...held.getChild('mtime')], [null, null])
+  assert.deepEqual(
+    [...buffer.readRecords(options)].map((row) => row.mtime),
+    [null, null],
+  )
+})
+
+test('a row header that dates a line fills mtime rather than adding a column', () => {
+  const options = new TextOptions()
+  options.rowheader = '^(?<mtime>\\S+) id=(?<id>\\d+) '
+  const table = IOBase.fromBytes(
+    Buffer.from('2020-01-02T03:04:05.123456789Z id=7 first\n'),
+  )
+    .readArrowReader(options)
+    .intoTable()
+
+  // One column, not two: the capture dates the line, and is read at the
+  // column's own datatype rather than at the one its syntax suggests.
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    ['url', 'mtime', 'body', 'id'],
+  )
+  assert.equal(table.schema.fields[1].type.unit, arrow.TimeUnit.NANOSECOND)
+  assert.equal(table.schema.fields[1].type.timezone, 'UTC')
+  assert.deepEqual(
+    [...table.getChild('mtime').toArray()],
+    [1_577_934_245_123_456_789n],
+  )
+
+  // With the column off, the same name is an ordinary trailing capture,
+  // typed by its own syntax and sitting after body.
+  const undated = new TextOptions()
+  undated.parseMtime = false
+  undated.rowheader = '^(?<mtime>\\d+) '
+  const counted = IOBase.fromBytes(Buffer.from('77 first\n'))
+    .readArrowReader(undated)
+    .intoTable()
+  assert.deepEqual(
+    counted.schema.fields.map((field) => [field.name, field.type.toString()]),
+    [
+      ['url', 'Utf8'],
+      ['body', 'Binary'],
+      ['mtime', 'Int64'],
+    ],
+  )
+  assert.deepEqual([...counted.getChild('mtime')], [77n])
 })
 
 test('a setting one encoding has is absent on the others', (t) => {

@@ -425,6 +425,10 @@ impl IOBase for Media {
         self.as_io().bound_location()
     }
 
+    fn mtime(&self) -> Option<i64> {
+        self.as_io().mtime()
+    }
+
     fn media_type(&self) -> &crate::MediaType {
         self.as_io().media_type()
     }

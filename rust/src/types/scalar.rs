@@ -133,6 +133,11 @@ pub enum Scalar {
     Uuid(Uuid),
     /// A canonical, numerically ordered version.
     Version(Version),
+    /// A validated, canonical location.
+    ///
+    /// Behind one shared pointer: a parsed [`crate::Url`] is far wider than
+    /// this enum, and a column of them is cloned once per row.
+    Url(Arc<crate::Url>),
     /// One identity-preserving member of a shared static enum.
     Enum(Enum),
     /// Opaque bytes retaining their storage representation.
@@ -270,6 +275,7 @@ impl Serialize for Scalar {
             },
             Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
             Self::Version(value) => tagged(serializer, "version", value),
+            Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Enum(value) => tagged(serializer, "enum", value),
             Self::Bytes(value) => match value {
                 Bytes::Binary(value) => tagged(serializer, "bytes", &value.as_bytes()),
@@ -469,6 +475,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Cfi(SmolStr),
             Uuid(SmolStr),
             Version(Version),
+            Url(SmolStr),
             Enum(Enum),
             Bytes(Arc<[u8]>),
             FixedSizeBinary(Arc<[u8]>),
@@ -545,6 +552,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map(Self::Uuid)
                 .map_err(D::Error::custom),
             StructuralValue::Version(value) => Ok(Self::Version(value)),
+            StructuralValue::Url(value) => crate::Url::from_str(value.as_str())
+                .map(|value| Self::Url(Arc::new(value)))
+                .map_err(D::Error::custom),
             StructuralValue::Enum(value) => Ok(Self::Enum(value)),
             StructuralValue::Bytes(value) => Ok(Self::from(value)),
             StructuralValue::FixedSizeBinary(value) => Ok(Self::Bytes(Bytes::FixedSizeBinary(
@@ -714,6 +724,7 @@ impl Ord for Scalar {
             Self::Ascii(left) => same_kind!(Self::Ascii(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
+            Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
             Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
@@ -755,6 +766,7 @@ impl Hash for Scalar {
             Self::Ascii(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
+            Self::Url(value) => value.hash(state),
             Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Geospatial(value) => value.hash(state),
@@ -821,6 +833,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Uuid(_) => 17,
         Scalar::Ascii(_) => 18,
         Scalar::Version(_) => 19,
+        Scalar::Url(_) => 20,
     }
 }
 
@@ -876,6 +889,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::TimeInForce(_)) => DataTypeId::TimeInForce,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
+            Self::Url(_) => DataTypeId::Url,
             Self::Enum(_) => DataTypeId::Utf8,
             Self::Bytes(Bytes::Binary(_)) => DataTypeId::Binary,
             Self::Bytes(Bytes::FixedSizeBinary(_)) => DataTypeId::FixedSizeBinary,
@@ -936,6 +950,7 @@ impl Scalar {
             Self::Ascii(AsciiFamily::TimeInForce(_)) => "timeinforce",
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
+            Self::Url(_) => "url",
             Self::Enum(_) => "enum",
             Self::Bytes(Bytes::Binary(_)) => "bytes",
             Self::Bytes(Bytes::FixedSizeBinary(_)) => "fixed_size_binary",
