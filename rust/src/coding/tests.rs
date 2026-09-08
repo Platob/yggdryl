@@ -864,7 +864,10 @@ mod restarts {
                 "{refused} names {codec}"
             );
             encoder.finish().expect("the stream still finishes");
-            assert_eq!(codec.load(&encoded).expect("the payload"), b"symbol,price\n");
+            assert_eq!(
+                codec.load(&encoded).expect("the payload"),
+                b"symbol,price\n"
+            );
 
             // A refused restart leaves nothing to find.
             let mut offsets = Vec::new();

@@ -216,7 +216,9 @@ impl Leaf {
         }
         let codec = self.write_codec()?;
         let plain = self.plain.take().unwrap_or_default();
-        let entry = self.archive.write_member_from(&self.name, &plain[..], codec)?;
+        let entry = self
+            .archive
+            .write_member_from(&self.name, &plain[..], codec)?;
         self.decoded_from = Decoded::Record(entry.header_offset());
         self.plain = Some(plain);
         self.dirty = false;
@@ -255,7 +257,8 @@ impl IOFile for Leaf {
             return Ok(());
         }
         let codec = self.write_codec()?;
-        self.archive.write_member_from(&self.name, std::io::empty(), codec)?;
+        self.archive
+            .write_member_from(&self.name, std::io::empty(), codec)?;
         self.archive.flush()
     }
 

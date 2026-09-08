@@ -40,9 +40,13 @@ const COMPACT_CHUNK: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 ///
 /// One stream batch, which is also the page a [`Buffered`] handle fetches, so
 /// a page of a member begins exactly on a point and its fill decodes nothing
-/// it does not return. Restarting costs size - measured at about 3% on text
-/// that deflates well - which is the price of a member that can be read at an
-/// offset rather than only from its first byte.
+/// it does not return.
+///
+/// Restarting costs size, because a unit begins with no history of the one
+/// before it: about 5% on realistic CSV at this stride, 1.3% at 256 KiB, and
+/// 0.3% at 1 MiB. That is the price of a member that can be read at an offset
+/// rather than only from its first byte; a caller that wants the bytes back
+/// writes with a stride of zero and gets a solid member.
 ///
 /// [`Buffered`]: crate::holder::buffered::Buffered
 pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
@@ -493,12 +497,7 @@ impl Archive {
     /// refusal when `path` resolves to the archive root, or
     /// [`Error::Unsupported`] naming a coding no ZIP compression method
     /// spells.
-    pub fn write_member_from(
-        &self,
-        path: &str,
-        source: impl Read,
-        codec: Codec,
-    ) -> Result<Entry> {
+    pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry> {
         let name = name::resolve("", path)?;
         if name.is_empty() {
             return Err(Error::Io(std::io::Error::new(
@@ -1229,7 +1228,6 @@ impl Archive {
         codec.restart_scan().push(&window, &mut found);
         Ok(found.contains(&RESTART_EVIDENCE))
     }
-
 
     /// Lock the archive, taking the state a panicking thread left behind.
     ///

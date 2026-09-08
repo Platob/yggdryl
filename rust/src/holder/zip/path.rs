@@ -143,7 +143,6 @@ impl IOBase for Path {
         self.as_leaf().pread(offset, buffer)
     }
 
-
     /// Stream the member this location resolves to.
     ///
     /// The reader owns the archive it reads through, so the stream outlives

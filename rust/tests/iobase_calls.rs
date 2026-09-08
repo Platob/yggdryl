@@ -627,7 +627,10 @@ mod zip {
         // This archive wrote the member, so it never has to read the local
         // header that would say where the bytes start.
         let before = root.archive().handle_reads();
-        assert_eq!(member.read_range_bytes(1_000, 16).expect("a range").len(), 16);
+        assert_eq!(
+            member.read_range_bytes(1_000, 16).expect("a range").len(),
+            16
+        );
         assert_eq!(root.archive().handle_reads() - before, 1);
     }
 
@@ -686,7 +689,11 @@ mod zip {
         // and bytes together, because they are one record.
         let before = root.archive().handle_writes();
         root.archive()
-            .write_member_from("short.bin", std::io::Cursor::new(b"symbol"), Codec::Identity)
+            .write_member_from(
+                "short.bin",
+                std::io::Cursor::new(b"symbol"),
+                Codec::Identity,
+            )
             .expect("the member streams in");
         assert_eq!(root.archive().handle_writes() - before, 1);
     }

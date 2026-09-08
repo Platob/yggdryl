@@ -138,7 +138,10 @@ impl CodedWrite for FrameWriter<'_> {
             .take()
             .ok_or_else(|| std::io::Error::other("the Zstandard frame was already closed"))?;
         let target = encoder.finish()?;
-        self.encoder = Some(zstd::stream::write::Encoder::new(target, self.level.zstd())?);
+        self.encoder = Some(zstd::stream::write::Encoder::new(
+            target,
+            self.level.zstd(),
+        )?);
         Ok(true)
     }
 }

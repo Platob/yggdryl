@@ -39,7 +39,10 @@ fn expected_members() -> Vec<(&'static str, Vec<u8>)> {
         // room reserved for sizes nobody knew yet and settled afterwards -
         // and longer than one restart stride, so its stream carries the full
         // flushes the map states. Both are the reader's problem, not ours.
-        ("trades/2024/big.csv", b"symbol,price\nNVDA,131.14\n".repeat(60_000)),
+        (
+            "trades/2024/big.csv",
+            b"symbol,price\nNVDA,131.14\n".repeat(60_000),
+        ),
     ]
 }
 

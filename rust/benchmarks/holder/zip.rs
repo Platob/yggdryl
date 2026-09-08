@@ -129,10 +129,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     // A scan that walks backwards, which is where a map turns a quadratic
     // cost into a linear one.
     group.throughput(Throughput::Elements(16));
-    for (name, member) in [
-        ("mapped", &deflated_member),
-        ("solid", &solid_member),
-    ] {
+    for (name, member) in [("mapped", &deflated_member), ("solid", &solid_member)] {
         group.bench_function(BenchmarkId::new("read/backward", name), |bencher| {
             bencher.iter(|| {
                 for step in (0..16).rev() {
@@ -179,6 +176,18 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
             black_box(&stored)
                 .child_by_path("blob.bin")
                 .expect("a member")
+                .read_range_bytes((MEMBER_LEN / 2) as u64, READ_LEN)
+                .expect("a range")
+        });
+    });
+
+    // The same location, held rather than resolved again. A location owns the
+    // role it resolved, so what the leg above pays for is the resolution.
+    let held = stored.child_by_path("blob.bin").expect("a member");
+    held.read_range_bytes(0, READ_LEN).expect("a range");
+    group.bench_function("read/held_path", |bencher| {
+        bencher.iter(|| {
+            black_box(&held)
                 .read_range_bytes((MEMBER_LEN / 2) as u64, READ_LEN)
                 .expect("a range")
         });

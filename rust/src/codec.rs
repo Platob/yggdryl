@@ -573,7 +573,10 @@ impl Restarts {
             return (0, 0);
         }
         let index = usize::try_from(position / self.stride).unwrap_or(usize::MAX);
-        let Some(point) = index.checked_sub(1).map(|last| last.min(self.points.len() - 1)) else {
+        let Some(point) = index
+            .checked_sub(1)
+            .map(|last| last.min(self.points.len() - 1))
+        else {
             return (0, 0);
         };
         (

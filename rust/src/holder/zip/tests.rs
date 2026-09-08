@@ -526,7 +526,15 @@ fn a_compressed_member_reads_at_an_offset_from_the_point_before_it() {
         // Every offset reads what the payload holds there, whether it lands
         // on a point, inside a unit, or past the last one.
         let member = root.as_leaf("blob.bin").expect("a member");
-        for offset in [0_usize, 1, 4 * 1024, 4 * 1024 + 7, 30_000, 63 * 1024, 65_535] {
+        for offset in [
+            0_usize,
+            1,
+            4 * 1024,
+            4 * 1024 + 7,
+            30_000,
+            63 * 1024,
+            65_535,
+        ] {
             assert_eq!(
                 member.read_range_bytes(offset as u64, 24).expect("a range"),
                 payload[offset..(offset + 24).min(payload.len())],
@@ -834,7 +842,11 @@ fn a_streamed_write_holds_one_window_however_long_the_member() {
     // A member that fits one window is still one write, header and all.
     let before = root.archive().handle_writes();
     root.archive()
-        .write_member_from("small.bin", std::io::Cursor::new(b"symbol"), Codec::Identity)
+        .write_member_from(
+            "small.bin",
+            std::io::Cursor::new(b"symbol"),
+            Codec::Identity,
+        )
         .expect("the member streams in");
     assert_eq!(root.archive().handle_writes() - before, 1);
 }
@@ -852,15 +864,16 @@ fn a_whole_write_never_decodes_the_member_it_replaces() {
     member.write_all_bytes(b"symbol,price").expect("writes");
     assert_eq!(root.archive().handle_reads(), before);
     assert!(!member.opened(), "a whole write stages nothing");
-    assert_eq!(member.read_all_bytes().expect("the member"), b"symbol,price");
+    assert_eq!(
+        member.read_all_bytes().expect("the member"),
+        b"symbol,price"
+    );
 }
 
 #[test]
 fn a_positional_write_through_a_location_stages_rather_than_publishing() {
     let root = root();
-    let mut member = root
-        .child_by_path("notes.txt")
-        .expect("a member location");
+    let mut member = root.child_by_path("notes.txt").expect("a member location");
     for (index, byte) in b"symbol".iter().enumerate() {
         member
             .pwrite(index as u64, std::slice::from_ref(byte))
@@ -939,7 +952,9 @@ fn a_member_name_in_a_code_page_reads_rather_than_failing_the_archive() {
 #[test]
 fn a_split_archive_is_refused_by_the_volume_it_names() {
     let root = root();
-    root.archive().write_member("a.txt", b"symbol").expect("writes");
+    root.archive()
+        .write_member("a.txt", b"symbol")
+        .expect("writes");
     let mut raw = bytes(root.archive());
     // The end record's disk number, four bytes past its signature.
     let end = raw.len() - format::END_LEN;
@@ -961,7 +976,9 @@ fn a_rewrite_keeps_what_the_record_said_about_the_member() {
     // A record another tool wrote: made by MS-DOS, its own mode, a comment.
     let mut raw = {
         let root = root();
-        root.archive().write_member("a.txt", b"symbol").expect("writes");
+        root.archive()
+            .write_member("a.txt", b"symbol")
+            .expect("writes");
         bytes(root.archive())
     };
     let central = raw
@@ -1036,7 +1053,10 @@ fn a_location_that_lists_as_a_container_reads_as_one() {
 
     // The member is still reachable through the role that names it.
     assert_eq!(
-        root.as_leaf("a").expect("a member").read_all_bytes().expect("bytes"),
+        root.as_leaf("a")
+            .expect("a member")
+            .read_all_bytes()
+            .expect("bytes"),
         b"member bytes"
     );
 }
@@ -1248,7 +1268,6 @@ fn an_archive_inside_an_archive_names_its_own_members() {
         format!("{}#inner.zip", outer.archive().url())
     );
 
-
     let member = inner.child_by_path("trades/eu.csv").expect("the member");
     assert_eq!(
         member.url().expect("a member url").to_string(),
@@ -1295,8 +1314,11 @@ fn a_nested_member_url_opens_the_member_again() {
 
     // The level above it opens as the inner archive's own root.
     let inner_root = super::from_url(
-        &Url::from_str(&format!("{}#inner.zip", outer.url().expect("the archive url")))
-            .expect("a url"),
+        &Url::from_str(&format!(
+            "{}#inner.zip",
+            outer.url().expect("the archive url")
+        ))
+        .expect("a url"),
     )
     .expect("the inner member");
     assert_eq!(inner_root.read_all_bytes().expect("the member"), inner);
@@ -1312,7 +1334,10 @@ fn a_nested_archive_is_written_through_and_read_back() {
         .expect("the member")
         .write_all_bytes(&{
             let staged = root();
-            staged.archive().create_directory("").expect("an empty archive");
+            staged
+                .archive()
+                .create_directory("")
+                .expect("an empty archive");
             bytes(staged.archive())
         })
         .expect("writes");

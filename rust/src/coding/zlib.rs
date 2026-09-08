@@ -201,8 +201,8 @@ impl<'target> RawWriter<'target> {
                 .compress
                 .compress_vec(input, &mut self.window, flush)
                 .map_err(std::io::Error::other)?;
-            let consumed = usize::try_from(self.compress.total_in() - consumed_before)
-                .unwrap_or(input.len());
+            let consumed =
+                usize::try_from(self.compress.total_in() - consumed_before).unwrap_or(input.len());
             let produced = self.compress.total_out() - produced_before;
             self.target.write_all(&self.window)?;
             input = input.get(consumed..).unwrap_or_default();

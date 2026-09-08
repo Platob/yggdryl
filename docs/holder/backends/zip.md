@@ -494,53 +494,78 @@ assert!(root.is_tabular());
 
 ## Performance
 
-`io_zip` runs one containerized x86_64 Linux release build, group alone, Criterion, 100 samples, medians. Run-to-run spread reaches 20%, so read the multiples, never the percentages.
+`io_zip` runs one containerized x86_64 Linux release build, group alone, Criterion, 100 samples, medians. The numbers below are a fresh run on this machine and are not comparable with any published before them: run-to-run spread reaches 10%, so read the multiples, never the percentages.
 
-One 1 MiB member, read positionally at its midpoint, 512 bytes at a time:
+One 1 MiB member, read positionally 512 bytes at a time, written with the default 64 KiB restart stride:
 
 | leg | | |
 | --- | --- | --- |
-| `read/stored` | 110.51 ns | the archive's own `pread`, no decode |
-| `read/deflate_opened` | 56.56 ns | a copy out of the decoded member `open` holds |
-| `read/through_path` | 593.03 ns | the same read, resolving the member's name each time |
-| `read/deflate_closed` | 40.43 µs | decoded from the member's first byte, nothing retained |
+| `read/stored` | 136.27 ns | the archive's own `pread`, no decode |
+| `read/deflate_opened` | 75.48 ns | a copy out of the decoded member `open` holds |
+| `read/deflate_onpoint` | 4.8353 µs | the offset is a restart point, so only the answer is decoded |
+| `read/deflate_closed` | 7.7590 µs | the offset is mid-unit, so half a stride is decoded and discarded |
+| `read/deflate_solid` | 55.270 µs | the same read of a member written with no points |
 
-A stored member is **366x** cheaper to read positionally than a closed compressed one, because there is nothing between the caller's buffer and the archive's bytes. That is the whole reason the stored path exists; it is also why `open` is the answer for many positional reads over a compressed member, and why a closed one is still the right default for one read.
+A mapped member is **7.1x** cheaper to read at an arbitrary offset than a solid one, and **11.4x** on a point. That multiple is the whole feature: what a read decodes is one stride rather than everything before the offset. A stored member is cheaper again by two orders of magnitude, because there is nothing between the caller's buffer and the archive's bytes.
+
+The multiple grows with the distance a scan covers. Sixteen 512-byte reads at *decreasing* offsets across the same member:
+
+| leg | | |
+| --- | --- | --- |
+| `read/backward/mapped` | 80.024 µs | 5.00 µs a read |
+| `read/backward/solid` | 779.86 µs | 48.7 µs a read |
+
+**9.7x**, and it is a quadratic cost becoming a linear one: a solid member pays for the whole prefix on every read, so the gap widens with the member's size, while a mapped one pays for one unit whatever the offset.
+
+Restart points cost size, because a unit begins with no history of the one before it. Measured with the same encoder over 3.7 MB of realistic trade CSV that deflates 3.8:1:
+
+| stride | encoded size | |
+| --- | --- | --- |
+| solid | 1,012,829 | the baseline |
+| 1 MiB | +0.28% | 3 points |
+| 256 KiB | +1.31% | 14 points |
+| 64 KiB | +5.21% | 59 points, the default |
+
+The default is 64 KiB because it is the page a [`Buffered`](buffered.md) handle fetches and the batch a stream hands out, so a page fill begins exactly on a point and decodes nothing it does not return. A caller that wants the bytes back writes with `with_restart_stride(0)`.
 
 Whole-member reads over the same 1 MiB, digest check included:
 
 | leg | | |
 | --- | --- | --- |
-| `read_all/stored` | 119.50 µs | 8.06 GiB/s |
-| `read_all/deflate` | 127.31 µs | 7.67 GiB/s |
+| `read_all/stored` | 137.23 µs | 7.11 GiB/s |
+| `read_all/deflate` | 182.88 µs | 5.16 GiB/s |
 
-The two are close because both are dominated by the CRC-32 pass over the decoded bytes, which every whole-member read performs.
+Both are dominated by the CRC-32 pass over the decoded bytes, which every whole read performs; the deflated leg also pays for the window each restart drops.
+
+Writing the same 1 MiB member from a reader:
+
+| leg | | |
+| --- | --- | --- |
+| `write/stream/solid` | 552.50 µs | one window, no points |
+| `write/stream/mapped` | 619.17 µs | the same, restarting every 64 KiB |
+
+Restarting costs **12%** of the write, which buys the read multiples above.
+
+Resolving a location and reading through it:
+
+| leg | | |
+| --- | --- | --- |
+| `read/held_path` | 206.36 ns | a location that already resolved its role |
+| `read/through_path` | 918.96 ns | resolving the name again on every read |
+
+A location owns the role it resolved, so the difference is the resolution - a name to canonicalize and a member URL to build - and not the read.
 
 An archive of 2,000 members across ten directories:
 
 | leg | | |
 | --- | --- | --- |
-| `mount/index` | 899.39 µs | two handle reads, then parsing 2,000 records |
-| `listing/first_entry` | 662.45 µs | the index snapshot a recursive listing walks |
-| `listing/drain` | 1.2993 ms | every entry |
-| `listing/glob` | 2.1634 ms | `part=03/**/*.csv` over the same tree |
-| `write/members` | 27.840 ms | 2,000 members and one directory, ~14 µs each |
+| `mount/index` | 1.3356 ms | two handle reads, then parsing 2,000 records |
+| `listing/first_entry` | 840.48 µs | the index snapshot a recursive listing walks |
+| `listing/drain` | 1.6701 ms | every entry |
+| `listing/glob` | 2.7910 ms | `part=03/**/*.csv` over the same tree |
+| `write/members` | 41.635 ms | 2,000 members and one directory, ~21 µs each |
 
 Listing reads no member byte at all: the cost is building the name snapshot out of the index. Unlike a directory backend, then, time to first entry is not cheaper than the drain - the index is one map, and a recursive listing walks all of it before yielding.
-
-### What the call budget bought
-
-Holding the cost model to the counts above moved the timings with it, measured against the same group before the handle calls were cut:
-
-| leg | before | after | |
-| --- | --- | --- | --- |
-| `read/stored` | 178.74 ns | 110.51 ns | **1.6x faster** |
-| `read/deflate_opened` | 66.79 ns | 56.56 ns | 1.2x faster |
-| `listing/first_entry` | 729.04 µs | 662.45 µs | 1.1x faster |
-| `read_all/deflate` | 136.54 µs | 127.31 µs | 1.1x faster |
-| `read_all/stored` | 114.34 µs | 119.50 µs | 1.04x slower |
-
-The positional read is where it shows: it went from three lock acquisitions, a copied record, and an allocated lookup key down to one lock, one borrow, and one handle read. The one leg that lost is the whole stored read, which now fills a zeroed buffer in one ranged call where it used to stream into spare capacity - a constant-factor cost against one fewer round trip, which is the trade the call budget asks for and the one a real store rewards.
 
 ```bash
 cargo bench --bench holder -- io_zip
