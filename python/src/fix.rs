@@ -215,7 +215,7 @@ impl PyFixRegistry {
     /// Every registry starts here: the sixteen standard fields from tag 65000
     /// that `fix_crate_fields` lists are what a row is typed by, so a
     /// dictionary loaded from a store, built from fields or left alone holds
-    /// them alike - and declares no branch for them.
+    /// them alike, on the standard branch every one of them resolves through.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))

@@ -21,8 +21,11 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix } = require(
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
 // What every registry holds before anything is inserted: the crate's own
-// fields, which `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
-const CRATED = 11
+// sixteen fields, standard fields from tag 65000 up, which
+// `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
+const CRATED = 16
+// The first tag the crate claims; every tag from it up is one of its own.
+const CRATE_TAG_MIN = 65000
 
 function scratch() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fix-'))
@@ -268,6 +271,9 @@ test('the registry resolves every key the way the core does', () => {
   assert.ok(registry.getFieldById('55:').equals(registry.fieldByTag(55)))
   // The alternate tag 20 reaches ExecType, which claims 150 canonically.
   assert.equal(registry.fieldByTag(150).name, 'exectype')
+  // `OrdStatus` and `ExecType` are the order's state, read as one type.
+  assert.ok(registry.fieldByTag(39).dtype.equals(DataType.from('state')))
+  assert.ok(registry.fieldByTag(150).dtype.equals(DataType.from('state')))
   // A name answers the canonical spelling whatever case it was asked in.
   assert.equal(registry.fieldByName('symbol', '').name, 'symbol')
   assert.equal(registry.fieldByName('SYMBOL', fix.STANDARD_BRANCH).name, 'symbol')
@@ -483,9 +489,10 @@ test('the registry iterates lazily in ascending identifier order', () => {
 
   // Tag-major, then by branch digest - the identifier's own order. The
   // vendor fields therefore precede the later standard tag, and the crate's
-  // own fields close the walk: their tags sit above any a test claims.
+  // own fields close the walk: standard fields whose tags sit above any a
+  // test claims.
   const crated = fix.crateFields().map((field) => field.fix.id)
-  assert.deepEqual(crated, Array.from({ length: CRATED }, (_, at) => `${30001 + at}:yggdryl`))
+  assert.deepEqual(crated, Array.from({ length: CRATED }, (_, at) => `${CRATE_TAG_MIN + at}:`))
   assert.deepEqual(
     [...registry].map((field) => field.fix.id),
     ['1:', '44:', '55:', '5001:cme', '5002:cme', '9001:', ...crated],
@@ -510,7 +517,7 @@ test('the registry iterates lazily in ascending identifier order', () => {
   )
 })
 
-test('the seed iterates in canonical-tag order and only the crate branch is named', () => {
+test('the seed iterates in canonical-tag order and every field is standard', () => {
   const registry = seed()
 
   const names = [...registry].map((field) => field.name)
@@ -519,13 +526,16 @@ test('the seed iterates in canonical-tag order and only the crate branch is name
 
   const tags = [...registry].map((field) => field.fix.tag)
   assert.deepEqual(tags, [...tags].sort((left, right) => left - right))
-  // Every stored field is a specification field, so none states a branch;
-  // the crate's own eleven, which every registry holds, are the only ones
-  // on a branch at all.
-  const branches = [...registry].map((field) => field.fix.branch)
-  assert.equal(branches.filter((branch) => branch === 'yggdryl').length, CRATED)
-  assert.equal(branches.filter((branch) => branch === '').length, registry.size - CRATED)
-  assert.ok([...registry].every((field) => field.has('fix:branch') === (field.fix.branch === 'yggdryl')))
+  // Every stored field is a specification field, and the crate's own sixteen
+  // are standard fields above every published tag, so no field states a
+  // branch at all - and the crate's close the walk, since nothing the seed
+  // stores sits at or above their first tag.
+  assert.ok([...registry].every((field) => field.fix.branch === fix.STANDARD_BRANCH))
+  assert.ok([...registry].every((field) => !field.has('fix:branch')))
+  assert.deepEqual(
+    tags.filter((tag) => tag >= CRATE_TAG_MIN),
+    fix.crateFields().map((field) => field.fix.tag),
+  )
 })
 
 test('the registry takes every storage location', () => {
@@ -573,9 +583,10 @@ test('a written folder reloads equal through the two trees', (t) => {
   const nested = fs.readdirSync(path.join(dictionary, 'nested', '')).sort()
   assert.ok(primitive.includes('0.json') && nested.includes('0.json'))
   assert.equal(primitive.length + nested.length, 128)
-  // The crate's own branch is never written: those fields are the crate's
-  // rather than the store's, and the reload holds them all the same.
-  assert.equal(primitive.includes('yggdryl') || nested.includes('yggdryl'), false)
+  // The crate's own fields are never written - a standard field from 65000
+  // up is the crate's rather than the store's - so the shard their block
+  // would take is absent, and the reload holds them all the same.
+  assert.equal(primitive.includes('650.json') || nested.includes('650.json'), false)
   // The reload is the assertion; the listing above only says it sharded.
   assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
 
@@ -603,9 +614,9 @@ test('a vendor branch gets its own folder', (t) => {
   assert.ok(fs.existsSync(path.join(dictionary, 'primitive', '0.json')))
   assert.ok(fs.existsSync(path.join(dictionary, 'primitive', 'cme', '50.json')))
   assert.equal(
-    fs.existsSync(path.join(dictionary, 'primitive', 'yggdryl')),
+    fs.existsSync(path.join(dictionary, 'primitive', '650.json')),
     false,
-    'the crate branch is never stored',
+    "the crate's own fields are never stored",
   )
 
   const reloaded = fix.FixRegistry.fromHandle(dictionary)
@@ -1037,10 +1048,10 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
   // after them, because no message carries it on the wire.
-  assert.deepEqual(
-    fix.schemaTags().slice(-12),
-    [30001, 30002, 30003, 30004, 30005, 30006, 30007, 30008, 30009, 30010, 30011, 385],
-  )
+  assert.deepEqual(fix.schemaTags().slice(-17), [
+    65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007,
+    65008, 65009, 65010, 65011, 65012, 65013, 65014, 65015, 385,
+  ])
 
   // A column is found by its folded name, and nothing else is needed.
   assert.equal(schema.indexOf('msgtype'), 2)
@@ -1070,8 +1081,8 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   // A message with no clock is stamped with the epoch, which sorts first and
   // visibly, and the partition is the epoch's own.
   assert.notEqual(row[schema.indexOf('timestamp')], null)
-  assert.ok(message.getByTag(30004).equals(Scalar.datetime(0n, 'ns', 'UTC')))
-  assert.ok(message.marketTimestamp().equals(message.getByTag(30004)))
+  assert.ok(message.getByTag(65003).equals(Scalar.datetime(0n, 'ns', 'UTC')))
+  assert.ok(message.marketTimestamp().equals(message.getByTag(65003)))
   assert.ok(message.unixPartition(3600).equals(Scalar.fromJs(0n)))
   // A tag no dictionary explains is still there, in its own column.
   assert.equal(row[row.length - 1].length, 1)
@@ -1100,20 +1111,24 @@ test("a capture's own columns lead the row", () => {
 
   // A capture column whose folded name a FIX column takes is not carried in
   // front: `sessionId` and `sessionid` are one name, and the FIX column is
-  // the one a reader spelling it means.
+  // the one a reader spelling it means - the session the message itself
+  // states. A bridge's own session instance is therefore captured as
+  // `sessionUid`, a name no FIX column takes, and leads the row.
   const stamped = fields.struct(
     'line',
     [
       fields.utf8('url', { nullable: false }),
       fields.binary('body', { nullable: false }),
       fields.utf8('sessionId'),
+      fields.utf8('sessionUid'),
     ],
     { nullable: false },
   )
   const folded = fix.schemaCarrying(stamped, plain)
-  assert.equal(folded.fieldLen, plain.fieldLen + 2)
+  assert.equal(folded.fieldLen, plain.fieldLen + 3)
   assert.equal(folded.indexOf('sessionId'), null)
-  assert.equal(folded.indexOf('sessionid'), plain.indexOf('sessionid') + 2)
+  assert.equal(folded.indexOf('sessionUid'), 2)
+  assert.equal(folded.indexOf('sessionid'), plain.indexOf('sessionid') + 3)
 })
 
 test('the crate fields declare their own protocols', () => {
@@ -1131,8 +1146,13 @@ test('the crate fields declare their own protocols', () => {
       'parentorderid',
       'sessionid',
       'msgctxid',
-      'pluginid',
-      'prevpluginid',
+      'senderpluginid',
+      'targetpluginid',
+      'senderpluginsession',
+      'targetpluginsession',
+      'isincode',
+      'miccode',
+      'state',
     ],
   )
   assert.deepEqual(
@@ -1147,16 +1167,23 @@ test('the crate fields declare their own protocols', () => {
       'ParentOrderID',
       'SessionId',
       'MsgCtxId',
-      'PluginId',
-      'PrevPluginId',
+      'SenderPluginId',
+      'TargetPluginId',
+      'SenderPluginSession',
+      'TargetPluginSession',
+      'ISINCode',
+      'MICCode',
+      'State',
     ],
   )
-  // In tag order, on the crate's own branch: the same tag as a venue's own
-  // 30001 would be, and a different identity.
+  // In tag order, on the standard branch, from 65000 up: above every tag FIX
+  // or a venue publishes, so they collide with nothing a dictionary declares
+  // and need no branch of their own.
   assert.deepEqual(
     held.map((field) => field.fix.id),
-    held.map((_, at) => `${30001 + at}:yggdryl`),
+    held.map((_, at) => `${CRATE_TAG_MIN + at}:`),
   )
+  assert.ok(held.every((field) => field.fix.branch === fix.STANDARD_BRANCH))
 
   const digest = held[0]
   assert.equal(digest.getProperty('digest', 'role'), 'holder')
@@ -1170,42 +1197,66 @@ test('the crate fields declare their own protocols', () => {
   assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
 })
 
-test("the bridge's four facts are crate fields, and every registry holds them", () => {
-  // What a bridge's own log states about a line: the session and the message
-  // context it was handled under, and the plugins it moved between.
-  const held = fix.crateFields().slice(7)
+test("the bridge's six facts are crate fields, and every registry holds them", () => {
+  // What a bridge's own log states about a line: the session the message
+  // itself belongs to, the message context it was handled under, and the
+  // plugins and plugin sessions it moved between.
+  const held = fix.crateFields().slice(7, 13)
   assert.deepEqual(
     held.map((field) => [field.name, field.display, field.fix.id]),
     [
-      ['sessionid', 'SessionId', '30008:yggdryl'],
-      ['msgctxid', 'MsgCtxId', '30009:yggdryl'],
-      ['pluginid', 'PluginId', '30010:yggdryl'],
-      ['prevpluginid', 'PrevPluginId', '30011:yggdryl'],
+      ['sessionid', 'SessionId', '65007:'],
+      ['msgctxid', 'MsgCtxId', '65008:'],
+      ['senderpluginid', 'SenderPluginId', '65009:'],
+      ['targetpluginid', 'TargetPluginId', '65010:'],
+      ['senderpluginsession', 'SenderPluginSession', '65011:'],
+      ['targetpluginsession', 'TargetPluginSession', '65012:'],
     ],
   )
   assert.ok(held.every((field) => field.dtype.equals(DataType.from('utf8'))))
   assert.ok(held.every((field) => field.nullable))
   assert.ok(held.every((field) => field.description))
+  // The plugin sessions answer to the spellings a bridge row writes them
+  // under, so `ULFROMSESSIONNAME=` lands on the sender's session by name.
+  assert.deepEqual(
+    held.slice(4).map((field) => field.fix.aliases),
+    [['ULFromSessionName'], ['ULToSessionName']],
+  )
+
+  // And the three facts a row derives from what the message said, typed as
+  // the thing they hold rather than as the text a venue spelled it in: the
+  // state is ten bytes, two digits of rank then the name, as `40PARTFILL`.
+  const derived = fix.crateFields().slice(13)
+  assert.deepEqual(
+    derived.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
+    [
+      ['isincode', 'ISINCode', '65013:', 'utf8'],
+      ['miccode', 'MICCode', '65014:', 'mic'],
+      ['state', 'State', '65015:', 'state'],
+    ],
+  )
+  assert.equal(derived[2].dtype.asciiWidth, 10)
 
   // A new registry, a loaded one and a built one answer them alike, by
-  // identifier, by name on the branch, and by the bare tag or name - which
-  // reach past the standard branch, since it claims neither.
+  // identifier, by name on the standard branch, and by the bare tag or name,
+  // which is that branch's.
   for (const registry of [
     new fix.FixRegistry(),
     seed(),
     fix.FixRegistry.fromFields([fixField('Symbol', 'utf8', 55)]),
   ]) {
-    assert.equal(registry.fieldById('30008:yggdryl').name, 'sessionid')
-    assert.equal(registry.fieldByName('SessionId', 'yggdryl').fix.tag, 30008)
-    assert.equal(registry.fieldByTag(30011).name, 'prevpluginid')
-    assert.equal(registry.field('msgctxid').fix.id, '30009:yggdryl')
-    assert.equal(registry.has('pluginid'), true)
+    assert.equal(registry.fieldById('65007:').name, 'sessionid')
+    assert.equal(registry.fieldByName('SessionId', fix.STANDARD_BRANCH).fix.tag, 65007)
+    assert.equal(registry.fieldByTag(65012).name, 'targetpluginsession')
+    assert.equal(registry.field('msgctxid').fix.id, '65008:')
+    assert.equal(registry.has('senderpluginid'), true)
+    assert.equal(registry.fieldByName('ULToSessionName', fix.STANDARD_BRANCH).name, 'targetpluginsession')
   }
 
   // And each is a column of the fixed row, typed by the crate's own
   // definition and spelled by its folded name.
   const schema = fix.schema(seed(), 'FixMessage')
-  for (const field of held) {
+  for (const field of [...held, ...derived]) {
     const at = schema.indexOf(field.name)
     assert.notEqual(at, null, field.name)
     assert.equal(schema.fieldAt(at).fix.id, field.fix.id)
@@ -1225,8 +1276,15 @@ test('a message says everything the core derives about it', () => {
   // The clock is the message's own last child, stamped when it was built,
   // and the partition floors it to the hour.
   assert.equal([...message].at(-1)[0], 'timestamp')
-  assert.ok(message.marketTimestamp().equals(message.getByTag(30004)))
+  assert.ok(message.marketTimestamp().equals(message.getByTag(65003)))
   assert.ok(message.unixPartition(3600).equals(Scalar.fromJs(1706788800n)))
+  // A row derives the market from the first MIC the message names, and
+  // leaves the ISIN and the state null when it stated no source for either.
+  const schema = fix.schema(registry, 'FixMessage')
+  const row = message.toRow(schema).toJSON()
+  assert.equal(row[schema.indexOf('miccode')], 'XNAS')
+  assert.equal(row[schema.indexOf('isincode')], null)
+  assert.equal(row[schema.indexOf('state')], null)
   // A buy order at a price is a party willing to pay it, so the bid lane it
   // never wrote is still true of it.
   assert.equal(message.lifted('bidpx').toJSON(), 10.5)

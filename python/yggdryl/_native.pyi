@@ -4145,8 +4145,9 @@ class FixRegistry:
 
     Every registry holds this crate's own fields from construction - the
     sixteen standard fields from tag 65000 that ``fix_crate_fields`` lists, so
-    ``FixRegistry()`` is those and declares no branch - and ``len`` counts them
-    beside whatever was inserted or loaded; a store never writes them.
+    ``FixRegistry()`` is those and the standard branch they are on - and
+    ``len`` counts them beside whatever was inserted or loaded; a store never
+    writes them.
     """
 
     def __init__(self) -> None: ...

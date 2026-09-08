@@ -1682,12 +1682,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["state"].dtype == DataType("state")
 
     # Every registry holds them from construction, on the branch every
-    # dictionary resolves through, so a new registry declares no branch and
-    # a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches them
-    # by name. The listing is the very definition a registry answers.
+    # dictionary resolves through: the standard one is the only branch a new
+    # registry holds, and a bridge row spelling `SESSIONID` or
+    # `ULFROMSESSIONNAME` reaches them by name. The listing is the very
+    # definition a registry answers.
     registry = FixRegistry()
     assert len(registry) == CRATED
-    assert registry.branches() == []
+    assert registry.branches() == [FixBranch.STANDARD]
     for name, field in fields.items():
         assert registry.field_by_name(name, STANDARD_BRANCH) == field
         assert registry.field_by_name(name) == field
@@ -1935,17 +1936,18 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     from yggdryl.fix import FixBranch
 
     # A new registry already holds the crate's own fields, and they are
-    # standard fields: the standard branch is the absence of a declaration,
-    # so a new registry declares no branch at all.
+    # standard fields: the branch they are on is the one branch it holds.
     registry = FixRegistry()
-    assert [held.name for held in registry.branches()] == []
+    assert registry.branches() == [FixBranch.STANDARD]
+    assert [held.name for held in registry.branches()] == [STANDARD_BRANCH]
 
     registry.set_branch(FixBranch("morgan"))
     branch = FixBranch("cme", version="4.4")
     registry.set_branch(branch)
 
-    # Branches list in name order, whatever order they were declared in.
-    assert [held.name for held in registry.branches()] == ["cme", "morgan"]
+    # Branches list in name order, the standard one first, whatever order
+    # they were declared in.
+    assert [held.name for held in registry.branches()] == ["", "cme", "morgan"]
     assert registry.branch_named("cme") == branch
     assert registry.branch_named("CME").version == "4.4"
     assert registry.branch_named("absent") is None
@@ -1962,10 +1964,11 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     # the hash to join the two.
     assert registry.branch_by_digest(branch.digest()) == branch
     assert registry.get_branch_by_digest(branch.digest()) == branch
-    # Only a declared branch resolves. The standard branch is the absence of a
-    # declaration rather than one, so its digest - always zero - names nothing
-    # here, and a value no `u32` holds names nothing either.
-    assert registry.get_branch_by_digest(0) is None
+    # Zero is the standard branch's digest, and it resolves to it - the
+    # crate's own fields put the standard branch in every registry - so a
+    # reader joining the column never meets a row it cannot explain. A digest
+    # no branch carries names nothing rather than raising.
+    assert registry.get_branch_by_digest(0) == FixBranch.STANDARD
     assert registry.get_branch_by_digest(-1) is None
     with pytest.raises(ValueError):
         registry.branch_by_digest(-1)

@@ -161,9 +161,12 @@ impl JsFixRegistry {
 impl JsFixRegistry {
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the eleven fields `fixCrateFields` lists
-    /// are what a row is typed by, so a dictionary loaded from a store, built
-    /// from fields or left alone holds them alike.
+    /// Every registry starts here: the sixteen standard fields from tag 65000
+    /// that `fixCrateFields` lists - the digest, the clock and its partition,
+    /// the session a message states, the bridge's message context and the
+    /// plugin sessions a line moved between - are what a row is typed by, so
+    /// a dictionary loaded from a store, built from fields or left alone holds
+    /// them alike.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -184,10 +187,11 @@ impl JsFixRegistry {
     /// `location` is an `IOBase` handle, a `Url`, or the string naming one, run
     /// through the coercion every folder-shaped entry point uses. A folder that
     /// is not there loads as a new registry - the crate's own fields and
-    /// nothing else - and is not created; a stored copy of the crate's branch
-    /// is read past, because the crate's own definition is the one that types
-    /// a row. A shard that does not parse, and a root still holding the
-    /// retired `records/` layout, throw with the URL named.
+    /// nothing else - and is not created; a stored copy of one of the crate's
+    /// own fields, a standard field from 65000 up, is read past, because the
+    /// crate's own definition is the one that types a row. A shard that does
+    /// not parse, and a root still holding the retired `records/` layout,
+    /// throw with the URL named.
     #[napi(factory)]
     pub fn from_handle(location: LocationInput<'_>) -> Result<Self> {
         let holder = folder_from_input(location)?;
@@ -248,15 +252,16 @@ impl JsFixRegistry {
 
     /// Write every populated shard under `<location>/<tree>/<branch>`, removing
     /// the shards, branch folders and trees no field populates any more. The
-    /// crate's own branch is never written: its fields are the crate's rather
-    /// than the store's, and every registry holds them already.
+    /// crate's own fields - the standard fields from 65000 up - are never
+    /// written: they are the crate's rather than the store's, and every
+    /// registry holds them already.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
         let mut holder = folder_from_input(location)?;
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many fields are held, the crate's own eleven among them.
+    /// How many fields are held, the crate's own sixteen among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -1206,7 +1211,12 @@ pub fn fix_schema(
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `sessionId` and `sessionid` are one name - is dropped
-/// rather than renamed: the FIX column is the one a reader spelling it means.
+/// rather than renamed: the FIX column is the one a reader spelling it means,
+/// and `sessionid` means the session the message itself states. A bridge's own
+/// session instance is captured as `sessionUid` for that reason and leads the
+/// row beside `threadId` and `level`, while its `plugin` capture fills the
+/// plugin session the line's direction names: the sender's for a line it
+/// sent, the target's for one it received.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
@@ -1224,10 +1234,15 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The fields this crate defines on its own branch, in tag order.
+/// The sixteen fields this crate defines, in tag order: standard fields from
+/// 65000 up, above every tag FIX or a venue publishes.
 ///
-/// Every registry already holds them, so this is the listing a schema or a
-/// document walks rather than something a caller registers.
+/// The digest, the version read at, the ticker, the clock and its partition,
+/// the parent identifiers, the session the message states, the bridge's
+/// message context, the plugins and plugin sessions a line moved between, and
+/// the ISIN, MIC and order state a row derives. Every registry already holds
+/// them, so this is the listing a schema or a document walks rather than
+/// something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()

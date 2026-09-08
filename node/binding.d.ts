@@ -2730,14 +2730,23 @@ export interface Fix {
    *
    * A carried column whose folded name a FIX column already takes -
    * `sessionId` and `sessionid` are one name - is dropped rather than
-   * renamed: the FIX column is the one a reader spelling it means.
+   * renamed: the FIX column is the one a reader spelling it means, and
+   * `sessionid` means the session the message itself states. A bridge's own
+   * session instance is captured as `sessionUid` for that reason and leads
+   * the row, while its `plugin` capture fills the plugin session the line's
+   * direction names: the sender's for a line it sent, the target's for one
+   * it received.
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
   /**
-   * The fields this crate defines on its own branch, in tag order; every
-   * registry holds them from construction.
+   * The sixteen fields this crate defines, in tag order: standard fields from
+   * 65000 up, above every tag FIX or a venue publishes - the digest, the
+   * clock and its partition, the session a message states, the bridge's
+   * message context, the plugins and plugin sessions a line moved between,
+   * and the ISIN, MIC and order state a row derives. Every registry holds
+   * them from construction.
    */
   crateFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
