@@ -105,6 +105,42 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
 }
 
 #[test]
+fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns() {
+    let (registry, reader) = reader();
+    // The tags a schema's columns answer for are remembered from one row to
+    // the next, and the memory is the schema's own: a narrower schema, a
+    // rebuilt one and the first again each fill their own columns.
+    let wide = fix_schema(&registry, "fix").unwrap();
+    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    symbol.as_fix_mut().set_tag(55).unwrap();
+    let mut side = DataType::Utf8.nullable_field("side");
+    side.as_fix_mut().set_tag(54).unwrap();
+    let narrow = fix_schema(&FixRegistry::from_fields([side, symbol]).unwrap(), "fix").unwrap();
+    let rebuilt = fix_schema(&registry, "fix").unwrap();
+    assert_eq!(rebuilt, wide, "one dictionary, one schema");
+
+    let order = reader
+        .transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|10=0|", false)
+        .unwrap();
+    for schema in [&wide, &narrow, &rebuilt, &wide, &narrow] {
+        let row = order.to_row(schema).unwrap();
+        assert_eq!(
+            row.as_sequence().map(<[Scalar]>::len),
+            Some(schema.fields().len()),
+            "one value per column"
+        );
+        assert_eq!(at(&row, schema, 55).as_str(), Some("AAPL"));
+        assert_eq!(at(&row, schema, 54).as_str(), Some("1"));
+    }
+    let wide_row = order.to_row(&wide).unwrap();
+    assert_eq!(at(&wide_row, &wide, 11).as_str(), Some("ORDER-1"));
+    assert!(
+        fix_column_of(&narrow, 11).is_none(),
+        "the narrow schema has no column for the order id"
+    );
+}
+
+#[test]
 fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();

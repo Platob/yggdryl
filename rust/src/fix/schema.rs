@@ -40,8 +40,13 @@
 //! should find it by reading one column instead of filtering a million rows.
 //! On a well-known dialect it is empty on every row and costs a validity bit.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use smol_str::SmolStr;
 
+use crate::types::nested::Fields;
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;
@@ -309,6 +314,49 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
     schema.fields().iter().map(column_tag).collect()
 }
 
+/// One schema's column tags, shared by the rows read against it.
+type ColumnTags = Rc<[Option<i32>]>;
+
+thread_local! {
+    /// The tag table of the schema this thread last filled one row from.
+    ///
+    /// A message read on its own pays the schema's metadata once per column,
+    /// which is most of what a row costs, and the schema it is read against
+    /// is the same one for a whole capture. The columns' shared storage is
+    /// held beside the table, so the storage outlives the entry and its
+    /// address names it and nothing else.
+    static LAST_COLUMN_TAGS: RefCell<Option<(Fields, ColumnTags)>> = const { RefCell::new(None) };
+}
+
+/// Whether two column lists are one allocation, which is what makes the
+/// remembered table theirs and nobody else's.
+fn same_storage(left: &Fields, right: &Fields) -> bool {
+    match (&left.0, &right.0) {
+        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// [`fix_column_tags`] for one schema, remembered across the rows this
+/// thread reads against it.
+fn column_tags_of(schema: &Field) -> ColumnTags {
+    let DataType::Struct(columns) = schema.dtype() else {
+        return Rc::from(fix_column_tags(schema));
+    };
+    LAST_COLUMN_TAGS.with(|held| {
+        let mut held = held.borrow_mut();
+        if let Some((known, tags)) = held.as_ref() {
+            if same_storage(known, columns) {
+                return Rc::clone(tags);
+            }
+        }
+        let tags: ColumnTags = Rc::from(fix_column_tags(schema));
+        *held = Some((columns.clone(), Rc::clone(&tags)));
+        tags
+    })
+}
+
 /// How many `fixentry` structs any root-to-leaf path materializes.
 ///
 /// The column's List is level 0; the `fixentry` it contains is level 1; a
@@ -502,7 +550,8 @@ impl super::FixMsg {
     /// the arrival column's leaf - the one fallible step, because every other
     /// member is already a value.
     pub fn to_row(&self, schema: &Field) -> Result<crate::Scalar> {
-        self.row_values(schema, &fix_column_tags(schema))
+        let tags = column_tags_of(schema);
+        self.row_values(schema, &tags)
             .map(crate::Scalar::from_sequence)
     }
 
