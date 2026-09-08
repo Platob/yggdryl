@@ -312,7 +312,26 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
 One containerized x86_64 Linux run (Intel Xeon 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin LTO) measures `rust/benchmarks/txhash/arrow.rs`. Each case runs 65,536 rows.
 
-PERFORMANCE_COLUMNS_TABLE
+The coupled column costs what the digest column costs plus one eight-byte copy per row; the instant column is free when it is already at the holder's unit and one pass of integer division otherwise.
+
+| case | time | rows/s |
+| --- | ---: | ---: |
+| `xxhash::arrow::row_digests`, XXH3-64 | 14.02 ms | 4.68 M |
+| `row_txhashes`, XXH3-64 | 13.65 ms | 4.80 M |
+| `row_txhashes`, XXH128 | 14.57 ms | 4.50 M |
+| `xxhash::arrow::column_digests`, one text column | 6.33 ms | 10.4 M |
+| `column_txhashes`, one text column | 6.85 ms | 9.57 M |
+| `unix_array`, microseconds read as microseconds | 72.7 ns | shares the buffer |
+| `unix_array`, nanoseconds floored to microseconds | 574 µs | 114 M |
+| `compose` | 724 µs | 90.5 M |
+| `decompose` | 787 µs | 83.2 M |
+
+The holder fill pays for the digest of every source; the coupling adds the instant read and the wider cell. Both rows fill one 65,536-row batch through `DigestField::apply_arrow_batch`, IPC excluded.
+
+| holder | time | rows/s |
+| --- | ---: | ---: |
+| plain `uint64` holder | 28.6 ms | 2.29 M |
+| coupled `fixed_size_binary[16]` holder | 32.5 ms | 2.01 M |
 
 ```bash
 cargo bench -p yggdryl --bench txhash -- txhash_columns

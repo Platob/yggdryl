@@ -8,13 +8,11 @@ use crate::metadata::{parse_source_list, render_source_list};
 use crate::types::protocol::{DigestField, DigestFieldMut};
 use crate::{DataType, DigestAlgorithm, Error, Field, Result};
 
+use crate::txhash::{TIME, UNIT};
+
 const ALGORITHM: &str = "algorithm";
 const ROLE: &str = "role";
 const SOURCES: &str = "sources";
-/// The two coupling properties `txhash` owns; named here only so a role
-/// removal can refuse while they stand.
-const TIME: &str = "time";
-const UNIT: &str = "unit";
 pub(crate) const DIGEST_ALGORITHM_KEY: &str = "digest:algorithm";
 pub(crate) const DIGEST_ROLE_KEY: &str = "digest:role";
 pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
@@ -40,7 +38,7 @@ pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool 
 }
 
 /// Return the canonical datatype spellings an algorithm's holder accepts.
-pub(crate) fn expected_holder_dtypes(field: &Field, algorithm: DigestAlgorithm) -> &'static str {
+pub(crate) fn expected_holder_dtypes(field: &Field, algorithm: DigestAlgorithm) -> String {
     if field.as_digest().time().is_some() {
         return crate::txhash::expected_coupled_dtype(algorithm);
     }
@@ -49,6 +47,7 @@ pub(crate) fn expected_holder_dtypes(field: &Field, algorithm: DigestAlgorithm) 
         DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "int64 or uint64",
         DigestAlgorithm::Xxh128 => "fixed_size_binary[16]",
     }
+    .to_owned()
 }
 
 /// Parse a stored digest algorithm and return its canonical token.

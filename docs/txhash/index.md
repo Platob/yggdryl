@@ -153,7 +153,7 @@ The spelling names the unit and the algorithm, because both are part of the valu
 
 ## Instants
 
-Every spelling of an instant resolves to one unix count: an integer is the count already, a datetime is its instant whatever its zone, a date is its midnight, and text reads as a timestamp with or without an offset.
+Every spelling of an instant resolves to one unix count: an integer is the count already, a datetime is its instant whatever its zone, a date is its midnight, and text reads as a timestamp with or without an offset, or as a date.
 
 === "Rust"
 
@@ -302,7 +302,9 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 - A count that does not fit the finer unit -> `ArithmeticOverflow`, never a wrapped count.
 - `d`, `year_month`, `day_time`, `month_day_nano` as a unit -> refused; a unix count is a clock resolution.
 - A time of day, a duration, an interval, a null, a boolean, or a float as an instant -> refused by kind.
-- Timestamp text with sub-microsecond digits -> floors from nanoseconds like every other intake.
+- Timestamp text -> read at the resolution its own digits spell, then restated like every other intake; `1970-01-01T00:00:00.0000019` at microseconds is `1`.
+- Date-only text -> that day's midnight, as a date scalar is.
+- Timestamp text past the year 2262 with seven or more fractional digits -> refused as out of range; those digits name nanoseconds, and a signed 64-bit count of them ends there.
 - A spelling naming another unit or algorithm than `from_scalar` asks for -> refused rather than restated.
 - The same sixteen bytes read under XXH64 and XXH3-64 -> two values that render and compare apart, because the algorithm is part of the value.
 - `TxHasher::from_digester` -> bytes already fed to the state are discarded; a hasher is a configuration, not a running digest.
@@ -344,7 +346,19 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 
 All three columns hash the same bytes with the same implementation; the difference is laying the instant beside the answer, which is one copy of eight bytes.
 
-PERFORMANCE_COUPLING_TABLE
+| payload | `xxhash::xxh3` | `txhash::txh3` | `txhash::txh128` |
+| --- | ---: | ---: | ---: |
+| 16 B | 3.55 ns | 3.74 ns | 6.20 ns |
+| 240 B | 18.1 ns | 19.1 ns | 28.1 ns |
+| 4 KiB | 148.7 ns | 147.2 ns | 162.7 ns |
+| 64 KiB | 2.38 µs | 2.33 µs | 2.43 µs |
+
+From 4 KiB up the columns sit inside each other's run-to-run spread; below it the coupling is the eight-byte copy it is. A `TxHasher` clones its configured state per answer, and XXH3 keeps its secret on the heap, which is the algorithm's cost rather than the coupling's:
+
+| case | `TxHasher` | the one-shot beside it |
+| --- | ---: | ---: |
+| `digest`, 240 B | 72.2 ns | 19.1 ns (`txh3`) |
+| `digest_scalar`, four-column row | 157.9 ns | 151.5 ns (`Scalar::txhash`) |
 
 ```bash
 cargo bench -p yggdryl --bench txhash -- txhash_coupling
@@ -352,7 +366,27 @@ cargo bench -p yggdryl --bench txhash -- txhash_coupling
 
 ### The value and the instant
 
-PERFORMANCE_VALUE_TABLE
+The value's projections are inline work; the two that allocate are the spelling, by contract, and `into_scalar`, whose byte payload is shared storage.
+
+| operation | time |
+| --- | ---: |
+| `into_bytes` | 2.26 ns |
+| `from_bytes` | 18.4 ns |
+| `with_unit` | 20.6 ns |
+| `into_datetime` | 11.0 ns |
+| `into_scalar` | 29.9 ns |
+| `to_string` | 204 ns |
+| `from_str` | 186 ns |
+
+Reading an instant out of a value costs the unit arithmetic for an integer or a datetime and the timestamp parser for text.
+
+| instant | `unix_from_scalar` |
+| --- | ---: |
+| integer | 10.1 ns |
+| zoned datetime | 15.4 ns |
+| timestamp text | 75.9 ns |
+| `restate_unix`, nanoseconds to microseconds | 11.1 ns |
+| `unix_now` | 29.3 ns |
 
 ```bash
 cargo bench -p yggdryl --bench txhash -- txhash_value
@@ -361,7 +395,56 @@ cargo bench -p yggdryl --bench txhash -- txhash_instant
 
 ### At the bindings
 
-PERFORMANCE_BINDINGS_TABLE
+Every coupled row pairs with the plain digest row for the same bytes, so the difference is reading the instant, laying it beside the digest, and the value object that crosses back. The Python rows ran a release wheel (`--min-time 0.2 --repeat 5`). A `datetime` instant costs the conversion every `Scalar` intake shares, minus the zone lookup a unix count does not need; the batch rows fill 4,096 rows through PyArrow.
+
+```text
+xxh3         16 B                                     171.5 ns     0.09 GB/s
+txh3         16 B                                     236.3 ns     0.07 GB/s
+xxh3        240 B                                     187.3 ns     1.28 GB/s
+txh3        240 B                                     258.4 ns     0.93 GB/s
+xxh3       4096 B                                     316.3 ns    12.95 GB/s
+txh3       4096 B                                     393.6 ns    10.41 GB/s
+xxh3      65536 B                                    2386.6 ns    27.46 GB/s
+txh3      65536 B                                    2493.5 ns    26.28 GB/s
+txh3 240 B (datetime instant)                        1871.9 ns     0.13 GB/s
+hasher.digest 240 B                                   353.2 ns     0.68 GB/s
+hasher.digest_scalar (four-column row)                373.0 ns     0.00 GB/s
+Scalar.digest (four-column row)                       295.8 ns     0.00 GB/s
+bytes(value)                                          155.5 ns     0.10 GB/s
+TxHash.from_bytes                                     279.5 ns     0.06 GB/s
+TxHash(str)                                           348.6 ns     0.05 GB/s
+unix_of(datetime)                                    1675.5 ns     0.00 GB/s
+xxhash.row_digests                                    757.6 us     5.41 M row/s
+txhash.row_txhashes                                   790.6 us     5.18 M row/s
+txhash.compose                                         47.5 us    86.17 M row/s
+txhash.decompose                                       54.4 us    75.23 M row/s
+txhash.unix_array                                       4.4 us   931.07 M row/s
+plain holder apply_arrow_batch                       2183.0 us     1.88 M row/s
+coupled holder apply_arrow_batch                     2403.8 us     1.70 M row/s
+```
+
+The Node rows ran a release addon. A digest crosses back as a `bigint` and a coupled value as a `TxHash` instance, which is the fixed cost every `txh3` row shows beside `xxh3`; a `Date` and a string cross as themselves and are read natively, so an instant that is not a `bigint` costs the parser, not a `Scalar` object. The batch rows fill 4,096 rows through Arrow IPC, both copies included.
+
+```text
+xxh3        16 B                                    522.3 ns     0.03 GB/s
+txh3        16 B                                   2621.2 ns     0.01 GB/s
+xxh3       240 B                                    516.9 ns     0.46 GB/s
+txh3       240 B                                   2770.6 ns     0.09 GB/s
+xxh3      4096 B                                    646.5 ns     6.34 GB/s
+txh3      4096 B                                   3105.4 ns     1.32 GB/s
+xxh3     65536 B                                   3188.1 ns    20.56 GB/s
+txh3     65536 B                                   5332.3 ns    12.29 GB/s
+txh3 240 B (Date instant)                          4967.5 ns     0.05 GB/s
+hasher.digest 240 B                                3727.8 ns     0.06 GB/s
+hasher.digestScalar (four-column row)              3105.0 ns     0.00 GB/s
+Scalar.digest (four-column row)                    2867.0 ns     0.00 GB/s
+value.bytes()                                      2519.6 ns     0.01 GB/s
+TxHash.fromBytes                                   3305.5 ns     0.00 GB/s
+TxHash.from(string)                                3172.8 ns     0.01 GB/s
+txhash.unixOf(Date)                                1781.3 ns     0.00 GB/s
+plain holder applyArrowBatch                       2625.7 us     1.56 M row/s
+coupled holder applyArrowBatch                     2821.7 us     1.45 M row/s
+```
 
 ```bash
 python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5

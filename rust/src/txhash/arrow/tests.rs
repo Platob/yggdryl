@@ -9,7 +9,7 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Schema, TimeUnit as ArrowTimeUnit};
 
-use super::{column_txhashes, compose, decompose, row_txhashes, unix_array};
+use super::{accepts_time, column_txhashes, compose, decompose, row_txhashes, unix_array};
 use crate::txhash::{TxHash, TxHasher};
 use crate::xxhash::Xxh3;
 use crate::xxhash::arrow::{column_digests, row_digests};
@@ -469,6 +469,180 @@ fn a_coupled_holder_names_its_sources_unit_and_algorithm() {
         ])
         .digest(DigestAlgorithm::Xxh32)
     );
+
+    // A declared algorithm wins over the one the width implies: sixteen
+    // bytes hold XXH64 as well as XXH3-64.
+    let mut wide = coupled("key", 16, "event");
+    wide.as_digest_mut()
+        .set_algorithm(DigestAlgorithm::Xxh64)
+        .unwrap();
+    let root = struct_root([event_field(), symbol_field(), wide]);
+    let filled = root.as_digest().apply_arrow_batch(&source).unwrap();
+    let read = values(filled.column(2).as_ref(), UNIT, DigestAlgorithm::Xxh64);
+    assert_eq!(
+        read[2].unwrap().digest(),
+        Scalar::from_sequence([
+            Scalar::from_datetime(INSTANTS[2], UNIT, Timezone::UTC).unwrap(),
+            Scalar::from("AAPL"),
+        ])
+        .digest(DigestAlgorithm::Xxh64)
+    );
+}
+
+#[test]
+fn force_recomputes_a_coupled_holder_and_the_holder_unit_wins_over_the_hasher() {
+    let mut key = coupled("key", 16, "event");
+    key.as_digest_mut().set_unit(TimeUnit::Nanosecond).unwrap();
+    let root = struct_root([event_field(), symbol_field(), key]);
+    let source = batch(&[event_field(), symbol_field()], vec![events(), symbols()]);
+    // The holder's declared unit decides the stored resolution, not the
+    // hasher's: the schema owns what a reader will find in the bytes.
+    let hasher = TxHasher::new_in(TimeUnit::Second, DigestAlgorithm::Xxh3).unwrap();
+    let filled = hasher.apply_arrow_batch(&root, source, false).unwrap();
+    let nanos = |array: &dyn Array| values(array, TimeUnit::Nanosecond, DigestAlgorithm::Xxh3);
+    let first = nanos(filled.column(2).as_ref());
+    assert_eq!(first[1].unwrap().unix(), INSTANTS[1] * 1_000);
+
+    // A filled cell is preserved when its sources change, unless the fill
+    // is forced, which recomputes every visible row.
+    let changed = RecordBatch::try_new(
+        filled.schema(),
+        vec![
+            events(),
+            Arc::new(StringArray::from(vec!["X", "Y", "Z"])),
+            Arc::clone(filled.column(2)),
+        ],
+    )
+    .unwrap();
+    let kept = hasher
+        .apply_arrow_batch(&root, changed.clone(), false)
+        .unwrap();
+    assert_eq!(nanos(kept.column(2).as_ref()), first);
+    let forced = hasher.apply_arrow_batch(&root, changed, true).unwrap();
+    let recomputed = nanos(forced.column(2).as_ref());
+    assert_ne!(recomputed, first);
+    assert_eq!(recomputed[1].unwrap().unix(), INSTANTS[1] * 1_000);
+    assert_eq!(
+        recomputed[1].unwrap().digest(),
+        Scalar::from_sequence([
+            Scalar::from_datetime(INSTANTS[1], UNIT, Timezone::UTC).unwrap(),
+            Scalar::from("Y"),
+        ])
+        .digest(DigestAlgorithm::Xxh3)
+    );
+}
+
+fn quantity_field() -> Field {
+    Field::new("quantity", DataType::Int64, false)
+}
+
+#[test]
+fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
+    let inner = DataType::from_fields([event_field(), symbol_field()]).unwrap();
+    let meta = Field::new("meta", inner, true);
+    let struct_fields = match meta.clone().into_arrow().unwrap().data_type() {
+        ArrowDataType::Struct(fields) => fields.clone(),
+        _ => unreachable!(),
+    };
+    let column: ArrayRef = Arc::new(StructArray::new(
+        struct_fields,
+        vec![events(), symbols()],
+        Some(vec![true, false, true].into()),
+    ));
+    let source = batch(
+        &[meta.clone(), quantity_field()],
+        vec![column, quantities()],
+    );
+
+    let mut key = coupled("key", 16, "meta.event");
+    key.set_nullable(true);
+    let root = struct_root([meta.clone(), quantity_field(), key]);
+    let filled = root.as_digest().apply_arrow_batch(&source).unwrap();
+    let read = values(filled.column(2).as_ref(), UNIT, DigestAlgorithm::Xxh3);
+    assert_eq!(read[0].unwrap().unix(), INSTANTS[0]);
+    assert_eq!(read[1], None, "a null Struct hides the instant under it");
+    assert_eq!(read[2].unwrap().unix(), INSTANTS[2]);
+
+    // The digest is what a plain holder over the same fields computes: the
+    // whole nested Struct and the quantity, the instant in front.
+    let mut plain = Field::new("key", DataType::UInt64, true);
+    plain.as_digest_mut().set_holder().unwrap();
+    let plain_root = struct_root([meta, quantity_field(), plain]);
+    let plain_filled = plain_root.as_digest().apply_arrow_batch(&source).unwrap();
+    let plain_digests = plain_filled.column(2).as_primitive::<UInt64Type>();
+    for row in [0, 2] {
+        assert_eq!(
+            read[row].unwrap().digest().as_u64(),
+            Some(plain_digests.value(row)),
+            "row {row}"
+        );
+    }
+}
+
+#[test]
+fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
+    let seconds = Field::new(
+        "event",
+        DataType::DateTime64 {
+            unit: TimeUnit::Second,
+            timezone: Timezone::UTC,
+        },
+        false,
+    );
+    let mut key = coupled("key", 16, "event");
+    key.as_digest_mut().set_unit(TimeUnit::Nanosecond).unwrap();
+    let root = struct_root([seconds.clone(), symbol_field(), key]);
+    let column: ArrayRef =
+        Arc::new(TimestampSecondArray::from(vec![1, i64::MAX / 1_000, 3]).with_timezone("UTC"));
+    let source = batch(&[seconds, symbol_field()], vec![column, symbols()]);
+    let error = root
+        .as_digest()
+        .apply_arrow_batch(&source)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("key") && error.contains("row 1") && error.contains("ns"),
+        "{error}"
+    );
+}
+
+#[test]
+fn accepts_time_agrees_with_the_column_reader() {
+    let zoned = |unit| DataType::DateTime64 {
+        unit,
+        timezone: Timezone::UTC,
+    };
+    for dtype in [
+        DataType::Int8,
+        DataType::Int16,
+        DataType::Int32,
+        DataType::Int64,
+        DataType::UInt8,
+        DataType::UInt16,
+        DataType::UInt32,
+        DataType::UInt64,
+        DataType::Date32,
+        DataType::Date64,
+        zoned(TimeUnit::Second),
+        zoned(TimeUnit::Nanosecond),
+        DataType::DateTime64 {
+            unit: TimeUnit::Millisecond,
+            timezone: Timezone::NAIVE,
+        },
+        DataType::Utf8,
+        DataType::Float64,
+        DataType::Boolean,
+        DataType::Time64(TimeUnit::Microsecond),
+        DataType::Duration64(TimeUnit::Second),
+    ] {
+        let arrow = Field::new("x", dtype.clone(), true).into_arrow().unwrap();
+        let empty = arrow_array::new_empty_array(arrow.data_type());
+        assert_eq!(
+            accepts_time(&dtype),
+            unix_array(empty.as_ref(), UNIT).is_ok(),
+            "{dtype}"
+        );
+    }
 }
 
 fn symbol_field() -> Field {
@@ -476,7 +650,7 @@ fn symbol_field() -> Field {
 }
 
 #[test]
-fn the_instant_may_be_an_integer_or_date_column_and_is_read_after_nested_fills() {
+fn the_instant_may_be_an_integer_or_date_column() {
     let stamp = Field::new("stamp", DataType::Int64, false);
     let root = struct_root([stamp.clone(), symbol_field(), coupled("key", 16, "stamp")]);
     let source = batch(&[stamp, symbol_field()], vec![quantities(), symbols()]);
@@ -649,6 +823,17 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
         coupled("key", 16, "event"),
     ]));
     assert!(error.contains("belongs only to a digest holder"), "{error}");
+    let mut stray_unit = symbol_field();
+    stray_unit.as_digest_mut().insert("unit", "s").unwrap();
+    let error = refused(struct_root([
+        event_field(),
+        stray_unit,
+        coupled("key", 16, "event"),
+    ]));
+    assert!(
+        error.contains("digest:unit belongs only to a digest holder"),
+        "{error}"
+    );
 
     // Coupling metadata under a collection is refused by path.
     let mut listed = coupled("key", 16, "event");

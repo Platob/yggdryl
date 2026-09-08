@@ -33,9 +33,9 @@ mod iobase;
 mod iomedia;
 mod media;
 mod text;
+mod txhash;
 mod types;
 mod uri;
-mod txhash;
 mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {

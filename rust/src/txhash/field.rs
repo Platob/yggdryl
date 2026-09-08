@@ -11,10 +11,11 @@ use crate::types::protocol::{DigestField, DigestFieldMut};
 use crate::{DataType, DigestAlgorithm, Error, Field, Result, TimeUnit};
 
 use super::time::{DEFAULT_UNIT, validate_unit};
-use super::value::{algorithm_of_width, fixed_width};
+use super::value::{algorithm_of_width, dtype, fixed_width};
 
-const TIME: &str = "time";
-const UNIT: &str = "unit";
+/// The two property names, spelled once for every reader of the vocabulary.
+pub(crate) const TIME: &str = "time";
+pub(crate) const UNIT: &str = "unit";
 pub(crate) const DIGEST_TIME_KEY: &str = "digest:time";
 pub(crate) const DIGEST_UNIT_KEY: &str = "digest:unit";
 
@@ -53,12 +54,8 @@ pub(crate) fn coupled_holder_accepts(field: &Field, algorithm: DigestAlgorithm) 
 }
 
 /// Return the datatype spelling a coupled holder needs for an algorithm.
-pub(crate) const fn expected_coupled_dtype(algorithm: DigestAlgorithm) -> &'static str {
-    match algorithm {
-        DigestAlgorithm::Xxh32 => "fixed_size_binary[12]",
-        DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => "fixed_size_binary[16]",
-        DigestAlgorithm::Xxh128 => "fixed_size_binary[24]",
-    }
+pub(crate) fn expected_coupled_dtype(algorithm: DigestAlgorithm) -> String {
+    dtype(algorithm).to_string()
 }
 
 /// Return the algorithm a coupled holder's width implies.
@@ -111,6 +108,24 @@ impl DigestField<'_> {
 impl DigestFieldMut<'_> {
     /// Names the field whose instant this holder stores in front of its digest.
     ///
+    /// ```
+    /// use yggdryl::{DataType, DigestAlgorithm, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut key = DataType::FixedSizeBinary(16).required_field("key");
+    /// key.as_digest_mut().set_holder()?;
+    /// key.as_digest_mut().set_time("event")?;
+    /// key.as_digest_mut().set_unit(TimeUnit::Second)?;
+    ///
+    /// assert!(key.as_digest().is_coupled());
+    /// assert_eq!(key.as_digest().time(), Some("event"));
+    /// assert_eq!(key.as_digest().coupled_unit()?, TimeUnit::Second);
+    /// // Sixteen coupled bytes hold a 64-bit digest, never the 128-bit one.
+    /// assert!(key.as_digest_mut().set_algorithm(DigestAlgorithm::Xxh128).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns an error when this field is not a holder, when `path` is
@@ -133,8 +148,8 @@ impl DigestFieldMut<'_> {
                 TIME,
                 format_smolstr!(
                     "a coupled holder stores {}, got {}",
-                    declared.map_or(
-                        "fixed_size_binary[12], [16], or [24]",
+                    declared.map_or_else(
+                        || "fixed_size_binary[12], [16], or [24]".to_owned(),
                         expected_coupled_dtype
                     ),
                     self.as_field().dtype()
@@ -148,13 +163,16 @@ impl DigestFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when `digest:unit` is still present, leaving the
-    /// field unchanged: a unit without an instant states nothing.
+    /// Returns an error when `digest:unit` or `digest:algorithm` is still
+    /// present, leaving the field unchanged: a unit without an instant
+    /// states nothing, and an algorithm declared against the coupled width
+    /// may not fit the plain one.
     pub fn remove_time(&mut self) -> Result<Option<String>> {
-        if self.contains_key(UNIT) {
+        if self.contains_key(UNIT) || self.contains_key("algorithm") {
             return Err(self.rejected(
                 TIME,
-                "cannot remove the coupled instant while digest:unit is present".into(),
+                "cannot remove the coupled instant while digest:unit or digest:algorithm is present"
+                    .into(),
             ));
         }
         Ok(self.remove(TIME))

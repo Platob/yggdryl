@@ -3566,12 +3566,12 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   delete binding._txhashDtypeNative
   delete binding._txhashDefaultUnitNative
 
+  // Every shape crosses as itself; the native side owns the reading.
   const asInstant = (value) => {
-    if (typeof value === 'bigint' || typeof value === 'number') return value
-    if (value instanceof binding.Scalar) return value
-    if (value instanceof Date || typeof value === 'string') {
-      return binding.Scalar.fromJs(value)
+    if (typeof value === 'bigint' || typeof value === 'number' || typeof value === 'string') {
+      return value
     }
+    if (value instanceof Date || value instanceof binding.Scalar) return value
     throw new TypeError(
       'instant must be a bigint, a safe integer, a Date, a string, or a Scalar',
     )

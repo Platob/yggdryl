@@ -1,6 +1,7 @@
+use super::value::algorithm_of_width;
 use super::{
-    DEFAULT_UNIT, TxHash, TxHasher, UNIX_WIDTH, algorithm_of_width, digest, dtype, restate_unix,
-    txh3, txh32, txh64, txh128, unix_from_scalar, unix_now, width,
+    DEFAULT_UNIT, TxHash, TxHasher, UNIX_WIDTH, digest, dtype, restate_unix, txh3, txh32, txh64,
+    txh128, unix_from_scalar, unix_now, width,
 };
 use crate::xxhash::{self, Xxh3};
 use crate::{DataType, Digest, DigestAlgorithm, Error, Field, Scalar, TimeUnit, Timezone};
@@ -169,6 +170,18 @@ fn values_order_by_unit_then_instant_then_digest() {
         }
     };
     assert!(small < large);
+    // The instant ranks before the digest: the earlier value wins even when
+    // its digest is the larger of the two.
+    let (earlier_payload, later_payload) = if txh3(b"AAPL", 1).digest() > txh3(b"MSFT", 1).digest()
+    {
+        (b"AAPL", b"MSFT")
+    } else {
+        (b"MSFT", b"AAPL")
+    };
+    let earlier = txh3(earlier_payload, 1);
+    let later = txh3(later_payload, 2);
+    assert!(earlier.digest() > later.digest());
+    assert!(earlier < later, "the instant ranks before the digest");
     assert_ne!(
         txh3(b"AAPL", 1),
         txh64(b"AAPL", 1),
@@ -207,27 +220,32 @@ fn the_spelling_round_trips_and_names_unit_and_algorithm() {
 #[test]
 fn a_malformed_spelling_is_refused_by_target() {
     let digest = DigestAlgorithm::Xxh3.digest(b"AAPL");
-    for (spelling, why) in [
-        ("1700000000000000", "no instant separator"),
-        (&format!("x@us:{digest}"), "a non-numeric instant"),
-        (&format!("1@{digest}"), "no unit separator"),
+    // Every refusal is a parse error under this value's own target, at the
+    // offset of the part that failed in the whole spelling.
+    for (spelling, why, at) in [
+        ("1700000000000000", "no instant separator", 0),
+        (&format!("x@us:{digest}"), "a non-numeric instant", 0),
+        (&format!("1@{digest}"), "no unit separator", 2),
         (
             &format!("1@d:{digest}"),
             "a day count is not a clock resolution",
+            2,
         ),
-        (&format!("1@year_month:{digest}"), "an interval layout"),
-        ("1@us:xxh3-64:zz", "hex that is not hex"),
-        ("1@us:md5:00", "an unknown algorithm"),
-        ("1@bogus:xxh3-64:78af5f94892f3950", "an unknown unit"),
+        (&format!("1@year_month:{digest}"), "an interval layout", 2),
+        ("1@us:xxh3-64:zz", "hex that is not hex", 5),
+        ("1@us:md5:00", "an unknown algorithm", 5),
+        ("1@bogus:xxh3-64:78af5f94892f3950", "an unknown unit", 2),
     ] {
         let error = TxHash::from_str(spelling).unwrap_err();
-        assert!(
-            matches!(
-                error,
-                Error::Parse { .. } | Error::InvalidDataType { kind: "TxHash", .. }
-            ),
-            "{why}: {error}"
-        );
+        match error {
+            Error::Parse {
+                target, position, ..
+            } => {
+                assert_eq!(target, "txhash", "{why}");
+                assert!(position >= at, "{why}: position {position} is before {at}");
+            }
+            other => panic!("{why}: expected a parse error, got {other}"),
+        }
     }
 }
 
@@ -343,17 +361,33 @@ fn unix_from_scalar_reads_every_instant_spelling() {
         -3_599_000_000
     );
     assert_eq!(read(Scalar::from("1970-01-01T00:00:01")), 1_000_000);
+    assert_eq!(read(Scalar::from("1970-01-01T00:00:01.5")), 1_500_000);
     assert_eq!(read(Scalar::from("1970-01-01T00:00:00.0000019")), 1);
+    // Date-only text is that day's midnight, as a date scalar is.
+    assert_eq!(read(Scalar::from("1970-01-02")), 86_400_000_000);
     assert_eq!(
         unix_from_scalar(&Scalar::from(1_700_000_000_i64), TimeUnit::Second).unwrap(),
         1_700_000_000
     );
+    // Text is read at the resolution its digits spell, so an instant past
+    // what nanoseconds count is still a count of seconds ...
+    assert_eq!(
+        unix_from_scalar(&Scalar::from("2400-01-01T00:00:00Z"), TimeUnit::Second).unwrap(),
+        13_569_465_600
+    );
+    // ... until its digits name nanoseconds.
+    assert!(matches!(
+        unix_from_scalar(
+            &Scalar::from("2400-01-01T00:00:00.1234567Z"),
+            TimeUnit::Second
+        ),
+        Err(Error::Parse { .. })
+    ));
 
     for (value, why) in [
         (Scalar::Null, "a null"),
         (Scalar::from(true), "a boolean"),
         (Scalar::from(1.5_f64), "a float"),
-        (Scalar::from("yesterday"), "text that is no timestamp"),
         (
             Scalar::from_time(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
             "a time of day",
@@ -364,8 +398,21 @@ fn unix_from_scalar_reads_every_instant_spelling() {
         ),
         (Scalar::from_sequence([Scalar::from(1)]), "a sequence"),
     ] {
-        assert!(unix_from_scalar(&value, unit).is_err(), "{why}");
+        assert!(
+            matches!(
+                unix_from_scalar(&value, unit),
+                Err(Error::InvalidRecord { .. })
+            ),
+            "{why}"
+        );
     }
+    assert!(
+        matches!(
+            unix_from_scalar(&Scalar::from("yesterday"), unit),
+            Err(Error::Parse { .. })
+        ),
+        "text that is no timestamp"
+    );
     assert!(matches!(
         unix_from_scalar(&Scalar::from(i128::MAX), unit),
         Err(Error::ArithmeticOverflow { .. })
@@ -408,14 +455,14 @@ fn a_value_projects_to_a_datetime_and_a_fixed_byte_scalar() {
     assert_eq!(scalar.as_bytes(), Some(&*value.into_bytes()));
     assert_eq!(scalar.dtype().unwrap(), DataType::FixedSizeBinary(16));
     assert_eq!(
-        TxHash::from_scalar(&scalar, DEFAULT_UNIT, DigestAlgorithm::Xxh3).unwrap(),
+        TxHash::from_scalar(DEFAULT_UNIT, DigestAlgorithm::Xxh3, &scalar).unwrap(),
         value
     );
     assert_eq!(
         TxHash::from_scalar(
-            &Scalar::from(value.to_string()),
             DEFAULT_UNIT,
-            DigestAlgorithm::Xxh3
+            DigestAlgorithm::Xxh3,
+            &Scalar::from(value.to_string())
         )
         .unwrap(),
         value
@@ -424,26 +471,26 @@ fn a_value_projects_to_a_datetime_and_a_fixed_byte_scalar() {
     // silently restated.
     assert!(
         TxHash::from_scalar(
-            &Scalar::from(value.to_string()),
             TimeUnit::Second,
-            DigestAlgorithm::Xxh3
+            DigestAlgorithm::Xxh3,
+            &Scalar::from(value.to_string())
         )
         .is_err()
     );
     assert!(
         TxHash::from_scalar(
-            &Scalar::from(value.to_string()),
             DEFAULT_UNIT,
-            DigestAlgorithm::Xxh64
+            DigestAlgorithm::Xxh64,
+            &Scalar::from(value.to_string())
         )
         .is_err()
     );
-    assert!(TxHash::from_scalar(&Scalar::from(1), DEFAULT_UNIT, DigestAlgorithm::Xxh3).is_err());
+    assert!(TxHash::from_scalar(DEFAULT_UNIT, DigestAlgorithm::Xxh3, &Scalar::from(1)).is_err());
     assert!(
         TxHash::from_scalar(
-            &Scalar::from(&[0_u8; 8]),
             DEFAULT_UNIT,
-            DigestAlgorithm::Xxh3
+            DigestAlgorithm::Xxh3,
+            &Scalar::from(&[0_u8; 8])
         )
         .is_err()
     );
@@ -519,6 +566,13 @@ fn a_hasher_carries_unit_seed_and_secret() {
     assert_eq!(secretive.unit(), TimeUnit::Millisecond);
     // Answering never changes the hasher.
     assert_eq!(secretive.digest(&long, 5), secretive.digest(&long, 5));
+    // A seed is a whole configuration: it does not keep the secret.
+    let reseeded = secretive.with_seed(9);
+    assert_eq!(reseeded.unit(), TimeUnit::Millisecond);
+    assert_eq!(
+        reseeded.digest(&long, 5).digest().as_u64(),
+        Some(xxhash::xxh3_with_seed(&long, 9))
+    );
     assert!(TxHasher::from_digester(TimeUnit::Day, DigestAlgorithm::Xxh3.digester()).is_err());
 }
 

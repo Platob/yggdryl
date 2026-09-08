@@ -117,6 +117,30 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
             .expect("the batch couples")
         });
     });
+    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbols = Arc::clone(batch.column(1));
+    group.bench_function("column_digests", |bencher| {
+        bencher.iter(|| {
+            yggdryl::xxhash::arrow::column_digests(
+                black_box(Arc::clone(&symbols)),
+                &symbol,
+                DigestAlgorithm::Xxh3,
+            )
+            .expect("the column digests")
+        });
+    });
+    group.bench_function("column_txhashes", |bencher| {
+        bencher.iter(|| {
+            yggdryl::txhash::arrow::column_txhashes(
+                black_box(instants.as_ref()),
+                black_box(Arc::clone(&symbols)),
+                &symbol,
+                TimeUnit::Microsecond,
+                DigestAlgorithm::Xxh3,
+            )
+            .expect("the column couples")
+        });
+    });
     group.bench_function("unix_array/same_unit", |bencher| {
         bencher.iter(|| {
             yggdryl::txhash::arrow::unix_array(black_box(instants.as_ref()), TimeUnit::Microsecond)

@@ -55,10 +55,10 @@ mod value;
 
 pub use hasher::TxHasher;
 pub use time::{DEFAULT_UNIT, restate_unix, unix_from_scalar, unix_now};
-pub use value::{TxHash, TxHashBytes, UNIX_WIDTH, algorithm_of_width, dtype, width};
+pub use value::{TxHash, TxHashBytes, UNIX_WIDTH, dtype, width};
 
 pub(crate) use field::{
-    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, coupled_holder_accepts,
+    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, TIME, UNIT, canonicalize_digest_unit, coupled_holder_accepts,
     coupled_holder_algorithm, expected_coupled_dtype, validate_digest_time,
 };
 

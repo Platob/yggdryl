@@ -292,7 +292,13 @@ impl<'field> StructPlan<'field> {
                     }
                     Some(TimePlan {
                         selection,
-                        unit: declared_unit.unwrap_or(crate::txhash::DEFAULT_UNIT),
+                        unit: field.as_digest().coupled_unit().map_err(|error| {
+                            digest_metadata_error(
+                                DIGEST_UNIT_KEY,
+                                &field_path,
+                                format!("cannot read stored unit: {error}"),
+                            )
+                        })?,
                     })
                 }
                 None => {
@@ -664,25 +670,7 @@ fn fill_struct<S: ArrowDigestState>(
 
     for holder in &plan.holders {
         let original = Arc::clone(&columns[holder.index]);
-        // Read after the nested fills, so an instant a nested declaration
-        // just produced is the one this holder couples.
-        let unix = match &holder.time {
-            Some(time) => Some(crate::txhash::arrow::unix_selection(
-                &columns,
-                plan.fields,
-                &time.selection.steps,
-                parent_nulls,
-                time.unit,
-            )?),
-            None => None,
-        };
         let mut mask = Vec::with_capacity(row_count);
-        let mut values = Vec::with_capacity(row_count);
-        let mut worker = if holder.use_prototype {
-            FillState::Prototype(prototype.clone())
-        } else {
-            FillState::Unseeded(holder.algorithm.digester())
-        };
         for row in 0..row_count {
             let visible = parent_nulls.is_none_or(|nulls| nulls.is_valid(row));
             let recompute = if !visible {
@@ -694,17 +682,40 @@ fn fill_struct<S: ArrowDigestState>(
                     == holder.default
             };
             mask.push(recompute);
+        }
+        if !mask.iter().any(|selected| *selected) {
+            continue;
+        }
+        // Read under the mask: a row this pass leaves alone is never
+        // restated, so a preserved cell cannot fail the batch over an instant
+        // it does not couple.
+        let unix = match &holder.time {
+            Some(time) => Some(crate::txhash::arrow::unix_selection(
+                &columns,
+                plan.fields,
+                &time.selection.steps,
+                parent_nulls,
+                time.unit,
+                &mask,
+                &holder.path,
+            )?),
+            None => None,
+        };
+        let mut values = Vec::with_capacity(row_count);
+        let mut worker = if holder.use_prototype {
+            FillState::Prototype(prototype.clone())
+        } else {
+            FillState::Unseeded(holder.algorithm.digester())
+        };
+        for (row, selected) in mask.iter().copied().enumerate() {
             worker.reset();
-            if recompute {
+            if selected {
                 write_sequence_header(&mut worker, holder.selected.len());
                 for selected in &holder.selected {
                     feed_selection(&mut worker, &columns, plan.fields, selected, row)?;
                 }
             }
             values.push(worker.answer());
-        }
-        if !mask.iter().any(|selected| *selected) {
-            continue;
         }
         let computed = match (&holder.time, &unix) {
             (Some(time), Some(unix)) => {

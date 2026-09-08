@@ -1046,6 +1046,9 @@ fn coupled_value_bytes_allocate_nothing() {
     free("projecting the instant as a datetime", || {
         black_box(value.into_datetime());
     });
+    costs("projecting the whole value as a byte scalar", 1, || {
+        black_box(value.into_scalar());
+    });
 }
 
 #[test]
@@ -1079,4 +1082,33 @@ fn reading_an_instant_out_of_a_value_allocates_nothing() {
             .expect("a coarser unit"),
         );
     });
+}
+
+#[test]
+fn a_same_unit_instant_column_shares_its_buffer() {
+    // An instant column already at the unit asked for is the answer already,
+    // so reading it as unix counts clones two reference-counted buffers and
+    // builds nothing; a column at another unit is one fresh buffer and the
+    // handle that shares it, however many rows it holds.
+    use arrow_array::{TimestampMicrosecondArray, TimestampSecondArray};
+    use yggdryl::{TimeUnit, txhash};
+
+    for rows in [16_i64, 4_096] {
+        let micros = TimestampMicrosecondArray::from_iter_values(0..rows).with_timezone("UTC");
+        free(&format!("reading {rows} same-unit instants"), || {
+            black_box(
+                txhash::arrow::unix_array(black_box(&micros), TimeUnit::Microsecond)
+                    .expect("an instant column")
+                    .len(),
+            );
+        });
+        let seconds = TimestampSecondArray::from_iter_values(0..rows);
+        costs(&format!("restating {rows} instants"), 2, || {
+            black_box(
+                txhash::arrow::unix_array(black_box(&seconds), TimeUnit::Microsecond)
+                    .expect("an instant column")
+                    .len(),
+            );
+        });
+    }
 }

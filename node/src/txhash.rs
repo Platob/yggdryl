@@ -9,6 +9,7 @@
 //! crosses as a native value the core's one intake reads, so the accepted
 //! spellings are its.
 
+use napi::JsDate;
 use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Result, Uint8Array};
 use napi_derive::napi;
 
@@ -29,7 +30,10 @@ use crate::xxhash::{
 ///
 /// Spelled out at every boundary rather than used as the parameter type, for
 /// the reason the digest content is: NAPI emits no alias for one.
-pub type UnixContent<'content> = Either<BigInt, Either<f64, ClassInstance<'content, JsScalar>>>;
+pub type UnixContent<'content> = Either<
+    BigInt,
+    Either<f64, Either<String, Either<JsDate<'content>, ClassInstance<'content, JsScalar>>>>,
+>;
 
 /// The widest integer a JavaScript `number` states exactly.
 const SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
@@ -44,17 +48,16 @@ fn unit_from_js(value: Option<String>) -> Result<TimeUnit> {
 
 /// Read an instant as a unix count of `unit`.
 ///
-/// A `bigint` and an integer `number` are the count already; a `Scalar` -
-/// which is what the loader makes of a `Date` or a string - takes the core's
-/// intake and its rule for zones and resolutions.
+/// A `bigint` and an integer `number` are the count already; a string, a
+/// `Date`, and a `Scalar` take the core's one intake, the `Date` as the UTC
+/// millisecond instant every crossing reads it as. Nothing here builds a
+/// `Scalar` object on the JavaScript side: each shape crosses as itself.
 fn unix_from_js(value: UnixContent<'_>, unit: TimeUnit) -> Result<i64> {
     let count = match value {
         Either::A(count) => {
             let (count, lossless) = count.get_i64();
             if !lossless {
-                return Err(napi_error(
-                    "instant must fit a signed 64-bit unix count",
-                ));
+                return Err(napi_error("instant must fit a signed 64-bit unix count"));
             }
             count
         }
@@ -69,7 +72,15 @@ fn unix_from_js(value: UnixContent<'_>, unit: TimeUnit) -> Result<i64> {
                 number as i64
             }
         }
-        Either::B(Either::B(scalar)) => {
+        Either::B(Either::B(Either::A(text))) => {
+            return txhash::unix_from_scalar(&Scalar::from(text.as_str()), unit)
+                .map_err(napi_error);
+        }
+        Either::B(Either::B(Either::B(Either::A(date)))) => {
+            let instant = crate::text::codec::scalar_from_date_millis(date.value_of()?)?;
+            return txhash::unix_from_scalar(&instant, unit).map_err(napi_error);
+        }
+        Either::B(Either::B(Either::B(Either::B(scalar)))) => {
             return txhash::unix_from_scalar(&scalar.inner, unit).map_err(napi_error);
         }
     };
@@ -135,13 +146,13 @@ impl JsTxHash {
     /// The loader owns the instant intake and publishes this as `fromParts`.
     #[napi(factory, js_name = "_fromPartsNative", skip_typescript)]
     pub fn from_parts_native(
-        unix: UnixContent<'_>,
+        instant: UnixContent<'_>,
         digest: &JsDigest,
         unit: Option<String>,
     ) -> Result<Self> {
         let unit = unit_from_js(unit)?;
-        let unix = unix_from_js(unix, unit)?;
-        TxHash::new_in(unix, unit, digest.inner())
+        let count = unix_from_js(instant, unit)?;
+        TxHash::new_in(count, unit, digest.inner())
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -200,12 +211,14 @@ impl JsTxHash {
 
     /// The instant as a UTC datetime `Scalar` at this value's resolution.
     #[napi]
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     pub fn into_datetime(&self) -> JsScalar {
         JsScalar::from_core(self.inner.into_datetime())
     }
 
     /// The canonical bytes as a fixed-width byte `Scalar`.
     #[napi]
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     pub fn into_scalar(&self) -> JsScalar {
         JsScalar::from_core(self.inner.into_scalar())
     }
@@ -270,7 +283,11 @@ impl Clone for JsTxHasher {
 impl JsTxHasher {
     /// Start a hasher for one algorithm at one resolution, optionally seeded.
     #[napi(constructor)]
-    pub fn new(algorithm: Option<String>, unit: Option<String>, seed: Option<BigInt>) -> Result<Self> {
+    pub fn new(
+        algorithm: Option<String>,
+        unit: Option<String>,
+        seed: Option<BigInt>,
+    ) -> Result<Self> {
         let algorithm = match algorithm {
             Some(algorithm) => algorithm_from_str(&algorithm)?,
             None => yggdryl::DigestAlgorithm::Xxh3,
@@ -347,7 +364,11 @@ impl JsTxHasher {
 
     /// Couple an instant with a value's canonical feed.
     #[napi(js_name = "_digestScalarNative", skip_typescript)]
-    pub fn digest_scalar_native(&self, value: &JsScalar, unix: UnixContent<'_>) -> Result<JsTxHash> {
+    pub fn digest_scalar_native(
+        &self,
+        value: &JsScalar,
+        unix: UnixContent<'_>,
+    ) -> Result<JsTxHash> {
         let unix = unix_from_js(unix, self.inner.unit())?;
         Ok(JsTxHash::from_core(
             self.inner.digest_scalar(&value.inner, unix),
@@ -468,8 +489,8 @@ pub fn txhash_unix_now_native(unit: Option<String>) -> Result<BigInt> {
 
 /// Read any instant as a unix count of `unit`.
 #[napi(js_name = "_txhashUnixOfNative", skip_typescript)]
-pub fn txhash_unix_of_native(unix: UnixContent<'_>, unit: Option<String>) -> Result<BigInt> {
-    unix_from_js(unix, unit_from_js(unit)?).map(BigInt::from)
+pub fn txhash_unix_of_native(instant: UnixContent<'_>, unit: Option<String>) -> Result<BigInt> {
+    unix_from_js(instant, unit_from_js(unit)?).map(BigInt::from)
 }
 
 /// Restate a count of one resolution as a count of another.
@@ -487,14 +508,18 @@ pub fn txhash_restate_unix_native(count: BigInt, from: String, into: String) -> 
 /// The width of a value coupling an instant with an algorithm's digest.
 #[napi(js_name = "_txhashWidthNative", skip_typescript)]
 pub fn txhash_width_native(algorithm: String) -> Result<u32> {
-    Ok(u32::try_from(txhash::width(algorithm_from_str(&algorithm)?))
-        .unwrap_or_else(|_| unreachable!("no coupled value is wider than 24 bytes")))
+    Ok(
+        u32::try_from(txhash::width(algorithm_from_str(&algorithm)?))
+            .unwrap_or_else(|_| unreachable!("no coupled value is wider than 24 bytes")),
+    )
 }
 
 /// The datatype a column of coupled values is stored under.
 #[napi(js_name = "_txhashDtypeNative", skip_typescript)]
 pub fn txhash_dtype_native(algorithm: String) -> Result<JsDataType> {
-    Ok(JsDataType::from_core(txhash::dtype(algorithm_from_str(&algorithm)?)))
+    Ok(JsDataType::from_core(txhash::dtype(algorithm_from_str(
+        &algorithm,
+    )?)))
 }
 
 /// The resolution a unix count carries when a caller names none.

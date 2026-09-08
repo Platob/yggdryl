@@ -11,7 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use smol_str::format_smolstr;
 
-use crate::{DataType, Error, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
+use crate::types::ascii::iso;
+use crate::types::temporal::scalars::nanoseconds_per;
+use crate::{Error, Result, Scalar, TemporalFamily, TimeUnit};
 
 /// The resolution a unix count carries when a caller names none.
 ///
@@ -21,8 +23,14 @@ use crate::{DataType, Error, Result, Scalar, TemporalFamily, TimeUnit, Timezone}
 /// the default neither loses a wall clock nor runs out.
 pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
 
-/// The operation name an overflowing restatement is refused under.
-const RESTATE: &str = "unix restatement";
+/// The refusal every overflowing restatement raises, whether one count or a
+/// column of them is restated.
+pub(crate) fn restatement_overflow() -> Error {
+    Error::ArithmeticOverflow {
+        operation: "unix restatement",
+        kind: "int64",
+    }
+}
 
 /// Accept a unit a unix count can be stated in.
 ///
@@ -40,18 +48,6 @@ pub(crate) fn validate_unit(unit: TimeUnit) -> Result<()> {
             "unix unit must be second, millisecond, microsecond, or nanosecond, got {unit}"
         ),
     })
-}
-
-/// Nanoseconds in one count of a fixed-length unit.
-const fn nanoseconds_per(unit: TimeUnit) -> Option<i64> {
-    match unit {
-        TimeUnit::Day => Some(86_400_000_000_000),
-        TimeUnit::Second => Some(1_000_000_000),
-        TimeUnit::Millisecond => Some(1_000_000),
-        TimeUnit::Microsecond => Some(1_000),
-        TimeUnit::Nanosecond => Some(1),
-        TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => None,
-    }
 }
 
 /// Restate a count of `from` as a count of `into`.
@@ -95,15 +91,17 @@ pub fn restate_unix(count: i64, from: TimeUnit, into: TimeUnit) -> Result<i64> {
     if source == target {
         return Ok(count);
     }
+    // The ratio of two clock resolutions is at most a day of nanoseconds,
+    // which fits 64 bits with room to spare.
+    let ratio = |wide: i128| {
+        i64::try_from(wide).unwrap_or_else(|_| unreachable!("a unit ratio fits 64 bits"))
+    };
     if source > target {
         return count
-            .checked_mul(source / target)
-            .ok_or(Error::ArithmeticOverflow {
-                operation: RESTATE,
-                kind: "int64",
-            });
+            .checked_mul(ratio(source / target))
+            .ok_or_else(restatement_overflow);
     }
-    Ok(count.div_euclid(target / source))
+    Ok(count.div_euclid(ratio(target / source)))
 }
 
 /// Read a value as a unix count of `unit`.
@@ -111,9 +109,9 @@ pub fn restate_unix(count: i64, from: TimeUnit, into: TimeUnit) -> Result<i64> {
 /// Every documented spelling of an instant is accepted, and each resolves to
 /// one count: an integer is already the count; a datetime is its instant
 /// restated, whatever its zone; a date is that day's midnight; text is read
-/// as a timestamp, with an offset or without one, and floors from the finest
-/// clock resolution. A time of day, a duration, an interval, and a null name
-/// no instant and are refused.
+/// as a timestamp, with an offset or without one, or as a date, and floors
+/// from the resolution its own digits name. A time of day, a duration, an
+/// interval, and a null name no instant and are refused.
 ///
 /// ```
 /// use yggdryl::{Scalar, TimeUnit, Timezone, txhash};
@@ -128,6 +126,10 @@ pub fn restate_unix(count: i64, from: TimeUnit, into: TimeUnit) -> Result<i64> {
 ///     txhash::unix_from_scalar(&Scalar::from("1970-01-01T00:00:01Z"), unit)?,
 ///     1_000_000,
 /// );
+/// assert_eq!(
+///     txhash::unix_from_scalar(&Scalar::from("1970-01-02"), unit)?,
+///     86_400_000_000,
+/// );
 /// assert!(txhash::unix_from_scalar(&Scalar::Null, unit).is_err());
 /// # Ok(())
 /// # }
@@ -141,7 +143,7 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
     validate_unit(unit)?;
     if value.is_integer() {
         return value.as_i64().ok_or(Error::ArithmeticOverflow {
-            operation: RESTATE,
+            operation: "unix count",
             kind: "int64",
         });
     }
@@ -161,28 +163,26 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
     Err(not_an_instant(value.kind()))
 }
 
-/// Read timestamp text, with an offset or without one, as a count of `unit`.
+/// Read timestamp or date text as a count of `unit`.
+///
+/// The crate's own ISO reader answers the count at the resolution the digits
+/// spell - seconds for `..:01Z`, nanoseconds for seven fractional digits -
+/// and that count is restated like every other intake: exactly into a finer
+/// unit, floored into a coarser one. A spelling carries an offset, or it does
+/// not, or it is a bare date, so exactly one reading can succeed; when none
+/// does, the timestamp reading's refusal is the one reported.
 fn unix_from_text(text: &str, unit: TimeUnit) -> Result<i64> {
-    // The finest resolution first, so a spelling with sub-microsecond digits
-    // floors like every other intake rather than being refused as inexact.
-    let finest = TimeUnit::Nanosecond;
-    let zoned = DataType::DateTime64 {
-        unit: finest,
-        timezone: Timezone::UTC,
+    let (count, source) = match iso::parse_timestamp(text) {
+        Ok((count, source, _)) => (count, source),
+        Err(zoned) => match iso::parse_datetime(text) {
+            Ok(read) => read,
+            Err(_) => match iso::parse_date(text) {
+                Ok(days) => (i64::from(days), TimeUnit::Day),
+                Err(_) => return Err(zoned),
+            },
+        },
     };
-    let naive = DataType::DateTime64 {
-        unit: finest,
-        timezone: Timezone::NAIVE,
-    };
-    // A spelling carries an offset or it does not, so exactly one of the two
-    // readings can succeed and trying both picks nothing.
-    let parsed = Scalar::from_temporal_text(&zoned, text)
-        .or_else(|zoned_error| Scalar::from_temporal_text(&naive, text).map_err(|_| zoned_error))?;
-    let temporal = match parsed.as_temporal() {
-        Some(temporal) => temporal,
-        None => unreachable!("timestamp text reads as a datetime"),
-    };
-    restate_unix(temporal.count(), temporal.unit(), unit)
+    restate_unix(count, source, unit)
 }
 
 fn not_an_instant(kind: &str) -> Error {

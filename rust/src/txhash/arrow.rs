@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use arrow_array::types::{
-    Date32Type, Date64Type, Int8Type, Int16Type, Int64Type, TimestampMicrosecondType,
+    Date32Type, Date64Type, Int8Type, Int16Type, Int32Type, Int64Type, TimestampMicrosecondType,
     TimestampMillisecondType, TimestampNanosecondType, TimestampSecondType, UInt8Type, UInt16Type,
     UInt32Type,
 };
@@ -33,8 +33,8 @@ use crate::xxhash::arrow::{
 };
 use crate::{DataType, Digest, DigestAlgorithm, Field, TimeUnit, Timezone};
 
-use super::time::{restate_unix, validate_unit};
-use super::value::{TxHash, width};
+use super::time::{restate_unix, restatement_overflow, validate_unit};
+use super::value::{TxHash, UNIX_WIDTH, width};
 
 /// Return whether a datatype can be read as an instant column.
 ///
@@ -60,11 +60,11 @@ pub(crate) const fn accepts_time(dtype: &DataType) -> bool {
 /// Read an instant column as unix counts of `unit`, nulls kept.
 ///
 /// A timestamp of any resolution and zone, a date, or an integer column:
-/// [`restate_unix`] carries the rule each count follows,
-/// and an integer column is already the count and crosses untouched. A
-/// column already at `unit` shares no buffer, because the answer is a fresh
-/// `int64` either way; the pass is one multiplication or one division per
-/// row.
+/// [`restate_unix`] carries the rule each count follows, settled once for the
+/// column so the pass is one multiplication or one division per row. A
+/// column whose storage is already the answer - a timestamp at `unit`, a
+/// `date64` at milliseconds, an `int64` - shares its buffer rather than
+/// copying it; a narrower integer or a day count widens into a fresh one.
 ///
 /// ```
 /// use arrow_array::{Array as _, TimestampSecondArray};
@@ -84,79 +84,146 @@ pub(crate) const fn accepts_time(dtype: &DataType) -> bool {
 /// Returns an error when the column is none of those shapes, when `unit` is
 /// not a clock resolution, or when a count does not fit `unit`.
 pub fn unix_array(array: &dyn Array, unit: TimeUnit) -> Result<Int64Array> {
-    validate_unit(unit)?;
-    match array.data_type() {
-        ArrowDataType::Timestamp(ArrowTimeUnit::Second, _) => {
-            restated::<TimestampSecondType>(array, TimeUnit::Second, unit, |count| count)
+    let (counts, from) = raw_counts(array)?;
+    match from {
+        Some(from) => Restatement::new(from, unit)?.column(&counts),
+        None => {
+            validate_unit(unit)?;
+            Ok(counts)
         }
-        ArrowDataType::Timestamp(ArrowTimeUnit::Millisecond, _) => {
-            restated::<TimestampMillisecondType>(array, TimeUnit::Millisecond, unit, |count| count)
-        }
-        ArrowDataType::Timestamp(ArrowTimeUnit::Microsecond, _) => {
-            restated::<TimestampMicrosecondType>(array, TimeUnit::Microsecond, unit, |count| count)
-        }
-        ArrowDataType::Timestamp(ArrowTimeUnit::Nanosecond, _) => {
-            restated::<TimestampNanosecondType>(array, TimeUnit::Nanosecond, unit, |count| count)
-        }
-        ArrowDataType::Date32 => restated::<Date32Type>(array, TimeUnit::Day, unit, i64::from),
-        ArrowDataType::Date64 => {
-            restated::<Date64Type>(array, TimeUnit::Millisecond, unit, |count| count)
-        }
+    }
+}
+
+/// Read an instant column as the counts it stores and the unit it stores
+/// them in, `None` when the counts are already at whatever unit is asked.
+///
+/// An `int64`-backed layout shares its buffer; a narrower integer or a day
+/// count widens into a fresh one. A `uint64` is refused where a count does
+/// not fit, because a signed 64-bit count is what every instant here is.
+fn raw_counts(array: &dyn Array) -> Result<(Int64Array, Option<TimeUnit>)> {
+    fn shared<T: ArrowPrimitiveType<Native = i64>>(array: &dyn Array) -> Result<Int64Array> {
+        let array = downcast::<PrimitiveArray<T>>(array)?;
+        Ok(Int64Array::new(
+            array.values().clone(),
+            array.nulls().cloned(),
+        ))
+    }
+    fn widened<T: ArrowPrimitiveType>(array: &dyn Array) -> Result<Int64Array>
+    where
+        i64: From<T::Native>,
+    {
+        Ok(downcast::<PrimitiveArray<T>>(array)?.unary(i64::from))
+    }
+    let read = match array.data_type() {
+        ArrowDataType::Timestamp(ArrowTimeUnit::Second, _) => (
+            shared::<TimestampSecondType>(array)?,
+            Some(TimeUnit::Second),
+        ),
+        ArrowDataType::Timestamp(ArrowTimeUnit::Millisecond, _) => (
+            shared::<TimestampMillisecondType>(array)?,
+            Some(TimeUnit::Millisecond),
+        ),
+        ArrowDataType::Timestamp(ArrowTimeUnit::Microsecond, _) => (
+            shared::<TimestampMicrosecondType>(array)?,
+            Some(TimeUnit::Microsecond),
+        ),
+        ArrowDataType::Timestamp(ArrowTimeUnit::Nanosecond, _) => (
+            shared::<TimestampNanosecondType>(array)?,
+            Some(TimeUnit::Nanosecond),
+        ),
+        ArrowDataType::Date32 => (widened::<Date32Type>(array)?, Some(TimeUnit::Day)),
+        ArrowDataType::Date64 => (shared::<Date64Type>(array)?, Some(TimeUnit::Millisecond)),
         // An integer is the count already; the width is the only thing read.
-        ArrowDataType::Int64 => Ok(downcast::<Int64Array>(array)?.clone()),
-        ArrowDataType::Int8 => Ok(downcast::<PrimitiveArray<Int8Type>>(array)?.unary(i64::from)),
-        ArrowDataType::Int16 => Ok(downcast::<PrimitiveArray<Int16Type>>(array)?.unary(i64::from)),
-        ArrowDataType::Int32 => Ok(downcast::<Int32Array>(array)?.unary(i64::from)),
-        ArrowDataType::UInt8 => Ok(downcast::<PrimitiveArray<UInt8Type>>(array)?.unary(i64::from)),
-        ArrowDataType::UInt16 => {
-            Ok(downcast::<PrimitiveArray<UInt16Type>>(array)?.unary(i64::from))
-        }
-        ArrowDataType::UInt32 => {
-            Ok(downcast::<PrimitiveArray<UInt32Type>>(array)?.unary(i64::from))
-        }
-        ArrowDataType::UInt64 => {
+        ArrowDataType::Int64 => (shared::<Int64Type>(array)?, None),
+        ArrowDataType::Int8 => (widened::<Int8Type>(array)?, None),
+        ArrowDataType::Int16 => (widened::<Int16Type>(array)?, None),
+        ArrowDataType::Int32 => (widened::<Int32Type>(array)?, None),
+        ArrowDataType::UInt8 => (widened::<UInt8Type>(array)?, None),
+        ArrowDataType::UInt16 => (widened::<UInt16Type>(array)?, None),
+        ArrowDataType::UInt32 => (widened::<UInt32Type>(array)?, None),
+        ArrowDataType::UInt64 => (
             downcast::<UInt64Array>(array)?.try_unary::<_, Int64Type, Error>(|count| {
                 i64::try_from(count).map_err(|_| {
                     Error::IncompatibleSchema(format!(
                         "instant {count} does not fit a signed 64-bit unix count"
                     ))
                 })
-            })
+            })?,
+            None,
+        ),
+        other => {
+            return Err(Error::IncompatibleSchema(format!(
+                "expected a timestamp, date, or integer instant column, got {other}"
+            )));
         }
-        other => Err(Error::IncompatibleSchema(format!(
-            "expected a timestamp, date, or integer instant column, got {other}"
-        ))),
-    }
+    };
+    Ok(read)
 }
 
-/// Restate one primitive column's counts from `from` to `unit`.
-fn restated<T: ArrowPrimitiveType>(
-    array: &dyn Array,
-    from: TimeUnit,
-    unit: TimeUnit,
-    widen: impl Fn(T::Native) -> i64,
-) -> Result<Int64Array> {
-    let array = downcast::<PrimitiveArray<T>>(array)?;
-    if from == unit {
-        return Ok(array.unary(widen));
-    }
-    array.try_unary::<_, Int64Type, Error>(|count| {
-        restate_unix(widen(count), from, unit).map_err(Error::from)
-    })
-}
-
-/// Read a selected instant leaf under a Struct path, hiding what its parents
-/// hide.
+/// One restatement between two resolutions, settled once for a column.
 ///
-/// The fill reads its time source after nested holders are final, through
-/// the same Struct-only descent a digest source takes; a row null at any
-/// Struct above the leaf is null here.
+/// [`restate_unix`] is the rule, asked once per direction: a coarser source
+/// scales by one factor and can overflow, a finer source floors by one
+/// divisor and cannot fail. The per-row work is that one multiplication or
+/// division and nothing else.
+#[derive(Clone, Copy)]
+enum Restatement {
+    Same,
+    Scale(i64),
+    Floor(i64),
+}
+
+impl Restatement {
+    fn new(from: TimeUnit, unit: TimeUnit) -> Result<Self> {
+        if from == unit {
+            validate_unit(unit)?;
+            return Ok(Self::Same);
+        }
+        let scale = restate_unix(1, from, unit)?;
+        if scale > 1 {
+            return Ok(Self::Scale(scale));
+        }
+        Ok(Self::Floor(restate_unix(1, unit, from)?))
+    }
+
+    /// Restate one count.
+    fn count(self, count: i64) -> Result<i64> {
+        match self {
+            Self::Same => Ok(count),
+            Self::Scale(scale) => count
+                .checked_mul(scale)
+                .ok_or_else(|| Error::from(restatement_overflow())),
+            Self::Floor(divisor) => Ok(count.div_euclid(divisor)),
+        }
+    }
+
+    /// Restate a whole column, sharing it when there is nothing to do.
+    fn column(self, counts: &Int64Array) -> Result<Int64Array> {
+        match self {
+            Self::Same => Ok(counts.clone()),
+            Self::Scale(_) => counts.try_unary::<_, Int64Type, Error>(|count| self.count(count)),
+            Self::Floor(divisor) => Ok(counts.unary(|count| count.div_euclid(divisor))),
+        }
+    }
+}
+
+/// Read a selected instant leaf under a Struct path for the rows a fill
+/// recomputes, hiding what its parents hide.
+///
+/// The fill reads its time source through the same Struct-only descent a
+/// digest source takes. Only a row `mask` selects is restated, so a hidden
+/// row, or one holding a value the fill preserves, can never fail the batch
+/// over an instant it does not couple; every other row is null here. A count
+/// that does not fit the holder's unit is refused naming `holder`, the row,
+/// and the count, so the refusal points at the cell rather than at the rule.
 pub(crate) fn unix_selection(
     columns: &[ArrayRef],
     fields: &[Field],
     steps: &[usize],
     parent_nulls: Option<&NullBuffer>,
     unit: TimeUnit,
+    mask: &[bool],
+    holder: &str,
 ) -> Result<Int64Array> {
     let mut arrays = columns;
     let mut fields = fields;
@@ -164,11 +231,40 @@ pub(crate) fn unix_selection(
     for (depth, index) in steps.iter().copied().enumerate() {
         let array = &arrays[index];
         if depth + 1 == steps.len() {
-            let unix = unix_array(array.as_ref(), unit)?;
-            let (_, values, nulls) = unix.into_parts();
+            let (counts, from) = raw_counts(array.as_ref())?;
+            if mask.len() != counts.len() {
+                return Err(Error::IncompatibleSchema(format!(
+                    "holder {holder}: digest:time source has {} rows, the batch {}",
+                    counts.len(),
+                    mask.len()
+                )));
+            }
+            let restatement = match from {
+                Some(from) => Restatement::new(from, unit)?,
+                None => Restatement::Same,
+            };
+            let mut values = Vec::with_capacity(counts.len());
+            let mut valid = Vec::with_capacity(counts.len());
+            for (row, selected) in mask.iter().copied().enumerate() {
+                let present = selected
+                    && counts.is_valid(row)
+                    && hidden.as_ref().is_none_or(|nulls| nulls.is_valid(row));
+                values.push(if present {
+                    let count = counts.value(row);
+                    restatement.count(count).map_err(|_| {
+                        Error::IncompatibleSchema(format!(
+                            "holder {holder} row {row}: instant {count} at {} does not fit a signed 64-bit count of {unit}",
+                            from.map_or_else(|| unit.to_string(), |from| from.to_string())
+                        ))
+                    })?
+                } else {
+                    0
+                });
+                valid.push(present);
+            }
             return Ok(Int64Array::new(
-                values,
-                NullBuffer::union(nulls.as_ref(), hidden.as_ref()),
+                ScalarBuffer::from(values),
+                Some(NullBuffer::from(valid)),
             ));
         }
         let nested = downcast::<StructArray>(array.as_ref())?;
@@ -199,6 +295,7 @@ pub(crate) fn collect(
             digests.len()
         )));
     }
+    validate_unit(unit)?;
     let width = width(algorithm);
     let nulls = NullBuffer::union(unix.nulls(), nulls);
     let mut flat = vec![0_u8; unix.len() * width];
@@ -212,7 +309,7 @@ pub(crate) fn collect(
                 digest.algorithm()
             )));
         }
-        let value = TxHash::new_in(unix.value(row), unit, *digest)?;
+        let value = TxHash::couple(unit, unix.value(row), *digest);
         flat[row * width..(row + 1) * width].copy_from_slice(&value.into_bytes());
     }
     Ok(Arc::new(FixedSizeBinaryArray::new(
@@ -301,6 +398,36 @@ pub(crate) fn row_txhashes_with<S: ArrowDigestState>(
 /// under `field`: the cell's own value, reconciled to the declaration first
 /// and with no row framing around it.
 ///
+/// ```
+/// use std::sync::Arc;
+///
+/// use arrow_array::{Array as _, ArrayRef, Int32Array, Int64Array, StringArray, TimestampSecondArray};
+/// use yggdryl::xxhash::arrow::column_digests;
+/// use yggdryl::{DataType, DigestAlgorithm, Field, TimeUnit, txhash};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let instants = TimestampSecondArray::from(vec![1_700_000_000, 1_700_000_001]);
+/// let symbols: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
+/// let field = Field::new("symbol", DataType::Utf8, false);
+///
+/// let coupled = txhash::arrow::column_txhashes(&instants, Arc::clone(&symbols), &field, TimeUnit::Second, DigestAlgorithm::Xxh3)?;
+/// let (times, digests) = txhash::arrow::decompose(coupled.as_ref(), TimeUnit::Second, DigestAlgorithm::Xxh3)?;
+/// assert_eq!(&digests, &column_digests(symbols, &field, DigestAlgorithm::Xxh3)?);
+/// assert_eq!(times.len(), 2);
+///
+/// // Reconciliation is the column digest's: an int32 column read under an
+/// // int64 declaration is the same numbers.
+/// let declared = Field::new("quantity", DataType::Int64, false);
+/// let narrow: ArrayRef = Arc::new(Int32Array::from(vec![100, 250]));
+/// let wide: ArrayRef = Arc::new(Int64Array::from(vec![100, 250]));
+/// assert_eq!(
+///     &txhash::arrow::column_txhashes(&instants, narrow, &declared, TimeUnit::Second, DigestAlgorithm::Xxh3)?,
+///     &txhash::arrow::column_txhashes(&instants, wide, &declared, TimeUnit::Second, DigestAlgorithm::Xxh3)?,
+/// );
+/// # Ok(())
+/// # }
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error when `times` is not an instant column of the array's
@@ -346,6 +473,31 @@ fn require_length(times: &dyn Array, rows: usize) -> Result<()> {
 /// answers for the algorithm (`uint32`, `uint64`, or `fixed_size_binary(16)`),
 /// or the signed same-width storage a holder may keep, read as the same bits.
 /// A null on either side is a null cell.
+///
+/// ```
+/// use arrow_array::cast::AsArray as _;
+/// use arrow_array::types::{TimestampSecondType, UInt64Type};
+/// use arrow_array::{Array as _, Int64Array, TimestampMillisecondArray, UInt64Array};
+/// use yggdryl::{DigestAlgorithm, TimeUnit, txhash};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let instants = TimestampMillisecondArray::from(vec![Some(1_000), None]);
+/// let digests = UInt64Array::from(vec![7, 8]);
+/// let coupled = txhash::arrow::compose(&instants, &digests, TimeUnit::Second, DigestAlgorithm::Xxh3)?;
+/// assert!(coupled.is_null(1), "a null instant is a null cell");
+///
+/// // A signed holder's storage is the same bits.
+/// let signed = Int64Array::from(vec![7, 8]);
+/// assert_eq!(&txhash::arrow::compose(&instants, &signed, TimeUnit::Second, DigestAlgorithm::Xxh3)?, &coupled);
+///
+/// // The halves come back at the unit and width they went in.
+/// let (times, split) = txhash::arrow::decompose(coupled.as_ref(), TimeUnit::Second, DigestAlgorithm::Xxh3)?;
+/// assert_eq!(times.as_primitive::<TimestampSecondType>().value(0), 1);
+/// assert_eq!(split.as_primitive::<UInt64Type>().value(0), 7);
+/// assert!(times.is_null(1) && split.is_null(1));
+/// # Ok(())
+/// # }
+/// ```
 ///
 /// # Errors
 ///
@@ -449,9 +601,13 @@ pub fn decompose(
             digests.push(Digest::new(algorithm, 0));
             continue;
         }
-        let value = TxHash::from_bytes(unit, algorithm, array.value(row))?;
-        unix.push(value.unix());
-        digests.push(value.digest());
+        // The width was checked on the column, so a row is read as its two
+        // halves with nothing left to validate.
+        let bytes = array.value(row);
+        let mut instant = [0_u8; UNIX_WIDTH];
+        instant.copy_from_slice(&bytes[..UNIX_WIDTH]);
+        unix.push(i64::from_be_bytes(instant));
+        digests.push(Digest::from_bytes(algorithm, &bytes[UNIX_WIDTH..])?);
     }
     let nulls = array.nulls().cloned();
     Ok((

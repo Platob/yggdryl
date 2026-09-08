@@ -56,13 +56,22 @@ pub(crate) const fn fixed_width(algorithm: DigestAlgorithm) -> i32 {
 /// Sixteen bytes answer XXH3-64 rather than XXH64 for the reason the digest
 /// vocabulary defaults the same way: it is the algorithm every `stable_hash`
 /// in the project answers.
-pub const fn algorithm_of_width(width: i32) -> Option<DigestAlgorithm> {
-    match width {
-        12 => Some(DigestAlgorithm::Xxh32),
-        16 => Some(DigestAlgorithm::Xxh3),
-        24 => Some(DigestAlgorithm::Xxh128),
-        _ => None,
+pub(crate) const fn algorithm_of_width(width: i32) -> Option<DigestAlgorithm> {
+    // The three defaults in width order; the width each takes is read off
+    // the one layout rule rather than restated here.
+    const DEFAULTS: [DigestAlgorithm; 3] = [
+        DigestAlgorithm::Xxh32,
+        DigestAlgorithm::Xxh3,
+        DigestAlgorithm::Xxh128,
+    ];
+    let mut index = 0;
+    while index < DEFAULTS.len() {
+        if fixed_width(DEFAULTS[index]) == width {
+            return Some(DEFAULTS[index]);
+        }
+        index += 1;
     }
+    None
 }
 
 /// One instant coupled with one digest.
@@ -115,7 +124,13 @@ impl TxHash {
     /// resolution.
     pub fn new_in(unix: i64, unit: TimeUnit, digest: Digest) -> Result<Self> {
         validate_unit(unit)?;
-        Ok(Self { unit, unix, digest })
+        Ok(Self::couple(unit, unix, digest))
+    }
+
+    /// Couple under a unit a caller has already validated once for a whole
+    /// column, so the per-row path carries no check.
+    pub(crate) const fn couple(unit: TimeUnit, unix: i64, digest: Digest) -> Self {
+        Self { unit, unix, digest }
     }
 
     /// Return the instant as a unix count of [`Self::unit`].
@@ -264,16 +279,18 @@ impl TxHash {
 
     /// Read a value back out of the two representations a value has.
     ///
-    /// Bytes are the canonical layout at the algorithm's exact width, and text
-    /// is the canonical spelling, which must name this unit and algorithm.
+    /// A byte value is the canonical layout at the algorithm's exact width,
+    /// and text is the canonical spelling, which must name this unit and
+    /// algorithm. The arguments sit in the order [`Self::from_bytes`] takes
+    /// them.
     ///
     /// # Errors
     ///
     /// Returns an error when the value is neither, when bytes have the wrong
     /// width, or when a spelling names another unit or algorithm.
-    pub fn from_scalar(value: &Scalar, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<Self> {
-        if let Some(bytes) = value.as_bytes() {
-            return Self::from_bytes(unit, algorithm, bytes);
+    pub fn from_scalar(unit: TimeUnit, algorithm: DigestAlgorithm, value: &Scalar) -> Result<Self> {
+        if let Scalar::Bytes(bytes) = value {
+            return Self::from_bytes(unit, algorithm, bytes.as_bytes());
         }
         if let Some(text) = value.as_str() {
             let parsed = Self::from_str(text)?;
@@ -379,27 +396,47 @@ impl FromStr for TxHash {
 
     fn from_str(value: &str) -> Result<Self> {
         let normalized = value.trim();
-        let (unix, rest) = normalized.split_once('@').ok_or_else(|| Error::Parse {
+        let parse_error = |position: usize, reason: smol_str::SmolStr| Error::Parse {
             target: "txhash",
-            position: 0,
-            reason: format_smolstr!(
-                "expected <unix>@<unit>:<algorithm>:<hex>, got {}",
-                crate::text::elide_to(normalized, crate::text::ERROR_TEXT_LIMIT)
-            ),
+            position,
+            reason,
+        };
+        // A failure inside one part is reported at that part's offset in the
+        // whole spelling and under this value's own target, so a caller reads
+        // one position against the text it handed over.
+        let nested = |offset: usize, error: Error| match error {
+            Error::Parse {
+                position, reason, ..
+            } => parse_error(offset + position, reason),
+            other => parse_error(offset, smol_str::SmolStr::new(other.to_string())),
+        };
+        let (unix, rest) = normalized.split_once('@').ok_or_else(|| {
+            parse_error(
+                0,
+                format_smolstr!(
+                    "expected <unix>@<unit>:<algorithm>:<hex>, got {}",
+                    crate::text::elide_to(normalized, crate::text::ERROR_TEXT_LIMIT)
+                ),
+            )
         })?;
-        let unix = unix.parse::<i64>().map_err(|error| Error::Parse {
-            target: "txhash",
-            position: 0,
-            reason: format_smolstr!("expected a signed 64-bit unix count, got {error}"),
+        let unix = unix.parse::<i64>().map_err(|error| {
+            parse_error(
+                0,
+                format_smolstr!("expected a signed 64-bit unix count, got {error}"),
+            )
         })?;
-        let (unit, digest) = rest.split_once(':').ok_or_else(|| Error::Parse {
-            target: "txhash",
-            position: normalized.len() - rest.len(),
-            reason: "expected <unit>:<algorithm>:<hex> after the instant".into(),
+        let rest_offset = normalized.len() - rest.len();
+        let (unit, digest) = rest.split_once(':').ok_or_else(|| {
+            parse_error(
+                rest_offset,
+                "expected <unit>:<algorithm>:<hex> after the instant".into(),
+            )
         })?;
-        let unit = TimeUnit::from_str(unit)?;
-        validate_unit(unit)?;
-        let digest = Digest::from_str(digest)?;
+        let unit = TimeUnit::from_str(unit)
+            .and_then(|unit| validate_unit(unit).map(|()| unit))
+            .map_err(|error| nested(rest_offset, error))?;
+        let digest_offset = rest_offset + rest.len() - digest.len();
+        let digest = Digest::from_str(digest).map_err(|error| nested(digest_offset, error))?;
         Ok(Self { unit, unix, digest })
     }
 }

@@ -12,15 +12,15 @@ use arrow_array::RecordBatch as ArrowRecordBatch;
 use arrow_pyarrow::{FromPyArrow, ToPyArrow};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDate, PyDateTime, PyTuple, PyType};
 
 use yggdryl::txhash::{self, TxHash, TxHasher};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use yggdryl::{Digester, TimeUnit};
+use yggdryl::{Digester, Scalar, TimeUnit, Timezone};
 
 use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::core_field_from_value;
-use crate::types::scalar::PyScalar;
+use crate::types::scalar::{PyScalar, date_epoch_days, datetime_utc_microseconds};
 use crate::value_error;
 use crate::xxhash::{
     PyDigest, PyDigester, PyXxh3, PyXxh32, PyXxh64, PyXxh128, algorithm_from_str, feed_content,
@@ -64,7 +64,26 @@ pub(crate) fn unix_from_py(value: &Bound<'_, PyAny>, unit: TimeUnit) -> PyResult
         return Err(PyTypeError::new_err("a bool names no instant"));
     }
     if let Ok(count) = value.extract::<i64>() {
-        return txhash::unix_from_scalar(&yggdryl::Scalar::from(count), unit).map_err(value_error);
+        return txhash::unix_from_scalar(&Scalar::from(count), unit).map_err(value_error);
+    }
+    // A datetime and a date cross through the conversion every Scalar intake
+    // uses, minus the zone: a unix count has none, so an aware value is read
+    // under UTC rather than resolving the zone its `tzinfo` names.
+    if value.is_instance_of::<PyDateTime>() {
+        let (count, aware) = datetime_utc_microseconds(value)?;
+        let zone = if aware {
+            Timezone::UTC
+        } else {
+            Timezone::NAIVE
+        };
+        let instant =
+            Scalar::from_datetime(count, TimeUnit::Microsecond, zone).map_err(value_error)?;
+        return txhash::unix_from_scalar(&instant, unit).map_err(value_error);
+    }
+    if value.is_instance_of::<PyDate>() {
+        let day = Scalar::from_date(date_epoch_days(value)?, TimeUnit::Day, Timezone::NAIVE)
+            .map_err(value_error)?;
+        return txhash::unix_from_scalar(&day, unit).map_err(value_error);
     }
     let scalar = match value.extract::<PyRef<'_, PyScalar>>() {
         Ok(scalar) => scalar.inner.clone(),
@@ -108,15 +127,24 @@ impl PyTxHash {
 
     /// Rebuild a value from its canonical bytes.
     #[classmethod]
-    fn from_bytes(_cls: &Bound<'_, PyType>, unit: &str, algorithm: &str, data: &[u8]) -> PyResult<Self> {
+    fn from_bytes(
+        _cls: &Bound<'_, PyType>,
+        unit: &str,
+        algorithm: &str,
+        data: &[u8],
+    ) -> PyResult<Self> {
         TxHash::from_bytes(unit_from_str(unit)?, algorithm_from_str(algorithm)?, data)
             .map(Self::from_core)
             .map_err(value_error)
     }
 
     /// Couple an instant with a digest already computed.
+    ///
+    /// `unix` and `unit` are the keywords every binding spells, so the two
+    /// names stay beside each other here.
     #[classmethod]
     #[pyo3(signature = (unix, digest, unit = "us"))]
+    #[allow(clippy::similar_names)]
     fn from_parts(
         _cls: &Bound<'_, PyType>,
         unix: &Bound<'_, PyAny>,
@@ -175,6 +203,7 @@ impl PyTxHash {
     }
 
     /// The instant as a UTC datetime `Scalar` at this value's resolution.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     fn into_datetime(&self) -> PyScalar {
         PyScalar {
             inner: self.inner.into_datetime(),
@@ -182,6 +211,7 @@ impl PyTxHash {
     }
 
     /// The canonical bytes as a fixed-width byte `Scalar`.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     fn into_scalar(&self) -> PyScalar {
         PyScalar {
             inner: self.inner.into_scalar(),
@@ -279,7 +309,11 @@ impl PyTxHasher {
     /// discarded.
     #[classmethod]
     #[pyo3(signature = (state, *, unit = "us"))]
-    fn from_state(_cls: &Bound<'_, PyType>, state: &Bound<'_, PyAny>, unit: &str) -> PyResult<Self> {
+    fn from_state(
+        _cls: &Bound<'_, PyType>,
+        state: &Bound<'_, PyAny>,
+        unit: &str,
+    ) -> PyResult<Self> {
         let digester = digester_from_state(state)?;
         TxHasher::from_digester(unit_from_str(unit)?, digester)
             .map(|inner| Self { inner })
@@ -323,7 +357,9 @@ impl PyTxHasher {
     /// Couple an instant with a value's canonical feed.
     fn digest_scalar(&self, value: &PyScalar, unix: &Bound<'_, PyAny>) -> PyResult<PyTxHash> {
         let unix = unix_from_py(unix, self.inner.unit())?;
-        Ok(PyTxHash::from_core(self.inner.digest_scalar(&value.inner, unix)))
+        Ok(PyTxHash::from_core(
+            self.inner.digest_scalar(&value.inner, unix),
+        ))
     }
 
     /// Read any instant as a unix count of this hasher's resolution.
@@ -431,10 +467,7 @@ fn digester_from_state(state: &Bound<'_, PyAny>) -> PyResult<Digester> {
 }
 
 /// Couple a microsecond instant with a one-shot digest of `data`.
-fn couple(
-    unix: &Bound<'_, PyAny>,
-    digest: yggdryl::Digest,
-) -> PyResult<PyTxHash> {
+fn couple(unix: &Bound<'_, PyAny>, digest: yggdryl::Digest) -> PyResult<PyTxHash> {
     let unix = unix_from_py(unix, txhash::DEFAULT_UNIT)?;
     Ok(PyTxHash::from_core(TxHash::new(unix, digest)))
 }
@@ -442,7 +475,11 @@ fn couple(
 /// Couple a microsecond instant with XXH32 of a complete value.
 #[pyfunction]
 #[pyo3(name = "txh32", signature = (data, unix, seed = 0))]
-pub(crate) fn txh32(data: &Bound<'_, PyAny>, unix: &Bound<'_, PyAny>, seed: u32) -> PyResult<PyTxHash> {
+pub(crate) fn txh32(
+    data: &Bound<'_, PyAny>,
+    unix: &Bound<'_, PyAny>,
+    seed: u32,
+) -> PyResult<PyTxHash> {
     let mut state = Xxh32::with_seed(seed);
     feed_content(data, &mut |bytes| state.write_bytes(bytes))?;
     couple(unix, state.as_digest())
@@ -451,7 +488,11 @@ pub(crate) fn txh32(data: &Bound<'_, PyAny>, unix: &Bound<'_, PyAny>, seed: u32)
 /// Couple a microsecond instant with XXH64 of a complete value.
 #[pyfunction]
 #[pyo3(name = "txh64", signature = (data, unix, seed = 0))]
-pub(crate) fn txh64(data: &Bound<'_, PyAny>, unix: &Bound<'_, PyAny>, seed: u64) -> PyResult<PyTxHash> {
+pub(crate) fn txh64(
+    data: &Bound<'_, PyAny>,
+    unix: &Bound<'_, PyAny>,
+    seed: u64,
+) -> PyResult<PyTxHash> {
     let mut state = Xxh64::with_seed(seed);
     feed_content(data, &mut |bytes| state.write_bytes(bytes))?;
     couple(unix, state.as_digest())
@@ -612,8 +653,13 @@ pub(crate) fn txhash_unix_array<'py>(
     unit: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
     let array = arrow_array_from_pyarrow(array)?;
-    let unix = txhash::arrow::unix_array(array.as_ref(), unit_from_str(unit)?).map_err(value_error)?;
-    arrow_array_to_pyarrow(py, &(std::sync::Arc::new(unix) as arrow_array::ArrayRef), None)
+    let counts =
+        txhash::arrow::unix_array(array.as_ref(), unit_from_str(unit)?).map_err(value_error)?;
+    arrow_array_to_pyarrow(
+        py,
+        &(std::sync::Arc::new(counts) as arrow_array::ArrayRef),
+        None,
+    )
 }
 
 /// Read the system clock as a unix count of `unit`.
@@ -649,5 +695,7 @@ pub(crate) fn txhash_width(algorithm: &str) -> PyResult<usize> {
 #[pyfunction]
 #[pyo3(name = "txhash_dtype")]
 pub(crate) fn txhash_dtype(algorithm: &str) -> PyResult<PyDataType> {
-    Ok(PyDataType::from_inner(txhash::dtype(algorithm_from_str(algorithm)?)))
+    Ok(PyDataType::from_inner(txhash::dtype(algorithm_from_str(
+        algorithm,
+    )?)))
 }

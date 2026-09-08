@@ -1954,7 +1954,6 @@ pub const DEFAULT_UNIT: TimeUnit = TimeUnit::Microsecond;
 pub const UNIX_WIDTH: usize = 8;
   pub const fn width(algorithm: DigestAlgorithm) -> usize
   pub const fn dtype(algorithm: DigestAlgorithm) -> DataType
-  pub const fn algorithm_of_width(width: i32) -> Option<DigestAlgorithm>
   pub struct TxHash
   pub const fn new(unix: i64, digest: Digest) -> Self
   pub fn new_in(unix: i64, unit: TimeUnit, digest: Digest) -> Result<Self>
@@ -1970,7 +1969,7 @@ pub const UNIX_WIDTH: usize = 8;
   pub fn from_str(value: &str) -> Result<Self>
   pub fn into_datetime(self) -> Scalar
   pub fn into_scalar(self) -> Scalar
-  pub fn from_scalar(value: &Scalar, unit: TimeUnit, algorithm: DigestAlgorithm) -> Result<Self>
+  pub fn from_scalar(unit: TimeUnit, algorithm: DigestAlgorithm, value: &Scalar) -> Result<Self>
   pub fn stable_hash(&self) -> u64
   pub struct TxHashBytes
   impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, FromStr, Serialize, Deserialize for TxHash  (Ord is unit-major, then the instant, then the digest)

@@ -68,6 +68,27 @@ impl TxHasher {
     /// discarded, because a hasher is a configuration rather than a running
     /// digest.
     ///
+    /// ```
+    /// use yggdryl::TimeUnit;
+    /// use yggdryl::txhash::TxHasher;
+    /// use yggdryl::xxhash::{self, Xxh3};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let secret = vec![0x5a_u8; xxhash::SECRET_MINIMUM_LENGTH];
+    /// let mut state = Xxh3::from_seed_and_secret(3, &secret)?;
+    /// state.write_bytes(b"already fed, and forgotten");
+    /// let hasher = TxHasher::from_digester(TimeUnit::Millisecond, state.into())?;
+    ///
+    /// let long = vec![0x11_u8; 241];
+    /// assert_eq!(
+    ///     hasher.digest(&long, 5).digest().as_u64(),
+    ///     Some(xxhash::xxh3_with_seed_and_secret(&long, 3, &secret)?),
+    /// );
+    /// assert_eq!(hasher.unit(), TimeUnit::Millisecond);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`crate::Error::InvalidDataType`] when `unit` is not a clock

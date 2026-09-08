@@ -2480,10 +2480,14 @@ fn interval_as_py(py: Python<'_>, temporal: &Temporal) -> PyResult<Py<PyAny>> {
     }
 }
 
-/// Convert a `datetime.date` into its day count since the Unix epoch.
+/// Read a `datetime.date` as its day count since the Unix epoch.
+pub(crate) fn date_epoch_days(value: &Bound<'_, PyAny>) -> PyResult<i64> {
+    Ok(value.call_method0("toordinal")?.extract::<i64>()? - EPOCH_ORDINAL)
+}
+
+/// Convert a `datetime.date` into the date scalar of that day.
 fn date_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    let ordinal = value.call_method0("toordinal")?.extract::<i64>()?;
-    Scalar::from_date(ordinal - EPOCH_ORDINAL, TimeUnit::Day, Timezone::NAIVE).map_err(value_error)
+    Scalar::from_date(date_epoch_days(value)?, TimeUnit::Day, Timezone::NAIVE).map_err(value_error)
 }
 
 /// Build the `datetime.date` one epoch day count names.
@@ -2579,13 +2583,14 @@ fn duration_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         .map(Bound::unbind)
 }
 
-/// Convert a `datetime.datetime` into a UTC-relative count and its zone.
+/// Read a `datetime.datetime` as a UTC-relative microsecond count, and
+/// whether an offset was applied to reach it.
 ///
 /// The count Arrow defines is always relative to UTC, so an aware value moves
 /// by the offset in force at that instant - which is exactly the offset Python
 /// computes, daylight saving and `fold` included. A naive value has no offset
-/// to apply and carries no zone.
-fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+/// to apply.
+pub(crate) fn datetime_utc_microseconds(value: &Bound<'_, PyAny>) -> PyResult<(i64, bool)> {
     let days = value.call_method0("toordinal")?.extract::<i64>()? - EPOCH_ORDINAL;
     let time_of_day = microseconds_of_day(value)?;
     let local = days
@@ -2594,12 +2599,24 @@ fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
         .ok_or_else(overflowing_timestamp)?;
     let offset = value.call_method0("utcoffset")?;
     if offset.is_none() {
-        return Scalar::from_datetime(local, TimeUnit::Microsecond, Timezone::NAIVE)
-            .map_err(value_error);
+        return Ok((local, false));
     }
     let count = local
         .checked_sub(timedelta_microseconds(&offset)?)
         .ok_or_else(overflowing_timestamp)?;
+    Ok((count, true))
+}
+
+/// Convert a `datetime.datetime` into a UTC-relative count and its zone.
+///
+/// A naive value carries no zone; an aware one carries the zone its `tzinfo`
+/// names.
+fn datetime_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    let (count, aware) = datetime_utc_microseconds(value)?;
+    if !aware {
+        return Scalar::from_datetime(count, TimeUnit::Microsecond, Timezone::NAIVE)
+            .map_err(value_error);
+    }
     let zone = core_timezone_from_value(&value.getattr("tzinfo")?)?;
     Scalar::from_datetime(count, TimeUnit::Microsecond, zone).map_err(value_error)
 }

@@ -59,7 +59,9 @@ pub type DigestContent<'content> = Either<Buffer, Either<Uint8Array, String>>;
 ///
 /// Every shape here is already contiguous native memory or a `string`, so the
 /// slice is the caller's own bytes: nothing is copied to hash it.
-pub(crate) fn content_bytes<'content>(content: &'content DigestContent<'content>) -> &'content [u8] {
+pub(crate) fn content_bytes<'content>(
+    content: &'content DigestContent<'content>,
+) -> &'content [u8] {
     match content {
         Either::A(buffer) => buffer.as_ref(),
         Either::B(Either::A(array)) => array.as_ref(),
