@@ -9,7 +9,7 @@ use flate2::write::GzEncoder;
 use crate::Result;
 
 use crate::IOBase;
-use crate::codec::{Encoder, EncoderKind, FlateFinish};
+use crate::codec::{CodedWrite, Encoder, EncoderKind};
 use crate::coding::Coding;
 use crate::{Codec, Level};
 
@@ -63,13 +63,16 @@ pub fn writer<'target, W: Write + 'target>(target: W) -> Encoder<'target> {
 
 /// Wrap a writer so written bytes are gzip-encoded at an explicit level.
 pub fn writer_with_level<'target, W: Write + 'target>(target: W, level: Level) -> Encoder<'target> {
-    Encoder(EncoderKind::Flate(Box::new(GzEncoder::new(
-        target,
-        Compression::new(u32::from(level.get())),
-    ))))
+    Encoder {
+        kind: EncoderKind::Coded(Box::new(GzEncoder::new(
+            target,
+            Compression::new(u32::from(level.get())),
+        ))),
+        codec: Codec::Gzip,
+    }
 }
 
-impl<W: Write> FlateFinish for GzEncoder<W> {
+impl<W: Write> CodedWrite for GzEncoder<W> {
     fn finish_boxed(self: Box<Self>) -> std::io::Result<()> {
         (*self).finish().map(|_| ())
     }

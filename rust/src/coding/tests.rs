@@ -782,3 +782,130 @@ mod transport {
         assert_eq!(requests.load(Ordering::Relaxed), 0);
     }
 }
+
+/// Restart points: where a decoder may begin an encoded stream partway in.
+mod restarts {
+    use std::io::Write as _;
+
+    use crate::{Codec, Level};
+
+    /// Three segments of a payload, each begun at a restart point.
+    fn segmented(codec: Codec) -> (Vec<u8>, Vec<Vec<u8>>) {
+        let segments: Vec<Vec<u8>> = (0..3)
+            .map(|part| format!("part {part}: symbol,price\nAAPL,187.23\n").repeat(64))
+            .map(String::into_bytes)
+            .collect();
+        let mut encoded = Vec::new();
+        let mut encoder = codec.writer_with_level(&mut encoded, Level::DEFAULT);
+        for (index, segment) in segments.iter().enumerate() {
+            if index > 0 {
+                encoder.restart().expect("the coding restarts");
+            }
+            encoder.write_all(segment).expect("the segment encodes");
+        }
+        encoder.finish().expect("the stream finishes");
+        (encoded, segments)
+    }
+
+    #[test]
+    fn a_restarted_stream_decodes_whole_and_from_every_restart() {
+        for codec in [Codec::Deflate, Codec::Zstd] {
+            let (encoded, segments) = segmented(codec);
+            let whole: Vec<u8> = segments.concat();
+            assert_eq!(codec.load(&encoded).expect("the whole stream"), whole);
+
+            let mut offsets = Vec::new();
+            codec.restarts().push(&encoded, &mut offsets);
+            assert_eq!(offsets.len(), 2, "{codec}");
+
+            // Each restart begins the segment that follows it, and everything
+            // after that segment comes with it.
+            let mut behind = whole.len();
+            for (index, offset) in offsets.iter().enumerate() {
+                let start = usize::try_from(*offset).expect("an in-memory offset");
+                let decoded = codec.load(&encoded[start..]).expect("the tail decodes");
+                let expected: Vec<u8> = segments[index + 1..].concat();
+                assert_eq!(decoded, expected, "{codec} restart {index}");
+                assert!(decoded.len() < behind);
+                behind = decoded.len();
+            }
+        }
+    }
+
+    #[test]
+    fn a_restart_marker_split_across_chunks_is_still_found() {
+        for codec in [Codec::Deflate, Codec::Zstd] {
+            let (encoded, _) = segmented(codec);
+            let mut whole = Vec::new();
+            codec.restarts().push(&encoded, &mut whole);
+
+            for step in [1_usize, 2, 3, 4, 5, 7] {
+                let mut scan = codec.restarts();
+                let mut split = Vec::new();
+                for chunk in encoded.chunks(step) {
+                    scan.push(chunk, &mut split);
+                }
+                assert_eq!(split, whole, "{codec} in {step}-byte chunks");
+                assert_eq!(scan.consumed(), encoded.len() as u64);
+            }
+        }
+    }
+
+    #[test]
+    fn a_coding_whose_framing_wraps_the_payload_refuses_a_restart() {
+        for codec in [Codec::Gzip, Codec::Zlib] {
+            assert!(!codec.has_restarts());
+            let mut encoded = Vec::new();
+            let mut encoder = codec.writer_with_level(&mut encoded, Level::DEFAULT);
+            encoder.write_all(b"symbol,price\n").expect("the payload");
+            let refused = encoder.restart().expect_err("no restart point");
+            assert!(
+                refused.to_string().contains(codec.as_str()),
+                "{refused} names {codec}"
+            );
+            encoder.finish().expect("the stream still finishes");
+            assert_eq!(codec.load(&encoded).expect("the payload"), b"symbol,price\n");
+
+            // A refused restart leaves nothing to find.
+            let mut offsets = Vec::new();
+            codec.restarts().push(&encoded, &mut offsets);
+            assert!(offsets.is_empty());
+        }
+    }
+
+    #[test]
+    fn an_identity_stream_restarts_at_every_offset_and_reports_none() {
+        assert!(Codec::Identity.has_restarts());
+        let mut encoded = Vec::new();
+        let mut encoder = Codec::Identity.writer(&mut encoded);
+        encoder.write_all(b"symbol").expect("the payload");
+        encoder.restart().expect("identity always restarts");
+        encoder.write_all(b",price").expect("the payload");
+        encoder.finish().expect("the stream finishes");
+        assert_eq!(encoded, b"symbol,price");
+
+        let mut offsets = Vec::new();
+        Codec::Identity.restarts().push(&encoded, &mut offsets);
+        assert!(offsets.is_empty());
+    }
+
+    #[test]
+    fn restarting_costs_size_and_nothing_else() {
+        let payload = b"symbol,price\nAAPL,187.23\n".repeat(512);
+        let plain = Codec::Deflate.dump(&payload).expect("the plain stream");
+
+        let mut restarted = Vec::new();
+        let mut encoder = Codec::Deflate.writer(&mut restarted);
+        for chunk in payload.chunks(1024) {
+            encoder.restart().expect("the coding restarts");
+            encoder.write_all(chunk).expect("the chunk encodes");
+        }
+        encoder.finish().expect("the stream finishes");
+
+        assert_eq!(
+            Codec::Deflate.load(&restarted).expect("the payload"),
+            payload
+        );
+        assert!(restarted.len() > plain.len());
+    }
+}

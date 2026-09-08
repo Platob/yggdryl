@@ -150,6 +150,83 @@ impl Codec {
         matches!(self, Self::Identity)
     }
 
+    /// Return whether an encoded stream can be decoded from partway in.
+    ///
+    /// A coding has *restart points* when its encoder can end one unit and
+    /// start the next with no carried state, so a decoder handed the bytes
+    /// from that point produces the rest of the payload. Identity has one at
+    /// every byte, raw DEFLATE has one after each full flush, and Zstandard
+    /// has one at each frame. Gzip and zlib have none: their header and
+    /// trailer frame the whole payload, so a decoder cannot begin inside one.
+    ///
+    /// ```
+    /// use yggdryl::Codec;
+    ///
+    /// assert!(Codec::Deflate.has_restarts());
+    /// assert!(!Codec::Gzip.has_restarts());
+    /// ```
+    pub const fn has_restarts(self) -> bool {
+        matches!(self, Self::Identity | Self::Deflate | Self::Zstd)
+    }
+
+    /// Scan an encoded stream for the offsets a decoder may begin at.
+    ///
+    /// The scan is a byte search rather than a decode, so it costs one pass
+    /// over the encoded bytes and holds only the few bytes a marker can be
+    /// split across. What it answers are *candidates*: the marker a coding
+    /// restarts after can also occur inside compressed data, so a caller that
+    /// depends on the answer decodes a probe from each offset before trusting
+    /// it.
+    ///
+    /// The start of the stream is never reported: a decoder may always begin
+    /// there, so every offset the scan answers is greater than zero. An
+    /// identity stream restarts at every offset and reports none, and a
+    /// coding with no restart points reports none either - [`has_restarts`]
+    /// is what separates the two.
+    ///
+    /// [`has_restarts`]: Self::has_restarts
+    ///
+    /// ```
+    /// use yggdryl::{Codec, Level};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut encoded = Vec::new();
+    /// let mut encoder = Codec::Deflate.writer_with_level(&mut encoded, Level::DEFAULT);
+    /// std::io::Write::write_all(&mut encoder, b"symbol,price\n")?;
+    /// encoder.restart()?;
+    /// std::io::Write::write_all(&mut encoder, b"AAPL,187.23\n")?;
+    /// encoder.finish()?;
+    ///
+    /// let mut offsets = Vec::new();
+    /// Codec::Deflate.restarts().push(&encoded, &mut offsets);
+    /// assert_eq!(offsets.len(), 1);
+    ///
+    /// // The second half decodes on its own from the offset the scan found.
+    /// let start = usize::try_from(offsets[0]).expect("an in-memory offset");
+    /// assert_eq!(Codec::Deflate.load(&encoded[start..])?, b"AAPL,187.23\n");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub const fn restarts(self) -> Restarts {
+        Restarts::new(self)
+    }
+
+    /// The pattern this coding's restart points are found by.
+    const fn restart_marker(self) -> Option<Marker> {
+        match self {
+            Self::Deflate => Some(Marker {
+                bytes: zlib::RESTART_MARKER,
+                after: true,
+            }),
+            Self::Zstd => Some(Marker {
+                bytes: zstd::FRAME_MAGIC,
+                after: false,
+            }),
+            // Identity restarts everywhere, and a framed coding nowhere.
+            Self::Identity | Self::Gzip | Self::Zlib => None,
+        }
+    }
+
     /// Recover the coding from a MIME type.
     pub fn from_mime_type(value: &MimeType) -> Self {
         if *value == MimeType::GZIP {
@@ -262,7 +339,10 @@ impl Codec {
         level: Level,
     ) -> Encoder<'target> {
         match self {
-            Self::Identity => Encoder(EncoderKind::Identity(Box::new(target))),
+            Self::Identity => Encoder {
+                kind: EncoderKind::Identity(Box::new(target)),
+                codec: self,
+            },
             Self::Gzip => gzip::writer_with_level(target, level),
             Self::Zlib => zlib::writer_with_level(target, level),
             Self::Deflate => zlib::raw_writer_with_level(target, level),
@@ -313,36 +393,207 @@ impl<'de> Deserialize<'de> for Codec {
     }
 }
 
+/// The byte pattern one coding's restart points are found by.
+///
+/// The two codings that have restart points mark them differently: a raw
+/// DEFLATE stream restarts *after* the empty stored block a full flush emits,
+/// and a Zstandard stream restarts *at* the magic each frame begins with.
+struct Marker {
+    /// The pattern a scan searches for.
+    bytes: &'static [u8],
+    /// Whether the restart begins after the pattern rather than at it.
+    after: bool,
+}
+
+/// The longest restart marker, which bounds what a chunk boundary can split.
+const MARKER_LEN: usize = 4;
+
+/// A scan for the offsets a decoder may begin an encoded stream at.
+///
+/// Built by [`Codec::restarts`] and fed the encoded bytes in whatever chunks a
+/// caller already has them in: the scan holds only the marker-sized tail a
+/// chunk boundary can split a pattern across, so scanning a gigabyte costs one
+/// pass and three retained bytes.
+///
+/// ```
+/// use yggdryl::Codec;
+///
+/// let mut scan = Codec::Zstd.restarts();
+/// let mut offsets = Vec::new();
+/// // The frame magic, split across two chunks.
+/// scan.push(&[0x00, 0x28, 0xb5], &mut offsets);
+/// scan.push(&[0x2f, 0xfd, 0x00], &mut offsets);
+/// assert_eq!(offsets, vec![1]);
+/// ```
+#[derive(Clone, Debug)]
+pub struct Restarts {
+    codec: Codec,
+    /// Bytes already scanned, which every reported offset is measured from.
+    consumed: u64,
+    /// The tail of the previous chunk a marker could still be completed from.
+    carry: [u8; MARKER_LEN - 1],
+    /// How much of `carry` is filled.
+    carried: usize,
+}
+
+impl Restarts {
+    /// Begin a scan over a stream encoded with `codec`.
+    const fn new(codec: Codec) -> Self {
+        Self {
+            codec,
+            consumed: 0,
+            carry: [0; MARKER_LEN - 1],
+            carried: 0,
+        }
+    }
+
+    /// How many encoded bytes this scan has seen.
+    pub const fn consumed(&self) -> u64 {
+        self.consumed
+    }
+
+    /// Scan the next chunk, appending the restart offsets it holds.
+    ///
+    /// Offsets are absolute from the first byte the scan was fed, and are
+    /// appended in ascending order, so pushing every chunk of a stream in
+    /// order leaves `into` sorted.
+    pub fn push(&mut self, chunk: &[u8], into: &mut Vec<u64>) {
+        let Some(marker) = self.codec.restart_marker() else {
+            self.consumed = self.consumed.saturating_add(chunk.len() as u64);
+            return;
+        };
+        let width = marker.bytes.len();
+        // A pattern that began in the previous chunk is completed here, and
+        // only here: everything starting inside this chunk is the scan below.
+        if self.carried > 0 {
+            let mut joined = [0_u8; 2 * (MARKER_LEN - 1)];
+            let head = chunk.len().min(width - 1);
+            joined[..self.carried].copy_from_slice(&self.carry[..self.carried]);
+            joined[self.carried..self.carried + head].copy_from_slice(&chunk[..head]);
+            let joined = &joined[..self.carried + head];
+            let base = self.consumed - self.carried as u64;
+            for start in 0..self.carried {
+                if joined.len() >= start + width && &joined[start..start + width] == marker.bytes {
+                    marker.push(base + start as u64, width, into);
+                }
+            }
+        }
+        for start in memchr::memmem::find_iter(chunk, marker.bytes) {
+            marker.push(self.consumed + start as u64, width, into);
+        }
+        // Whatever a later chunk could still complete a pattern from, which
+        // is the last marker-width-minus-one bytes of everything seen so far.
+        let keep = MARKER_LEN - 1;
+        if chunk.len() >= keep {
+            self.carry.copy_from_slice(&chunk[chunk.len() - keep..]);
+            self.carried = keep;
+        } else {
+            let dropped = (self.carried + chunk.len())
+                .saturating_sub(keep)
+                .min(self.carried);
+            self.carry.copy_within(dropped..self.carried, 0);
+            self.carried -= dropped;
+            self.carry[self.carried..self.carried + chunk.len()].copy_from_slice(chunk);
+            self.carried += chunk.len();
+        }
+        self.consumed = self.consumed.saturating_add(chunk.len() as u64);
+    }
+}
+
+impl Marker {
+    /// Report the restart a pattern found at `position` stands for.
+    ///
+    /// The stream's own start is left out: it needs no marker to be a restart
+    /// point, and a coding whose pattern opens a unit - Zstandard's frame
+    /// magic - would otherwise report it as one.
+    fn push(&self, position: u64, width: usize, into: &mut Vec<u64>) {
+        let restart = if self.after {
+            position + width as u64
+        } else {
+            position
+        };
+        if restart > 0 {
+            into.push(restart);
+        }
+    }
+}
+
 /// A streaming encoder that must be explicitly finished.
 ///
 /// Dropping without [`Self::finish`] omits the codec trailer, so the output is
 /// not a valid member of its format.
-pub struct Encoder<'target>(pub(crate) EncoderKind<'target>);
+pub struct Encoder<'target> {
+    pub(crate) kind: EncoderKind<'target>,
+    pub(crate) codec: Codec,
+}
 
 pub(crate) enum EncoderKind<'target> {
     Identity(Box<dyn Write + 'target>),
-    Flate(Box<dyn FlateFinish + 'target>),
-    Zstd(Box<dyn FlateFinish + 'target>),
+    Coded(Box<dyn CodedWrite + 'target>),
 }
 
-/// Erases the concrete encoder so `finish` can be called through the box.
-pub(crate) trait FlateFinish: Write {
+/// Erases the concrete encoder so the whole contract reaches it through a box.
+pub(crate) trait CodedWrite: Write {
+    /// Flush the coding's trailer and release the wrapped writer.
     fn finish_boxed(self: Box<Self>) -> std::io::Result<()>;
+
+    /// End the current unit so a decoder can begin afresh at the next byte.
+    ///
+    /// Answers whether this coding has restart points at all; one that does
+    /// not leaves the stream untouched.
+    fn restart_unit(&mut self) -> std::io::Result<bool> {
+        Ok(false)
+    }
 }
 
 impl Encoder<'_> {
+    /// The coding this encoder writes.
+    pub const fn codec(&self) -> Codec {
+        self.codec
+    }
+
+    /// End the current unit so a decoder can begin afresh at the next byte.
+    ///
+    /// What follows a restart decodes on its own, which is what makes a
+    /// position inside a compressed stream addressable: an index of restart
+    /// offsets turns a positional read into a decode of one unit rather than
+    /// of everything that precedes it. The cost is compression - each unit
+    /// starts with no history of the one before it - so a caller restarts on
+    /// a stride it has chosen, never per write.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Unsupported`] naming a coding whose framing has no
+    /// restart point - [`Codec::has_restarts`] is the question this answers -
+    /// or the encoder's flush failure.
+    pub fn restart(&mut self) -> Result<()> {
+        match &mut self.kind {
+            // Every offset of an identity stream already begins a unit.
+            EncoderKind::Identity(target) => Ok(target.flush()?),
+            EncoderKind::Coded(target) => {
+                if target.restart_unit()? {
+                    return Ok(());
+                }
+                Err(Error::unsupported(
+                    "restarting a stream whose framing wraps the whole payload",
+                    self.codec.as_str(),
+                ))
+            }
+        }
+    }
+
     /// Flush the codec trailer and release the underlying writer.
     ///
     /// # Errors
     ///
     /// Returns the codec's flush failure.
     pub fn finish(self) -> Result<()> {
-        match self.0 {
+        match self.kind {
             EncoderKind::Identity(mut target) => {
                 target.flush()?;
                 Ok(())
             }
-            EncoderKind::Flate(encoder) | EncoderKind::Zstd(encoder) => {
+            EncoderKind::Coded(encoder) => {
                 encoder.finish_boxed()?;
                 Ok(())
             }
@@ -352,30 +603,25 @@ impl Encoder<'_> {
 
 impl Write for Encoder<'_> {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        match &mut self.0 {
+        match &mut self.kind {
             EncoderKind::Identity(target) => target.write(buffer),
-            EncoderKind::Flate(target) | EncoderKind::Zstd(target) => target.write(buffer),
+            EncoderKind::Coded(target) => target.write(buffer),
         }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match &mut self.0 {
+        match &mut self.kind {
             EncoderKind::Identity(target) => target.flush(),
-            EncoderKind::Flate(target) | EncoderKind::Zstd(target) => target.flush(),
+            EncoderKind::Coded(target) => target.flush(),
         }
     }
 }
 
 impl fmt::Debug for Encoder<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let kind = match &self.0 {
-            EncoderKind::Identity(_) => "identity",
-            EncoderKind::Flate(_) => "flate",
-            EncoderKind::Zstd(_) => "zstd",
-        };
         formatter
             .debug_struct("Encoder")
-            .field("kind", &kind)
+            .field("codec", &self.codec)
             .finish()
     }
 }
