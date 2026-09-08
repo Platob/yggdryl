@@ -193,6 +193,69 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
     Ok(DataType::from_fields(fields)?.required_field(name))
 }
 
+/// The fixed schema behind a capture's own columns.
+///
+/// A capture is read from somewhere, and where it was read from is what a
+/// monitor orders and joins on: the object's URL, the line number in it, the
+/// clock the line was stamped with, the thread that wrote it. None of that is
+/// FIX and all of it is the row, so it leads the row - and because a line in
+/// is a row out, carrying it is a slice rather than a join.
+///
+/// A carried column whose name a FIX column already takes is dropped rather
+/// than renamed or duplicated: the FIX column is the one a reader spelling it
+/// means, and two columns of one name is not a schema.
+///
+/// ```
+/// # fn main() -> yggdryl::Result<()> {
+/// # use yggdryl::holder::local::Folder;
+/// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
+/// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+/// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
+/// let capture = DataType::from_fields([
+///     DataType::Utf8.required_field("url"),
+///     DataType::Int64.required_field("rownum"),
+///     DataType::Binary.required_field("body"),
+/// ])?
+/// .required_field("line");
+///
+/// let read = fix_schema(&registry, "fix")?;
+/// let held = fix_schema_carrying(&capture, &read)?;
+///
+/// // The capture leads, and the tags follow it.
+/// assert_eq!(held.fields()[0].name(), "url");
+/// assert_eq!(held.index_of("35"), read.index_of("35").map(|at| at + 3));
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns the schema grammar's refusal when the two halves do not make one
+/// struct.
+pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
+    let mut fields: Vec<Field> = carried(carrier, read)
+        .into_iter()
+        .filter_map(|at| carrier.fields().get(at).cloned())
+        .collect();
+    fields.extend(read.fields().iter().cloned());
+    Ok(DataType::from_fields(fields)?.required_field(read.name()))
+}
+
+/// Where each of a capture's own columns sits, in the order they lead the row.
+///
+/// The one rule for which of them survive the FIX columns' claim on a name,
+/// so a reader filling the row by position and the schema it fills are the
+/// same reading of one capture.
+pub(super) fn carried(carrier: &Field, read: &Field) -> Vec<usize> {
+    carrier
+        .fields()
+        .iter()
+        .enumerate()
+        .filter(|(_, held)| read.index_of(held.name()).is_none())
+        .map(|(at, _)| at)
+        .collect()
+}
+
 /// One tag as the column name it takes.
 #[must_use]
 pub fn rendered(tag: i32) -> String {
@@ -301,28 +364,6 @@ fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     ])
 }
 
-/// Where each schema tag sits, resolved once against one dictionary.
-///
-/// A row projection asks for the same tags in the same order for every
-/// message in a capture, and each ask through the ordinary tiers is a hash,
-/// a verification and a branch walk. Resolving them once turns the per-row
-/// cost into an indexed read - which is the whole reason a fixed schema is
-/// worth having.
-///
-/// Held beside a dictionary rather than inside it: a projection is a reader's
-/// concern, and a dictionary that carried one would have to invalidate it on
-/// every edit.
-pub struct FixProjection {
-    /// The root the projection fills.
-    field: Field,
-    /// Each column's tag, in column order.
-    tags: Vec<i32>,
-    /// Each column's field, in column order.
-    columns: Vec<Field>,
-    /// Where each carried column sat in the capture it came from.
-    carried: Vec<usize>,
-}
-
 /// One clock source as the instant it states, whatever it is typed as.
 ///
 /// A narrow dictionary types a clock field as text, and the derived clock
@@ -351,192 +392,36 @@ fn item_fields(field: &Field) -> Option<&[Field]> {
     item.dtype().as_fields()
 }
 
-impl FixProjection {
-    /// Resolves every schema column against one dictionary.
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the columns do not make a
-    /// struct.
-    pub fn new(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Self> {
-        let field = fix_schema(registry, name)?;
-        let columns: Vec<Field> = field
-            .dtype()
-            .as_fields()
-            .map(<[Field]>::to_vec)
-            .unwrap_or_default();
-        let tags = columns
-            .iter()
-            .map(|held| held.as_fix().tag().ok().flatten().unwrap_or(0))
-            .collect();
-        Ok(Self {
-            field,
-            tags,
-            columns,
-            carried: Vec::new(),
-        })
-    }
-
-    /// Resolves the fixed schema behind a capture's own columns.
-    ///
-    /// A capture is read from somewhere, and where it was read from is what a
-    /// monitor orders and joins on: the object's URL, the line number in it,
-    /// the clock the line was stamped with, the thread that wrote it. None of
-    /// that is FIX and all of it is the row, so it leads the row - and because
-    /// a line in is a row out, carrying it is a slice rather than a join.
-    ///
-    /// A carried column whose name a FIX column already takes is dropped
-    /// rather than renamed or duplicated: the FIX column is the one a reader
-    /// spelling it means, and two columns of one name is not a schema. Which
-    /// ones survived is [`Self::carried_positions`], so a row is filled by
-    /// position and never by a second name lookup.
-    ///
-    /// ```
-    /// # fn main() -> yggdryl::Result<()> {
-    /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{DataType, FixProjection, FixRegistry};
-    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    /// let capture = DataType::from_fields([
-    ///     DataType::Utf8.required_field("url"),
-    ///     DataType::Int64.required_field("rownum"),
-    ///     DataType::Binary.required_field("body"),
-    /// ])?
-    /// .required_field("line");
-    ///
-    /// let read = yggdryl::fix_schema(&registry, "fix")?;
-    /// let held = FixProjection::carrying(&capture, read)?;
-    ///
-    /// assert_eq!(held.carried_positions(), [0, 1, 2]);
-    /// // The capture leads, and the tags follow it.
-    /// assert_eq!(held.column(0).map(yggdryl::Field::name), Some("url"));
-    /// assert_eq!(held.position_of(35), Some(3 + 2));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the two halves do not make
-    /// one struct.
-    pub fn carrying(carrier: &Field, read: Field) -> Result<Self> {
-        let taken: Vec<&str> = read
-            .dtype()
-            .as_fields()
-            .map(|fields| fields.iter().map(Field::name).collect())
-            .unwrap_or_default();
-        let mut fields: Vec<Field> = Vec::new();
-        let mut carried: Vec<usize> = Vec::new();
-        for (at, held) in carrier
-            .dtype()
-            .as_fields()
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-        {
-            if taken.iter().any(|known| *known == held.name()) {
-                continue;
-            }
-            fields.push(held.clone());
-            carried.push(at);
-        }
-        fields.extend(
-            read.dtype()
-                .as_fields()
-                .map(<[Field]>::to_vec)
-                .unwrap_or_default(),
-        );
-        let name = read.name().to_owned();
-        let mut held = Self::from_field(DataType::from_fields(fields)?.required_field(name));
-        held.carried = carried;
-        Ok(held)
-    }
-
-    /// How many leading columns are the capture's rather than FIX's.
-    #[must_use]
-    pub fn carried(&self) -> usize {
-        self.carried.len()
-    }
-
-    /// Where each carried column sat in the capture it came from.
-    ///
-    /// In this projection's own column order, so a reader zips the two and
-    /// never looks a name up twice.
-    #[must_use]
-    pub fn carried_positions(&self) -> &[usize] {
-        &self.carried
-    }
-
-    /// The root this projection fills.
-    #[must_use]
-    pub const fn field(&self) -> &Field {
-        &self.field
-    }
-
-    /// The tag each column carries, in column order.
-    #[must_use]
-    pub fn tags(&self) -> &[i32] {
-        &self.tags
-    }
-
-    /// The field behind one column, by position.
-    #[must_use]
-    pub fn column(&self, at: usize) -> Option<&Field> {
-        self.columns.get(at)
-    }
-
-    /// How many columns carry a value rather than the arrival record.
-    ///
-    /// The two closing lists are columns like any other and carry no tag, so
-    /// a row fills these and then appends them - rather than counting the
-    /// lists twice, which is what a bare `tags().len()` would do.
-    #[must_use]
-    pub fn value_columns(&self) -> usize {
-        self.columns
-            .iter()
-            .position(|held| held.name() == ENTRIES_COLUMN)
-            .unwrap_or(self.columns.len())
-    }
-
-    /// Where one tag's column sits, without a dictionary lookup.
-    ///
-    /// A linear scan over a schema of this size beats a map: the columns are
-    /// under a hundred, they are contiguous in cache, and the answer is
-    /// usually in the first twenty because a header is read on every row.
-    #[must_use]
-    pub fn position_of(&self, tag: i32) -> Option<usize> {
-        self.tags.iter().position(|held| *held == tag)
-    }
-}
-
 impl super::FixMsg {
     /// This message as the fixed row a table holds.
     ///
-    /// Every column is filled from the message's own values by tag, so a
-    /// message that carried nothing at a column answers null there rather
-    /// than shifting its neighbours - which is what makes two rows of one
-    /// capture comparable at all.
+    /// The columns are the schema's own, in its own order, and each is filled
+    /// by the tag its name spells - so a message that carried nothing at a
+    /// column answers null there rather than shifting its neighbours, which
+    /// is what makes two rows of one capture comparable at all. A column no
+    /// tag names is a capture's own and is left null for whoever read the
+    /// capture to fill.
     ///
-    /// The first closing list is the whole arrival record, so the row stays
-    /// lossless whatever the columns made of it; the second is the part of
-    /// that record no dictionary explained, which is a view over the first
-    /// rather than the rest of it.
+    /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
+    /// stays lossless whatever the columns made of it, and [`UNMAPPED_COLUMN`]
+    /// holds the part of that record no dictionary explained - a view over
+    /// the first rather than the rest of it.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixProjection, FixCodec, FixRegistry};
+    /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
-    /// let projection = FixProjection::new(&registry, "fix")?;
+    /// let schema = fix_schema(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
     /// let order = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|", false)?;
     ///
-    /// let row = order.to_row(&projection)?;
+    /// let row = order.to_row(&schema)?;
     /// let held = row.as_sequence().expect("a row");
     /// // The columns are the tags, so `35` is where the message type is.
-    /// let at = projection.position_of(35).expect("the msgtype column");
+    /// let at = schema.index_of("35").expect("the msgtype column");
     /// assert_eq!(held[at].as_str(), Some("D"));
     /// // A tag no dictionary explains is still there, in its own column.
     /// let unmapped = held.last().and_then(yggdryl::Scalar::as_sequence);
@@ -549,20 +434,34 @@ impl super::FixMsg {
     /// Returns the JSON writer's failure rendering a truncated subtree into
     /// the arrival column's leaf - the one fallible step, because every other
     /// member is already a value.
-    pub fn to_row(&self, projection: &FixProjection) -> Result<crate::Scalar> {
-        let tags = projection.tags();
-        let carried = projection.value_columns();
-        let mut values: Vec<crate::Scalar> = Vec::with_capacity(tags.len());
-        for (at, tag) in tags.iter().enumerate().take(carried) {
-            let held = self.column_value(*tag);
-            values.push(match projection.columns.get(at) {
-                Some(declared) => self.regrouped(*tag, declared, held),
-                None => held,
+    pub fn to_row(&self, schema: &Field) -> Result<crate::Scalar> {
+        let columns = schema.fields();
+        // The arrival record answers both closing columns and is walked once,
+        // because the second is a view over the first rather than a second
+        // record. A schema holding neither pays nothing for either.
+        let (mut known, mut unknown) = (None, None);
+        if columns
+            .iter()
+            .any(|held| matches!(held.name(), ENTRIES_COLUMN | UNMAPPED_COLUMN))
+        {
+            let (record, unexplained) = self.divided()?;
+            known = Some(record);
+            unknown = Some(unexplained);
+        }
+        let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
+        for column in columns {
+            values.push(match column.name() {
+                ENTRIES_COLUMN => known.take().unwrap_or(crate::Scalar::Null),
+                UNMAPPED_COLUMN => unknown.take().unwrap_or(crate::Scalar::Null),
+                // The column name is the tag, through the one strict parse -
+                // so a name that is not a tag is a capture's own column and
+                // nothing in the message answers for it.
+                name => match super::field::parse_tag(name) {
+                    Some(tag) => self.regrouped(tag, column, self.column_value(tag)),
+                    None => crate::Scalar::Null,
+                },
             });
         }
-        let (known, unknown) = self.divided()?;
-        values.push(known);
-        values.push(unknown);
         Ok(crate::Scalar::from_sequence(values))
     }
 
@@ -624,11 +523,6 @@ impl super::FixMsg {
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
     fn column_value(&self, tag: i32) -> crate::Scalar {
-        // A column carrying no tag is the capture's own, filled by whoever
-        // read the capture rather than from anything the message said.
-        if tag == 0 {
-            return crate::Scalar::Null;
-        }
         if let Some(held) = self.get_by_tag(tag) {
             return held.clone();
         }
@@ -829,30 +723,5 @@ impl super::FixMsg {
             return crate::Scalar::Null;
         };
         crate::Scalar::from(epoch.div_euclid(seconds) * seconds)
-    }
-}
-
-impl FixProjection {
-    /// Wraps a root that is already the fixed schema.
-    ///
-    /// The columns and their tags are read back off the field itself, so a
-    /// caller that built the root once does not build it twice.
-    #[must_use]
-    pub fn from_field(field: Field) -> Self {
-        let columns: Vec<Field> = field
-            .dtype()
-            .as_fields()
-            .map(<[Field]>::to_vec)
-            .unwrap_or_default();
-        let tags = columns
-            .iter()
-            .map(|held| held.as_fix().tag().ok().flatten().unwrap_or(0))
-            .collect();
-        Self {
-            field,
-            tags,
-            columns,
-            carried: Vec::new(),
-        }
     }
 }

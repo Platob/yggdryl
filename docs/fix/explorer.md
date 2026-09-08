@@ -10,7 +10,7 @@ The whole committed dictionary, live: what it holds, what each field is, which m
 | Manifests | `docs/assets/fix.json` (index, layouts, corpus) and `docs/assets/fix-codes.json` (code sets, lineages), both committed and checked for drift by the addon build job |
 | Browser | Renders those answers, and reads FIX text you type against them; it types no value and derives no facet |
 | Pages | This one explores the dictionary, [Decode](decode.md) reads a frame, [Encode](encode.md) writes one |
-| Contract proven | [Registry](registry.md) tiers and code sets, [FIX](index.md) vocabulary, [Capture](capture.md) projection |
+| Contract proven | [Registry](registry.md) tiers and code sets, [FIX](index.md) vocabulary, the [Capture](capture.md) row |
 
 ## Use
 
@@ -101,7 +101,7 @@ A `groupRef` names a group's own identifier, which is neither a tag nor a compon
 
 ## The fixed row
 
-A day of session log becomes one table with the same columns whatever arrived, resolved once by a projection. The eighty-nine columns, and the filter over them, are on the [Capture](capture.md#find-a-column) page.
+A day of session log becomes one table with the same columns whatever arrived, decided from the dictionary before the first row is read. The eighty-nine columns, and the filter over them, are on the [Capture](capture.md#find-a-column) page.
 
 ## Where it came from
 

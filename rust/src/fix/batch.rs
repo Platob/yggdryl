@@ -76,6 +76,11 @@ pub struct FixOptions {
     /// The root's name.
     pub name: SmolStr,
     /// A declared datatype, which wins over the default shape.
+    ///
+    /// Its columns are filled the way every fixed row is: by the tag each
+    /// column's name spells, so a declared root names its columns `35` and
+    /// `55` rather than `msgtype` and `symbol`. A column no tag names is
+    /// left for whoever read the capture to fill.
     pub dtype: Option<DataType>,
     /// Metadata carried onto the root.
     pub metadata: Metadata,
@@ -106,7 +111,7 @@ pub struct FixOptions {
     pub separator: u8,
     /// The dialect, where the caller pins one.
     pub branch: Option<FixBranch>,
-    /// The version built messages are expressed in.
+    /// The version built messages are read at.
     pub version: Option<Version>,
     /// The spellings that mean "nothing was sent".
     pub null_values: Vec<String>,
@@ -213,7 +218,10 @@ impl FixOptions {
         self
     }
 
-    /// Pins the version built messages are expressed in.
+    /// Pins the version built messages are read at.
+    ///
+    /// A value is translated through the code spellings that version declares;
+    /// no column is renamed or retyped by it.
     #[must_use]
     pub const fn with_version(mut self, version: Version) -> Self {
         self.version = Some(version);
@@ -372,9 +380,8 @@ impl FixBatchReader {
             .unwrap_or_default();
         // Which of the capture's own columns survive the FIX columns' claim on
         // a name is decided once here, from the schema, rather than per row.
-        let projection = super::FixProjection::carrying(&carrier, read)?;
-        let field = projection.field().clone();
-        let kept: Vec<usize> = projection.carried_positions().to_vec();
+        let kept = super::schema::carried(&carrier, &read);
+        let field = super::fix_schema_carrying(&carrier, &read)?;
         let reader = options.reader(Arc::clone(&registry));
         let payload = options.payload_column.clone();
         let default = options.direction;
@@ -420,10 +427,13 @@ impl FixBatchReader {
         I: Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static,
     {
         let dedup = options.dedup;
-        // Resolved once for the whole capture: every row asks for the same
-        // columns in the same order, and asking the dictionary per row is the
-        // cost a fixed schema exists to remove.
-        let projection = super::FixProjection::from_field(field.clone());
+        // The one column no message carries, found once: the direction is read
+        // from the line in front of the frame, which is gone by the time a row
+        // is built.
+        let direction_at = field.index_of(&super::schema::rendered(super::MSGDIRECTION_TAG));
+        // The rows are filled against the same schema the reader publishes; a
+        // clone shares it rather than building a second one.
+        let schema = field.clone();
         let mut last: Option<u128> = None;
         let rows = messages.filter_map(move |held| match held {
             Err(error) => Some(Err(error)),
@@ -435,7 +445,7 @@ impl FixBatchReader {
                     }
                     last = Some(digest);
                 }
-                Some(row_of(&message, &projection, direction, front))
+                Some(row_of(&message, &schema, direction_at, direction, front))
             }
         });
         Ok(crate::arrow::rows::result_reader(
@@ -457,27 +467,24 @@ impl FixBatchReader {
 /// them is a slice rather than a join.
 fn row_of(
     message: &FixMsg,
-    projection: &super::FixProjection,
+    schema: &Field,
+    direction_at: Option<usize>,
     direction: Option<&'static str>,
     front: Vec<Scalar>,
 ) -> Result<Scalar> {
-    // The row is the projection's whole width already: a carried column
-    // carries no tag, so it comes back null and is filled here rather than
-    // spliced in, which keeps `position_of` an index into the row itself.
+    // The row is the schema's whole width already: a carried column is named
+    // by no tag, so it comes back null and is filled here rather than spliced
+    // in, which keeps a column position an index into the row itself.
     let mut held = message
-        .to_row(projection)?
+        .to_row(schema)?
         .as_sequence()
         .map(<[Scalar]>::to_vec)
         .unwrap_or_default();
     for (slot, value) in held.iter_mut().zip(front) {
         *slot = value;
     }
-    // The direction is the one column no message carries: it is read from the
-    // line in front of the frame, which is gone by the time a row is built.
-    if let Some(at) = projection.position_of(super::MSGDIRECTION_TAG) {
-        if let Some(slot) = held.get_mut(at) {
-            *slot = direction.map_or(Scalar::Null, Scalar::from);
-        }
+    if let Some(slot) = direction_at.and_then(|at| held.get_mut(at)) {
+        *slot = direction.map_or(Scalar::Null, Scalar::from);
     }
     Ok(Scalar::from_sequence(held))
 }

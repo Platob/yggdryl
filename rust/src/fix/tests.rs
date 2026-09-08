@@ -4372,8 +4372,8 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
 
     // The Arrow value materializes exactly three fixentry levels; the fourth
     // and fifth fold into a non-empty leaf.
-    let projection = super::FixProjection::new(&registry, "row").unwrap();
-    let row = deep.to_row(&projection).unwrap();
+    let schema = super::fix_schema(&registry, "row").unwrap();
+    let row = deep.to_row(&schema).unwrap();
     let columns = row.as_sequence().expect("a row").to_vec();
     let entries = columns[columns.len() - 2]
         .as_sequence()
@@ -4451,6 +4451,6 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         nested_entries(30, "deep"),
     )
     .unwrap();
-    let row = towering.to_row(&projection).expect("no depth refusal");
+    let row = towering.to_row(&schema).expect("no depth refusal");
     assert!(row.as_sequence().is_some());
 }
