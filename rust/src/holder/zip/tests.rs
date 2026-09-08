@@ -992,6 +992,56 @@ fn a_rewrite_keeps_what_the_record_said_about_the_member() {
 }
 
 #[test]
+fn a_streamed_read_of_a_whole_member_verifies_its_digest() {
+    let root = root();
+    root.archive()
+        .write_member("blob.bin", &strided_payload(8 * 1024))
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    // Corrupt the member's bytes behind the record that hashes them.
+    let mut raw = bytes(root.archive());
+    let at = raw.len() / 2;
+    raw[at] ^= 0xff;
+    let broken = mounted(raw);
+    let member = broken.as_leaf("blob.bin").expect("a member");
+
+    let refused = member
+        .pstream_bytes(0, 1024)
+        .expect("a stream")
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .expect_err("a digest failure");
+    assert!(refused.to_string().contains("hash to"), "{refused}");
+    assert!(member.read_all_bytes().is_err(), "a whole read too");
+
+    // A read that never reaches the end has proven nothing, and says so by
+    // answering the bytes it did read.
+    assert_eq!(member.read_range_bytes(0, 16).expect("a range").len(), 16);
+}
+
+#[test]
+fn a_location_that_lists_as_a_container_reads_as_one() {
+    let root = root();
+    root.archive().create_directory("a").expect("a record");
+    root.archive()
+        .write_member("a", b"member bytes")
+        .expect("a member of the same name");
+    root.archive().flush().expect("publishes");
+
+    // Both records are legal, and the container is what the location is.
+    let held = root.child_by_path("a").expect("the location");
+    assert_eq!(held.kind(), IOKind::Directory);
+    assert_eq!(held.size(), 0);
+    assert!(held.read_all_bytes().expect("no bytes").is_empty());
+
+    // The member is still reachable through the role that names it.
+    assert_eq!(
+        root.as_leaf("a").expect("a member").read_all_bytes().expect("bytes"),
+        b"member bytes"
+    );
+}
+
+#[test]
 fn a_truncation_shortens_the_member() {
     let root = root();
     let mut member = root.as_leaf("notes.txt").expect("a member");

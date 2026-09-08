@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Url};
 
-use super::{Archive, Entry, Node, archive, name};
+use super::{Archive, Entry, Node, name};
 
 /// One archive member's bytes, addressed positionally.
 ///
@@ -177,9 +177,7 @@ impl Leaf {
         let Some(entry) = self.get_entry()? else {
             return Ok(Vec::new());
         };
-        let bytes = self.archive.read_entry(&entry)?;
-        archive::verify_crc(&entry, &bytes)?;
-        Ok(bytes)
+        self.archive.read_entry(&entry)
     }
 
     /// The coding a write stores this member under.

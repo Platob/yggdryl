@@ -344,7 +344,10 @@ impl Archive {
     /// failure when another thread panicked while holding this archive.
     pub fn into_handle(self) -> Result<Holder> {
         self.flush()?;
-        let inner = self.inner.into_inner().map_err(|_| poisoned())?;
+        let inner = self
+            .inner
+            .into_inner()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         Ok(inner.handle)
     }
 
@@ -358,7 +361,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn entries(&self) -> Result<Vec<Entry>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.values().cloned().collect())
     }
 
@@ -378,7 +381,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn comment(&self) -> Result<Vec<u8>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.comment.clone())
     }
 
@@ -399,7 +402,7 @@ impl Archive {
                 ),
             )));
         }
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         index.comment = comment.to_vec();
         index.dirty = true;
@@ -418,9 +421,7 @@ impl Archive {
         let Some(entry) = self.entry(&name)? else {
             return Err(Error::absent("zip member", self.member_url(&name)));
         };
-        let bytes = self.read_entry(&entry)?;
-        verify_crc(&entry, &bytes)?;
-        Ok(bytes)
+        self.read_entry(&entry)
     }
 
     /// Write one member under the archive's default coding.
@@ -512,7 +513,7 @@ impl Archive {
                 ),
             )));
         }
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let inner = &mut *guard;
         let index = Self::index_of(inner)?;
         let offset = index.directory_offset;
@@ -604,7 +605,7 @@ impl Archive {
     pub fn create_directory(&self, path: &str) -> Result<()> {
         let base = name::resolve("", path)?;
         {
-            let mut guard = self.locked()?;
+            let mut guard = self.locked();
             let inner = &mut *guard;
             if base.is_empty() {
                 // The root is the archive itself; an empty one is a bare
@@ -637,7 +638,7 @@ impl Archive {
     pub fn remove_member(&self, path: &str) -> Result<bool> {
         let name = name::resolve("", path)?;
         let directory = name::directory_name(&name);
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         let removed =
             index.entries.remove(&name).is_some() | index.entries.remove(&directory).is_some();
@@ -656,7 +657,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn clear_members(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         // Clearing is not a write: an archive that holds nothing is not
         // brought into being by being emptied.
@@ -675,7 +676,7 @@ impl Archive {
     ///
     /// Returns the compaction, write, or flush failure.
     pub fn flush(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::publish(&mut guard)
     }
 
@@ -689,14 +690,14 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub fn open(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::index(&mut guard)?;
         Ok(())
     }
 
     /// Whether the central directory is currently held in memory.
     pub fn is_indexed(&self) -> bool {
-        self.locked().is_ok_and(|guard| guard.index.is_some())
+        self.locked().index.is_some()
     }
 
     /// Publish anything pending and release the index.
@@ -705,7 +706,7 @@ impl Archive {
     ///
     /// Returns the write or flush failure.
     pub fn close(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::publish(&mut guard)?;
         guard.index = None;
         Ok(())
@@ -721,7 +722,7 @@ impl Archive {
     /// Returns the read or format failure the index parse hit.
     pub fn remove_under(&self, path: &str) -> Result<usize> {
         let base = name::resolve("", path)?;
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         let kept = name::directory_name(&base);
         let doomed: Vec<SmolStr> = index
@@ -747,7 +748,9 @@ impl Archive {
     /// Whether the index differs from the directory the handle holds.
     pub fn is_pending(&self) -> bool {
         self.locked()
-            .is_ok_and(|guard| guard.index.as_ref().is_some_and(|index| index.dirty))
+            .index
+            .as_ref()
+            .is_some_and(|index| index.dirty)
     }
 
     /// Delete the archive and everything in it.
@@ -756,7 +759,7 @@ impl Archive {
     ///
     /// Returns the backing store's delete failure.
     pub fn remove(&self) -> Result<()> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         // The index goes first, so a later flush cannot recreate what is gone.
         guard.index = None;
         guard.writes += 1;
@@ -771,7 +774,7 @@ impl Archive {
     #[cfg(test)]
     pub(super) fn image(&self) -> Result<Vec<u8>> {
         self.flush()?;
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         guard.reads += 1;
         guard.handle.read_all_bytes()
     }
@@ -782,11 +785,11 @@ impl Archive {
     /// plus the trailer behind it - so this asks the handle only while the
     /// archive is still unopened, exactly as any other cached metadata does.
     pub fn size(&self) -> u64 {
-        self.locked()
-            .map_or(0, |mut guard| match guard.index.as_ref() {
-                Some(index) => index.stored_end,
-                None => guard.size(),
-            })
+        let mut guard = self.locked();
+        match guard.index.as_ref() {
+            Some(index) => index.stored_end,
+            None => guard.size(),
+        }
     }
 
     /// How many questions this archive has asked the handle beneath it.
@@ -796,7 +799,7 @@ impl Archive {
     /// 64 KiB is two reads, a warm positional read of a stored member is one,
     /// and a listing of any size is none.
     pub fn handle_reads(&self) -> u64 {
-        self.locked().map_or(0, |guard| guard.reads)
+        self.locked().reads
     }
 
     /// How many operations this archive has run that changed that handle.
@@ -805,7 +808,7 @@ impl Archive {
     /// shortening only when the trailer ends earlier than the last one did,
     /// and one flush.
     pub fn handle_writes(&self) -> u64 {
-        self.locked().map_or(0, |guard| guard.writes)
+        self.locked().writes
     }
 
     /// The URL a member of this archive is addressed by.
@@ -856,7 +859,7 @@ impl Archive {
 
     /// The parent of the archive itself, which is where its bytes live.
     pub(super) fn archive_parent(&self) -> Option<Holder> {
-        self.locked().ok()?.handle.parent()
+        self.locked().handle.parent()
     }
 
     /// The member `name` names, when the archive holds one.
@@ -865,7 +868,7 @@ impl Archive {
     ///
     /// Returns the read or format failure the index parse hit.
     pub(super) fn entry(&self, name: &str) -> Result<Option<Entry>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Ok(Self::index(&mut guard)?.entries.get(name).cloned())
     }
 
@@ -880,7 +883,7 @@ impl Archive {
             return Ok(true);
         }
         let directory = name::directory_name(base);
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         Ok(index
             .entries
@@ -906,7 +909,7 @@ impl Archive {
         recursive: bool,
         include_private: bool,
     ) -> Result<Vec<(SmolStr, bool)>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index(&mut guard)?;
         // A directory is anything a record marks as one plus anything a
         // deeper member implies, so both are collected before either answers.
@@ -957,7 +960,7 @@ impl Archive {
     ///
     /// Returns the backing store's read failure.
     pub(super) fn pread_raw(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        self.locked()?.pread(offset, buffer)
+        self.locked().pread(offset, buffer)
     }
 
     /// Where a member's bytes start, read from its own local file header.
@@ -974,7 +977,7 @@ impl Archive {
     /// Returns the read failure, or [`Error::Codec`] when the local header is
     /// not one.
     pub(super) fn data_offset(&self, entry: &Entry) -> Result<u64> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         Self::member_data(&mut guard, entry)
     }
 
@@ -997,12 +1000,11 @@ impl Archive {
     /// The index already holds it, so this answers without copying the record
     /// out of the map - which matters because every ranged read asks it first.
     pub(super) fn member_size(&self, name: &str) -> u64 {
-        self.locked().map_or(0, |mut guard| {
-            Self::index_of(&mut guard)
-                .ok()
-                .and_then(|index| index.entries.get(name))
-                .map_or(0, Entry::size)
-        })
+        let mut guard = self.locked();
+        Self::index_of(&mut guard)
+            .ok()
+            .and_then(|index| index.entries.get(name))
+            .map_or(0, Entry::size)
     }
 
     /// Read from one member, when its bytes can pass straight through.
@@ -1023,7 +1025,7 @@ impl Archive {
         offset: u64,
         buffer: &mut [u8],
     ) -> Result<Option<usize>> {
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let inner = &mut *guard;
         let index = Self::index_of(inner)?;
         let Some(entry) = index.entries.get(name) else {
@@ -1061,11 +1063,12 @@ impl Archive {
         inner.pread(data + offset, &mut buffer[..length]).map(Some)
     }
 
-    /// Decode one member whole, without verifying its digest.
+    /// Decode one member whole, verifying the digest its record states.
     ///
     /// # Errors
     ///
-    /// Returns the read or decode failure.
+    /// Returns the read or decode failure, or [`Error::Codec`] naming both
+    /// digests when the decoded bytes do not match the record's.
     pub(super) fn read_entry(self: &Arc<Self>, entry: &Entry) -> Result<Vec<u8>> {
         // A stored member is already the bytes it decodes to, so reading one
         // whole is one ranged read of the archive rather than a stream over
@@ -1073,10 +1076,15 @@ impl Archive {
         if !entry.is_encrypted() && entry.codec()?.is_identity() {
             let length = usize::try_from(entry.size().min(entry.compressed_size()))
                 .map_err(|_| crate::iobase::oversized(entry.size()))?;
-            let mut guard = self.locked()?;
-            let inner = &mut *guard;
-            let data = Self::member_data(inner, entry)?;
-            return inner.read_range(data, length);
+            let bytes = {
+                let mut guard = self.locked();
+                let inner = &mut *guard;
+                let data = Self::member_data(inner, entry)?;
+                inner.read_range(data, length)?
+            };
+            // Nothing streamed, so nothing hashed on the way past.
+            verify_crc(entry, &bytes)?;
+            return Ok(bytes);
         }
         let mut bytes = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or(0));
         self.entry_reader(entry, 0)?.read_to_end(&mut bytes)?;
@@ -1134,6 +1142,13 @@ impl Archive {
             range,
         ));
         if position == decoded_at {
+            // A reader that begins at the member's first byte can hash what
+            // it hands out, so a stream read to its end proves the digest the
+            // record states. One that begins anywhere else cannot: it never
+            // sees the bytes before it.
+            if position == 0 {
+                return Ok(Box::new(Verified::new(decoded, entry)));
+            }
             return Ok(decoded);
         }
         Ok(Box::new(Skip {
@@ -1163,20 +1178,20 @@ impl Archive {
             return Ok((0, 0));
         }
         {
-            let mut guard = self.locked()?;
+            let mut guard = self.locked();
             if Self::index_of(&mut guard)?.proven.contains(entry.name()) {
                 return Ok((decoded_at, encoded_at));
             }
         }
         if self.restart_proven(entry, codec, encoded_at)? {
-            let mut guard = self.locked()?;
+            let mut guard = self.locked();
             Self::index_of(&mut guard)?
                 .proven
                 .insert(SmolStr::new(entry.name()));
             return Ok((decoded_at, encoded_at));
         }
         // The map does not describe these bytes, so nothing may use it again.
-        let mut guard = self.locked()?;
+        let mut guard = self.locked();
         let index = Self::index_of(&mut guard)?;
         if let Some(held) = index.entries.get_mut(entry.name()) {
             *held = held.clone().with_restarts(crate::Restarts::default());
@@ -1199,7 +1214,7 @@ impl Archive {
             return Ok(false);
         }
         let window = self
-            .locked()?
+            .locked()
             .read_range(start + before, 2 * RESTART_EVIDENCE as usize)?;
         let mut found = Vec::new();
         codec.restart_scan().push(&window, &mut found);
@@ -1207,9 +1222,17 @@ impl Archive {
     }
 
 
-    /// Lock the archive, naming a poisoned lock rather than panicking on it.
-    fn locked(&self) -> Result<MutexGuard<'_, Inner>> {
-        self.inner.lock().map_err(|_| poisoned())
+    /// Lock the archive, taking the state a panicking thread left behind.
+    ///
+    /// Every operation here either completes or leaves the index untouched,
+    /// so a panic elsewhere in the process has nothing to have corrupted -
+    /// and reporting the poison instead would answer "empty" from every
+    /// accessor that cannot carry an error, which reads as an archive that is
+    /// not there and invites a caller to write over one that is.
+    fn locked(&self) -> MutexGuard<'_, Inner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Borrow the index, parsing the stored directory on first use.
@@ -1544,6 +1567,49 @@ impl Read for RangeReader {
     }
 }
 
+/// Check a member's digest against what a stream of it actually decoded to.
+///
+/// The check happens at the end of the member and only there: a stream a
+/// caller stops reading has proven nothing, and says so by not answering.
+struct Verified {
+    reader: Box<dyn Read + Send>,
+    crc: flate2::Crc,
+    entry: Entry,
+    done: bool,
+}
+
+impl Verified {
+    /// Hash what `reader` hands out, against what `entry` states.
+    fn new(reader: Box<dyn Read + Send>, entry: &Entry) -> Self {
+        Self {
+            reader,
+            crc: flate2::Crc::new(),
+            entry: entry.clone(),
+            done: false,
+        }
+    }
+}
+
+impl Read for Verified {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.reader.read(target)?;
+        if read > 0 {
+            self.crc.update(&target[..read]);
+            return Ok(read);
+        }
+        if !self.done {
+            self.done = true;
+            if self.crc.sum() != self.entry.crc32() {
+                return Err(std::io::Error::other(digest_failure(
+                    &self.entry,
+                    self.crc.sum(),
+                )));
+            }
+        }
+        Ok(0)
+    }
+}
+
 /// Discard a decoded prefix before serving the position a caller asked for.
 ///
 /// What it discards is the distance from a restart point to the position, so
@@ -1587,16 +1653,20 @@ pub(super) fn verify_crc(entry: &Entry, bytes: &[u8]) -> Result<()> {
     if crc.sum() == entry.crc32() {
         return Ok(());
     }
-    Err(Error::Codec {
+    Err(digest_failure(entry, crc.sum()))
+}
+
+/// Report a member whose bytes do not hash to what its record states.
+fn digest_failure(entry: &Entry, digest: u32) -> Error {
+    Error::Codec {
         format: "zip",
         position: usize::try_from(entry.header_offset()).unwrap_or(usize::MAX),
         reason: format_smolstr!(
-            "expected the member {:?} to hash to {:#010x}, got {:#010x}",
+            "expected the member {:?} to hash to {:#010x}, got {digest:#010x}",
             entry.name(),
             entry.crc32(),
-            crc.sum()
         ),
-    })
+    }
 }
 
 /// The identity a member of an unlocated handle is addressed by.
@@ -1609,13 +1679,6 @@ fn unlocated() -> &'static Url {
         Url::from_str("mem://0/0x0").expect("the fallback identity is valid")
     });
     &UNLOCATED
-}
-
-/// Report a lock another thread panicked while holding.
-fn poisoned() -> Error {
-    Error::Io(std::io::Error::other(
-        "the zip archive lock was poisoned by a panic in another thread",
-    ))
 }
 
 /// The current instant, in UTC nanoseconds since the Unix epoch.

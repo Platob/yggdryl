@@ -130,26 +130,43 @@ impl crate::IOMedia for Path {
 }
 
 impl IOBase for Path {
+    /// Read the bytes of whichever role is there.
+    ///
+    /// A name a record marks as a directory and a member of the same name can
+    /// both be in one archive, and what the location *is* decides every verb
+    /// here: answering a member's bytes from a location that lists as a
+    /// container would make [`IOBase::kind`] and this call disagree.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+        if self.is_folder() {
+            return self.as_node().pread(offset, buffer);
+        }
         self.as_leaf().pread(offset, buffer)
     }
+
 
     /// Stream the member this location resolves to.
     ///
     /// The reader owns the archive it reads through, so the stream outlives
     /// the resolution that built it.
     fn pstream_bytes(&self, position: u64, batch_size: usize) -> Result<crate::ByteStream<'_>> {
-        let Some(entry) = self.archive.entry(&self.name)? else {
+        if self.is_folder() {
+            // A container holds no bytes, and reads as the empty one it is.
             return crate::ByteStream::from_reader(std::io::empty(), batch_size);
-        };
-        crate::ByteStream::from_reader(self.archive.entry_reader(&entry, position)?, batch_size)
+        }
+        self.as_leaf().pstream_bytes(position, batch_size)
     }
 
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
+        if self.is_folder() {
+            return self.as_node().read_all_bytes();
+        }
         self.as_leaf().read_all_bytes()
     }
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
+        if self.is_folder() {
+            return self.as_node().read_range_bytes(offset, length);
+        }
         self.as_leaf().read_range_bytes(offset, length)
     }
 
@@ -171,6 +188,9 @@ impl IOBase for Path {
     }
 
     fn size(&self) -> u64 {
+        if self.is_folder() {
+            return self.as_node().size();
+        }
         self.as_leaf().size()
     }
 
