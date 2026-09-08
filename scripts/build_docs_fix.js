@@ -380,7 +380,7 @@ function fieldRecords(registry) {
 }
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
-function counts(records, layouts, projection) {
+function counts(records, layouts, row) {
   const versions = new Set()
   const branches = new Map()
   const dtypes = new Map()
@@ -419,7 +419,7 @@ function counts(records, layouts, projection) {
     messages: layouts.messages.length,
     components: layouts.components.length,
     layoutGroups: layouts.groups.length,
-    columns: projection.columns.length,
+    columns: row.columns.length,
     branches: branches.size,
     datatypes: dtypes.size,
     versions: versions.size,
@@ -445,9 +445,8 @@ function compareVersions(left, right) {
 }
 
 /** The fixed row a capture lands in, column by column. */
-function projected(registry) {
-  const projection = new fix.FixProjection(registry, 'FixMessage')
-  const schema = projection.field
+function fixedRow(registry) {
+  const schema = fix.schema(registry, 'FixMessage')
   const columns = []
   for (let at = 0; at < schema.fieldLen; at += 1) {
     const field = schema.fieldAt(at)
@@ -461,25 +460,24 @@ function projected(registry) {
   }
   return {
     columns,
-    carried: projection.carried,
     call:
       "const registry = fix.FixRegistry.fromHandle('config/fix')\n" +
       'registry.withCrateFields()\n' +
-      "new fix.FixProjection(registry, 'FixMessage')",
+      "fix.schema(registry, 'FixMessage')",
   }
 }
 
 /** One captured line, and everything the package answered about it. */
-function frameCase(registry, reader, projection, key, label, line) {
+function frameCase(registry, reader, schema, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
   const held = reader.transformLine(bytes)
-  const row = held.toRow(projection).toJSON()
+  const row = held.toRow(schema).toJSON()
 
   const columns = SHOWN.map((tag) => {
-    const at = projection.positionOf(tag)
+    const at = schema.indexOf(String(tag))
     const value = at === null ? null : row[at]
     if (value === null || value === undefined) return null
-    const field = projection.column(at)
+    const field = schema.fieldAt(at)
     return {
       t: tag,
       n: field.display ?? field.name,
@@ -531,11 +529,11 @@ function frameCase(registry, reader, projection, key, label, line) {
 function manifests() {
   const registry = dictionary()
   const reader = new fix.FixCodec(registry)
-  const projection = new fix.FixProjection(registry, 'FixMessage')
+  const schema = fix.schema(registry, 'FixMessage')
   const layouts = JSON.parse(fs.readFileSync(path.join(CONFIG, 'layouts.json'), 'utf8'))
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
   const { records, details } = fieldRecords(registry)
-  const row = projected(registry)
+  const row = fixedRow(registry)
   const kpi = counts(records, layouts, row)
 
 
@@ -576,9 +574,9 @@ function manifests() {
       t: group.tag,
       m: group.members.map((held) => [held.kind[0], held.id, held.required ? 1 : 0]),
     })),
-    projection: row,
+    row,
     frames: FRAMES.map(([key, label, line]) =>
-      frameCase(registry, reader, projection, key, label, key === UNSEALED ? line : sealed(line)),
+      frameCase(registry, reader, schema, key, label, key === UNSEALED ? line : sealed(line)),
     ),
     calls: {
       registry:

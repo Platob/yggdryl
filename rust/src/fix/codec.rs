@@ -48,7 +48,6 @@ use crate::mime_type::line;
 use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 use super::build::{Builder, root_name};
-use super::project::Projections;
 use super::{FixBranch, FixMsg, FixRegistry};
 
 /// What separates the members packed inside one bridge group occurrence.
@@ -73,34 +72,14 @@ pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
 /// re-does per message what is constant for the whole run. Pinning a branch
 /// and the two versions skips inference for every row - and a capture is one
 /// session, so pinning is the normal case rather than an optimization.
+#[derive(Clone)]
 pub struct FixCodec {
     registry: Arc<FixRegistry>,
-    projections: Arc<Projections>,
     branch: Option<FixBranch>,
     version: Option<Version>,
     separator: Option<u8>,
     payload_column: SmolStr,
     null_values: Vec<String>,
-}
-
-/// A clone is a new reader, so it starts with a cache of its own.
-///
-/// The cache holds one version's projections, and two readers differing in
-/// version - which is why a reader is usually cloned - would otherwise clear
-/// each other's every row. Sharing the work across threads is `Arc<FixCodec>`
-/// instead, which shares the cache as well.
-impl Clone for FixCodec {
-    fn clone(&self) -> Self {
-        Self {
-            registry: Arc::clone(&self.registry),
-            projections: Arc::default(),
-            branch: self.branch.clone(),
-            version: self.version,
-            separator: self.separator,
-            payload_column: self.payload_column.clone(),
-            null_values: self.null_values.clone(),
-        }
-    }
 }
 
 impl FixCodec {
@@ -109,7 +88,6 @@ impl FixCodec {
     pub fn new(registry: Arc<FixRegistry>) -> Self {
         Self {
             registry,
-            projections: Arc::default(),
             branch: None,
             version: None,
             separator: None,
@@ -146,10 +124,12 @@ impl FixCodec {
         self
     }
 
-    /// Pins the version the built messages are expressed in.
+    /// Pins the version the built messages are read at.
     ///
-    /// A field is renamed and retyped to what that version called it, so this
-    /// is what a message *is*. Unpinned, each row answers for itself:
+    /// A value is translated through the code spellings that version declares,
+    /// and nothing else changes: a tag is one column under the name the
+    /// dictionary holds it by, whatever version read it. Unpinned, each row
+    /// answers for itself:
     /// `ApplVerID(1128)` first, then `BeginString(8)`, then the dialect's own
     /// default, then the dictionary's newest - which is what a capture
     /// carrying more than one application version needs.
@@ -593,13 +573,7 @@ impl FixCodec {
         let version = self.version.or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
-        let mut builder = Builder::new(
-            &self.registry,
-            &self.projections,
-            branch.clone(),
-            version,
-            pairs.len(),
-        );
+        let mut builder = Builder::new(&self.registry, branch.clone(), version, pairs.len());
         for (key, value) in pairs {
             // A stated absence produces no field and no entry: the key is read
             // as never having been sent. Filtering happens before typing, so

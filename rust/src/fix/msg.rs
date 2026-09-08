@@ -322,11 +322,10 @@ impl FixMsg {
     /// answers is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
-        // The message's own children answer first, by the tag they carry.
-        // A row read at one version spells its fields as that version did -
-        // tag 32 is `lastshares` in 4.2 and `lastqty` in a newest one - so
-        // resolving through the dictionary's current name would miss exactly
-        // the messages a version filter exists for.
+        // The message's own children answer first, by the tag they carry -
+        // one hash-free binary search over the index resolved at construction,
+        // where the dictionary tiers below are a probe per branch. A field a
+        // dictionary never explained carries no tag and falls through to them.
         if let Some(index) = self.index_of_tag(tag) {
             return self.value.get(index);
         }

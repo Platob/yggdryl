@@ -16,7 +16,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
 | [Arrow](arrow.md) | `FixBatchReader`, `FixOptions`, `classify_arrow_array`: a capture already in Arrow, streamed through a dictionary |
-| [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixProjection`: a day of session log as one table |
+| [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixMsg::to_row`: a day of session log as one table |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
 ## Contract

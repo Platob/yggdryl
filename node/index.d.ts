@@ -719,6 +719,13 @@ export declare class Field {
   /** Return the child at an Array-compatible index, or `null`. */
   getFieldAt(index: number): Field | null
   /**
+   * Return where the child of one name sits, or `null`.
+   *
+   * An exact name, never a path: it answers the position a row's value sits
+   * at, which is what a caller reading a column out of a row needs.
+   */
+  indexOf(name: string): number | null
+  /**
    * Return the child a path names, or `null`.
    *
    * A child carrying the whole string wins before the string is decomposed
@@ -1091,10 +1098,6 @@ export type JsField = Field
  * name/value text, or pairs a caller already has. Each redirects to the core
  * method of the same name, so nothing here decides a dialect, a version or a
  * separator - it only carries what JavaScript said across.
- *
- * A reader caches the projection of whichever version it was last asked for,
- * so a capture read at one version pays the resolution once rather than once
- * per row. Cloning one gives it a cache of its own, exactly as the core does.
  */
 export declare class FixCodec {
   /** Open a reader over one dictionary, or over the process default. */
@@ -1120,12 +1123,7 @@ export declare class FixCodec {
    * a stated value is never replaced.
    */
   enrichFixmsg(message: FixMsg): FixMsg
-  /**
-   * A cheap clone, with a projection cache of its own.
-   *
-   * Two readers differing in version would otherwise clear each other's
-   * cache every row, which is exactly when a reader is usually cloned.
-   */
+  /** A cheap clone: the dictionary is shared and the pins are copied. */
   clone(): FixCodec
   /** How this reader renders: the dictionary it reads against. */
   toString(): string
@@ -1281,8 +1279,14 @@ export declare class FixMsg {
    * crosses as its digest, which `FixRegistry.branchByDigest` resolves.
    */
   arrivals(): Array<[number, number, string, string]>
-  /** This message as the fixed row a table holds. */
-  toRow(projection: JsFixProjection): JsScalar
+  /**
+   * This message as the fixed row a table holds.
+   *
+   * `schema` is the fixed root `fixSchema` builds: every column is filled by
+   * the tag its name spells, and a column no tag names answers null because
+   * it is the capture's rather than the message's.
+   */
+  toRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
   toBytes(separator?: number | undefined | null): Buffer
   /** Whether two messages carry the same schema, value and dictionary. */
@@ -1311,46 +1315,6 @@ export declare class FixMsgEntries {
 
 }
 export type JsFixMsgEntries = FixMsgEntries
-
-/**
- * Where each fixed column sits, resolved once against one dictionary.
- *
- * A row projection asks for the same tags in the same order for every message
- * in a capture, and each ask through the ordinary tiers is a hash, a
- * verification and a branch walk. Building one turns the per-row cost into an
- * indexed read, which is the whole reason a fixed schema is worth having.
- */
-export declare class FixProjection {
-  /**
-   * Resolve every fixed column against one dictionary.
-   *
-   * `carrier` is a capture's own root - where a line was read from, which
-   * line it was, what stamped it - whose columns lead the row where one is
-   * given, because that is what a monitor orders and joins on.
-   */
-  constructor(registry?: FixRegistry | undefined | null, name?: string | undefined | null, carrier?: JsField | undefined | null)
-  /** Wrap a root that is already the fixed schema. */
-  static fromField(field: JsField): FixProjection
-  /** The root this projection fills. */
-  get field(): JsField
-  /** The tag each column carries, in column order; 0 where it carries none. */
-  get tags(): Array<number>
-  /** How many leading columns are the capture's rather than FIX's. */
-  get carried(): number
-  /** Where each carried column sat in the capture it came from. */
-  get carriedPositions(): Array<number>
-  /** How many columns carry a value rather than the arrival record. */
-  get valueColumns(): number
-  /** How many columns there are in all. */
-  get size(): number
-  /** The field behind one column, by position. */
-  column(at: number): JsField | null
-  /** Where one tag's column sits, without a dictionary lookup. */
-  positionOf(tag: number): number | null
-  /** How this projection renders: its root and how wide a row is. */
-  toString(): string
-}
-export type JsFixProjection = FixProjection
 
 /**
  * FIX field definitions resolved by identifier, by tag, by name, or by dotted
@@ -4290,6 +4254,17 @@ export declare function fixCrateFields(): Array<JsField>
  * every version and every dialect.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
+
+/**
+ * The fixed root behind a capture's own columns.
+ *
+ * `carrier` is a capture's own root - where a line was read from, which line
+ * it was, what stamped it - and its columns lead the row, because that is what
+ * a monitor orders and joins on. A carried column whose name a FIX column
+ * already takes is dropped rather than renamed: the FIX column is the one a
+ * reader spelling it means.
+ */
+export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 
 /** One row's columns, in order, as tags. */
 export declare function fixSchemaTags(): Array<number>

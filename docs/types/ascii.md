@@ -537,7 +537,6 @@ without reading the name.
     ```rust
     use yggdryl::types::State;
 
-    # fn main() -> yggdryl::Result<()> {
     // Three vocabularies reach one value: the wire code an ExecutionReport
     // carries, the specification's name for it, and a scheduler's word.
     assert_eq!(State::from_spelling("1").unwrap().as_str(), "4PARTFIL");
@@ -554,8 +553,6 @@ without reading the name.
     assert!(State::from_spelling("New").unwrap().is_live());
     assert!(State::from_spelling("Filled").unwrap().is_done());
     assert!(State::from_spelling("Rejected").unwrap().is_failed());
-    # Ok(())
-    # }
     ```
 
 `timeinforce` is the same eight bytes over FIX's `TimeInForce(59)` code set,

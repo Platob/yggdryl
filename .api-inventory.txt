@@ -544,6 +544,22 @@ pub struct FixRegistry
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
 
+### yggdryl::fix::schema  [rust\src\fix\schema.rs]
+pub const HEADER_TAGS: [i32; 24]
+pub const TRAILER_TAGS: [i32; 3]
+pub const BODY_TAGS: [i32; 49]
+pub const GROUP_TAGS: [i32; 3]
+pub const ENTRIES_COLUMN: &str = "nofixentries";
+pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
+pub fn fix_schema_tags() -> Vec<i32>
+pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
+pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
+impl FixMsg
+  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
+  pub fn symbol_ticker(&self) -> Scalar
+  pub fn market_timestamp(&self) -> Scalar
+  pub fn unix_partition(&self, seconds: i64) -> Scalar
+
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>

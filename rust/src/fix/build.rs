@@ -28,7 +28,6 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
-use super::project::{Projections, is_binary};
 use super::{FixBranch, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::{DataType, Field, Result, Scalar, Version};
 
@@ -106,7 +105,6 @@ struct Slot {
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
-    projections: &'registry Projections,
     branch: FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
@@ -117,14 +115,12 @@ impl<'registry> Builder<'registry> {
     /// Opens a build against one dictionary, dialect and version.
     pub(super) fn new(
         registry: &'registry FixRegistry,
-        projections: &'registry Projections,
         branch: FixBranch,
         version: Option<Version>,
         capacity: usize,
     ) -> Self {
         Self {
             registry,
-            projections,
             branch,
             version,
             slots: Vec::with_capacity(capacity),
@@ -204,34 +200,24 @@ impl<'registry> Builder<'registry> {
             })
     }
 
-    /// The field a key builds under, cloned and projected to the version.
+    /// The field a key builds under, as the dictionary declares it.
     ///
-    /// A field the dictionary knows is the registry's, renamed and retyped to
-    /// what the message's own version called it; one it does not is kept
-    /// under the key's own folded spelling as nullable text, because a venue
-    /// sends fields no dictionary has.
+    /// A field the dictionary knows is the registry's own, under the name and
+    /// the datatype it holds at every version: a tag is one column whatever
+    /// spelling a version gave it, and a row that renamed itself per version
+    /// is a row no two captures share. What each version called it stays
+    /// readable through the field's [lineage](super::lineage). One the
+    /// dictionary does not know is kept under the key's own folded spelling
+    /// as nullable text, because a venue sends fields no dictionary has.
     fn field_for(&self, key: &str) -> (Field, i32) {
         match self.resolve(key) {
-            Some((known, tag)) => (self.project(known), tag),
+            Some((known, tag)) => (stated(known), tag),
             None => {
                 let name = folded_name(key);
                 let tag = super::field::parse_tag(key).unwrap_or(0);
                 (DataType::Utf8.nullable_field(name), tag)
             }
         }
-    }
-
-    /// One registry field as the message's own version spells and types it.
-    ///
-    /// The rename and the retype are cached per field and version on the
-    /// reader, because they are the same answer for every row in a capture.
-    /// The nullability is not: it says this *message* carried the value, so
-    /// it is settled here, per message, on the projection's own copy.
-    fn project(&self, known: &Field) -> Field {
-        let mut field = self.projections.field(known, self.version);
-        // The value is there, so this message's schema says so.
-        field.set_nullable(false);
-        field
     }
 
     /// Types one value under one field, translating its code first.
@@ -308,7 +294,7 @@ impl<'registry> Builder<'registry> {
             None => self.registry.get_nested_field(key),
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
-        Some((self.project(field), tag))
+        Some((stated(field), tag))
     }
 
     /// One occurrence of a repeated flat field, placed by index.
@@ -341,15 +327,14 @@ impl<'registry> Builder<'registry> {
         // The same resolution the flat counter uses, so a group addressed by
         // its tag and one addressed by its name reach one slot: `FixKey` reads
         // every string as a name, so a numeric key resolves only tag-first,
-        // and the field is projected here for the reason `counter` projects
-        // it - two spellings of one group would otherwise build two columns
-        // carrying one tag.
+        // and the dictionary's own field answers for both - two spellings of
+        // one group would otherwise build two columns carrying one tag.
         let (group_field, group_tag) = match self.counter(group) {
             Some(held) => held,
             None => match self.by_group(group) {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
-                    (self.project(known), tag)
+                    (stated(known), tag)
                 }
                 None => (
                     DataType::Utf8.nullable_field(folded_name(group)),
@@ -692,6 +677,24 @@ fn zoned(text: &str) -> (&str, Option<&str>) {
         }
         None => (text, None),
     }
+}
+
+/// One registry field as this message carried it.
+///
+/// The dictionary's field says what a tag is; only the nullability is this
+/// message's own, and it is false because the value is there.
+fn stated(known: &Field) -> Field {
+    let mut field = known.clone();
+    field.set_nullable(false);
+    field
+}
+
+/// Whether a datatype is one the FIX layer reads raw wire bytes into.
+///
+/// A `data` field's value is bytes and the row is where they live, so the
+/// typed read hands them over untouched instead of reading a spelling.
+const fn is_binary(dtype: &DataType) -> bool {
+    matches!(dtype, DataType::Binary | DataType::LargeBinary)
 }
 
 /// One unknown key's own spelling, folded the way every built name is.

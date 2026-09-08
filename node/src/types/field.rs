@@ -347,6 +347,16 @@ impl JsField {
         self.dtype().get_field_at(index)
     }
 
+    /// Return where the child of one name sits, or `null`.
+    ///
+    /// An exact name, never a path: it answers the position a row's value sits
+    /// at, which is what a caller reading a column out of a row needs.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi]
+    pub fn index_of(&self, name: String) -> Option<f64> {
+        self.inner.index_of(&name).map(|at| at as f64)
+    }
+
     /// Return the child a path names, or `null`.
     ///
     /// A child carrying the whole string wins before the string is decomposed

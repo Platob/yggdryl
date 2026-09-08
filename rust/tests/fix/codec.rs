@@ -383,7 +383,7 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
 }
 
 #[test]
-fn a_version_names_and_types_a_field_as_that_version_did() {
+fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
     let reader = reader();
     let old = reader
         .clone()
@@ -392,17 +392,35 @@ fn a_version_names_and_types_a_field_as_that_version_did() {
         .clone()
         .with_version("5.0SP2".parse::<Version>().unwrap());
 
-    // Tag 32 is `LastShares` in 4.2 and `LastQty` in a newest one, and both
-    // answer the same value.
+    // Tag 32 is `LastShares` typed `int` in 4.0, `LastShares` typed `Qty` in
+    // 4.2 and `LastQty` from 4.3 on. A row read at 4.2 still builds the
+    // dictionary's own column, because a tag that renamed itself per version
+    // is a tag no two captures of one venue could be read together on.
     let at_42 = old
         .transform_line(b"8=FIX.4.2|35=8|32=100|10=0|", false)
         .unwrap();
     let at_new = newest
         .transform_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
         .unwrap();
-    assert!(at_42.get_by_name("lastshares").is_some());
-    assert!(at_new.get_by_name("lastqty").is_some());
+    let column = |held: &yggdryl::FixMsg| {
+        let at = held
+            .as_field()
+            .index_of("lastqty")
+            .expect("the tag 32 column");
+        held.as_field().fields()[at].clone()
+    };
+    assert_eq!(column(&at_42).name(), column(&at_new).name());
+    assert_eq!(column(&at_42).dtype(), column(&at_new).dtype());
     assert_eq!(at_42.by_tag(32).unwrap(), at_new.by_tag(32).unwrap());
+    // The 4.2 spelling still reaches it - as an alias, and off the lineage
+    // the column carries - so nothing the version knew is lost.
+    assert!(at_42.get_by_name("lastshares").is_some());
+    assert_eq!(
+        column(&at_42)
+            .as_fix()
+            .name_at("4.2".parse::<Version>().unwrap()),
+        Some("lastshares"),
+    );
 }
 
 #[test]
@@ -506,14 +524,14 @@ fn an_occurrence_that_named_no_member_is_kept_as_the_value_it_stated() {
 }
 
 #[test]
-fn a_renamed_group_builds_one_column_at_the_version_that_renamed_it() {
+fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
     let reader = reader()
         .clone()
         .with_version("4.2".parse::<Version>().unwrap());
-    // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after. The
-    // counter's slot is projected to the message's version and the members'
-    // slot has to be projected with it, or one group builds two columns
-    // carrying one tag.
+    // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after, and the
+    // message is read at 4.2 - but a field is one column under the one name
+    // the dictionary holds it by, whatever version the row is read at. What
+    // 4.2 called it stays readable through the field's lineage.
     let message = reader
         .transform_line(
             b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
@@ -529,8 +547,15 @@ fn a_renamed_group_builds_one_column_at_the_version_that_renamed_it() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    assert_eq!(names, ["msgtype", "linesoftext"], "{names:?}");
+    assert_eq!(names, ["msgtype", "nolinesoftext"], "{names:?}");
+    // One group, one column: the counter and its members reach one slot.
     assert_eq!(message.by_tag(33).unwrap().as_sequence().unwrap().len(), 2);
+    let group = &message.as_field().fields()[1];
+    assert_eq!(
+        group.as_fix().name_at("4.2".parse().unwrap()),
+        Some("linesoftext"),
+        "the 4.2 spelling is still readable off the column",
+    );
     assert!(message.anomalies().next().is_none());
 }
 
@@ -703,11 +728,11 @@ fn separatorless_group_inference_uses_only_direct_members() {
 /// refusal.
 #[test]
 fn a_group_shorter_than_the_schema_declares_still_projects() {
-    use yggdryl::{FixProjection, fix_schema};
+    use yggdryl::fix_schema;
 
     let registry = registry();
     let reader = FixCodec::new(Arc::clone(&registry));
-    let projection = FixProjection::new(&registry, "fix").expect("the fixed schema");
+    let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let held = reader
         .transform_line(
             b"toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE",
@@ -715,10 +740,9 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
         )
         .expect("a bridge row");
 
-    let row = held.to_row(&projection).unwrap();
-    let field = fix_schema(&registry, "fix").expect("the fixed root");
+    let row = held.to_row(&schema).unwrap();
     // The completion is what a batch does with the row; it must not refuse.
-    field
+    schema
         .canonicalize_value(row)
         .expect("a short occurrence is nulls, never a refusal");
 }
