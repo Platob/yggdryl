@@ -1127,26 +1127,26 @@ Tier 1 addresses the record it wants rather than parsing every code it passes, w
 
 ### Classifying a capture
 
-`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Windows x86_64 host; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
+`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Linux x86_64 container; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
 
 | case | median | per row | against the plain read |
 | --- | --- | --- | --- |
-| `read_arrow_reader`, no classification | 11.4 ms | 2.84 us | - |
-| the same with `mimetype`, `msgtype` and `direction` | 76.8 ms | 19.2 us | 6.8x |
+| `read_arrow_reader`, no classification | 4.89 ms | 1.22 us | - |
+| the same with `mimetype`, `msgtype` and `direction` | 15.2 ms | 3.8 us | 3.1x |
 
 The three readings on their own, one line each:
 
 | shape | bytes | `mimetype` | `msgtype` | `direction` |
 | --- | --- | --- | --- | --- |
-| framed FIX with prose either side | 85 | 1.54 us | 1.53 us | 835 ns |
-| a bare tag stream | 64 | 1.47 us | 1.26 us | 475 ns |
-| a bridge row keyed by name | 78 | 906 ns | 814 ns | 530 ns |
-| a sentence nothing matches | 52 | 1.15 us | 1.12 us | 2.15 us |
-| a bridge configuration document | 840 | 16.4 us | 16.3 us | 5.27 us |
+| framed FIX with prose either side | 85 | 609 ns | 575 ns | 367 ns |
+| a bare tag stream | 64 | 574 ns | 566 ns | 235 ns |
+| a bridge row keyed by name | 78 | 432 ns | 421 ns | 205 ns |
+| a sentence nothing matches | 52 | 102 ns | 76.8 ns | 1.15 us |
+| a bridge configuration document | 840 | 1.38 us | 1.37 us | 1.11 us |
 
 The scan is linear in the line, so a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it - which is exactly what a document does *not* pay, because its bound is where the object opens.
 
-Classification is opt-in per column for that reason. A capture that only needs rows pays the 2.84 us; one that needs to know what each line is pays the reading over the bytes it has.
+Classification is opt-in per column for that reason. A capture that only needs rows pays the 1.22 us; one that needs to know what each line is pays the reading over the bytes it has.
 
 Regenerate with:
 

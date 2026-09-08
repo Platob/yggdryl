@@ -311,6 +311,40 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
 - Python's `direction="unknown"` is the third answer: null, rather than a side the capture never stated.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single row.
 
+## Performance
+
+`fix/pipeline`, the whole path a desk takes over a bridge's own log: 2,400 lines that interleave the twelve shapes such a log actually holds - a Jolokia exchange whose answer is a configuration document, framed FIX either side of a plugin's prose, a bridge row keyed by name, and the sentences a bridge writes between them - so a per-line figure is per line of a real capture rather than of one shape. Release build, one Linux x86_64 container; the codec pinned to the bridge's dialect.
+
+| stage | median | per line |
+| --- | --- | --- |
+| the text reader, the row header framed | 12.4 ms | 5.19 us |
+| the same with `mimetype`, `msgtype` and `direction` | 20.9 ms | 8.72 us |
+| the text reader, then every body through `transform_line` | 135 ms | 56.3 us |
+| the framed bodies through the codec alone | 44.9 ms | 18.7 us |
+| `from_codec` over the text reader's batches, into fixed rows | 109 ms | 45.6 us |
+
+The text stage is a fifth of the whole and the codec two fifths; the rest is the row landing in Arrow. Reading every body through `transform_line` and then batching costs twice what classifying and the codec cost together, which is the batch reader's whole reason to exist: it reads the text reader's batches straight into fixed rows and never builds a message it then has to place.
+
+`fix/pipeline_stages` splits the batch path over the same messages, so where a row's cost goes is a number rather than an argument. Every row pays the first four; a row pays for enrichment and the lifecycle only when the [options](#the-options-are-the-readers-arguments-per-stream) ask for them.
+
+| stage | median | per message |
+| --- | --- | --- |
+| `to_row`, the message read against the fixed schema | 8.5 ms | 3.54 us |
+| the row canonicalized against the schema | 18.1 ms | 7.55 us |
+| the rows into one `RecordBatch` | 26.6 ms | 11.1 us |
+| `digest`, the message's identity | 722 us | 301 ns |
+| `enrich_fixmsg`, the rules that fill what a message implies | 26.5 ms | 11 us |
+| `lifecycle`, the stamp that joins a message to its order's life | 16.3 ms | 6.78 us |
+| the `nofixentries` columns | 3.06 ms | 1.27 us |
+
+A message read against the fixed schema costs less than canonicalizing the row it produces, because the tags a schema's columns answer for are remembered from one row to the next: a schema is a metadata read per column, and the same schema serves a whole capture. The digest is a hash over the arrival record and nothing else. Enrichment is the rule table walked once, most of it lookups that answer nothing on a message that stated everything; the lifecycle is two digests and a chain lookup.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- "fix/pipeline"
+```
+
 ## Commands
 
 === "Rust"

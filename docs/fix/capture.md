@@ -876,18 +876,18 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 
 | shape | bytes | median |
 | --- | --- | --- |
-| a framed tag stream with prose either side | 85 | 13.6 us |
-| a bare tag stream | 64 | 13.4 us |
-| the same, read at a pinned 4.2 | 64 | 13.5 us |
-| a bridge row keyed by name | 78 | 15.9 us |
-| a bridge row with a packed repeating group | 147 | 23.1 us |
-| a bridge row of `#` keys, one twinned by its bare spelling | 108 | 18.8 us |
-| a wide bridge row, three hundred `#` keys around one twin | 3716 | 659 us |
-| a bridge configuration document | 630 | 91.8 us |
-| the same, on a dictionary without ULBridge's fields | 630 | 82.9 us |
-| the emit that closes the round trip | | 194 ns |
+| a framed tag stream with prose either side | 85 | 8.39 us |
+| a bare tag stream | 64 | 8.38 us |
+| the same, read at a pinned 4.2 | 64 | 8.3 us |
+| a bridge row keyed by name | 78 | 11.4 us |
+| a bridge row with a packed repeating group | 147 | 18.3 us |
+| a bridge row of `#` keys, one twinned by its bare spelling | 108 | 13.6 us |
+| a wide bridge row, three hundred `#` keys around one twin | 3716 | 385 us |
+| a bridge configuration document | 630 | 67.5 us |
+| the same, on a dictionary without ULBridge's fields | 630 | 68.3 us |
+| the emit that closes the round trip |  | 137 ns |
 
-A document costs about seven times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 11% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as. The twin scan that decides a `#` costs nothing to see here: a bridge row splits into borrowed slices, the row of `#` keys reads faster per byte than the named one, and the wide row's per-pair cost matches the narrow one's - the scan probes the row's few bare spellings rather than the whole row, so it stays linear.
+A document costs about eight times a frame at seven times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary costs nothing over reading it untyped - the two are within a percent of each other - because resolving thirty names is a probe each, and what it buys is a port that is a number rather than the text it arrived as. The twin scan that decides a `#` costs nothing to see here: a bridge row splits into borrowed slices, the row of `#` keys reads faster per byte than the named one, and the wide row's per-pair cost is under the narrow one's - the scan probes the row's few bare spellings rather than the whole row, so it stays linear.
 
 A dated read costs what an undated one costs, within a code translation per value: a version decides which spellings answer, and no field is renamed or retyped for it, so there is nothing per row to resolve or cache.
 
