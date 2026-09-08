@@ -607,14 +607,29 @@ pub const TARGETPLUGINSESSION_TAG: i32 = 65_012;
 pub const ISINCODE_TAG: i32 = 65_013;
 pub const MICCODE_TAG: i32 = 65_014;
 pub const STATE_TAG: i32 = 65_015;
+pub const INSTID_TAG: i32 = 65_016;
+pub const ID_TAG: i32 = 65_017;
+pub const PERSISTENTID_TAG: i32 = 65_018;
 pub const TIMESTAMP_NAME: &str = "timestamp";
 pub const MSGDIRECTION_TAG: i32 = 385;
 pub const MSGTYPE_TAG: i32 = 35;
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 pub const fn is_crate_tag(tag: i32) -> bool  (a standard tag from CRATE_TAG_MIN up)
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (sixteen standard fields in tag order; every FixRegistry holds them from construction and no store writes them)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (nineteen standard fields in tag order; every FixRegistry holds them from construction and no store writes them)
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<MsgType>
+
+### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
+pub struct FixLifecycle  (re-exported at the crate root; one order stream's state: the chains still alive, keyed by every identifier they were seen under)
+  pub fn new(registry: Arc<FixRegistry>) -> Self
+  pub fn alive(&self) -> usize
+  pub fn clear(&mut self)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (stamps instid, id and persistentid, never over a stated value; a terminal state closes the chain)
+impl FixCodec
+  pub fn lifecycle<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
+impl FixOptions  (the arrow read; `enrich: bool` and `lifecycle: bool` are public fields, both off by default)
+  pub const fn with_enrich(mut self, enrich: bool) -> Self
+  pub const fn with_lifecycle(mut self, lifecycle: bool) -> Self
 
 ### yggdryl::fix::schema  [rust\src\fix\schema.rs]
 pub const HEADER_TAGS: [i32; 24]
@@ -2099,7 +2114,7 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Isin, Side, MsgType, MsgDirection
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Isin, Side, MsgType, MsgDirection, State, TimeInForce
   pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width); Isin::new folds case and checks the closing digit
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
@@ -2109,6 +2124,14 @@ pub trait AsciiValue: ScalarValue
   pub fn check_digit(&self) -> u8  // Isin only
   pub fn is_valid(text: &str) -> bool  // Isin only
   pub fn closing_digit(body: &str) -> Option<u8>  // Isin only
+  pub fn is_canonical(text: &str) -> bool  // Isin only: valid, upper-case, no folding needed
+  pub fn read(spelling: &str) -> Result<Self>  // State only: a rank, a code or a name, refused when unknown
+  pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
+  pub fn rank(&self) -> Option<u8>  // State only
+  pub fn is_live(&self) -> bool  // State only
+  pub fn is_done(&self) -> bool  // State only
+  pub fn is_cancelled(&self) -> bool  // State only
+  pub fn is_failed(&self) -> bool  // State only
   pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
   pub fn coerce(spelling: &str) -> Self  // MsgType only
   pub fn is_synthetic(&self) -> bool  // MsgType only
