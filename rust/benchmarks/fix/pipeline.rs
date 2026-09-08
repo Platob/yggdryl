@@ -17,7 +17,7 @@
 use std::hint::black_box;
 use std::sync::Arc;
 
-use criterion::{Criterion, Throughput};
+use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
@@ -249,6 +249,33 @@ pub fn stages(criterion: &mut Criterion) {
                 .map(|message| black_box(message).digest())
                 .fold(0_u128, |folded, digest| folded ^ digest)
         });
+    });
+    // The two passes that read a message after it is built: the rules that
+    // fill what it implies, and the stamp that joins it to its order's life.
+    // Each takes the message by value, so the clone is set up outside the
+    // measured routine and the number is the pass alone.
+    group.bench_function("enrich", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                held.into_iter()
+                    .map(|message| codec.enrich_fixmsg(message).expect("enriched").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("lifecycle", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                codec
+                    .lifecycle(held)
+                    .map(|message| message.expect("stamped").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
     });
     group.bench_function("entries_columns", |bencher| {
         let narrow = yggdryl::DataType::from_fields([

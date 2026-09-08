@@ -144,6 +144,8 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took — no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
+| `enrich` | `with_enrich` | `false` | whether each message is [filled with what it implies](capture.md) before it lands |
+| `lifecycle` | `with_lifecycle` | `false` | whether each message is stamped with the [identities the stream implies](lifecycle.md): one `FixLifecycle` runs over the whole read, so a row's `persistentid` depends on the rows before it |
 
 `name` names the root, and is `fix` unless it is set.
 

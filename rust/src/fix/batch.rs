@@ -258,6 +258,13 @@ impl FixOptions {
         self
     }
 
+    /// Sets whether each message is filled with what it implies.
+    #[must_use]
+    pub const fn with_enrich(mut self, enrich: bool) -> Self {
+        self.enrich = enrich;
+        self
+    }
+
     /// Sets whether the read stamps each message with the identities the
     /// stream implies.
     #[must_use]
