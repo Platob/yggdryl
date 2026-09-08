@@ -64,7 +64,7 @@ fn crate_names() -> Vec<&'static str> {
 /// Where the column carrying `tag` sits in a batch: by the tag its field
 /// carries, never by its spelling.
 fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
-    let schema = yggdryl::Field::from_arrow_schema("row", &batch.schema())
-        .expect("the batch schema reads");
+    let schema =
+        yggdryl::Field::from_arrow_schema("row", &batch.schema()).expect("the batch schema reads");
     yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }

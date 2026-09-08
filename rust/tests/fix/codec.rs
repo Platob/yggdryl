@@ -451,7 +451,14 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
     // clock closing the message.
     assert_eq!(
         names,
-        ["beginstring", "bodylength", "msgtype", "symbol", "checksum", "timestamp"],
+        [
+            "beginstring",
+            "bodylength",
+            "msgtype",
+            "symbol",
+            "checksum",
+            "timestamp"
+        ],
         "{names:?}"
     );
 }

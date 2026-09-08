@@ -1234,7 +1234,11 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
             None,
         )
         .expect("the same dialect, read again");
-    assert_eq!((added, merged), (0, 1), "SELLSIDE declares only tag 35");
+    assert_eq!(
+        (added, merged),
+        (0, 1 + super::crated()),
+        "SELLSIDE declares only tag 35, and the crate's own fields fold again"
+    );
     let branch = dictionary.branch_named("morgan").expect("the named branch");
     assert_eq!(branch.aliases(), ["mstanley", "msfix44", "morgan-2024"]);
     // And the record is the second file's, whole.

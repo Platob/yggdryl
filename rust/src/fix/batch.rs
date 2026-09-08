@@ -650,7 +650,10 @@ impl Columns {
             clock: named(super::record::CLOCK_COLUMN),
             fills,
             kept,
-            names: fields.iter().map(|held| SmolStr::new(held.name())).collect(),
+            names: fields
+                .iter()
+                .map(|held| SmolStr::new(held.name()))
+                .collect(),
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         }
     }

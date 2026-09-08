@@ -664,7 +664,12 @@ impl FixCodec {
     ///
     /// The pairs are the line; `extras` is the row the line came on, applied
     /// after every pair so a stated value is never overridden by a fill.
-    fn build(&self, pairs: &[(&[u8], &[u8])], extras: RowExtras<'_>, enrich: bool) -> Result<FixMsg> {
+    fn build(
+        &self,
+        pairs: &[(&[u8], &[u8])],
+        extras: RowExtras<'_>,
+        enrich: bool,
+    ) -> Result<FixMsg> {
         // A row states no dialect, so the caller's pin is the only source: a
         // capture is one session and the branch is a fact about the run.
         let branch = self.branch.clone().unwrap_or_default();

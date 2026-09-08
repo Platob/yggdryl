@@ -1965,7 +1965,11 @@ fn removal_keeps_every_position_consistent() {
     );
     assert_eq!(registry.len(), 1 + crated());
     assert_eq!(registry.remove("FreeText").unwrap().name(), "Text");
-    assert_eq!(registry.len(), crated(), "nothing of the test's own is left");
+    assert_eq!(
+        registry.len(),
+        crated(),
+        "nothing of the test's own is left"
+    );
     assert!(registry.remove(58).is_none());
 
     // A removed key can be claimed again.
@@ -2252,7 +2256,10 @@ fn iteration_and_the_cursor_are_tag_major() {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, then_crated(&["Account", "MsgType", "TradeID", "Venue"]));
+    assert_eq!(
+        walked,
+        then_crated(&["Account", "MsgType", "TradeID", "Venue"])
+    );
     let rendered = format!("{registry:?}");
     assert!(rendered.starts_with("{\"1:\": "), "{rendered}");
 }

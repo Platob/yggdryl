@@ -712,8 +712,7 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
         })
         .map_or_else(
             || {
-                let mut field =
-                    super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
+                let mut field = super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_NAME);
                 let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG);
                 field
             },
@@ -744,9 +743,7 @@ fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
                 .and_then(|slot| slot.values.first().cloned())
         })
     };
-    let value = stated_clock
-        .or_else(carried)
-        .map_or_else(wire, |held| held);
+    let value = stated_clock.or_else(carried).map_or_else(wire, |held| held);
     let value = if value.is_null() {
         super::schema::epoch()
     } else {

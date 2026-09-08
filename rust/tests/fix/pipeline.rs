@@ -605,9 +605,21 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let read = read(&CAPTURE);
 
     // The text reader's bodies are what the codec reads, so the line read
-    // runs over them rather than over the raw lines.
+    // runs over them rather than over the raw lines. Where the line alone
+    // answers nothing, what the batch answers is what the row's own columns
+    // stated: the text reader's `msgtype` reading, or the header's `seqNum`.
+    let stage = text_stage(&CAPTURE);
+    let classified = column(&stage, "msgtype");
+    let sequenced = column(&stage, "seqNum");
     let bodies = column(&read, "body");
-    for tag in [8, 35, 49, 56, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
+    let rendered = |value: &Scalar| match value {
+        Scalar::Null => None,
+        held => Some(
+            held.as_str()
+                .map_or_else(|| format!("{held:?}"), ToString::to_string),
+        ),
+    };
+    for tag in [8, 35, 49, 56, 34, 11, 55, 54, 38, 44, 31, 32, 150, 151, 60] {
         let held = tag_column(&read, tag);
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_bytes().expect("a body");
@@ -615,29 +627,26 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
                 .transform_line(body, false)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
-            let rendered = |value: &Scalar| match value {
-                Scalar::Null => None,
-                held => Some(
-                    held.as_str()
-                        .map_or_else(|| format!("{held:?}"), ToString::to_string),
-                ),
+            let expected = match (tag, &alone) {
+                (35, Scalar::Null) => rendered(&classified[row]),
+                (34, Scalar::Null) => rendered(&sequenced[row]),
+                _ => rendered(&alone),
             };
             assert_eq!(
-                rendered(&alone),
+                expected,
                 rendered(&held[row]),
                 "tag {tag} on row {row} differs between the line read and the batch",
             );
         }
     }
 
-    // The one tag the batch answers and the line read cannot: the sequence
-    // number the row header stated for a line that carried none. It is a
-    // fill, never an entry - and neither are the session, the context or the
-    // clock - so the arrival record is still the line alone.
+    // The tags the batch answers and the line read cannot are fills from the
+    // row's own columns: the sequence number the header stated for the routed
+    // row, which carried none. A fill is never an entry - and neither are the
+    // session, the context or the clock - so the arrival record is still the
+    // line alone.
     let routed = bodies[ROUTED_ROW].as_bytes().expect("a body");
-    let alone = codec
-        .transform_line(routed, false)
-        .expect("the routed row");
+    let alone = codec.transform_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
     let entries = column(&read, "nofixentries");

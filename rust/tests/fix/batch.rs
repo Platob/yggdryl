@@ -101,7 +101,13 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     // the field - which is what the row is filled by.
     assert_eq!(
         &names[..5],
-        ["beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"],
+        [
+            "beginstring",
+            "bodylength",
+            "msgtype",
+            "sendercompid",
+            "targetcompid"
+        ],
         "{names:?}"
     );
     assert_eq!(
@@ -113,15 +119,24 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
     // found by the tag its column carries.
     let fixed = yggdryl::Field::from_arrow_schema("row", &schema).expect("the schema reads");
     for tag in [
-        55, 54, 44, 38, 60, // the trade
-        132, 133, 134, 135, // the quote's lanes
-        453, 454, 768, // the groups
-        10, // the trailer
+        55,
+        54,
+        44,
+        38,
+        60, // the trade
+        132,
+        133,
+        134,
+        135, // the quote's lanes
+        453,
+        454,
+        768, // the groups
+        10,  // the trailer
         yggdryl::MSGHASH_TAG,
         yggdryl::TIMESTAMP_TAG,
         yggdryl::UNIXPARTITION_TAG, // the digest, the clock, the partition
         yggdryl::SESSIONID_TAG,
-        yggdryl::MSGCTXID_TAG, // what a bridge's own log states
+        yggdryl::MSGCTXID_TAG,     // what a bridge's own log states
         yggdryl::MSGDIRECTION_TAG, // which way the line moved
     ] {
         assert!(
@@ -132,7 +147,9 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
 
     // Each column carries its tag and the spelling it had, so a renderer can
     // show `MsgType` over the column `msgtype`.
-    let msgtype = schema.field_with_name("msgtype").expect("the msgtype column");
+    let msgtype = schema
+        .field_with_name("msgtype")
+        .expect("the msgtype column");
     assert_eq!(
         msgtype.metadata().get("fix:tag").map(String::as_str),
         Some("35"),
