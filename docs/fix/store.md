@@ -48,7 +48,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     fields.push(trade);
     // One repeating group, which is the only field of the nested tree.
     let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])?
-        .required_field("item");
+        .required_field("PartyID");
     let mut parties = DataType::list(item).nullable_field("NoPartyIDs");
     parties.as_fix_mut().set_tag(453)?;
     fields.push(parties);
@@ -122,7 +122,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     trade.fix.id = "5001:cme"
     declared.append(trade)
     # One repeating group, which is the only field of the nested tree.
-    item = Field("item", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
+    item = Field("PartyID", DataType.from_fields([Field("PartyID", "utf8")]), nullable=False)
     parties = field_builders.list("NoPartyIDs", item)
     parties.fix.tag = 453
     declared.append(parties)
@@ -201,7 +201,7 @@ A dictionary of only scalars writes no `nested/` folder, and one of only groups 
     trade.fix.id = '5001:cme'
     declared.push(trade)
     // One repeating group, which is the only field of the nested tree.
-    const item = fields.struct('item', [Field.from('PartyID: utf8')], { nullable: false })
+    const item = fields.struct('PartyID', [Field.from('PartyID: utf8')], { nullable: false })
     const parties = fields.list('NoPartyIDs', item)
     parties.fix.tag = 453
     declared.push(parties)
@@ -269,22 +269,25 @@ The split keeps an authored dictionary legible, not the lookup fast: one identit
 
 ## Branch manifest
 
-`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, derived `digest` and `version`.
+`branches.json` is a canonically rendered JSON array ordered by branch name, and the standard branch is omitted from it. Each named `FixBranch` stores `name`, `bid`, `version` and, where it has any, `aliases`.
+
+`bid` is the branch digest, spelled and typed exactly as the `bid` an arrival entry carries. It is derivable - a one-way XXH32 of the folded name - and stored anyway, because that is what makes it a published join key rather than a cache: an outside reader joining a capture's `bid` column to this manifest cannot reproduce the hash, and `FixRegistry::branch_by_bid` is the crate's own side of the same join.
 
 | rule | behaviour |
 | --- | --- |
 | absent value in an entry | defaulted to the branch defaults |
-| declared `digest` | verified against the derived one |
+| declared `bid` | verified against the derived digest |
 | absent manifest | valid; default branch values are reconstructed from the shards |
 | entry with no field in either tree | typed error, never an invented dictionary |
 
-A registry answers the stored branch values through five calls.
+A registry answers the stored branch values through six calls.
 
 | call | answers |
 | --- | --- |
 | `branch_of(FixId)` | the borrowed `FixBranch` that identifier names |
 | `branch_named(&str)` | the borrowed branch of that name |
 | `branches()` | every stored branch |
+| `get_branch_by_bid(i64)` / `branch_by_bid(i64)` | the branch one digest names |
 | `set_branch(FixBranch)` | installs one atomically |
 
 Component IDs keep the spelling they were written with.

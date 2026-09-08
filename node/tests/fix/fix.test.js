@@ -268,11 +268,14 @@ test('the registry resolves every key the way the core does', () => {
   assert.equal(registry.fieldByName('clordid', '').name, 'clordid')
   // A path reaches a repeating group and one of its members.
   assert.equal(registry.fieldByPath('NoPartyIDs', '').fix.tag, 453)
-  assert.equal(registry.fieldByPath('nopartyids.item.partyid', '').fix.tag, 448)
-  assert.equal(registry.fieldByPath('nopartyids.item.partyrole', '').name, 'partyrole')
+  // An occurrence is not a path segment: the walk steps through the list and
+  // the member is spelled directly under the counter.
+  assert.equal(registry.fieldByPath('nopartyids.partyid', '').fix.tag, 448)
+  assert.equal(registry.fieldByPath('nopartyids.partyrole', '').name, 'partyrole')
+  assert.equal(registry.getFieldByPath('nopartyids.partyid.partyid', ''), null)
 
   // The generic pair answers exactly what the specialized one does.
-  for (const key of [55, 'Symbol', 'nopartyids', 'nopartyids.item.partyid']) {
+  for (const key of [55, 'Symbol', 'nopartyids', 'nopartyids.partyid']) {
     const answer = registry.field(key)
     assert.ok(answer.equals(registry.getField(key)))
     assert.ok(answer.equals(registry.get(key)))
@@ -298,6 +301,12 @@ test('protocol and MsgType inference stays native and shallow', () => {
       'D',
     ],
     ['level=INFO message=random', MimeType.KEYVALUE, null],
+    [
+      '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
+        'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+      MimeType.ULCONFIG,
+      'Plugin',
+    ],
   ]
   for (const [line, protocol, msgtype] of cases) {
     assert.ok(MimeType.inferBytes(Buffer.from(line)).equals(protocol))
@@ -310,6 +319,17 @@ test('protocol and MsgType inference stays native and shallow', () => {
   const empty = new fix.FixRegistry()
   assert.equal(MimeType.inferBytesMsgtype(Buffer.from('35=AE|')).toString(), 'AE')
   assert.equal(MimeType.inferTextMsgtype('MSGTYPE=AE|'), 'AE')
+
+  // A bridge configuration states its own half of the exchange, and the
+  // `send` its own payload spells is never read as the marker.
+  const answered =
+    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
+    '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
+  assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
+  assert.equal(MimeType.inferTextDirection(answered), 'RECV')
+  assert.equal(MimeType.inferTextMsgtype(answered), 'read')
+  const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
+  assert.equal(MimeType.inferTextDirection(asked), 'SENT')
 })
 
 test('an explicit branch pins lookup and omission infers the best match', () => {
@@ -915,25 +935,25 @@ test('a reader parses every frame shape the core reads', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
 
-  assert.equal(reader.readLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
-  assert.equal(reader.readLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')).byTag(55).toJSON(), 'AAPL')
   assert.equal(
-    reader.readFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
+    reader.transformFixLine(Buffer.from('8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01'), 1).byTag(55).toJSON(),
     'AAPL',
   )
-  assert.equal(reader.readPairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
+  assert.equal(reader.transformPairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
   assert.ok(reader.registry.equals(registry))
 
   // A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
   // whose value packs its members behind the two control bytes ULLINK uses.
-  const bridge = reader.readUllinkLine(
+  const bridge = reader.transformUllinkLine(
     Buffer.from(
       '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
       'binary',
     ),
   )
-  const inferred = reader.readLine(
+  const inferred = reader.transformLine(
     Buffer.from(
       '|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2' +
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|',
@@ -956,12 +976,12 @@ test('a reader takes the pins the core takes', () => {
 
   // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
   // pinned version is what decides which name the row answers to.
-  const dated = new fix.FixCodec(registry, { sourceVersion: '4.2' })
-  assert.ok(dated.readLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).getByName('lastshares') !== null)
+  const dated = new fix.FixCodec(registry, { version: '4.2' })
+  assert.ok(dated.transformLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).getByName('lastshares') !== null)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
-  assert.equal(silent.readLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).getByTag(55), null)
+  assert.equal(silent.transformLine(Buffer.from('8=FIX.4.4|35=D|55=<none>|10=0|')).getByTag(55), null)
 
   assert.throws(() => new fix.FixCodec(registry, { branch: 'not a branch' }))
 })
@@ -971,8 +991,8 @@ test('the fixed row is named by tag and never shifts', () => {
   const schema = fix.schema(registry, 'FixMessage')
   assert.equal(schema.fieldAt(0).name, '8')
   assert.equal(schema.fieldAt(2).name, '35')
-  assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'entries')
-  assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'unmapped')
+  assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'nofixentries')
+  assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'nounmappedfixentries')
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
 
   const projection = new fix.FixProjection(registry, 'FixMessage')
@@ -983,7 +1003,7 @@ test('the fixed row is named by tag and never shifts', () => {
   assert.equal(projection.field.name, 'FixMessage')
 
   const reader = new fix.FixCodec(registry)
-  const row = reader.readLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).toRow(projection).toJSON()
+  const row = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).toRow(projection).toJSON()
   assert.equal(row.length, schema.fieldLen)
   assert.equal(row[projection.positionOf(35)], 'D')
   assert.equal(row[projection.positionOf(55)], 'AAPL')
@@ -1009,7 +1029,7 @@ test("a capture's own columns lead the row", () => {
 
   // A carried column carries no tag, so a row answers null there: the capture
   // fills it, and nothing in the message says what it held.
-  const row = new fix.FixCodec(registry).readLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).toRow(carried).toJSON()
+  const row = new fix.FixCodec(registry).transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).toRow(carried).toJSON()
   assert.equal(row[0], null)
   assert.equal(row[carried.positionOf(35)], 'D')
 })
@@ -1044,7 +1064,7 @@ test('the crate fields declare their own protocols', () => {
   const digest = held[0]
   assert.equal(digest.getProperty('digest', 'role'), 'holder')
   assert.equal(digest.getProperty('digest', 'algorithm'), 'xxh3-128')
-  assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
+  assert.equal(digest.getProperty('digest', 'sources'), '["nofixentries"]')
   assert.ok(digest.description)
 
   const partition = held[4]
@@ -1055,7 +1075,7 @@ test('the crate fields declare their own protocols', () => {
 test('a message says everything the core derives about it', () => {
   const registry = seed()
   const reader = new fix.FixCodec(registry)
-  const message = reader.readLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|'))
+  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|207=XNAS|54=1|44=10.5|38=100|60=20240201-12:34:56|10=0|'))
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.ok(message.marketTimestamp() !== null)
@@ -1067,5 +1087,41 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.lift().length > 0)
   assert.equal(message.digest().length, 16)
   assert.equal(message.arrivals()[0][0], 8)
+  // Every arrival states its dialect as the branch digest, and a message read
+  // under no dialect is on the standard branch, whose digest is zero.
+  assert.ok(message.arrivals().every(([, bid]) => bid === 0))
   assert.equal(message.toBytes(124).toString().split('|')[0], '8=FIX.4.4')
+})
+
+test('a dialect crosses as its digest and the registry resolves it back', () => {
+  const root = scratch()
+  const file = path.join(root, 'bloomberg.cfb')
+  fs.writeFileSync(
+    file,
+    [
+      '<CBlock>',
+      '<Fields>',
+      '<Field name="10001" alt="ExcludedDealers" type="string" desc="Dealers excluded."/>',
+      '</Fields>',
+      '</CBlock>',
+    ].join('\n'),
+    'utf8',
+  )
+  const [registry] = fix.FixRegistry.fromCfb(file, 'bloomberg')
+
+  // The dialect is declared by the file, so a capture read under it carries a
+  // digest the registry turns back into the branch. Without that table an
+  // outside reader would have to reproduce the hash to join the two.
+  const reader = new fix.FixCodec(registry, { branch: 'bloomberg' })
+  const message = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|'))
+  const [, bid] = message.arrivals()[0]
+  assert.notEqual(bid, 0)
+  assert.equal(registry.branchByDigest(bid), 'bloomberg')
+  assert.equal(registry.getBranchByDigest(bid), 'bloomberg')
+
+  // Only a declared branch resolves, and a value no digest can hold names
+  // nothing at all.
+  assert.equal(registry.getBranchByDigest(0), null)
+  assert.equal(registry.getBranchByDigest(-1), null)
+  assert.throws(() => registry.branchByDigest(-1))
 })

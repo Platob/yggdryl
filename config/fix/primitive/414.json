@@ -2,7 +2,8 @@
   {
     "name": "legcomplexeventschedulestartdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +15,8 @@
   {
     "name": "legcomplexeventscheduleenddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -107,7 +109,7 @@
     "metadata": {
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
       "display": "LegDeliveryScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legdeliveryschedulexid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"legdeliveryschedulexid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legdeliveryschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41410"
     }
   },
@@ -1087,7 +1089,8 @@
   {
     "name": "legoptionexercisestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

@@ -404,12 +404,76 @@ def canonical_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
 
 
+# The datatype tags that hold an instant, a date or a time of day, and the
+# ones that hold text. Mirrors `DataTypeId::is_temporal` and
+# `DataTypeId::is_string` over the tags `dtype_document` can write; the
+# cross-host test asserts the two hosts back-type identically.
+TEMPORAL_TAGS = {"date32", "date64", "time32", "time64", "datetime64"}
+TEXT_TAGS = {"utf8", "large_utf8", "utf8_view", "ascii", "fixed_ascii"}
+
+
+def back_type(entries: list[dict[str, Any]]) -> None:
+    """Adopt a temporal type backward over the string entries preceding it.
+
+    The Python half of `back_type` in `rust/src/fix/lineage.rs`, with that
+    function's reasoning: a field FIX transmitted as text and later declared
+    temporal was always carrying an instant, so stating the later type at the
+    earlier version is what the crate can consistently parse. Only a string
+    yields, and only to a temporal - every other pair is a real constraint the
+    later version added.
+    """
+    for at in range(len(entries) - 1, 0, -1):
+        later = entries[at].get("type")
+        if not isinstance(later, dict) or later.get("type") not in TEMPORAL_TAGS:
+            continue
+        earlier = at
+        while earlier > 0:
+            held = entries[earlier - 1].get("type")
+            if not isinstance(held, dict) or held.get("type") not in TEXT_TAGS:
+                break
+            earlier -= 1
+            entries[earlier]["type"] = later
+
+
 def lineage_document(entries: list[dict[str, Any]]) -> str:
-    """`fix:lineage`, keys in the order the reader expects."""
+    """`fix:lineage`, keys in the order the reader expects.
+
+    This is the Python half of `FixLineage::render` and makes the same two
+    derivations, so a generated dictionary and a hand-built or merged one hold
+    one document:
+
+    - the datatype is stored resolved, as the crate's serialized type and
+      exactly as the field's own ``dtype`` is stored, so a parameterized type
+      carries its parameters and ``char`` and ``String`` are one ``utf8``;
+    - an entry stating nothing its predecessor did not is dropped, because a
+      dated point repeating what was already true is not a point in a history.
+
+    The oldest entry is never dropped - it is what ``since`` reads - and ``ep``
+    is the entry's date rather than one of its statements, so an extension
+    pack that changed nothing is exactly the entry worth dropping. Whether a
+    field has a lineage at all is decided by the caller, before this: the
+    specification dating a field twice is what gives it a history, and
+    normalizing how that history is written must not take it away.
+    """
     order = ["since", "ep", "name", "type", "deprecated", "removed", "doc"]
-    rendered = []
+    stated = ["name", "deprecated", "removed", "doc"]
+    resolved: list[dict[str, Any]] = []
     for entry in entries:
-        rendered.append({key: entry[key] for key in order if entry.get(key) not in (None, False)})
+        held = dict(entry)
+        if held.get("type") is not None:
+            held["type"] = dtype_document(held["type"])
+        resolved.append(held)
+    back_type(resolved)
+
+    rendered: list[dict[str, Any]] = []
+    for held in resolved:
+        if rendered:
+            kept = rendered[-1]
+            if held.get("type") == kept.get("type") and all(
+                held.get(key) == kept.get(key) for key in stated
+            ):
+                continue
+        rendered.append({key: held[key] for key in order if held.get(key) not in (None, False)})
     return canonical_json({"entries": rendered})
 
 
@@ -527,7 +591,17 @@ def build(parsed: dict[str, dict[str, Any]]) -> tuple[list[dict[str, Any]], dict
             current["since"] = field["since"] or latest["version"]
             entries = [current]
         elif (entries[-1]["name"], entries[-1]["type"]) != (name, dtype):
-            entries.append(current)
+            if (entries[-1]["since"], entries[-1].get("ep")) == (current["since"], current["ep"]):
+                # One dated point states one thing. Where the scraped snapshot
+                # of a version and the Latest reading of that same version
+                # disagree - tag 327 is `HaltReasonInt` in the QuickFIX
+                # FIX.5.0SP2 file and `HaltReason` in Orchestra Latest - the
+                # higher-priority source replaces the lower rather than
+                # standing beside it, which is the same rule a lineage merge
+                # follows and the one `FixLineage::render` enforces.
+                entries[-1] = current
+            else:
+                entries.append(current)
 
         metadata: dict[str, str] = {"fix:tag": str(tag)}
         if field["name"] != name:
@@ -670,11 +744,13 @@ def dtype_document(name: str) -> dict[str, Any]:
         "UTCTimestamp": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "TZTimestamp": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "UTCTimeOnly": {"type": "time64", "unit": "nanosecond"},
-        "LocalMktTime": {"type": "time32", "unit": "second"},
-        "UTCDateOnly": {"type": "date32"},
-        "UTCDate": {"type": "date32"},
-        "LocalMktDate": {"type": "date32"},
-        "LocalMktDatetime": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
+        "LocalMktTime": {"type": "time64", "unit": "nanosecond"},
+        "UTCDateOnly": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
+        "UTCDate": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
+        # A naive zone is the absence of one, which the crate serializes by
+        # omitting the key; writing it would be a second spelling of one type.
+        "LocalMktDate": {"type": "datetime64", "unit": "nanosecond"},
+        "LocalMktDatetime": {"type": "datetime64", "unit": "nanosecond"},
         "TZTimeOnly": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "MonthYear": {"type": "fixed_ascii", "width": 8},
         "Tenor": {"type": "fixed_ascii", "width": 8},
@@ -691,7 +767,7 @@ def dtype_document(name: str) -> dict[str, Any]:
         "Reserved1000Plus": {"type": "int32"},
         "Reserved4000Plus": {"type": "int32"},
         "Time": {"type": "time64", "unit": "nanosecond"},
-        "Date": {"type": "date32"},
+        "Date": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
         "msgtype": {"type": "msgtype"},
         "side": {"type": "side"},
         "msgdirection": {"type": "msgdirection"},

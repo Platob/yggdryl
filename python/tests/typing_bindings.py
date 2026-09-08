@@ -1205,8 +1205,16 @@ fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
 fix_message_party: list[Scalar | None] | None = fix_message.party("1")
 fix_message_regulatory: Scalar | None = fix_message.trd_reg_timestamp("1")
 fix_message_anomalies: list[str] = fix_message.anomalies()
-fix_message_arrivals: list[tuple[int, str | None, str, str]] = fix_message.entries()
+fix_message_arrivals: list[tuple[int, int, str, str]] = fix_message.entries()
 fix_message_wire: bytes = fix_message.to_bytes(124)
+
+fix_branch_or_none: fix.FixBranch | None = fix_registry_from_fields.get_branch_by_digest(
+    fix_declared_branch.digest()
+)
+fix_registry_from_fields.set_branch(fix_declared_branch)
+fix_branch_by_digest: fix.FixBranch = fix_registry_from_fields.branch_by_digest(
+    fix_declared_branch.digest()
+)
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1216,11 +1224,11 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     null_values=["<none>"],
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_read_text: fix.FixMsg = fix_reader.read_line(b"8=FIX.4.4|35=D|10=0|")
-fix_read_bytes: fix.FixMsg = fix_reader.read_line(b"8=FIX.4.4|35=D|10=0|")
-fix_read_frame: fix.FixMsg = fix_reader.read_fix_line(b"8=FIX.4.4", 1)
-fix_read_bridge: fix.FixMsg = fix_reader.read_ullink_line(b"#SYMBOL=TTF")
-fix_read_pairs: fix.FixMsg = fix_reader.read_pairs([("55", "AAPL")])
+fix_read_text: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_bytes: fix.FixMsg = fix_reader.transform_line(b"8=FIX.4.4|35=D|10=0|")
+fix_read_frame: fix.FixMsg = fix_reader.transform_fix_line(b"8=FIX.4.4", 1)
+fix_read_bridge: fix.FixMsg = fix_reader.transform_ullink_line(b"#SYMBOL=TTF")
+fix_read_pairs: fix.FixMsg = fix_reader.transform_pairs([("55", "AAPL")])
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()

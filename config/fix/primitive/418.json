@@ -295,7 +295,8 @@
   {
     "name": "underlyingoptionexercisestartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -357,7 +358,8 @@
   {
     "name": "underlyingoptionexercisestartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -381,7 +383,8 @@
   {
     "name": "underlyingoptionexercisenominationdeadline",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -393,7 +396,8 @@
   {
     "name": "underlyingoptionexercisefirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -405,7 +409,8 @@
   {
     "name": "underlyingoptionexerciselastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -417,28 +422,28 @@
   {
     "name": "underlyingoptionexerciseearliesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "display": "UnderlyingOptionExerciseEarliestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseearliesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciseearliesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseearliesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41838"
     }
   },
   {
     "name": "underlyingoptionexerciselatesttime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "Latest exercise time. See also UnderlyingOptionExerciseEarliestTime(41838).",
       "display": "UnderlyingOptionExerciseLatestTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciselatesttime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciselatesttime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciselatesttime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41839"
     }
   },
@@ -457,7 +462,8 @@
   {
     "name": "underlyingoptionexercisedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -595,14 +601,14 @@
   {
     "name": "underlyingoptionexerciseexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The option exercise expiration time.",
       "display": "UnderlyingOptionExerciseExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingoptionexerciseexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingoptionexerciseexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41854"
     }
   },
@@ -621,7 +627,8 @@
   {
     "name": "underlyingoptionexerciseexpirationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -873,7 +880,7 @@
     "metadata": {
       "description": "Identifier of this UnderlyingPaymentSchedule for cross referencing elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingpaymentschedulexid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41881"
     }
   },
@@ -886,7 +893,7 @@
     "metadata": {
       "description": "Reference to payment schedule elsewhere in the message.",
       "display": "UnderlyingPaymentScheduleXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingpaymentschedulexidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingpaymentschedulexidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41882"
     }
   },

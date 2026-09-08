@@ -2106,6 +2106,7 @@ declare module './index' {
     const PUFFIN: MimeType
     const PLAIN_TEXT: MimeType
     const ULLINK: MimeType
+    const ULCONFIG: MimeType
     const FIX: MimeType
     const FIXUL: MimeType
     const KEYVALUE: MimeType

@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::types::MsgType;
+use yggdryl::types::{MsgDirection, MsgType};
 use yggdryl::{
     DataType, Field, FixBranch, FixCode, FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry,
     MediaType, MimeType, Scalar, Timezone, Version,
@@ -356,6 +356,19 @@ fn a_fix_registry_lookup_allocates_nothing() {
     });
     free("infer_text_msgtype UL", || {
         let _ = black_box(MsgType::infer_text(black_box("MsgType=D Symbol=AAPL")));
+    });
+    // A bridge configuration is read the same way a frame is: the namespace,
+    // the ObjectName's type and the answer keys are all found in the caller's
+    // bytes, so classifying a document costs no allocation either.
+    const ULCONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
+    free("infer_bytes_protocol ULCONFIG", || {
+        let _ = black_box(MimeType::infer_bytes(black_box(ULCONFIG)));
+    });
+    free("infer_bytes_msgtype ULCONFIG", || {
+        let _ = black_box(MsgType::infer_bytes(black_box(ULCONFIG)));
+    });
+    free("infer_bytes_direction ULCONFIG", || {
+        let _ = black_box(MsgDirection::infer_bytes(black_box(ULCONFIG)));
     });
     free("iter", || {
         let _ = black_box(registry.iter().count());

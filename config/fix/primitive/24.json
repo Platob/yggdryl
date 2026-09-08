@@ -2,7 +2,8 @@
   {
     "name": "effectivebusinessdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -156,7 +157,7 @@
       "description": "Identifies the page heading from the rate source.",
       "display": "RateSourceReferencePageHeading",
       "fix:aliases": "ratesourcereferemcepageheading",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"ratesourcereferemcepageheading\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"ratesourcereferencepageheading\",\"type\":\"String\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"ratesourcereferemcepageheading\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"ratesourcereferencepageheading\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2412"
     }
   },
@@ -194,7 +195,7 @@
     "metadata": {
       "description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
       "display": "RelatedToStreamXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtostreamxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"relatedtostreamxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtostreamxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2415"
     }
   },
@@ -219,7 +220,7 @@
     "metadata": {
       "description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
       "display": "RelatedToDividendPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtodividendperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"relatedtodividendperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"relatedtodividendperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2417"
     }
   },
@@ -1168,7 +1169,8 @@
   {
     "name": "legagreementdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

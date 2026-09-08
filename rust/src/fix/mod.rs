@@ -163,6 +163,7 @@ mod constants;
 mod crated;
 mod digest;
 mod document;
+mod enrich;
 mod entry;
 mod field;
 mod global;
@@ -175,11 +176,13 @@ mod schema;
 mod store;
 #[cfg(test)]
 mod tests;
+mod ulbridge;
 
 pub use anomaly::{FixAnomalies, FixAnomaly};
 #[cfg(feature = "arrow")]
 pub use batch::{
-    DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH, classify_arrow_array, write_fix,
+    DEFAULT_BATCH_BYTE_SIZE, DEFAULT_PAYLOAD_COLUMN, FixBatchReader, FixOptions, SOH,
+    classify_arrow_array, write_fix,
 };
 pub use codec::{DEFAULT_NULL_VALUES, FixCodec};
 pub use codes::{FixCode, FixCodeValue, FixCodes};
@@ -193,11 +196,16 @@ pub use crated::{
 pub use digest::FixDedup;
 pub use document::Words;
 pub use entry::FixEntry;
-pub use field::FixAliases;
+pub use field::FixSpellings;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use msg::FixMsg;
 pub use registry::{FixFieldIter, FixRegistry};
+pub use ulbridge::{
+    ERROR_TAG, MBEAN_TAG, OPERATION_TAG, SESSIONINTERFACES_TAG, STATUS_TAG, ULBRIDGE_BRANCH,
+    ULBRIDGE_TAG_MIN, fix_ulbridge_fields,
+};
+
 pub use schema::{
     BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
     UNMAPPED_COLUMN, fix_schema, fix_schema_tags,
@@ -365,6 +373,17 @@ impl FixBranch {
     /// Returns whether this is the FIX specification's own dictionary.
     pub fn is_standard(&self) -> bool {
         self.name.is_empty()
+    }
+
+    /// The same identity an arrival entry stores, read signed.
+    ///
+    /// Four bytes either way: this is the reading an entry's `branch` column
+    /// carries and the one [`FixRegistry::branch_by_digest`] takes, so a
+    /// capture's column joins to a declaration with nothing in between. A
+    /// digest above `i32::MAX` reads negative here and is the same digest.
+    #[must_use]
+    pub const fn digest_signed(&self) -> i32 {
+        entry::signed(self.digest())
     }
 
     /// The cached XXH32 identity of the canonical spelling.

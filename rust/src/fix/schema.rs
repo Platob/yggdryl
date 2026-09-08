@@ -240,7 +240,7 @@ fn entry_item(level: usize) -> Result<Field> {
     };
     Ok(DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
-        DataType::Int64.required_field("bid"),
+        DataType::Int32.required_field("branch"),
         DataType::Utf8.nullable_field("key"),
         DataType::Utf8.nullable_field("value"),
         tail,
@@ -271,7 +271,7 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
     };
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.bid()),
+        crate::Scalar::from(entry.branch()),
         crate::Scalar::from(entry.key()),
         crate::Scalar::from(entry.value()),
         tail,
@@ -288,7 +288,7 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
 fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.bid()),
+        crate::Scalar::from(entry.branch()),
         crate::Scalar::from(entry.key()),
         crate::Scalar::from(entry.value()),
         crate::Scalar::from_sequence(
@@ -531,7 +531,7 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let projection = FixProjection::new(&registry, "fix")?;
     /// let reader = FixCodec::new(Arc::clone(&registry));
-    /// let order = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|")?;
+    /// let order = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|9999=x|10=0|", false)?;
     ///
     /// let row = order.to_row(&projection)?;
     /// let held = row.as_sequence().expect("a row");
@@ -690,7 +690,7 @@ impl super::FixMsg {
             if !self.explains(entry.tag()) {
                 out.push(crate::Scalar::from_sequence([
                     crate::Scalar::from(entry.tag()),
-                    crate::Scalar::from(entry.bid()),
+                    crate::Scalar::from(entry.branch()),
                     crate::Scalar::from(entry.key()),
                     crate::Scalar::from(entry.value()),
                     crate::Scalar::from_sequence(Vec::new()),

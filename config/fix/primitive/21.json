@@ -389,7 +389,7 @@
     "metadata": {
       "description": "Reference to credit event table elsewhere in the message.",
       "display": "ComplexEventCreditEventsXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventcrediteventsxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"complexeventcrediteventsxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventcrediteventsxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2133"
     }
   },
@@ -451,7 +451,7 @@
     "metadata": {
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
       "display": "ComplexEventXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"complexeventxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2138"
     }
   },
@@ -464,7 +464,7 @@
     "metadata": {
       "description": "Reference to a complex event elsewhere in the message.",
       "display": "ComplexEventXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"complexeventxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"complexeventxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2139"
     }
   },
@@ -720,7 +720,8 @@
   {
     "name": "legsettledentitymatrixpublicationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -896,7 +897,8 @@
   {
     "name": "legindexannexdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

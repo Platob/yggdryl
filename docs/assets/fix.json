@@ -102,14 +102,14 @@
     "codeSets": 2016,
     "codes": 27103,
     "lineage": 1564,
-    "aliases": 43,
+    "aliases": 42,
     "alternates": 0,
     "messages": 181,
     "components": 167,
     "layoutGroups": 580,
     "columns": 89,
     "branches": 2,
-    "datatypes": 20,
+    "datatypes": 19,
     "versions": 10,
     "dtypes": [
       [
@@ -129,8 +129,8 @@
         521
       ],
       [
-        "date32",
-        375
+        "datetime64(ns)",
+        368
       ],
       [
         "boolean",
@@ -146,11 +146,11 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        60
+        67
       ],
       [
-        "time32(s)",
-        47
+        "time64(ns)",
+        56
       ],
       [
         "ascii(8)",
@@ -167,10 +167,6 @@
       [
         "country",
         12
-      ],
-      [
-        "time64(ns)",
-        9
       ],
       [
         "ascii(2)",
@@ -11671,7 +11667,7 @@
     {
       "t": 64,
       "n": "settldate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "SettlDate",
       "x": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format.",
       "a": [
@@ -11872,7 +11868,7 @@
     {
       "t": 75,
       "n": "tradedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "TradeDate",
       "x": "Indicates date of trading day. Absence of this field indicates current day (expressed in local time at place of trade).",
       "s": "2.7"
@@ -12814,7 +12810,7 @@
     {
       "t": 193,
       "n": "settldate2",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "SettlDate2",
       "x": "SettDate (64) of the future part of a F/X swap order.",
       "a": [
@@ -13063,7 +13059,7 @@
     {
       "t": 224,
       "n": "couponpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CouponPaymentDate",
       "x": "Date interest is to be paid. Used in identifying Corporate Bond issues.",
       "s": "4.2"
@@ -13071,7 +13067,7 @@
     {
       "t": 225,
       "n": "issuedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "IssueDate",
       "x": "The date on which a bond or stock offering is issued. It may or may not be the same as the effective date (\"Dated Date\") or the date on which interest begins to accrue (\"Interest Accrual Date\")",
       "s": "4.2"
@@ -13103,7 +13099,7 @@
     {
       "t": 229,
       "n": "tradeoriginationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "TradeOriginationDate",
       "x": "Used with Fixed Income for Muncipal New Issue Market. Agreement in principal between counter-parties prior to actual trade date.",
       "s": "4.2"
@@ -13111,7 +13107,7 @@
     {
       "t": 230,
       "n": "exdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ExDate",
       "x": "The date when a distribution of interest is deducted from a securities assets or set aside for payment to bondholders. On the ex-date, the securities price drops by the amount of the distribution (plus or minus any market activity).",
       "s": "4.2"
@@ -13198,7 +13194,7 @@
     {
       "t": 240,
       "n": "redemptiondate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "RedemptionDate",
       "x": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "s": "4.2"
@@ -13206,7 +13202,7 @@
     {
       "t": 241,
       "n": "underlyingcouponpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingCouponPaymentDate",
       "x": "Underlying security's CouponPaymentDate.",
       "s": "4.2"
@@ -13214,7 +13210,7 @@
     {
       "t": 242,
       "n": "underlyingissuedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingIssueDate",
       "x": "Underlying security's IssueDate.",
       "s": "4.2"
@@ -13254,7 +13250,7 @@
     {
       "t": 247,
       "n": "underlyingredemptiondate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingRedemptionDate",
       "x": "Underlying security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "s": "4.2"
@@ -13262,7 +13258,7 @@
     {
       "t": 248,
       "n": "legcouponpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegCouponPaymentDate",
       "x": "Multileg instrument's individual leg security's CouponPaymentDate.",
       "s": "4.2"
@@ -13270,7 +13266,7 @@
     {
       "t": 249,
       "n": "legissuedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegIssueDate",
       "x": "Multileg instrument's individual leg security's IssueDate.",
       "s": "4.2"
@@ -13310,7 +13306,7 @@
     {
       "t": 254,
       "n": "legredemptiondate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegRedemptionDate",
       "x": "Multileg instrument's individual leg security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
       "s": "4.2"
@@ -13351,7 +13347,7 @@
     {
       "t": 259,
       "n": "basisfeaturedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "BasisFeatureDate",
       "x": "BasisFeatureDate allows requesting firms within fixed income the ability to request an alternative yield-to-worst, -maturity, -extended or other call. This flows through the confirm process.",
       "s": "4.2"
@@ -13565,7 +13561,7 @@
     {
       "t": 272,
       "n": "mdentrydate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "MDEntryDate",
       "x": "Date of Market Data Entry.",
       "s": "4.2"
@@ -14072,8 +14068,7 @@
       "d": "HaltReason",
       "x": "Denotes the reason for a delay or halt of services.",
       "a": [
-        "haltreasonchar",
-        "haltreasonint"
+        "haltreasonchar"
       ],
       "c": 7,
       "s": "4.2"
@@ -15032,7 +15027,7 @@
     {
       "t": 432,
       "n": "expiredate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ExpireDate",
       "x": "Date of order expiration (last day the order can trade), always expressed in terms of the local market date. The time at which the order expires is determined by the local market's business practices",
       "s": "4.2"
@@ -15468,7 +15463,7 @@
     {
       "t": 486,
       "n": "dateofbirth",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DateOfBirth",
       "x": "The date of birth applicable to the individual, e.g. required to open some types of tax-exempt account.",
       "s": "4.3"
@@ -15501,7 +15496,7 @@
     {
       "t": 490,
       "n": "cardexpdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CardExpDate",
       "x": "The expiry date of the payment card as specified on the card being used for payment.",
       "s": "4.3"
@@ -15611,7 +15606,7 @@
     {
       "t": 503,
       "n": "cardstartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CardStartDate",
       "x": "The start date of the card as specified on the card being used for payment.",
       "s": "4.3"
@@ -15619,7 +15614,7 @@
     {
       "t": 504,
       "n": "paymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentDate",
       "x": "The date written on a cheque or date payment should be submitted to the relevant clearing system.",
       "s": "4.3"
@@ -15962,7 +15957,7 @@
     {
       "t": 541,
       "n": "maturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "MaturityDate",
       "x": "Date of maturity.",
       "s": "4.3"
@@ -15970,7 +15965,7 @@
     {
       "t": 542,
       "n": "underlyingmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingMaturityDate",
       "x": "Underlying security's maturity date.",
       "s": "4.3"
@@ -16546,7 +16541,7 @@
     {
       "t": 588,
       "n": "legsettldate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegSettlDate",
       "x": "Refer to description for SettlDate[64]",
       "a": [
@@ -16747,7 +16742,7 @@
     {
       "t": 611,
       "n": "legmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegMaturityDate",
       "x": "Multileg instrument's individual security's MaturityDate.",
       "s": "4.3"
@@ -17467,7 +17462,7 @@
     {
       "t": 696,
       "n": "yieldredemptiondate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "YieldRedemptionDate",
       "x": "Date to which the yield has been calculated (i.e. maturity, par call or current call, pre-refunded date).",
       "s": "4.4"
@@ -17508,7 +17503,7 @@
     {
       "t": 701,
       "n": "yieldcalcdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "YieldCalcDate",
       "x": "Include as needed to clarify yield irregularities associated with date, e.g. when it falls on a non-business day.",
       "s": "4.4"
@@ -17644,7 +17639,7 @@
     {
       "t": 715,
       "n": "clearingbusinessdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ClearingBusinessDate",
       "x": "The business date for which the trade is expected to be cleared.",
       "s": "4.4"
@@ -17850,7 +17845,7 @@
     {
       "t": 739,
       "n": "legdateddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDatedDate",
       "x": "The effective date of a new securities issue determined by its underwriters. Often but not always the same as the Issue Date and the Interest Accrual Date",
       "s": "4.4"
@@ -17882,7 +17877,7 @@
     {
       "t": 743,
       "n": "deliverydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DeliveryDate",
       "x": "Date of delivery.",
       "s": "4.4"
@@ -19028,7 +19023,7 @@
     {
       "t": 866,
       "n": "eventdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "EventDate",
       "x": "Date of event",
       "s": "4.4"
@@ -19090,7 +19085,7 @@
     {
       "t": 873,
       "n": "dateddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DatedDate",
       "x": "The effective date of a new securities issue determined by its underwriters. Often but not always the same as the Issue Date and the Interest Accrual Date",
       "s": "4.4"
@@ -19098,7 +19093,7 @@
     {
       "t": 874,
       "n": "interestaccrualdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "InterestAccrualDate",
       "x": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
       "s": "4.4"
@@ -19448,7 +19443,7 @@
     {
       "t": 915,
       "n": "agreementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "AgreementDate",
       "x": "A reference to the date the underlying agreement specified by AgreementID and AgreementDesc was executed.",
       "s": "4.4"
@@ -19456,7 +19451,7 @@
     {
       "t": 916,
       "n": "startdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StartDate",
       "x": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral",
       "s": "4.4"
@@ -19464,7 +19459,7 @@
     {
       "t": 917,
       "n": "enddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "EndDate",
       "x": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral",
       "s": "4.4"
@@ -19815,7 +19810,7 @@
     {
       "t": 956,
       "n": "leginterestaccrualdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegInterestAccrualDate",
       "x": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
       "s": "4.4"
@@ -19985,7 +19980,7 @@
     {
       "t": 976,
       "n": "quantitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "QuantityDate",
       "x": "Date associated to the quantity that is being reported for the position.",
       "s": "4.4"
@@ -20090,7 +20085,7 @@
     {
       "t": 987,
       "n": "underlyingsettlementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingSettlementDate",
       "x": "Date the underlying instrument will settle. Used for derivatives that deliver into more than one underlying instrument. Settlement dates can vary across underlying instruments.",
       "s": "4.4"
@@ -21264,7 +21259,7 @@
     {
       "t": 1125,
       "n": "origtradedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OrigTradeDate",
       "x": "Used to preserve original trade date when original trade is being referenced in a subsequent trade transaction such as a transfer",
       "s": "4.4"
@@ -22419,7 +22414,7 @@
     {
       "t": 1252,
       "n": "derivativematuritydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DerivativeMaturityDate",
       "x": "Date of maturity.",
       "s": "5.0"
@@ -22615,7 +22610,7 @@
     {
       "t": 1276,
       "n": "derivativeissuedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DerivativeIssueDate",
       "x": "The date on which the security is issued.",
       "s": "5.0"
@@ -22720,7 +22715,7 @@
     {
       "t": 1288,
       "n": "derivativeeventdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DerivativeEventDate",
       "x": "Date of event.",
       "s": "5.0"
@@ -23226,7 +23221,7 @@
     {
       "t": 1345,
       "n": "underlyinglegmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingLegMaturityDate",
       "x": "Date of maturity.",
       "s": "5.0"
@@ -24562,7 +24557,7 @@
     {
       "t": 1492,
       "n": "complexeventstartdate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "ComplexEventStartDate",
       "x": "Specifies the start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "s": "5.0SP1"
@@ -24570,7 +24565,7 @@
     {
       "t": 1493,
       "n": "complexeventenddate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "ComplexEventEndDate",
       "x": "Specifies the end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options",
       "s": "5.0SP1"
@@ -26718,7 +26713,7 @@
     {
       "t": 1753,
       "n": "versuspurchasedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "VersusPurchaseDate",
       "x": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available."
     },
@@ -26746,7 +26741,7 @@
     {
       "t": 1757,
       "n": "legversuspurchasedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegVersusPurchaseDate",
       "x": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available."
     },
@@ -26958,14 +26953,14 @@
     {
       "t": 1782,
       "n": "entitlementstartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "EntitlementStartDate",
       "x": "Indicates the starting date of the entitlement."
     },
     {
       "t": 1783,
       "n": "entitlementenddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "EntitlementEndDate",
       "x": "Indicates the ending date of the entitlement."
     },
@@ -27594,7 +27589,7 @@
     {
       "t": 1858,
       "n": "relatedtradedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "RelatedTradeDate",
       "x": "Date of a related trade."
     },
@@ -27643,7 +27638,7 @@
     {
       "t": 1864,
       "n": "relatedpositiondate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "RelatedPositionDate",
       "x": "Used to help identify the position when RelatedPositionID(1862) is not unique across multiple days. This date is generally the creation date of the identifier."
     },
@@ -28361,7 +28356,7 @@
     {
       "t": 1945,
       "n": "settledentitymatrixpublicationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "SettledEntityMatrixPublicationDate",
       "x": "The publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable."
     },
@@ -28466,7 +28461,7 @@
     {
       "t": 1959,
       "n": "indexannexdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "IndexAnnexDate",
       "x": "The date of a credit default swap index series annex."
     },
@@ -28494,7 +28489,7 @@
     {
       "t": 1963,
       "n": "masterconfirmationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "MasterConfirmationDate",
       "x": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties."
     },
@@ -28508,7 +28503,7 @@
     {
       "t": 1965,
       "n": "masterconfirmationannexdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "MasterConfirmationAnnexDate",
       "x": "The date that an annex to the master confirmation was executed between the parties."
     },
@@ -28529,7 +28524,7 @@
     {
       "t": 1968,
       "n": "creditsupportagreementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CreditSupportAgreementDate",
       "x": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties."
     },
@@ -28670,7 +28665,7 @@
     {
       "t": 1983,
       "n": "underlyingeventdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingEventDate",
       "x": "The date of the event."
     },
@@ -28832,7 +28827,7 @@
     {
       "t": 2005,
       "n": "underlyingindexannexdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingIndexAnnexDate",
       "x": "The date of a credit default swap index series annex."
     },
@@ -28943,7 +28938,7 @@
     {
       "t": 2020,
       "n": "underlyingsettledentitymatrixpublicationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingSettledEntityMatrixPublicationDate",
       "x": "Specifies the publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable."
     },
@@ -29096,14 +29091,14 @@
     {
       "t": 2041,
       "n": "underlyingdateddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDatedDate",
       "x": "If different from IssueDate()"
     },
     {
       "t": 2042,
       "n": "underlyinginterestaccrualdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingInterestAccrualDate",
       "x": "If different from IssueDate and DatedDate"
     },
@@ -29238,14 +29233,14 @@
     {
       "t": 2054,
       "n": "underlyingcomplexeventstartdate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "UnderlyingComplexEventStartDate",
       "x": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options."
     },
     {
       "t": 2055,
       "n": "underlyingcomplexeventenddate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "UnderlyingComplexEventEndDate",
       "x": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options."
     },
@@ -29306,7 +29301,7 @@
     {
       "t": 2061,
       "n": "legeventdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegEventDate",
       "x": "The date of the event."
     },
@@ -29489,21 +29484,21 @@
     {
       "t": 2084,
       "n": "previousclearingbusinessdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PreviousClearingBusinessDate",
       "x": "The date of the previous clearing business day."
     },
     {
       "t": 2085,
       "n": "valuationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ValuationDate",
       "x": "The valuation date of the trade."
     },
     {
       "t": 2086,
       "n": "valuationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ValuationTime",
       "x": "The valuation time of the trade.",
       "s": "5.0SP2"
@@ -30061,7 +30056,7 @@
     {
       "t": 2160,
       "n": "legsettledentitymatrixpublicationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegSettledEntityMatrixPublicationDate",
       "x": "The publication date of the applicable version of the matrix. When this element is omitted, the Standard Terms Supplement defines rules for which version of the matrix is applicable."
     },
@@ -30166,7 +30161,7 @@
     {
       "t": 2174,
       "n": "legindexannexdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegIndexAnnexDate",
       "x": "The date of a credit default swap index series annex."
     },
@@ -30779,14 +30774,14 @@
     {
       "t": 2251,
       "n": "legcomplexeventstartdate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "LegComplexEventStartDate",
       "x": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options."
     },
     {
       "t": 2252,
       "n": "legcomplexeventenddate",
-      "y": "date32",
+      "y": "datetime64(ns,\"UTC\")",
       "d": "LegComplexEventEndDate",
       "x": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options."
     },
@@ -31922,7 +31917,7 @@
     {
       "t": 2400,
       "n": "effectivebusinessdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "EffectiveBusinessDate",
       "x": "Specifies an explicit business date for associated reference data or transaction. Used when an implicit date is not sufficiently specific."
     },
@@ -32669,7 +32664,7 @@
     {
       "t": 2496,
       "n": "legagreementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegAgreementDate",
       "x": "A reference to the date the underlying agreement specified by LegAgreementID(2498) and LegAgreementDesc(2497) was executed."
     },
@@ -32704,7 +32699,7 @@
     {
       "t": 2501,
       "n": "legcreditsupportagreementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegCreditSupportAgreementDate",
       "x": "The date of the ISDA Credit Support Agreement executed between the parties and intended to govern collateral arrangements for all OTC derivatives transactions between those parties."
     },
@@ -32740,7 +32735,7 @@
     {
       "t": 2506,
       "n": "legenddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegEndDate",
       "x": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral."
     },
@@ -32761,14 +32756,14 @@
     {
       "t": 2509,
       "n": "legmasterconfirmationannexdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegMasterConfirmationAnnexDate",
       "x": "The date that an annexation to the master confirmation was executed between the parties."
     },
     {
       "t": 2510,
       "n": "legmasterconfirmationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegMasterConfirmationDate",
       "x": "Alternative to broker confirmation. The date of the confirmation executed between the parties and intended to govern all relevant transactions between those parties."
     },
@@ -32789,7 +32784,7 @@
     {
       "t": 2513,
       "n": "legstartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStartDate",
       "x": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral."
     },
@@ -34570,7 +34565,7 @@
     {
       "t": 2738,
       "n": "nextindexrolldate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "NextIndexRollDate",
       "x": "Next index roll date."
     },
@@ -35227,21 +35222,21 @@
     {
       "t": 2825,
       "n": "posttradepaymentcalculationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PostTradePaymentCalculationDate",
       "x": "The (actual) date the periodic payments calculations are made."
     },
     {
       "t": 2826,
       "n": "posttradepaymentvaluedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PostTradePaymentValueDate",
       "x": "The adjusted (for holidays and other non-business days) payment date on which the payment is expected to settle."
     },
     {
       "t": 2827,
       "n": "posttradepaymentfinalvaluedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PostTradePaymentFinalValueDate",
       "x": "The actual or final payment date on which the payment was made."
     },
@@ -35482,14 +35477,14 @@
     {
       "t": 2868,
       "n": "collateralizationvaluedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CollateralizationValueDate",
       "x": "Date when the collateral is to be assessed or assigned."
     },
     {
       "t": 2869,
       "n": "regulatoryreporttypebusinessdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "RegulatoryReportTypeBusinessDate",
       "x": "The business date on which the event identified in RegulatoryReportType(1934) took place."
     },
@@ -35552,7 +35547,7 @@
     {
       "t": 2878,
       "n": "terminationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "TerminationDate",
       "x": "The date of a contract's early termination or other post-trade event when the event is prior to the contract natural end or maturity not defined as part of the security's reference data or contractual terms/agreement."
     },
@@ -37122,14 +37117,14 @@
     {
       "t": 3074,
       "n": "fxbenchmarkdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "FXBenchmarkDate",
       "x": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in FXBenchmarkTime(3075)."
     },
     {
       "t": 3075,
       "n": "fxbenchmarktime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "FXBenchmarkTime",
       "x": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in FXBenchmarkDate(3074)."
     },
@@ -37513,14 +37508,14 @@
     {
       "t": 3123,
       "n": "legfxbenchmarkdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegFXBenchmarkDate",
       "x": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in LegFXBenchmarkTime(3124)."
     },
     {
       "t": 3124,
       "n": "legfxbenchmarktime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegFXBenchmarkTime",
       "x": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in LegFXBenchmarkDate(3123)."
     },
@@ -37825,7 +37820,7 @@
     {
       "t": 40013,
       "n": "additionaltermbondmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "AdditionalTermBondMaturityDate",
       "x": "The maturity date of the bond."
     },
@@ -37939,7 +37934,7 @@
     {
       "t": 40025,
       "n": "cashsettlvaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "CashSettlValuationTime",
       "x": "The time of valuation.",
       "s": "5.0SP2"
@@ -38086,7 +38081,7 @@
     {
       "t": 40044,
       "n": "contractualmatrixdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ContractualMatrixDate",
       "x": "The publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable."
     },
@@ -38119,7 +38114,7 @@
     {
       "t": 40048,
       "n": "financingtermsupplementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "FinancingTermSupplementDate",
       "x": "The publication date of the applicable version of the contractual supplement."
     },
@@ -38209,7 +38204,7 @@
     {
       "t": 40057,
       "n": "underlyingstreameffectivedateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamEffectiveDateUnadjusted",
       "x": "The unadjusted effective date."
     },
@@ -38261,14 +38256,14 @@
     {
       "t": 40064,
       "n": "underlyingstreameffectivedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamEffectiveDateAdjusted",
       "x": "The adjusted effective date."
     },
     {
       "t": 40065,
       "n": "streamterminationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamTerminationDateUnadjusted",
       "x": "The unadjusted termination date."
     },
@@ -38320,7 +38315,7 @@
     {
       "t": 40072,
       "n": "streamterminationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamTerminationDateAdjusted",
       "x": "The adjusted termination date."
     },
@@ -38342,7 +38337,7 @@
     {
       "t": 40075,
       "n": "streamfirstperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamFirstPeriodStartDateUnadjusted",
       "x": "The unadjusted first calculation period start date if before the effective date."
     },
@@ -38364,28 +38359,28 @@
     {
       "t": 40078,
       "n": "streamfirstperiodstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamFirstPeriodStartDateAdjusted",
       "x": "The adjusted first calculation period start date, if it is before the effective date."
     },
     {
       "t": 40079,
       "n": "streamfirstregularperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamFirstRegularPeriodStartDateUnadjusted",
       "x": "The unadjusted first start date of the regular calculation period, if there is an initial stub period."
     },
     {
       "t": 40080,
       "n": "streamfirstcompoundingperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamFirstCompoundingPeriodEndDateUnadjusted",
       "x": "The unadjusted end date of the initial compounding period."
     },
     {
       "t": 40081,
       "n": "streamlastregularperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamLastRegularPeriodEndDateUnadjusted",
       "x": "The unadjusted last regular period end date if there is a final stub period."
     },
@@ -38501,7 +38496,7 @@
     {
       "t": 40092,
       "n": "provisiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionDateUnadjusted",
       "x": "The unadjusted date of the provision."
     },
@@ -38523,7 +38518,7 @@
     {
       "t": 40095,
       "n": "provisiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionDateAdjusted",
       "x": "The adjusted date of the provision."
     },
@@ -38664,7 +38659,7 @@
     {
       "t": 40114,
       "n": "provisioncashsettlvaluetime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ProvisionCashSettlValueTime",
       "x": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "s": "5.0SP2"
@@ -38724,7 +38719,7 @@
     {
       "t": 40122,
       "n": "provisioncashsettlvaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionCashSettlValueDateAdjusted",
       "x": "The adjusted cash settlement value date."
     },
@@ -38776,7 +38771,7 @@
     {
       "t": 40129,
       "n": "provisionoptionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExerciseStartDateUnadjusted",
       "x": "The unadjusted first day of the exercise period for an American style option."
     },
@@ -38813,7 +38808,7 @@
     {
       "t": 40134,
       "n": "provisionoptionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExerciseStartDateAdjusted",
       "x": "The adjusted first day of the exercise period for an American style option."
     },
@@ -38827,21 +38822,21 @@
     {
       "t": 40136,
       "n": "provisionoptionexerciseboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExerciseBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 40137,
       "n": "provisionoptionexerciseboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExerciseBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 40138,
       "n": "provisionoptionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ProvisionOptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -38856,7 +38851,7 @@
     {
       "t": 40140,
       "n": "provisionoptionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ProvisionOptionExerciseLatestTime",
       "x": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "s": "5.0SP2"
@@ -38883,7 +38878,7 @@
     {
       "t": 40143,
       "n": "provisionoptionexercisefixeddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExerciseFixedDate",
       "x": "A predetermined option exercise date, unadjusted or adjusted depending on ProvisionOptionExerciseFixedDateType(40144)."
     },
@@ -38898,7 +38893,7 @@
     {
       "t": 40145,
       "n": "provisionoptionexpirationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExpirationDateUnadjusted",
       "x": "The unadjusted last day within an exercise period for an American style option. For a European style option it is the only day within the exercise period."
     },
@@ -38950,14 +38945,14 @@
     {
       "t": 40152,
       "n": "provisionoptionexpirationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionExpirationDateAdjusted",
       "x": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period."
     },
     {
       "t": 40153,
       "n": "provisionoptionexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ProvisionOptionExpirationTime",
       "x": "The latest time for exercise on the expiration date.",
       "s": "5.0SP2"
@@ -38972,7 +38967,7 @@
     {
       "t": 40155,
       "n": "provisionoptionrelevantunderlyingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionRelevantUnderlyingDateUnadjusted",
       "x": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -39024,7 +39019,7 @@
     {
       "t": 40162,
       "n": "provisionoptionrelevantunderlyingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionOptionRelevantUnderlyingDateAdjusted",
       "x": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -39076,14 +39071,14 @@
     {
       "t": 40169,
       "n": "provisioncashsettlpaymentdaterangefirst",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionCashSettlPaymentDateRangeFirst",
       "x": "First date in range when a settlement date range is provided."
     },
     {
       "t": 40170,
       "n": "provisioncashsettlpaymentdaterangelast",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionCashSettlPaymentDateRangeLast",
       "x": "The last date in range when a settlement date range is provided."
     },
@@ -39102,7 +39097,7 @@
     {
       "t": 40172,
       "n": "provisioncashsettlpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ProvisionCashSettlPaymentDate",
       "x": "The cash settlement payment date, unadjusted or adjusted depending on ProvisionCashSettlPaymentDateType(40173)."
     },
@@ -39538,7 +39533,7 @@
     {
       "t": 40219,
       "n": "paymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentDateUnadjusted",
       "x": "The unadjusted payment date."
     },
@@ -39560,7 +39555,7 @@
     {
       "t": 40222,
       "n": "paymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentDateAdjusted",
       "x": "The adjusted payment date."
     },
@@ -39798,7 +39793,7 @@
     {
       "t": 40249,
       "n": "legstreameffectivedateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamEffectiveDateUnadjusted",
       "x": "The unadjusted effective date."
     },
@@ -39850,14 +39845,14 @@
     {
       "t": 40256,
       "n": "legstreameffectivedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamEffectiveDateAdjusted",
       "x": "The adjusted effective date."
     },
     {
       "t": 40257,
       "n": "legstreamterminationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamTerminationDateUnadjusted",
       "x": "The unadjusted termination date."
     },
@@ -39909,7 +39904,7 @@
     {
       "t": 40264,
       "n": "legstreamterminationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamTerminationDateAdjusted",
       "x": "The adjusted termination date."
     },
@@ -39931,7 +39926,7 @@
     {
       "t": 40267,
       "n": "legstreamfirstperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamFirstPeriodStartDateUnadjusted",
       "x": "The unadjusted first calculation period start date if before the effective date."
     },
@@ -39953,28 +39948,28 @@
     {
       "t": 40270,
       "n": "legstreamfirstperiodstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamFirstPeriodStartDateAdjusted",
       "x": "The adjusted first calculation period start date, if it is before the effective date."
     },
     {
       "t": 40271,
       "n": "legstreamfirstregularperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamFirstRegularPeriodStartDateUnadjusted",
       "x": "The unadjusted first start date of the regular calculation period, if there is an initial stub period."
     },
     {
       "t": 40272,
       "n": "legstreamfirstcompoundingperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamFirstCompoundingPeriodEndDateUnadjusted",
       "x": "The unadjusted end date of the initial compounding period."
     },
     {
       "t": 40273,
       "n": "legstreamlastregularperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamLastRegularPeriodEndDateUnadjusted",
       "x": "The unadjusted last regular period end date if there is a final stub period."
     },
@@ -40160,14 +40155,14 @@
     {
       "t": 40297,
       "n": "legpaymentstreamfirstpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFirstPaymentDateUnadjusted",
       "x": "The unadjusted first payment date."
     },
     {
       "t": 40298,
       "n": "legpaymentstreamlastregularpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamLastRegularPaymentDateUnadjusted",
       "x": "The unadjusted last regular payment date."
     },
@@ -40294,7 +40289,7 @@
     {
       "t": 40315,
       "n": "legpaymentstreaminitialfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamInitialFixingDateAdjusted",
       "x": "The adjusted initial fixing date."
     },
@@ -40346,7 +40341,7 @@
     {
       "t": 40322,
       "n": "legpaymentstreamfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
@@ -40404,7 +40399,7 @@
     {
       "t": 40330,
       "n": "legpaymentstreamfuturevaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFutureValueDateAdjusted",
       "x": "The adjusted value date of the future value amount."
     },
@@ -40695,7 +40690,7 @@
     {
       "t": 40368,
       "n": "legnondeliverablefixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegNonDeliverableFixingDate",
       "x": "The non-deliverable fixing date. Type of date is specified in LegNonDeliverableFixingDateType(40369)."
     },
@@ -40819,14 +40814,14 @@
     {
       "t": 40377,
       "n": "legpaymentschedulestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentScheduleStartDateUnadjusted",
       "x": "The unadjusted date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment."
     },
     {
       "t": 40378,
       "n": "legpaymentscheduleenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentScheduleEndDateUnadjusted",
       "x": "The unadjusted end date of a cashflow payment."
     },
@@ -40958,7 +40953,7 @@
     {
       "t": 40396,
       "n": "legpaymentschedulefixingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentScheduleFixingDateUnadjusted",
       "x": "The unadjusted fixing date."
     },
@@ -41017,14 +41012,14 @@
     {
       "t": 40404,
       "n": "legpaymentschedulefixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentScheduleFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
     {
       "t": 40405,
       "n": "legpaymentschedulefixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegPaymentScheduleFixingTime",
       "x": "The fxing time associated with the step schedule.",
       "s": "5.0SP2"
@@ -41084,7 +41079,7 @@
     {
       "t": 40413,
       "n": "legpaymentscheduleinterimexchangedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentScheduleInterimExchangeDateAdjusted",
       "x": "The adjusted interim exchange date."
     },
@@ -41426,7 +41421,7 @@
     {
       "t": 40450,
       "n": "legprovisiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionDateUnadjusted",
       "x": "The unadjusted date of the provision."
     },
@@ -41448,7 +41443,7 @@
     {
       "t": 40453,
       "n": "legprovisiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionDateAdjusted",
       "x": "The adjusted date of the provision."
     },
@@ -41608,7 +41603,7 @@
     {
       "t": 40474,
       "n": "legprovisioncashsettlpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionCashSettlPaymentDate",
       "x": "The cash settlement payment date, unadjusted or adjusted depending on LegProvisionCashSettlPaymentDateType(40521)."
     },
@@ -41668,7 +41663,7 @@
     {
       "t": 40482,
       "n": "legprovisionoptionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExerciseStartDateUnadjusted",
       "x": "The unadjusted first day of the exercise period for an American style option."
     },
@@ -41705,7 +41700,7 @@
     {
       "t": 40487,
       "n": "legprovisionoptionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExerciseStartDateAdjusted",
       "x": "The adjusted first day of the exercise period for an American style option."
     },
@@ -41719,21 +41714,21 @@
     {
       "t": 40489,
       "n": "legprovisionoptionexerciseboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExerciseBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 40490,
       "n": "legprovisionoptionexerciseboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExerciseBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 40491,
       "n": "legprovisionoptionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegProvisionOptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -41748,7 +41743,7 @@
     {
       "t": 40493,
       "n": "legprovisionoptionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegProvisionOptionExerciseLatestTime",
       "x": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "s": "5.0SP2"
@@ -41775,7 +41770,7 @@
     {
       "t": 40496,
       "n": "legprovisionoptionexercisefixeddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExerciseFixedDate",
       "x": "A predetermined option exercise date unadjusted or adjusted depending on LegProvisionOptionExerciseFixedDateType(40497)."
     },
@@ -41790,7 +41785,7 @@
     {
       "t": 40498,
       "n": "legprovisionoptionexpirationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExpirationDateUnadjusted",
       "x": "The unadjusted last day within an exercise period for an American style option. For a European style option it is the only day within the exercise period."
     },
@@ -41842,14 +41837,14 @@
     {
       "t": 40505,
       "n": "legprovisionoptionexpirationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionExpirationDateAdjusted",
       "x": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period."
     },
     {
       "t": 40506,
       "n": "legprovisionoptionexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegProvisionOptionExpirationTime",
       "x": "The latest time for exercise on the expiration date.",
       "s": "5.0SP2"
@@ -41864,7 +41859,7 @@
     {
       "t": 40508,
       "n": "legprovisionoptionrelevantunderlyingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionRelevantUnderlyingDateUnadjusted",
       "x": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -41916,7 +41911,7 @@
     {
       "t": 40515,
       "n": "legprovisionoptionrelevantunderlyingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionOptionRelevantUnderlyingDateAdjusted",
       "x": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -41968,21 +41963,21 @@
     {
       "t": 40522,
       "n": "legprovisioncashsettlpaymentdaterangefirst",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionCashSettlPaymentDateRangeFirst",
       "x": "The first date in range when a settlement date range is provided."
     },
     {
       "t": 40523,
       "n": "legprovisioncashsettlpaymentdaterangelast",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionCashSettlPaymentDateRangeLast",
       "x": "The last date in range when a settlement date range is provided."
     },
     {
       "t": 40524,
       "n": "legprovisioncashsettlvaluetime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegProvisionCashSettlValueTime",
       "x": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "s": "5.0SP2"
@@ -42042,7 +42037,7 @@
     {
       "t": 40532,
       "n": "legprovisioncashsettlvaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegProvisionCashSettlValueDateAdjusted",
       "x": "The adjusted cash settlement value date."
     },
@@ -42196,7 +42191,7 @@
     {
       "t": 40548,
       "n": "underlyingstreamterminationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamTerminationDateUnadjusted",
       "x": "The unadjusted termination date."
     },
@@ -42248,7 +42243,7 @@
     {
       "t": 40555,
       "n": "underlyingstreamterminationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamTerminationDateAdjusted",
       "x": "The adjusted termination date."
     },
@@ -42270,7 +42265,7 @@
     {
       "t": 40558,
       "n": "underlyingstreamfirstperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamFirstPeriodStartDateUnadjusted",
       "x": "The unadjusted first calculation period start date if before the effective date."
     },
@@ -42292,28 +42287,28 @@
     {
       "t": 40561,
       "n": "underlyingstreamfirstperiodstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamFirstPeriodStartDateAdjusted",
       "x": "The adjusted first calculation period start date, if it is before the effective date."
     },
     {
       "t": 40562,
       "n": "underlyingstreamfirstregularperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamFirstRegularPeriodStartDateUnadjusted",
       "x": "The unadjusted first start date of the regular calculation period, if there is an initial stub period."
     },
     {
       "t": 40563,
       "n": "underlyingstreamfirstcompoundingperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamFirstCompoundingPeriodEndDateUnadjusted",
       "x": "The unadjusted end date of the initial compounding period."
     },
     {
       "t": 40564,
       "n": "underlyingstreamlastregularperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamLastRegularPeriodEndDateUnadjusted",
       "x": "The unadjusted last regular period end date if there is a final stub period."
     },
@@ -42477,14 +42472,14 @@
     {
       "t": 40586,
       "n": "underlyingpaymentstreamfirstpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFirstPaymentDateUnadjusted",
       "x": "The unadjusted first payment date."
     },
     {
       "t": 40587,
       "n": "underlyingpaymentstreamlastregularpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamLastRegularPaymentDateUnadjusted",
       "x": "The unadjusted last regular payment date."
     },
@@ -42611,7 +42606,7 @@
     {
       "t": 40604,
       "n": "underlyingpaymentstreaminitialfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamInitialFixingDateAdjusted",
       "x": "The adjusted initial fixing date."
     },
@@ -42663,7 +42658,7 @@
     {
       "t": 40611,
       "n": "underlyingpaymentstreamfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
@@ -42721,7 +42716,7 @@
     {
       "t": 40619,
       "n": "underlyingpaymentstreamfuturevaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFutureValueDateAdjusted",
       "x": "The adjusted value date of the future value amount."
     },
@@ -43011,7 +43006,7 @@
     {
       "t": 40657,
       "n": "underlyingnondeliverablefixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingNonDeliverableFixingDate",
       "x": "The non-deliverable fixing date unadjusted or adjusted depending on UnderlyingNonDeliverableFixingDateType(40658)."
     },
@@ -43148,14 +43143,14 @@
     {
       "t": 40667,
       "n": "underlyingpaymentschedulestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentScheduleStartDateUnadjusted",
       "x": "The unadjusted date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment."
     },
     {
       "t": 40668,
       "n": "underlyingpaymentscheduleenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentScheduleEndDateUnadjusted",
       "x": "The unadjusted end date of a cashflow payment."
     },
@@ -43287,7 +43282,7 @@
     {
       "t": 40686,
       "n": "underlyingpaymentschedulefixingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentScheduleFixingDateUnadjusted",
       "x": "The unadjusted fixing date."
     },
@@ -43346,14 +43341,14 @@
     {
       "t": 40694,
       "n": "underlyingpaymentschedulefixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentScheduleFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
     {
       "t": 40695,
       "n": "underlyingpaymentschedulefixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingPaymentScheduleFixingTime",
       "x": "The fixing time.",
       "s": "5.0SP2"
@@ -43413,7 +43408,7 @@
     {
       "t": 40703,
       "n": "underlyingpaymentscheduleinterimexchangedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentScheduleInterimExchangeDateAdjusted",
       "x": "The adjusted interim exchange date."
     },
@@ -43846,14 +43841,14 @@
     {
       "t": 40756,
       "n": "paymentstreamfirstpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFirstPaymentDateUnadjusted",
       "x": "The unadjusted first payment date."
     },
     {
       "t": 40757,
       "n": "paymentstreamlastregularpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamLastRegularPaymentDateUnadjusted",
       "x": "The unadjusted last regular payment date."
     },
@@ -43972,7 +43967,7 @@
     {
       "t": 40773,
       "n": "paymentstreaminitialfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamInitialFixingDateAdjusted",
       "x": "The adjusted initial fixing date."
     },
@@ -44024,7 +44019,7 @@
     {
       "t": 40780,
       "n": "paymentstreamfixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
@@ -44082,7 +44077,7 @@
     {
       "t": 40788,
       "n": "paymentstreamfuturevaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFutureValueDateAdjusted",
       "x": "The adjusted value date of the future value amount."
     },
@@ -44372,7 +44367,7 @@
     {
       "t": 40826,
       "n": "nondeliverablefixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "NonDeliverableFixingDate",
       "x": "Non-deliverable fixing date unadjusted or adjusted depending on NonDeliverableFixingDateType(40827)."
     },
@@ -44466,14 +44461,14 @@
     {
       "t": 40831,
       "n": "paymentschedulestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentScheduleStartDateUnadjusted",
       "x": "The date on which the value is adjusted, or calculated if a future value notional for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)), or the start date of a cashflow payment."
     },
     {
       "t": 40832,
       "n": "paymentscheduleenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentScheduleEndDateUnadjusted",
       "x": "The unadjusted end date of a cash flow payment."
     },
@@ -44605,7 +44600,7 @@
     {
       "t": 40850,
       "n": "paymentschedulefixingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentScheduleFixingDateUnadjusted",
       "x": "The unadjusted fixing date."
     },
@@ -44664,14 +44659,14 @@
     {
       "t": 40858,
       "n": "paymentschedulefixingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentScheduleFixingDateAdjusted",
       "x": "The adjusted fixing date."
     },
     {
       "t": 40859,
       "n": "paymentschedulefixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "PaymentScheduleFixingTime",
       "x": "The fixing time associated with the step schedule.",
       "s": "5.0SP2"
@@ -44731,7 +44726,7 @@
     {
       "t": 40867,
       "n": "paymentscheduleinterimexchangedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentScheduleInterimExchangeDateAdjusted",
       "x": "The adjusted interim exchange date."
     },
@@ -45073,7 +45068,7 @@
     {
       "t": 40907,
       "n": "streameffectivedateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamEffectiveDateUnadjusted",
       "x": "The unadjusted effective date."
     },
@@ -45125,7 +45120,7 @@
     {
       "t": 40914,
       "n": "streameffectivedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamEffectiveDateAdjusted",
       "x": "The adjusted effective date."
     },
@@ -46016,14 +46011,14 @@
     {
       "t": 41008,
       "n": "complexeventperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ComplexEventPeriodDate",
       "x": "The averaging date for an Asian option."
     },
     {
       "t": 41009,
       "n": "complexeventperiodtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ComplexEventPeriodTime",
       "x": "The averaging time for an Asian option.",
       "s": "5.0SP2"
@@ -46120,7 +46115,7 @@
     {
       "t": 41020,
       "n": "complexeventdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ComplexEventDateUnadjusted",
       "x": "The unadjusted complex event date."
     },
@@ -46165,14 +46160,14 @@
     {
       "t": 41026,
       "n": "complexeventdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ComplexEventDateAdjusted",
       "x": "The adjusted complex event date."
     },
     {
       "t": 41027,
       "n": "complexeventfixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ComplexEventFixingTime",
       "x": "The local market fixing time.",
       "s": "5.0SP2"
@@ -46220,14 +46215,14 @@
     {
       "t": 41032,
       "n": "complexeventschedulestartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ComplexEventScheduleStartDate",
       "x": "The start date of the schedule."
     },
     {
       "t": 41033,
       "n": "complexeventscheduleenddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ComplexEventScheduleEndDate",
       "x": "The end date of the schedule."
     },
@@ -46956,7 +46951,7 @@
     {
       "t": 41124,
       "n": "optionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseStartDateUnadjusted",
       "x": "The unadjusted start date for calculating periodic exercise dates."
     },
@@ -46993,7 +46988,7 @@
     {
       "t": 41129,
       "n": "optionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseStartDateAdjusted",
       "x": "The adjusted start date for calculating periodic exercise dates."
     },
@@ -47007,28 +47002,28 @@
     {
       "t": 41131,
       "n": "optionexercisenominationdeadline",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseNominationDeadline",
       "x": "Last date (adjusted) for establishing the option exercise terms."
     },
     {
       "t": 41132,
       "n": "optionexercisefirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseFirstDateUnadjusted",
       "x": "The unadjusted first exercise date."
     },
     {
       "t": 41133,
       "n": "optionexerciselastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseLastDateUnadjusted",
       "x": "The unadjusted last exercise date."
     },
     {
       "t": 41134,
       "n": "optionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "OptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -47036,7 +47031,7 @@
     {
       "t": 41135,
       "n": "optionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "OptionExerciseLatestTime",
       "x": "The latest exercise time. See also OptionExerciseEarliestTime(41134).",
       "s": "5.0SP2"
@@ -47063,7 +47058,7 @@
     {
       "t": 41138,
       "n": "optionexercisedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseDate",
       "x": "The option exercise fixed date, unadjusted or adjusted depending on OptionExerciseDateType(41139)."
     },
@@ -47157,7 +47152,7 @@
     {
       "t": 41150,
       "n": "optionexerciseexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "OptionExerciseExpirationTime",
       "x": "The option exercise expiration time.",
       "s": "5.0SP2"
@@ -47184,7 +47179,7 @@
     {
       "t": 41153,
       "n": "optionexerciseexpirationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "OptionExerciseExpirationDate",
       "x": "An adjusted or unadjusted fixed option exercise expiration date."
     },
@@ -47701,7 +47696,7 @@
     {
       "t": 41221,
       "n": "paymentstreampaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamPaymentDate",
       "x": "The adjusted or unadjusted fixed stream payment date."
     },
@@ -47735,7 +47730,7 @@
     {
       "t": 41225,
       "n": "paymentstreampricingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamPricingDate",
       "x": "The adjusted or unadjusted fixed stream pricing date."
     },
@@ -47795,7 +47790,7 @@
     {
       "t": 41232,
       "n": "pricingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PricingDateUnadjusted",
       "x": "The unadjusted pricing or fixing date."
     },
@@ -47810,14 +47805,14 @@
     {
       "t": 41234,
       "n": "pricingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PricingDateAdjusted",
       "x": "The adjusted pricing or fixing date."
     },
     {
       "t": 41235,
       "n": "pricingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "PricingTime",
       "x": "Specifies the local market time of the pricing or fixing.",
       "s": "5.0SP2"
@@ -47878,7 +47873,7 @@
     {
       "t": 41242,
       "n": "streamcalculationperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamCalculationPeriodDate",
       "x": "The adjusted or unadjusted fixed calculation period date."
     },
@@ -48071,7 +48066,7 @@
     {
       "t": 41268,
       "n": "streamcommoditysettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamCommoditySettlDateUnadjusted",
       "x": "The unadjusted commodity delivery date."
     },
@@ -48086,7 +48081,7 @@
     {
       "t": 41270,
       "n": "streamcommoditysettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamCommoditySettlDateAdjusted",
       "x": "The adjusted commodity delivery date."
     },
@@ -48585,7 +48580,7 @@
     {
       "t": 41329,
       "n": "legadditionaltermbondmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegAdditionalTermBondMaturityDate",
       "x": "The maturity date of the bond."
     },
@@ -48780,7 +48775,7 @@
     {
       "t": 41349,
       "n": "legcashsettlvaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegCashSettlValuationTime",
       "x": "Time of valuation.",
       "s": "5.0SP2"
@@ -49007,14 +49002,14 @@
     {
       "t": 41377,
       "n": "legcomplexeventperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegComplexEventPeriodDate",
       "x": "Averaging date for an Asian option."
     },
     {
       "t": 41378,
       "n": "legcomplexeventperiodtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegComplexEventPeriodTime",
       "x": "Averaging time for an Asian option.",
       "s": "5.0SP2"
@@ -49111,7 +49106,7 @@
     {
       "t": 41389,
       "n": "legcomplexeventdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegComplexEventDateUnadjusted",
       "x": "The unadjusted complex event date."
     },
@@ -49156,14 +49151,14 @@
     {
       "t": 41395,
       "n": "legcomplexeventdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegComplexEventDateAdjusted",
       "x": "The adjusted complex event date."
     },
     {
       "t": 41396,
       "n": "legcomplexeventfixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegComplexEventFixingTime",
       "x": "The local market fixing time.",
       "s": "5.0SP2"
@@ -49211,14 +49206,14 @@
     {
       "t": 41401,
       "n": "legcomplexeventschedulestartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegComplexEventScheduleStartDate",
       "x": "The start date of the schedule."
     },
     {
       "t": 41402,
       "n": "legcomplexeventscheduleenddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegComplexEventScheduleEndDate",
       "x": "The end date of the schedule."
     },
@@ -49995,7 +49990,7 @@
     {
       "t": 41499,
       "n": "legoptionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseStartDateUnadjusted",
       "x": "The unadjusted start date for calculating periodic exercise dates."
     },
@@ -50032,7 +50027,7 @@
     {
       "t": 41504,
       "n": "legoptionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseStartDateAdjusted",
       "x": "The adjusted start date for calculating periodic exercise dates."
     },
@@ -50046,28 +50041,28 @@
     {
       "t": 41506,
       "n": "legoptionexercisenominationdeadline",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseNominationDeadline",
       "x": "The last date (adjusted) for establishing the option exercise terms."
     },
     {
       "t": 41507,
       "n": "legoptionexercisefirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseFirstDateUnadjusted",
       "x": "The unadjusted first exercise date."
     },
     {
       "t": 41508,
       "n": "legoptionexerciselastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseLastDateUnadjusted",
       "x": "The unadjusted last exercise date."
     },
     {
       "t": 41509,
       "n": "legoptionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegOptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -50075,7 +50070,7 @@
     {
       "t": 41510,
       "n": "legoptionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegOptionExerciseLatestTime",
       "x": "The latest exercise time. See also LegOptionExerciseEarliestTime(41509).",
       "s": "5.0SP2"
@@ -50102,7 +50097,7 @@
     {
       "t": 41513,
       "n": "legoptionexercisedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseDate",
       "x": "The adjusted or unadjusted option exercise fixed date."
     },
@@ -50196,7 +50191,7 @@
     {
       "t": 41525,
       "n": "legoptionexerciseexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegOptionExerciseExpirationTime",
       "x": "The option exercise expiration time.",
       "s": "5.0SP2"
@@ -50223,7 +50218,7 @@
     {
       "t": 41528,
       "n": "legoptionexerciseexpirationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegOptionExerciseExpirationDate",
       "x": "The adjusted or unadjusted option exercise expiration fixed date."
     },
@@ -50695,7 +50690,7 @@
     {
       "t": 41590,
       "n": "legpaymentstreampaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamPaymentDate",
       "x": "The adjusted or unadjusted fixed stream payment date."
     },
@@ -50729,7 +50724,7 @@
     {
       "t": 41594,
       "n": "legpaymentstreampricingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamPricingDate",
       "x": "The adjusted or unadusted fixed stream pricing date."
     },
@@ -50858,7 +50853,7 @@
     {
       "t": 41609,
       "n": "legpricingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPricingDateUnadjusted",
       "x": "The unadjusted pricing or fixing date."
     },
@@ -50873,14 +50868,14 @@
     {
       "t": 41611,
       "n": "legpricingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPricingDateAdjusted",
       "x": "The adjusted pricing or fixing date."
     },
     {
       "t": 41612,
       "n": "legpricingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegPricingTime",
       "x": "The local market pricing or fixing time.",
       "s": "5.0SP2"
@@ -51113,7 +51108,7 @@
     {
       "t": 41639,
       "n": "legstreamcalculationperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamCalculationPeriodDate",
       "x": "The adjusted or unadjusted fixed calculation period date."
     },
@@ -51306,7 +51301,7 @@
     {
       "t": 41665,
       "n": "legstreamcommoditysettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamCommoditySettlDateUnadjusted",
       "x": "The unadjusted commodity delivery date."
     },
@@ -51321,7 +51316,7 @@
     {
       "t": 41667,
       "n": "legstreamcommoditysettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamCommoditySettlDateAdjusted",
       "x": "The adjusted commodity delivery date."
     },
@@ -51825,14 +51820,14 @@
     {
       "t": 41727,
       "n": "underlyingcomplexeventperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingComplexEventPeriodDate",
       "x": "The averaging date for an Asian option."
     },
     {
       "t": 41728,
       "n": "underlyingcomplexeventperiodtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingComplexEventPeriodTime",
       "x": "The averaging time for an Asian option.",
       "s": "5.0SP2"
@@ -51929,7 +51924,7 @@
     {
       "t": 41739,
       "n": "underlyingcomplexeventdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingComplexEventDateUnadjusted",
       "x": "The unadjusted complex event date."
     },
@@ -51974,14 +51969,14 @@
     {
       "t": 41745,
       "n": "underlyingcomplexeventdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingComplexEventDateAdjusted",
       "x": "The adjusted complex event date."
     },
     {
       "t": 41746,
       "n": "underlyingcomplexeventfixingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingComplexEventFixingTime",
       "x": "The local market fixing time.",
       "s": "5.0SP2"
@@ -52029,14 +52024,14 @@
     {
       "t": 41751,
       "n": "underlyingcomplexeventschedulestartdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingComplexEventScheduleStartDate",
       "x": "The start date of the schedule."
     },
     {
       "t": 41752,
       "n": "underlyingcomplexeventscheduleenddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingComplexEventScheduleEndDate",
       "x": "The end date of the schedule."
     },
@@ -52640,7 +52635,7 @@
     {
       "t": 41828,
       "n": "underlyingoptionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseStartDateUnadjusted",
       "x": "The unadjusted start date for calculating periodic exercise dates."
     },
@@ -52677,7 +52672,7 @@
     {
       "t": 41833,
       "n": "underlyingoptionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseStartDateAdjusted",
       "x": "The adjusted start date for calculating periodic exercise dates."
     },
@@ -52691,28 +52686,28 @@
     {
       "t": 41835,
       "n": "underlyingoptionexercisenominationdeadline",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseNominationDeadline",
       "x": "The last date (adjusted) for establishing the option exercise terms."
     },
     {
       "t": 41836,
       "n": "underlyingoptionexercisefirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseFirstDateUnadjusted",
       "x": "The unadjusted first exercise date."
     },
     {
       "t": 41837,
       "n": "underlyingoptionexerciselastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseLastDateUnadjusted",
       "x": "The unadjusted last exercise date."
     },
     {
       "t": 41838,
       "n": "underlyingoptionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingOptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -52720,7 +52715,7 @@
     {
       "t": 41839,
       "n": "underlyingoptionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingOptionExerciseLatestTime",
       "x": "Latest exercise time. See also UnderlyingOptionExerciseEarliestTime(41838).",
       "s": "5.0SP2"
@@ -52747,7 +52742,7 @@
     {
       "t": 41842,
       "n": "underlyingoptionexercisedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseDate",
       "x": "The adjusted or unadjusted option exercise fixed date."
     },
@@ -52841,7 +52836,7 @@
     {
       "t": 41854,
       "n": "underlyingoptionexerciseexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingOptionExerciseExpirationTime",
       "x": "The option exercise expiration time.",
       "s": "5.0SP2"
@@ -52868,7 +52863,7 @@
     {
       "t": 41857,
       "n": "underlyingoptionexerciseexpirationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingOptionExerciseExpirationDate",
       "x": "The adjusted or unadjusted option exercise expiration fixed date."
     },
@@ -53500,7 +53495,7 @@
     {
       "t": 41938,
       "n": "underlyingpaymentstreampaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamPaymentDate",
       "x": "The adjusted or unadjusted fixed stream payment date."
     },
@@ -53534,7 +53529,7 @@
     {
       "t": 41942,
       "n": "underlyingpaymentstreampricingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamPricingDate",
       "x": "An adjusted or unadjusted fixed pricing date."
     },
@@ -53594,7 +53589,7 @@
     {
       "t": 41949,
       "n": "underlyingpricingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPricingDateUnadjusted",
       "x": "The unadjusted pricing or fixing date."
     },
@@ -53609,14 +53604,14 @@
     {
       "t": 41951,
       "n": "underlyingpricingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPricingDateAdjusted",
       "x": "The adjusted pricing or fixing date."
     },
     {
       "t": 41952,
       "n": "underlyingpricingtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingPricingTime",
       "x": "The local market pricing or fixing time.",
       "s": "5.0SP2"
@@ -53643,7 +53638,7 @@
     {
       "t": 41955,
       "n": "underlyingstreamcalculationperioddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamCalculationPeriodDate",
       "x": "The adjusted or unadjusted fixed calculation period date."
     },
@@ -53836,7 +53831,7 @@
     {
       "t": 41981,
       "n": "underlyingstreamcommoditysettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamCommoditySettlDateUnadjusted",
       "x": "The unadjusted commodity delivery date."
     },
@@ -53851,7 +53846,7 @@
     {
       "t": 41983,
       "n": "underlyingstreamcommoditysettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamCommoditySettlDateAdjusted",
       "x": "The adjusted commodity delivery date."
     },
@@ -54238,7 +54233,7 @@
     {
       "t": 42030,
       "n": "underlyingadditionaltermbondmaturitydate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingAdditionalTermBondMaturityDate",
       "x": "The maturity date of the bond."
     },
@@ -54384,7 +54379,7 @@
     {
       "t": 42046,
       "n": "underlyingcashsettlvaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingCashSettlValuationTime",
       "x": "Time of valuation.",
       "s": "5.0SP2"
@@ -54799,14 +54794,14 @@
     {
       "t": 42097,
       "n": "underlyingprovisioncashsettlpaymentdaterangefirst",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionCashSettlPaymentDateRangeFirst",
       "x": "First date in range when a settlement date range is provided."
     },
     {
       "t": 42098,
       "n": "underlyingprovisioncashsettlpaymentdaterangelast",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionCashSettlPaymentDateRangeLast",
       "x": "Last date in range when a settlement date range is provided."
     },
@@ -54825,7 +54820,7 @@
     {
       "t": 42100,
       "n": "underlyingprovisioncashsettlpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionCashSettlPaymentDate",
       "x": "The cash settlement payment date, unadjusted or adjusted depending on UnderlyingProvisionCashSettlPaymentDateType(42101)."
     },
@@ -54855,7 +54850,7 @@
     {
       "t": 42104,
       "n": "underlyingprovisioncashsettlvaluetime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingProvisionCashSettlValueTime",
       "x": "A time specified in 24-hour format, e.g. 11am would be represented as 11:00:00. The time of the cash settlement valuation date when the cash settlement amount will be determined according to the cash settlement method if the parties have not otherwise been able to agree to the cash settlement amount.",
       "s": "5.0SP2"
@@ -54908,7 +54903,7 @@
     {
       "t": 42111,
       "n": "underlyingprovisioncashsettlvaluedateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionCashSettlValueDateAdjusted",
       "x": "The adjusted cash settlement value date."
     },
@@ -54927,7 +54922,7 @@
     {
       "t": 42113,
       "n": "underlyingprovisionoptionexercisefixeddate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExerciseFixedDate",
       "x": "A predetermined option exercise date, unadjusted or adjusted depending on UnderlyingProvisionOptionExerciseFixedDateType(42114)."
     },
@@ -54980,7 +54975,7 @@
     {
       "t": 42120,
       "n": "underlyingprovisionoptionexercisestartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExerciseStartDateUnadjusted",
       "x": "The unadjusted first day of the exercise period for an American style option."
     },
@@ -55017,7 +55012,7 @@
     {
       "t": 42125,
       "n": "underlyingprovisionoptionexercisestartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExerciseStartDateAdjusted",
       "x": "The adjusted first day of the exercise period for an American style option."
     },
@@ -55031,21 +55026,21 @@
     {
       "t": 42127,
       "n": "underlyingprovisionoptionexerciseboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExerciseBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 42128,
       "n": "underlyingprovisionoptionexerciseboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExerciseBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of a schedule. This can be used to restrict the range of exercise dates when they are relative."
     },
     {
       "t": 42129,
       "n": "underlyingprovisionoptionexerciseearliesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingProvisionOptionExerciseEarliestTime",
       "x": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) i) on the expriation date, in the case of a European style option, (ii) on each bermuda option exercise date and the expiration date, in the case of a Bermuda style option the commencement date to, and including, the expiration date, in the case of an American option.",
       "s": "5.0SP2"
@@ -55060,7 +55055,7 @@
     {
       "t": 42131,
       "n": "underlyingprovisionoptionexerciselatesttime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingProvisionOptionExerciseLatestTime",
       "x": "For a Bermuda or American style option, the latest time on an exercise business day (excluding the expiration date) within the exercise period that notice can be given by the buyer to the seller or seller's agent. Notice of exercise given after this time will be deemed to have been given on the next exercise business day.",
       "s": "5.0SP2"
@@ -55075,7 +55070,7 @@
     {
       "t": 42133,
       "n": "underlyingprovisionoptionexpirationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExpirationDateUnadjusted",
       "x": "The unadjusted last day within an exercise period for an American style option. For a European style option it is the only day within the exercise period."
     },
@@ -55120,14 +55115,14 @@
     {
       "t": 42139,
       "n": "underlyingprovisionoptionexpirationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionExpirationDateAdjusted",
       "x": "The adjusted last date within an exercise period for an American style option. For a European style option it is the only date within the exercise period."
     },
     {
       "t": 42140,
       "n": "underlyingprovisionoptionexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingProvisionOptionExpirationTime",
       "x": "The latest time for exercise on the expiration date.",
       "s": "5.0SP2"
@@ -55142,7 +55137,7 @@
     {
       "t": 42142,
       "n": "underlyingprovisionoptionrelevantunderlyingdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionRelevantUnderlyingDateUnadjusted",
       "x": "The unadjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -55187,7 +55182,7 @@
     {
       "t": 42148,
       "n": "underlyingprovisionoptionrelevantunderlyingdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionOptionRelevantUnderlyingDateAdjusted",
       "x": "The adjusted date on the underlying set by the exercise of an option. What this date is depends on the option (e.g. in a swaption it is the swap effective date, in an extendible/cancelable provision it is the swap termination date)."
     },
@@ -55237,7 +55232,7 @@
     {
       "t": 42151,
       "n": "underlyingprovisiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionDateUnadjusted",
       "x": "The unadjusted date of the provision."
     },
@@ -55252,7 +55247,7 @@
     {
       "t": 42153,
       "n": "underlyingprovisiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingProvisionDateAdjusted",
       "x": "The adjusted date of the provision."
     },
@@ -55653,7 +55648,7 @@
     {
       "t": 42202,
       "n": "legfinancingtermsupplementdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegFinancingTermSupplementDate",
       "x": "Specifies the publication date of the applicable version of the contractual supplement."
     },
@@ -55680,7 +55675,7 @@
     {
       "t": 42205,
       "n": "legcontractualmatrixdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegContractualMatrixDate",
       "x": "Specifies the publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable."
     },
@@ -55694,7 +55689,7 @@
     {
       "t": 42207,
       "n": "cashsettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CashSettlDateUnadjusted",
       "x": "The unadjusted cash settlement date."
     },
@@ -55739,7 +55734,7 @@
     {
       "t": 42213,
       "n": "cashsettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "CashSettlDateAdjusted",
       "x": "The adjusted cash settlement date."
     },
@@ -55963,7 +55958,7 @@
     {
       "t": 42242,
       "n": "dividendaccrualpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendAccrualPaymentDateUnadjusted",
       "x": "The unadjusted accrual payment date."
     },
@@ -55978,7 +55973,7 @@
     {
       "t": 42244,
       "n": "dividendaccrualpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendAccrualPaymentDateAdjusted",
       "x": "The adjusted accrual payment date."
     },
@@ -56162,7 +56157,7 @@
     {
       "t": 42269,
       "n": "dividendfxtriggerdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendFXTriggerDateUnadjusted",
       "x": "The unadjusted FX trigger date."
     },
@@ -56177,7 +56172,7 @@
     {
       "t": 42271,
       "n": "dividendfxtriggerdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendFXTriggerDateAdjusted",
       "x": "The adjusted FX trigger date."
     },
@@ -56238,14 +56233,14 @@
     {
       "t": 42276,
       "n": "dividendperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodStartDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will begin."
     },
     {
       "t": 42277,
       "n": "dividendperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodEndDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will end."
     },
@@ -56274,7 +56269,7 @@
     {
       "t": 42281,
       "n": "dividendperiodvaluationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodValuationDateUnadjusted",
       "x": "The unadjusted dividend period valuation date."
     },
@@ -56311,14 +56306,14 @@
     {
       "t": 42286,
       "n": "dividendperiodvaluationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodValuationDateAdjusted",
       "x": "The adjusted dividend period valuation date."
     },
     {
       "t": 42287,
       "n": "dividendperiodpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodPaymentDateUnadjusted",
       "x": "The unadjusted dividend period payment date."
     },
@@ -56355,7 +56350,7 @@
     {
       "t": 42292,
       "n": "dividendperiodpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "DividendPeriodPaymentDateAdjusted",
       "x": "The adjusted dividend period payment date."
     },
@@ -56414,7 +56409,7 @@
     {
       "t": 42299,
       "n": "legcashsettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegCashSettlDateUnadjusted",
       "x": "The unadjusted cash settlement date."
     },
@@ -56459,7 +56454,7 @@
     {
       "t": 42305,
       "n": "legcashsettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegCashSettlDateAdjusted",
       "x": "The adjusted cash settlement date."
     },
@@ -56683,7 +56678,7 @@
     {
       "t": 42334,
       "n": "legdividendaccrualpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendAccrualPaymentDateUnadjusted",
       "x": "The unadjusted accrual payment date."
     },
@@ -56698,7 +56693,7 @@
     {
       "t": 42336,
       "n": "legdividendaccrualpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendAccrualPaymentDateAdjusted",
       "x": "The adjusted accrual payment date."
     },
@@ -56882,7 +56877,7 @@
     {
       "t": 42361,
       "n": "legdividendfxtriggerdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendFXTriggerDateUnadjusted",
       "x": "The unadjusted FX trigger date."
     },
@@ -56897,7 +56892,7 @@
     {
       "t": 42363,
       "n": "legdividendfxtriggerdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendFXTriggerDateAdjusted",
       "x": "The adjusted FX trigger date."
     },
@@ -56958,14 +56953,14 @@
     {
       "t": 42368,
       "n": "legdividendperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodStartDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will begin."
     },
     {
       "t": 42369,
       "n": "legdividendperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodEndDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will end."
     },
@@ -56994,7 +56989,7 @@
     {
       "t": 42373,
       "n": "legdividendperiodvaluationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodValuationDateUnadjusted",
       "x": "The unadjusted dividend period valuation date."
     },
@@ -57031,14 +57026,14 @@
     {
       "t": 42378,
       "n": "legdividendperiodvaluationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodValuationDateAdjusted",
       "x": "The adjusted dividend period valuation date."
     },
     {
       "t": 42379,
       "n": "legdividendperiodpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodPaymentDateUnadjusted",
       "x": "The unadjusted dividend period payment date."
     },
@@ -57075,7 +57070,7 @@
     {
       "t": 42384,
       "n": "legdividendperiodpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegDividendPeriodPaymentDateAdjusted",
       "x": "The adjusted dividend period payment date."
     },
@@ -57142,7 +57137,7 @@
     {
       "t": 42392,
       "n": "legmakewholedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegMakeWholeDate",
       "x": "The date through which option cannot be exercised without penalty."
     },
@@ -57250,7 +57245,7 @@
     {
       "t": 42406,
       "n": "legpaymentstreamcompoundingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamCompoundingDate",
       "x": "The compounding date. Type of date is specified in LegPaymentStreamCompoundingDateType(42407)."
     },
@@ -57333,14 +57328,14 @@
     {
       "t": 42417,
       "n": "legpaymentstreamboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 42418,
       "n": "legpaymentstreamboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
@@ -57365,7 +57360,7 @@
     {
       "t": 42421,
       "n": "legpaymentstreamcompoundingenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamCompoundingEndDateUnadjusted",
       "x": "The unadjusted compounding end date."
     },
@@ -57402,7 +57397,7 @@
     {
       "t": 42426,
       "n": "legpaymentstreamcompoundingenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamCompoundingEndDateAdjusted",
       "x": "The adjusted compounding end date."
     },
@@ -57545,7 +57540,7 @@
     {
       "t": 42445,
       "n": "legpaymentstreamcompoundingstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamCompoundingStartDateUnadjusted",
       "x": "The unadjusted compounding start date."
     },
@@ -57582,7 +57577,7 @@
     {
       "t": 42450,
       "n": "legpaymentstreamcompoundingstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamCompoundingStartDateAdjusted",
       "x": "The adjusted compounding start date."
     },
@@ -57603,7 +57598,7 @@
     {
       "t": 42453,
       "n": "legpaymentstreamfinalpricepaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFinalPricePaymentDateUnadjusted",
       "x": "The unadjusted final price payment date."
     },
@@ -57640,7 +57635,7 @@
     {
       "t": 42458,
       "n": "legpaymentstreamfinalpricepaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFinalPricePaymentDateAdjusted",
       "x": "The adjusted final price payment date."
     },
@@ -57659,7 +57654,7 @@
     {
       "t": 42460,
       "n": "legpaymentstreamfixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFixingDate",
       "x": "The fixing date. Type of date is specified in LegPaymentStreamFixingDateType(42461)."
     },
@@ -57674,7 +57669,7 @@
     {
       "t": 42462,
       "n": "legpaymentstreamfirstobservationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFirstObservationDateUnadjusted",
       "x": "The unadjusted initial price observation date."
     },
@@ -57696,7 +57691,7 @@
     {
       "t": 42465,
       "n": "legpaymentstreamfirstobservationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStreamFirstObservationDateAdjusted",
       "x": "The adjusted initial price observation date."
     },
@@ -57865,7 +57860,7 @@
     {
       "t": 42488,
       "n": "legpaymentstubenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStubEndDateUnadjusted",
       "x": "The unadjusted stub end date."
     },
@@ -57910,7 +57905,7 @@
     {
       "t": 42494,
       "n": "legpaymentstubenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStubEndDateAdjusted",
       "x": "The adjusted stub end date."
     },
@@ -57935,7 +57930,7 @@
     {
       "t": 42497,
       "n": "legpaymentstubstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStubStartDateUnadjusted",
       "x": "The unadjusted stub start date."
     },
@@ -57980,7 +57975,7 @@
     {
       "t": 42503,
       "n": "legpaymentstubstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegPaymentStubStartDateAdjusted",
       "x": "The adjusted stub start date."
     },
@@ -58089,7 +58084,7 @@
     {
       "t": 42514,
       "n": "legreturnratevaluationstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateValuationStartDateUnadjusted",
       "x": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -58126,14 +58121,14 @@
     {
       "t": 42519,
       "n": "legreturnratevaluationstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateValuationStartDateAdjusted",
       "x": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 42520,
       "n": "legreturnratevaluationenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateValuationEndDateUnadjusted",
       "x": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -58170,7 +58165,7 @@
     {
       "t": 42525,
       "n": "legreturnratevaluationenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateValuationEndDateAdjusted",
       "x": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -58373,7 +58368,7 @@
     {
       "t": 42548,
       "n": "legreturnratequotetime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegReturnRateQuoteTime",
       "x": "The time when the quote is to be generated.",
       "s": "5.0SP2"
@@ -58381,14 +58376,14 @@
     {
       "t": 42549,
       "n": "legreturnratequotedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateQuoteDate",
       "x": "The date when the quote is to be generated."
     },
     {
       "t": 42550,
       "n": "legreturnratequoteexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegReturnRateQuoteExpirationTime",
       "x": "The time when the quote ceases to be valid.",
       "s": "5.0SP2"
@@ -58432,7 +58427,7 @@
     {
       "t": 42556,
       "n": "legreturnratevaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "LegReturnRateValuationTime",
       "x": "The time at which the calculation agent values the underlying asset.",
       "s": "5.0SP2"
@@ -58572,7 +58567,7 @@
     {
       "t": 42572,
       "n": "legreturnratevaluationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegReturnRateValuationDate",
       "x": "The return rate valuation date. The type of date is specified in LegReturnRateValuationDateType(42573)."
     },
@@ -58587,7 +58582,7 @@
     {
       "t": 42574,
       "n": "legsettlmethodelectiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegSettlMethodElectionDateUnadjusted",
       "x": "The unadjusted settlement method election date."
     },
@@ -58632,7 +58627,7 @@
     {
       "t": 42580,
       "n": "legsettlmethodelectiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegSettlMethodElectionDateAdjusted",
       "x": "The adjusted settlement method election date."
     },
@@ -58664,7 +58659,7 @@
     {
       "t": 42584,
       "n": "legstreamversioneffectivedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "LegStreamVersionEffectiveDate",
       "x": "The effective date of the LegStreamVersion(42583)."
     },
@@ -58715,7 +58710,7 @@
     {
       "t": 42591,
       "n": "makewholedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "MakeWholeDate",
       "x": "The date through which option cannot be exercised without penalty."
     },
@@ -58837,7 +58832,7 @@
     {
       "t": 42607,
       "n": "paymentstreamcompoundingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamCompoundingDate",
       "x": "The compounding date. The type of date is specified in PaymentStreamCompoundingDateType(42608)."
     },
@@ -58920,14 +58915,14 @@
     {
       "t": 42618,
       "n": "paymentstreamboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 42619,
       "n": "paymentstreamboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
@@ -58952,7 +58947,7 @@
     {
       "t": 42622,
       "n": "paymentstreamcompoundingenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamCompoundingEndDateUnadjusted",
       "x": "The unadjusted compounding end date."
     },
@@ -58989,7 +58984,7 @@
     {
       "t": 42627,
       "n": "paymentstreamcompoundingenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamCompoundingEndDateAdjusted",
       "x": "The adjusted compounding end date."
     },
@@ -59132,7 +59127,7 @@
     {
       "t": 42646,
       "n": "paymentstreamcompoundingstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamCompoundingStartDateUnadjusted",
       "x": "The unadjusted compounding start date."
     },
@@ -59169,7 +59164,7 @@
     {
       "t": 42651,
       "n": "paymentstreamcompoundingstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamCompoundingStartDateAdjusted",
       "x": "The adjusted compounding start date."
     },
@@ -59190,7 +59185,7 @@
     {
       "t": 42654,
       "n": "paymentstreamfinalpricepaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFinalPricePaymentDateUnadjusted",
       "x": "The unadjusted final price payment date."
     },
@@ -59227,7 +59222,7 @@
     {
       "t": 42659,
       "n": "paymentstreamfinalpricepaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFinalPricePaymentDateAdjusted",
       "x": "The adjusted final price payment date."
     },
@@ -59246,7 +59241,7 @@
     {
       "t": 42661,
       "n": "paymentstreamfixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFixingDate",
       "x": "The fixing date. The type of date is specified in PaymentStreamFixingDateType(42662)."
     },
@@ -59261,7 +59256,7 @@
     {
       "t": 42663,
       "n": "paymentstreamfirstobservationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFirstObservationDateUnadjusted",
       "x": "The unadjusted initial price observation date."
     },
@@ -59283,7 +59278,7 @@
     {
       "t": 42666,
       "n": "paymentstreamfirstobservationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStreamFirstObservationDateAdjusted",
       "x": "The adjusted initial price observation date."
     },
@@ -59452,7 +59447,7 @@
     {
       "t": 42689,
       "n": "paymentstubenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStubEndDateUnadjusted",
       "x": "The unadjusted stub end date."
     },
@@ -59497,7 +59492,7 @@
     {
       "t": 42695,
       "n": "paymentstubenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStubEndDateAdjusted",
       "x": "The adjusted stub end date."
     },
@@ -59522,7 +59517,7 @@
     {
       "t": 42698,
       "n": "paymentstubstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStubStartDateUnadjusted",
       "x": "The unadjusted stub start date."
     },
@@ -59567,7 +59562,7 @@
     {
       "t": 42704,
       "n": "paymentstubstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "PaymentStubStartDateAdjusted",
       "x": "The adjusted stub start date."
     },
@@ -59676,7 +59671,7 @@
     {
       "t": 42715,
       "n": "returnratevaluationstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateValuationStartDateUnadjusted",
       "x": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -59713,14 +59708,14 @@
     {
       "t": 42720,
       "n": "returnratevaluationstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateValuationStartDateAdjusted",
       "x": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 42721,
       "n": "returnratevaluationenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateValuationEndDateUnadjusted",
       "x": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -59757,7 +59752,7 @@
     {
       "t": 42726,
       "n": "returnratevaluationenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateValuationEndDateAdjusted",
       "x": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -59960,7 +59955,7 @@
     {
       "t": 42749,
       "n": "returnratequotetime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ReturnRateQuoteTime",
       "x": "The time when the quote is to be generated.",
       "s": "5.0SP2"
@@ -59968,14 +59963,14 @@
     {
       "t": 42750,
       "n": "returnratequotedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateQuoteDate",
       "x": "The date when the quote is to be generated."
     },
     {
       "t": 42751,
       "n": "returnratequoteexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ReturnRateQuoteExpirationTime",
       "x": "The time when the quote ceases to be valid.",
       "s": "5.0SP2"
@@ -60019,7 +60014,7 @@
     {
       "t": 42757,
       "n": "returnratevaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "ReturnRateValuationTime",
       "x": "The time at which the calculation agent values the underlying asset.",
       "s": "5.0SP2"
@@ -60159,7 +60154,7 @@
     {
       "t": 42773,
       "n": "returnratevaluationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "ReturnRateValuationDate",
       "x": "The return rate valuation date. Type of date is specified in ReturnRateValuationDateType(42774)."
     },
@@ -60192,7 +60187,7 @@
     {
       "t": 42777,
       "n": "settlmethodelectiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "SettlMethodElectionDateUnadjusted",
       "x": "The unadjusted settlement method election date."
     },
@@ -60237,7 +60232,7 @@
     {
       "t": 42783,
       "n": "settlmethodelectiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "SettlMethodElectionDateAdjusted",
       "x": "The adjusted settlement method election date."
     },
@@ -60251,7 +60246,7 @@
     {
       "t": 42785,
       "n": "streamversioneffectivedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "StreamVersionEffectiveDate",
       "x": "The effective date of the StreamVersion(42784)."
     },
@@ -60291,7 +60286,7 @@
     {
       "t": 42790,
       "n": "underlyingcashsettldateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingCashSettlDateUnadjusted",
       "x": "The unadjusted cash settlement date."
     },
@@ -60336,7 +60331,7 @@
     {
       "t": 42796,
       "n": "underlyingcashsettldateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingCashSettlDateAdjusted",
       "x": "The adjusted cash settlement date."
     },
@@ -60542,7 +60537,7 @@
     {
       "t": 42823,
       "n": "underlyingdividendaccrualpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendAccrualPaymentDateUnadjusted",
       "x": "The unadjusted accrual payment date."
     },
@@ -60557,7 +60552,7 @@
     {
       "t": 42825,
       "n": "underlyingdividendaccrualpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendAccrualPaymentDateAdjusted",
       "x": "The adjusted accrual payment date."
     },
@@ -60741,7 +60736,7 @@
     {
       "t": 42850,
       "n": "underlyingdividendfxtriggerdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendFXTriggerDateUnadjusted",
       "x": "The unadjusted FX trigger date."
     },
@@ -60756,7 +60751,7 @@
     {
       "t": 42852,
       "n": "underlyingdividendfxtriggerdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendFXTriggerDateAdjusted",
       "x": "The adjusted FX trigger date."
     },
@@ -60795,7 +60790,7 @@
     {
       "t": 42856,
       "n": "underlyingdividendpaymentdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPaymentDate",
       "x": "Specifies the date that the dividend or coupon payment is due."
     },
@@ -60873,14 +60868,14 @@
     {
       "t": 42864,
       "n": "underlyingdividendperiodstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodStartDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will begin."
     },
     {
       "t": 42865,
       "n": "underlyingdividendperiodenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodEndDateUnadjusted",
       "x": "The unadjusted date on which the dividend period will end."
     },
@@ -60909,7 +60904,7 @@
     {
       "t": 42869,
       "n": "underlyingdividendperiodvaluationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodValuationDateUnadjusted",
       "x": "The unadjusted dividend period valuation date."
     },
@@ -60946,14 +60941,14 @@
     {
       "t": 42874,
       "n": "underlyingdividendperiodvaluationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodValuationDateAdjusted",
       "x": "The adjusted dividend period valuation date."
     },
     {
       "t": 42875,
       "n": "underlyingdividendperiodpaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodPaymentDateUnadjusted",
       "x": "The unadjusted dividend period payment date."
     },
@@ -60990,7 +60985,7 @@
     {
       "t": 42880,
       "n": "underlyingdividendperiodpaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingDividendPeriodPaymentDateAdjusted",
       "x": "The adjusted dividend period payment date."
     },
@@ -61057,7 +61052,7 @@
     {
       "t": 42888,
       "n": "underlyingmakewholedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingMakeWholeDate",
       "x": "The date through which the option cannot be exercised without penalty."
     },
@@ -61165,7 +61160,7 @@
     {
       "t": 42902,
       "n": "underlyingpaymentstreamcompoundingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamCompoundingDate",
       "x": "The compounding date. Type of date is specified in UnderlyingPaymentStreamCompoundingDateType(42903)."
     },
@@ -61248,14 +61243,14 @@
     {
       "t": 42913,
       "n": "underlyingpaymentstreamboundsfirstdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamBoundsFirstDateUnadjusted",
       "x": "The unadjusted first date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 42914,
       "n": "underlyingpaymentstreamboundslastdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamBoundsLastDateUnadjusted",
       "x": "The unadjusted last date of the compounding schedule. This can be used to restrict the range of dates when they are relative."
     },
@@ -61280,7 +61275,7 @@
     {
       "t": 42917,
       "n": "underlyingpaymentstreamcompoundingenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamCompoundingEndDateUnadjusted",
       "x": "The unadjusted compounding end date."
     },
@@ -61317,7 +61312,7 @@
     {
       "t": 42922,
       "n": "underlyingpaymentstreamcompoundingenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamCompoundingEndDateAdjusted",
       "x": "The adjusted compounding end date."
     },
@@ -61460,7 +61455,7 @@
     {
       "t": 42941,
       "n": "underlyingpaymentstreamcompoundingstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamCompoundingStartDateUnadjusted",
       "x": "The unadjusted compounding start date."
     },
@@ -61497,7 +61492,7 @@
     {
       "t": 42946,
       "n": "underlyingpaymentstreamcompoundingstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamCompoundingStartDateAdjusted",
       "x": "The adjusted compounding start date."
     },
@@ -61518,7 +61513,7 @@
     {
       "t": 42949,
       "n": "underlyingpaymentstreamfinalpricepaymentdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFinalPricePaymentDateUnadjusted",
       "x": "The unadjusted final price payment date."
     },
@@ -61555,7 +61550,7 @@
     {
       "t": 42954,
       "n": "underlyingpaymentstreamfinalpricepaymentdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFinalPricePaymentDateAdjusted",
       "x": "The adjusted final price payment date."
     },
@@ -61574,7 +61569,7 @@
     {
       "t": 42956,
       "n": "underlyingpaymentstreamfixingdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFixingDate",
       "x": "The fixing date. Type of date is specified in UnderlyingPaymentStreamFixingDateType(42957)."
     },
@@ -61589,7 +61584,7 @@
     {
       "t": 42958,
       "n": "underlyingpaymentstreamfirstobservationdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFirstObservationDateUnadjusted",
       "x": "The unadjusted initial price observation date."
     },
@@ -61611,7 +61606,7 @@
     {
       "t": 42961,
       "n": "underlyingpaymentstreamfirstobservationdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStreamFirstObservationDateAdjusted",
       "x": "The adjusted initial price observation date."
     },
@@ -61780,7 +61775,7 @@
     {
       "t": 42984,
       "n": "underlyingpaymentstubenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStubEndDateUnadjusted",
       "x": "The unadjusted stub end date."
     },
@@ -61825,7 +61820,7 @@
     {
       "t": 42990,
       "n": "underlyingpaymentstubenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStubEndDateAdjusted",
       "x": "The adjusted stub end date."
     },
@@ -61850,7 +61845,7 @@
     {
       "t": 42993,
       "n": "underlyingpaymentstubstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStubStartDateUnadjusted",
       "x": "The unadjusted stub start date."
     },
@@ -61895,7 +61890,7 @@
     {
       "t": 42999,
       "n": "underlyingpaymentstubstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingPaymentStubStartDateAdjusted",
       "x": "The adjusted stub start date."
     },
@@ -61954,7 +61949,7 @@
     {
       "t": 43006,
       "n": "underlyingratespreadstepdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingRateSpreadStepDate",
       "x": "The date that the rate spread step takes affect."
     },
@@ -62037,7 +62032,7 @@
     {
       "t": 43014,
       "n": "underlyingreturnratevaluationstartdateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateValuationStartDateUnadjusted",
       "x": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -62074,14 +62069,14 @@
     {
       "t": 43019,
       "n": "underlyingreturnratevaluationstartdateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateValuationStartDateAdjusted",
       "x": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
     {
       "t": 43020,
       "n": "underlyingreturnratevaluationenddateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateValuationEndDateUnadjusted",
       "x": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -62118,7 +62113,7 @@
     {
       "t": 43025,
       "n": "underlyingreturnratevaluationenddateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateValuationEndDateAdjusted",
       "x": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative."
     },
@@ -62321,21 +62316,21 @@
     {
       "t": 43048,
       "n": "underlyingreturnratequotetime",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateQuoteTime",
       "x": "The time when the quote is to be generated."
     },
     {
       "t": 43049,
       "n": "underlyingreturnratequotedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateQuoteDate",
       "x": "The date when the quote is to be generated."
     },
     {
       "t": 43050,
       "n": "underlyingreturnratequoteexpirationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingReturnRateQuoteExpirationTime",
       "x": "The time when the quote ceases to be valid.",
       "s": "5.0SP2"
@@ -62379,7 +62374,7 @@
     {
       "t": 43056,
       "n": "underlyingreturnratevaluationtime",
-      "y": "time32(s)",
+      "y": "time64(ns)",
       "d": "UnderlyingReturnRateValuationTime",
       "x": "The time at which the calculation agent values the underlying asset.",
       "s": "5.0SP2"
@@ -62519,7 +62514,7 @@
     {
       "t": 43072,
       "n": "underlyingreturnratevaluationdate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingReturnRateValuationDate",
       "x": "The return rate valuation date. Type of date is specified in UnderlyingReturnRateValuationDateType(43073)."
     },
@@ -62552,7 +62547,7 @@
     {
       "t": 43076,
       "n": "underlyingsettlmethodelectiondateunadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingSettlMethodElectionDateUnadjusted",
       "x": "The unadjusted settlement method election date."
     },
@@ -62597,7 +62592,7 @@
     {
       "t": 43082,
       "n": "underlyingsettlmethodelectiondateadjusted",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingSettlMethodElectionDateAdjusted",
       "x": "The adjusted settlement method election date."
     },
@@ -62611,7 +62606,7 @@
     {
       "t": 43084,
       "n": "underlyingstreamversioneffectivedate",
-      "y": "date32",
+      "y": "datetime64(ns)",
       "d": "UnderlyingStreamVersionEffectiveDate",
       "x": "The effective date of the UnderlyingStreamVersion(43083)."
     },
@@ -128319,7 +128314,7 @@
         "c": "541",
         "t": 541,
         "n": "MaturityDate",
-        "y": "date32",
+        "y": "datetime64(ns)",
         "x": "Date of maturity."
       },
       {
@@ -128459,14 +128454,14 @@
         "c": "64",
         "t": 64,
         "n": "SettlDate",
-        "y": "date32",
+        "y": "datetime64(ns)",
         "x": "Specific date of trade settlement (SettlementDate) in YYYYMMDD format."
       },
       {
         "c": "75",
         "t": 75,
         "n": "TradeDate",
-        "y": "date32",
+        "y": "datetime64(ns)",
         "x": "Indicates date of trading day. Absence of this field indicates current day (expressed in local time at place of trade)."
       },
       {
@@ -128536,21 +128531,21 @@
         "c": "453",
         "t": 453,
         "n": "NoPartyIDs",
-        "y": "list(field(\"item\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"fix:tag\":\"448\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"447\"}),field(\"partyrole\",int32,nullable=true,metadata={\"fix:tag\":\"452\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"fix:tag\":\"2376\"})),nullable=false,metadata={}))",
+        "y": "list(field(\"partyid\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"fix:tag\":\"448\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"447\"}),field(\"partyrole\",int32,nullable=true,metadata={\"fix:tag\":\"452\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"fix:tag\":\"2376\"})),nullable=false,metadata={}))",
         "x": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries"
       },
       {
         "c": "454",
         "t": 454,
         "n": "NoSecurityAltID",
-        "y": "list(field(\"item\",struct(field(\"securityaltid\",utf8,nullable=true,metadata={\"fix:tag\":\"455\"}),field(\"securityaltidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"456\"}),field(\"symbolpositionnumber\",int32,nullable=true,metadata={\"fix:tag\":\"2957\"})),nullable=false,metadata={}))",
+        "y": "list(field(\"securityaltid\",struct(field(\"securityaltid\",utf8,nullable=true,metadata={\"fix:tag\":\"455\"}),field(\"securityaltidsource\",utf8,nullable=true,metadata={\"fix:tag\":\"456\"}),field(\"symbolpositionnumber\",int32,nullable=true,metadata={\"fix:tag\":\"2957\"})),nullable=false,metadata={}))",
         "x": "Number of SecurityAltID (455) entries."
       },
       {
         "c": "768",
         "t": 768,
         "n": "NoTrdRegTimestamps",
-        "y": "list(field(\"item\",struct(field(\"trdregtimestamp\",datetime64(ns,\"UTC\"),nullable=true,metadata={\"fix:tag\":\"769\"}),field(\"trdregtimestamptype\",int32,nullable=true,metadata={\"fix:tag\":\"770\"}),field(\"trdregtimestamporigin\",utf8,nullable=true,metadata={\"fix:tag\":\"771\"}),field(\"trdregtimestampmanualindicator\",boolean,nullable=true,metadata={\"fix:tag\":\"2839\"}),field(\"desktype\",utf8,nullable=true,metadata={\"fix:tag\":\"1033\"}),field(\"desktypesource\",int32,nullable=true,metadata={\"fix:tag\":\"1034\"}),field(\"deskorderhandlinginst\",utf8,nullable=true,metadata={\"fix:tag\":\"1035\"}),field(\"informationbarrierid\",utf8,nullable=true,metadata={\"fix:tag\":\"1727\"}),field(\"nbboentrytype\",int32,nullable=true,metadata={\"fix:tag\":\"2831\"}),field(\"nbboprice\",float64,nullable=true,metadata={\"fix:tag\":\"2832\"}),field(\"nbboqty\",float64,nullable=true,metadata={\"fix:tag\":\"2833\"}),field(\"nbbosource\",int32,nullable=true,metadata={\"fix:tag\":\"2834\"})),nullable=false,metadata={}))",
+        "y": "list(field(\"trdregtimestamp\",struct(field(\"trdregtimestamp\",datetime64(ns,\"UTC\"),nullable=true,metadata={\"fix:tag\":\"769\"}),field(\"trdregtimestamptype\",int32,nullable=true,metadata={\"fix:tag\":\"770\"}),field(\"trdregtimestamporigin\",utf8,nullable=true,metadata={\"fix:tag\":\"771\"}),field(\"trdregtimestampmanualindicator\",boolean,nullable=true,metadata={\"fix:tag\":\"2839\"}),field(\"desktype\",utf8,nullable=true,metadata={\"fix:tag\":\"1033\"}),field(\"desktypesource\",int32,nullable=true,metadata={\"fix:tag\":\"1034\"}),field(\"deskorderhandlinginst\",utf8,nullable=true,metadata={\"fix:tag\":\"1035\"}),field(\"informationbarrierid\",utf8,nullable=true,metadata={\"fix:tag\":\"1727\"}),field(\"nbboentrytype\",int32,nullable=true,metadata={\"fix:tag\":\"2831\"}),field(\"nbboprice\",float64,nullable=true,metadata={\"fix:tag\":\"2832\"}),field(\"nbboqty\",float64,nullable=true,metadata={\"fix:tag\":\"2833\"}),field(\"nbbosource\",int32,nullable=true,metadata={\"fix:tag\":\"2834\"})),nullable=false,metadata={}))",
         "x": "Number of timestamp entries."
       },
       {
@@ -128631,17 +128626,17 @@
         "x": "Specifies the direction of the message."
       },
       {
-        "c": "entries",
+        "c": "nofixentries",
         "t": 0,
-        "n": "entries",
-        "y": "list(field(\"item\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",utf8,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}))",
+        "n": "NoFixEntries",
+        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "Every pair the message carried, in arrival order and untranslated."
       },
       {
-        "c": "unmapped",
+        "c": "nounmappedfixentries",
         "t": 0,
-        "n": "unmapped",
-        "y": "list(field(\"item\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",utf8,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}))",
+        "n": "NoUnmappedFixEntries",
+        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"branch\",int32,nullable=false,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "The pairs no dictionary explained, a view over the arrival record."
       }
     ],
@@ -128878,12 +128873,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "0d6a3a3cd84e9308fa830520f73ea319",
+      "digest": "9696554ac611d41091e56e98a4f561d2",
       "ticker": "AAPL@XNAS",
       "clock": "2024-02-01T12:34:56.123000000Z",
       "partition": null,
       "emitted": "8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))"
     },
     {
       "key": "execution",
@@ -129129,12 +129124,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "7587846bb9065124c44335f52a1ccae6",
+      "digest": "20fa7bfae629c075e5e13241d3b2059c",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:34:57.900000000Z",
       "partition": null,
       "emitted": "8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))"
     },
     {
       "key": "parties",
@@ -129355,12 +129350,12 @@
       "anomalies": [
         "nopartyids (453) states 2 occurrences and holds 0"
       ],
-      "digest": "d717f718525e0203605fc9b9fd655aa9",
+      "digest": "b4e010fcf7bebd152376c5ad91e316b5",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:02.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))"
     },
     {
       "key": "marketdata",
@@ -129491,12 +129486,12 @@
       "anomalies": [
         "nomdentries (268) states 2 occurrences and holds 0"
       ],
-      "digest": "6fc012e10036c147b9da3a7b0a23f857",
+      "digest": "50169881299c468ceebc4e82c03af49a",
       "ticker": "BRN",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))"
     },
     {
       "key": "quote",
@@ -129626,12 +129621,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "608a01622febb369b0d2afb38cfc6db1",
+      "digest": "16e9b46a1e5af695cf5485c23d08ff7d",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))"
     },
     {
       "key": "logon",
@@ -129760,12 +129755,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "1278e2911bb8acf64ebd7d460602c6f2",
+      "digest": "31564381679a398b2e7472ff52a70c81",
       "ticker": null,
       "clock": "2024-02-01T12:00:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))"
     },
     {
       "key": "heartbeat",
@@ -129874,12 +129869,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "51866c46067626c45b9c79c9bc7437fa",
+      "digest": "13ad44e6cf85d1be05046be3db50369f",
       "ticker": null,
       "clock": "2024-02-01T12:35:01.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))"
     },
     {
       "key": "reject",
@@ -130008,12 +130003,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "05896a3ba2c76a8388b9620842627c39",
+      "digest": "8822601c8c9d30edb2547aec5aaae324",
       "ticker": null,
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))"
     },
     {
       "key": "cancelreplace",
@@ -130217,12 +130212,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "bb3d292967ed0a28c8639ec51202f11d",
+      "digest": "d74995bbc3a1525298c1e22fcf71023d",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:36:00.000000000Z",
       "partition": "1706788800",
       "emitted": "8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))"
     },
     {
       "key": "isin",
@@ -130380,12 +130375,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "318632b3a1d14ed5399b403f5497b65e",
+      "digest": "f03766f963a31ac8a60e5fb3f77fc1f5",
       "ticker": "4:US0378331005@XNAS",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))"
     },
     {
       "key": "securitydefinition",
@@ -130547,12 +130542,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "d6e2a1ab7e5c72c1389fb6220dca8a17",
+      "digest": "5095235cdd04feda1527428a535bfcbb",
       "ticker": "BRN@XLON",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))"
     },
     {
       "key": "bridge",
@@ -130658,12 +130653,12 @@
       "anomalies": [
         "nopartyids (453) states 2 occurrences and holds 1"
       ],
-      "digest": "c0aa90db60aad3684d52a9d256f8703a",
+      "digest": "3d5dfa375c7137ba61146956a330598c",
       "ticker": "TTF",
       "clock": null,
       "partition": null,
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0].PARTYID=BUYSIDE|NOPARTYIDS[0].PARTYIDSOURCE=D|NOPARTYIDS[0].PARTYROLE=1|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))"
     },
     {
       "key": "fixul",
@@ -130772,12 +130767,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "b17cf786cdb627b75bac5eb2fa26f685",
+      "digest": "1c8e0f1914ec2b3c2c234d9b635b209a",
       "ticker": "AAPL",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))"
     },
     {
       "key": "unknown-tag",
@@ -130883,12 +130878,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "979b01e9d00fbd18c41c9b8b5104f103",
+      "digest": "555c78be6bd879bbd4109616689a485b",
       "ticker": "AAPL",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))"
     },
     {
       "key": "untyped",
@@ -130979,12 +130974,12 @@
         "38 (38) would not type from \"one hundred\"",
         "44 (44) would not type from \"n/a\""
       ],
-      "digest": "55e0d8aa1414a4f12c4a5f3d3bd78b53",
+      "digest": "3b30ede943bb27d750388e53d2ae5dac",
       "ticker": "AAPL",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))"
     },
     {
       "key": "keyvalue",
@@ -131020,12 +131015,12 @@
       ],
       "lift": [],
       "anomalies": [],
-      "digest": "1bfba4ddc0a44c7f6832c6ba12742565",
+      "digest": "2de6ce1c82695076a6cc2a1940a542a5",
       "ticker": null,
       "clock": null,
       "partition": null,
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))"
     },
     {
       "key": "unframed",
@@ -131047,7 +131042,7 @@
       "clock": null,
       "partition": null,
       "emitted": "",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"no level printed by this plugin\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"no level printed by this plugin\", 'binary'))"
     },
     {
       "key": "unsealed",
@@ -131173,12 +131168,12 @@
         ]
       ],
       "anomalies": [],
-      "digest": "16ff7e75495c6db49f8140ffabcad8d5",
+      "digest": "3dc6316f635adb56b2e58b2ab9e48aa1",
       "ticker": "AAPL",
       "clock": null,
       "partition": null,
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
-      "call": "new fix.FixCodec(registry).readLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))"
+      "call": "new fix.FixCodec(registry).transformLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))"
     }
   ],
   "calls": {

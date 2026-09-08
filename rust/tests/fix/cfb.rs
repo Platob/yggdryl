@@ -282,7 +282,14 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
         (9, DataType::Int32),
         (6, DataType::Float32),
         (10001, DataType::Boolean),
-        (10015, DataType::Date32),
+        // `utc-date` is a day, and a day is that day's midnight in UTC.
+        (
+            10015,
+            DataType::DateTime64 {
+                unit: yggdryl::TimeUnit::Nanosecond,
+                timezone: yggdryl::Timezone::UTC,
+            },
+        ),
         (273, DataType::Time64(yggdryl::TimeUnit::Nanosecond)),
     ] {
         assert_eq!(

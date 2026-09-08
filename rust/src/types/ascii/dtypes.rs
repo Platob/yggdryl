@@ -126,6 +126,12 @@ pub(crate) const MSGTYPE_EXTENSION_NAME: &str = "yggdryl.msgtype";
 /// The Arrow extension name of a captured line's direction.
 pub(crate) const DIRECTION_EXTENSION_NAME: &str = "yggdryl.msgdirection";
 
+/// The Arrow extension name of a thing's state.
+pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
+
+/// The Arrow extension name of how long an order stands.
+pub(crate) const TIMEINFORCE_EXTENSION_NAME: &str = "yggdryl.timeinforce";
+
 /// The storage width of ISO 3166-1's country code.
 pub(crate) const COUNTRY_WIDTH: usize = 2;
 
@@ -157,6 +163,19 @@ pub(crate) const MSGTYPE_WIDTH: usize = 8;
 /// bytes are what a reader sees.
 pub(crate) const DIRECTION_WIDTH: usize = 4;
 
+/// The storage width of a thing's state.
+///
+/// A rank character and up to seven name bytes. Eight because the rank has to
+/// leave room for a name a person can read, and because widening later would
+/// change a discriminant, which is a wire contract.
+pub(crate) const STATE_WIDTH: usize = 8;
+
+/// The storage width of how long an order stands.
+///
+/// The standard's values are one character; eight for the same reason a
+/// message type is eight, which is that a venue's are the ones that run long.
+pub(crate) const TIMEINFORCE_WIDTH: usize = 8;
+
 impl DataType {
     /// Every registered code, with its canonical name and storage width.
     ///
@@ -173,6 +192,12 @@ impl DataType {
             "msgdirection",
             DataType::MsgDirection,
             DIRECTION_WIDTH as i32,
+        ),
+        ("state", DataType::State, STATE_WIDTH as i32),
+        (
+            "timeinforce",
+            DataType::TimeInForce,
+            TIMEINFORCE_WIDTH as i32,
         ),
     ];
 
@@ -254,6 +279,8 @@ impl DataType {
             Self::Side => Some("side"),
             Self::MsgType => Some("msgtype"),
             Self::MsgDirection => Some("msgdirection"),
+            Self::State => Some("state"),
+            Self::TimeInForce => Some("timeinforce"),
             _ => None,
         }
     }
@@ -282,6 +309,8 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::MsgType => Some(MSGTYPE_EXTENSION_NAME),
         DataType::MsgDirection => Some(DIRECTION_EXTENSION_NAME),
+        DataType::State => Some(STATE_EXTENSION_NAME),
+        DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
         _ => None,
     }
 }
@@ -300,6 +329,8 @@ pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
         SIDE_EXTENSION_NAME => DataType::Side,
         MSGTYPE_EXTENSION_NAME => DataType::MsgType,
         DIRECTION_EXTENSION_NAME => DataType::MsgDirection,
+        STATE_EXTENSION_NAME => DataType::State,
+        TIMEINFORCE_EXTENSION_NAME => DataType::TimeInForce,
         // The name this datatype was first published under, so a column
         // written before the rename still reads as what it is.
         "yggdryl.direction" => DataType::MsgDirection,
@@ -343,6 +374,8 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::MsgType => code_text::<MSGTYPE_WIDTH>(bytes),
         DataType::MsgDirection => code_text::<DIRECTION_WIDTH>(bytes),
+        DataType::State => code_text::<STATE_WIDTH>(bytes),
+        DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
     }
 }
@@ -415,6 +448,8 @@ impl DataType {
             Self::Side => Some(SIDE_WIDTH as i32),
             Self::MsgType => Some(MSGTYPE_WIDTH as i32),
             Self::MsgDirection => Some(DIRECTION_WIDTH as i32),
+            Self::State => Some(STATE_WIDTH as i32),
+            Self::TimeInForce => Some(TIMEINFORCE_WIDTH as i32),
             _ => None,
         }
     }

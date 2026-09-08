@@ -12,8 +12,9 @@ Results live beside the method they measure. Each page's Performance section nam
 | Coding | [zstd](coding/zstd.md) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
 | FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec: one local Windows x86_64 release run of the Criterion target, point es... |
+| FIX | [Capture](fix/capture.md) | `fix/read` over one line of each shape a capture holds, including a bridge configuration document; one Linux x86_64 container release run |
 | FIX | [Message](fix/message.md) | Binding rows only; the Criterion target carries no `FixMsg` case |
-| FIX | [Registry](fix/registry.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
+| FIX | [Registry](fix/registry.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34...; the capture-classification rows are a separate Linux x86_64 container run |
 | FIX | [Store](fix/store.md) | One local Windows x86_64 release run of the Criterion target, point estimates, over the tracked seed of 34... |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |

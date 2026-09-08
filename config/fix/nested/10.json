@@ -50,7 +50,7 @@
     "metadata": {
       "description": "Number of timestamp entries.",
       "display": "NoSideTrdRegTS",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosidetrdregts\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosidetrdregts\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1016"
     }
   },
@@ -113,7 +113,7 @@
     "metadata": {
       "description": "Identifies the number of parties identified with an instrument",
       "display": "NoInstrumentParties",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentparties\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentparties\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1018"
     }
   },
@@ -156,7 +156,7 @@
     "metadata": {
       "description": "Number of InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoInstrumentPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrumentpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1052"
     }
   },
@@ -219,7 +219,7 @@
     "metadata": {
       "description": "Identifies the number of parties identified with an underlying instrument",
       "display": "NoUndlyInstrumentParties",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentparties\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentparties\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1058"
     }
   },
@@ -262,7 +262,7 @@
     "metadata": {
       "description": "Number of Underlying InstrumentPartySubID (1053) and InstrumentPartySubIDType (1054) entries",
       "display": "NoUndlyInstrumentPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noundlyinstrumentpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1062"
     }
   }

@@ -71,7 +71,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -178,7 +179,7 @@
     "metadata": {
       "description": "Indicates the number of list entries.",
       "display": "NoBidComponents",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobidcomponents\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nobidcomponents\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nobidcomponents\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "420"
     }
   },
@@ -301,7 +302,7 @@
     "metadata": {
       "description": "Number of list strike price entries.",
       "display": "NoStrikes",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostrikes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nostrikes\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostrikes\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "428"
     }
   },
@@ -364,7 +365,7 @@
     "metadata": {
       "description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
       "display": "NoPartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nopartyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nopartyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "453"
     }
   },
@@ -417,7 +418,7 @@
     "metadata": {
       "description": "Number of SecurityAltID (455) entries.",
       "display": "NoSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecurityaltid\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "454"
     }
   },
@@ -470,7 +471,7 @@
     "metadata": {
       "description": "Number of UnderlyingSecurityAltID (458) entries.",
       "display": "NoUnderlyingSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nounderlyingsecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nounderlyingsecurityaltid\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "457"
     }
   },
@@ -536,7 +537,8 @@
             {
               "name": "dateofbirth",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -563,7 +565,7 @@
     "metadata": {
       "description": "The number of registration details on a Registration Instructions message",
       "display": "NoRegistDtls",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noregistdtls\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noregistdtls\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "473"
     }
   }

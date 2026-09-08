@@ -29,6 +29,7 @@ enum MimeTypeValue {
     PlainText,
     KeyValue,
     Ullink,
+    Ulconfig,
     Fix,
     Fixul,
     Fixml,
@@ -128,10 +129,11 @@ impl MimeType {
     /// is after. One shallow scan decides: numeric `tag=value` entries prove
     /// [`Self::FIX`], `#`-marked or `MSGTYPE=` keys prove [`Self::ULLINK`],
     /// both prove [`Self::FIXUL`], and an `XmlData(213)` payload opening with
-    /// a tag proves [`Self::FIXML`]. A line that is no frame but opens as a
-    /// document is [`Self::XML`] or [`Self::JSON`]; one that is still
-    /// `key=value` throughout is [`Self::KEYVALUE`]; anything else is
-    /// [`Self::OCTET_STREAM`].
+    /// a tag proves [`Self::FIXML`]. A line that is no frame but is a JSON
+    /// object naming the ULBridge namespace is [`Self::ULCONFIG`]; one that
+    /// otherwise opens as a document is [`Self::XML`] or [`Self::JSON`]; one
+    /// that is still `key=value` throughout is [`Self::KEYVALUE`]; anything
+    /// else is [`Self::OCTET_STREAM`].
     ///
     /// The scan reads no message and allocates nothing.
     ///
@@ -152,6 +154,9 @@ impl MimeType {
     /// // A document wins over the pair rules.
     /// assert_eq!(MimeType::infer_bytes(b"<Order id='1'/>"), MimeType::XML);
     /// assert_eq!(MimeType::infer_bytes(br#"{"a":1}"#), MimeType::JSON);
+    /// // A bridge's own object model inside one names itself.
+    /// let jolokia = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":200}"#;
+    /// assert_eq!(MimeType::infer_bytes(jolokia), MimeType::ULCONFIG);
     /// assert_eq!(
     ///     MimeType::infer_bytes(b"no level printed by this plugin"),
     ///     MimeType::OCTET_STREAM
@@ -186,6 +191,13 @@ impl MimeType {
     pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
     /// A symbolic-key Ullink text frame.
     pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
+    /// A ULBridge configuration document, as Jolokia answers one.
+    ///
+    /// JSON, and a bridge's own object model inside it: the MBeans under
+    /// `com.ullink.ulbridge` and the session interfaces they configure. The
+    /// namespace is what separates it from every other JSON document, so a
+    /// document not naming it stays [`Self::JSON`].
+    pub const ULCONFIG: Self = Self(MimeTypeValue::Ulconfig);
     /// A numeric-tag FIX text frame.
     pub const FIX: Self = Self(MimeTypeValue::Fix);
     /// A FIX text frame containing Ullink symbolic key/value entries.
@@ -444,6 +456,7 @@ impl MimeType {
             MimeTypeValue::PlainText => "text/plain",
             MimeTypeValue::KeyValue => "text/key-value",
             MimeTypeValue::Ullink => "text/ullink",
+            MimeTypeValue::Ulconfig => "text/ulconfig",
             MimeTypeValue::Fix => "text/fix",
             MimeTypeValue::Fixul => "text/fixul",
             MimeTypeValue::Fixml => "text/fixml",
@@ -544,6 +557,7 @@ impl MimeType {
             // These classify embedded frame syntax, not a filename format.
             MimeTypeValue::KeyValue
             | MimeTypeValue::Ullink
+            | MimeTypeValue::Ulconfig
             | MimeTypeValue::Fix
             | MimeTypeValue::Fixul
             | MimeTypeValue::Fixml => None,
@@ -617,7 +631,9 @@ impl MimeType {
     /// Return the Yggdryl structured-text format represented by this MIME type.
     pub fn format(&self) -> Option<Format> {
         match self.0 {
-            MimeTypeValue::Json => Some(Format::Json),
+            // A bridge configuration document is JSON, and reads as JSON; a
+            // FIX frame carrying XML in a tag is not a document and does not.
+            MimeTypeValue::Json | MimeTypeValue::Ulconfig => Some(Format::Json),
             MimeTypeValue::JsonLines => Some(Format::JsonLines),
             MimeTypeValue::Yaml => Some(Format::Yaml),
             MimeTypeValue::Toml => Some(Format::Toml),
@@ -708,6 +724,7 @@ impl MimeType {
             || matches!(
                 self.0,
                 MimeTypeValue::Json
+                    | MimeTypeValue::Ulconfig
                     | MimeTypeValue::JsonLines
                     | MimeTypeValue::Yaml
                     | MimeTypeValue::Toml

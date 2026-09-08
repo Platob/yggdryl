@@ -343,6 +343,24 @@ A `FixPedigree` is a `Version` and an optional extension pack, because the speci
     assert_ne!(registry.newest().unwrap().version(), Version::MAX);
     ```
 
+
+### `fix:nulls`, the spellings that mean nothing was sent
+
+A venue writes an absence in its own vocabulary - `N/A` on a price, `NONE` on a
+party, an empty string on anything - and which spelling means it is a fact
+about the field rather than about the capture. `fix:nulls` is that list, stored
+the way `fix:aliases` is: comma-separated, in the order given, matched
+case-insensitively against the trimmed text.
+
+A value the list names types as **null in the row** while the **entry keeps it
+exactly as it arrived**, because the row is the interpretation and the entries
+are what the wire carried. The wire therefore still re-emits byte for byte.
+
+This is the narrow half of a pair.
+[`FixCodec::with_null_values`](capture.md) is the capture's own convention and
+is applied to every key before one is resolved at all; `fix:nulls` is applied
+once the field is known.
+
 ### The document
 
 `fix:lineage` is one canonically rendered JSON document: an `entries` array, entries sorted oldest first, keys within an entry in the order below, no whitespace. Every key beyond `since` is optional, because most versions change nothing and an entry stating only a version means "present, unchanged". `since` leads because it is what every read keys on, so a version filter compares it and stops.
@@ -352,16 +370,25 @@ A `FixPedigree` is a `Version` and an optional extension pack, because the speci
 | `since` | the version, required |
 | `ep` | the extension pack that dated the change |
 | `name` | the spelling from that version on |
-| `type` | the FIX datatype name from that version on, in the spelling the grammar already resolves |
+| `type` | the datatype from that version on, resolved and stored exactly as the field's own `dtype` is |
 | `deprecated` | `true` where the specification deprecated the field |
 | `removed` | `true` where it removed it, which ends the field's life |
 | `doc` | the specification's wording as of that version |
 
 The read is a borrowed scan rather than a parse, so `name_at` over a dated dictionary allocates nothing. It is safe only because the rendering is canonical and checked on the way in: a reader knows which key can come next, so a hand-edited document with reordered or repeated keys is refused with its byte position instead of mis-read.
 
-### Two derivations belong to the writer
+### Four derivations belong to the writer
 
-`set_lineage` refuses a newest entry that disagrees with the field's own name or datatype, naming both sides, so the lineage is the authority and the field cannot drift from it. It then rewrites `fix:aliases` from the historical spellings, so an old name resolves through the index that already exists. Both are the writer's rather than a caller's, which is what makes them undriftable.
+`set_lineage` refuses a newest entry that disagrees with the field's own name or datatype, naming both sides, so the lineage is the authority and the field cannot drift from it. It then rewrites `fix:aliases` from the historical spellings, so an old name resolves through the index that already exists.
+
+The renderer makes two more, so every dialect gets them and no reader repeats them:
+
+- **The datatype is stored resolved.** A caller may state `Qty` or `char`; what is written is `{"type":"float64"}` or `{"type":"utf8"}`, the same serialization the field's own datatype has. `char` and `String` are one type under two spellings, and a reader asking what changed must not be told a rename was a retype. The FIX spelling is not recoverable, which is the accepted cost: it is a spelling, not a type.
+- **An entry stating nothing new is dropped.** Once types are resolved, an entry whose name, type, `deprecated`, `removed` and `doc` all match its predecessor's is not a point in a history. The oldest entry is never dropped - it is what `since` reads - and `ep` dates a statement rather than being one, so an extension pack that changed nothing is exactly the entry worth dropping.
+
+A text field that a later version declared temporal is a third case, and it is not a retype: FIX transmitted the value as ASCII at every version, so `20240102-10:15:30` parses the same under the version that called the field a `String` as under the one that called it a `UTCTimestamp`. The later temporal type is therefore adopted backward across the string entries immediately preceding it, and the entries then collapse. Only a string yields, and only to a temporal: `String` to `Currency`, `char` to `Boolean` and `int` to `Qty` are real constraints a later version added, and they stand.
+
+In the committed dictionary these four take 1,926 entries to 1,657 across 1,564 lineages, adopt 62 string entries backward, and leave 53 retypes that are real.
 
 ### Edges
 
@@ -369,6 +396,7 @@ The read is a borrowed scan rather than a parse, so `name_at` over a dated dicti
 - A field whose earliest entry postdates the version asked for is not defined then. A field introduced in 2.7 did not exist in 2.6.
 - A malformed document answers nothing rather than something wrong. `lineage()` and `dtype_at` report it with a byte position; `since`, `until`, `name_at` and `defined_at` answer as though the field had no history, and neither path allocates.
 - Two entries sharing one pedigree are refused: two statements about one dated point cannot both be the field's.
+- A datatype no reader resolves is refused where a caller states one, so a lineage never stores a type the crate cannot answer.
 - An empty slice removes the document and the aliases it derived.
 - `set_lineage` is atomic. A refusal leaves the field exactly as it was, aliases included.
 - The registry stays version-agnostic. There is no registry-wide default version; a caller who wants one holds a `Version` beside the registry.
@@ -821,11 +849,27 @@ One shallow scan answers all three. It reads no message and allocates nothing, a
 | `#`-marked keys, or a `MSGTYPE=` key | `text/ullink` |
 | a numeric frame also carrying symbolic keys | `text/fixul` |
 | official `XmlData(213)` whose payload begins with XML | `text/fixml` |
+| a JSON object naming a `com.ullink.ulbridge` MBean | `text/ulconfig` |
 | no frame, but `key=value` throughout | `text/key-value` |
 | a document opening `<` or `{`/`[` | `application/xml`, `application/json` |
 | anything else | `application/octet-stream` |
 
 The scan locates `8=` first, then `35=`, then the first pair-shaped run. It holds one separator, stops at checksum tag 10, and reads no prefix, suffix, XML attribute or `#A=1` inside a value as a field. A frame beats a document, because an `XmlData` payload is part of a frame; a document beats the bare pair rules, because an attribute inside a tag is not a field.
+
+### A bridge configuration is a document that names itself
+
+`text/ulconfig` is the JSON a Jolokia read of a ULBridge answers with: the MBeans under `com.ullink.ulbridge` and the session interfaces they configure. Two facts decide it and neither is enough alone — the line has to be a JSON object, whole or behind a transport prefix, and that object has to name an **ObjectName** in the namespace: the domain, and the `:` an ObjectName always has after one. A bridge writes its own class names into these documents on every `$type`, `className` and init file, so a record merely quoting `com.ullink.ulbridge2.plugins.ULMsg` is an ordinary JSON record.
+
+The document declares a message type the same way a frame does, and the specific statement wins:
+
+| the document names | the type read |
+| --- | --- |
+| an ObjectName carrying `type=` | that segment — `Plugin`, `ConfigurationPlugin` |
+| no such segment | the Jolokia request's own `type` — the operation, `read` |
+
+`plugin-type=FIX` shares the segment's last five bytes and is never read as it, because the segment counts only where a `,` or a `:` opens it — and it is read *inside* the ObjectName that states it, bounded by the quote closing that JSON string, so a value elsewhere spelling `,type=` is that value's business. `ConfigurationPlugin` is wider than [`MsgType`](../types/ascii.md#a-reading-wider-than-the-type) holds, so a column takes `MsgType::coerce`'s stable synthesized value for it — the same mechanism `register_msgtype` uses for a bridge's composite keys.
+
+A bulk read answers an array of these documents rather than one, so a line closing with `]` is read exactly as one closing with `}` is.
 
 === "Rust"
 
@@ -850,6 +894,14 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     let (direction, body) = MsgDirection::split_bytes(line);
     assert_eq!(direction, Some(MsgDirection::SENT));
     assert_eq!(body, b">> 8=FIX.4.4|35=D|55=AAPL|10=001|");
+
+    // A bridge configuration names itself, says what the entry is, and says
+    // which half of the exchange it is - and the `send` its own payload
+    // spells is never the marker.
+    let config = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"ExtendedActions":[{"name":"send-test-request"}]},"status":200}"#;
+    assert_eq!(MimeType::infer_bytes(config), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(config), Some(&b"Plugin"[..]));
+    assert_eq!(MsgDirection::infer_bytes(config), Some(MsgDirection::RECV));
     ```
 
 === "Python"
@@ -861,6 +913,11 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     assert MimeType.infer_text(line) == MimeType.ULLINK
     assert MimeType.infer_text_msgtype(line) == "D"
     assert MimeType.infer_text_direction("recv " + line) == "RECV"
+
+    config = '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}'
+    assert MimeType.infer_text(config) == MimeType.ULCONFIG
+    assert MimeType.infer_text_msgtype(config) == "read"
+    assert MimeType.infer_text_direction(config) == "SENT"
     ```
 
 === "JavaScript"
@@ -872,6 +929,11 @@ The scan locates `8=` first, then `35=`, then the first pair-shaped run. It hold
     const line = '8=FIX.4.4|35=D|11=ORDER-1|213=SYMBOL=AAPL|SIDE=1|10=000|'
     assert.ok(MimeType.inferText(line).equals(MimeType.FIXUL))
     assert.equal(MimeType.inferTextMsgtype(line), 'D')
+
+    const config = '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}'
+    assert.ok(MimeType.inferText(config).equals(MimeType.ULCONFIG))
+    assert.equal(MimeType.inferTextMsgtype(config), 'read')
+    assert.equal(MimeType.inferTextDirection(config), 'SENT')
     ```
 
 A raw `MSGTYPE=` anywhere in the line wins over tag 35, because a bridge writes its own type in front of a frame it relays, and `U` plus an alphanumeric suffix routes to the canonical `UDF` root.
@@ -887,7 +949,18 @@ The verb counts only where it stands before the message starts, so a `sent` insi
 
 The bare `in` and `out` forms are **chosen** only where a bracket opens them and a delimiter closes them, because that is the one shape a marker has and none of the shapes the same letters have otherwise: `direct:out` is a route endpoint and `MCFID-IN-XPAR` is a session name. They still count against an opposite verb, which is what makes `sending in session 3` and `received out of order` answer nothing rather than a wrong answer.
 
-A prefix carrying both verbs, and one carrying neither, both answer nothing.
+A prefix carrying both verbs, and one carrying neither, both answer nothing — unless the payload is a document that states its own half of an exchange. A `text/ulconfig` document does: Jolokia echoes the request back inside every answer it sends, error answers included, and a request carries no such key of its own.
+
+| the document carries | direction |
+| --- | --- |
+| a `request` it echoes | `RECV` |
+| no echo — it *is* the request | `SENT` |
+
+The echo is the whole of the reading, and the keys an answer also carries are not: a `write` request states a `value` of its own, and reading that as an answer would invert the direction.
+
+A verb the transport wrote still wins over what a document says about itself, and the default fills silence behind both. Nothing is taken off a line that carried no marker.
+
+This is also what keeps the reading right: these documents spell `send-test-request`, `The outgoing test request ID to send` and `logout-text` in their own payload, and every one of those would be read as a marker if the verb were not bounded at the document.
 
 ## Edges
 
@@ -896,6 +969,12 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 - Two names whose seeded XXH64 digests collide -> a read rechecks the field behind the digest and misses; a mutation refuses loudly.
 - `MsgType::infer_bytes` -> a borrowed slice of the input line, so the Rust byte path allocates nothing.
 - A line the scan cannot place -> `application/octet-stream`; a checksum tag 10 stops the scan.
+- A JSON object naming no ULBridge ObjectName -> `application/json`; the namespace is the whole of what makes the reading, and a `java.lang:type=Memory` read is another product's document.
+- A ULBridge ObjectName standing in the prose *in front of* a document -> not read; the namespace has to be inside the object, or the prose is what named it.
+- A `MSGTYPE=` written in front of a bridge configuration document -> that type; a bridge writes its own type in front of what it relays, and a document is no different from a frame there.
+- A wildcard read answering many entries -> the first entry's `type=`; a document declares one type, exactly as a frame does with the first tag 35.
+- A `write` or `exec` request carrying its own `value` -> `SENT`; the echoed `request` is the reading, and a request has none.
+- A bridge configuration document read into a `msgtype` column -> coerced, so `ConfigurationPlugin` lands as a stable synthesized value rather than as a null the column would otherwise hold.
 - `contains("44")` -> `false`; a tag query never consults names, and a name query never consults tags.
 - A path -> the whole string as a name first, keeping a dotted name reachable; then the first segment here, the rest through `Field::get_field_by_path` exactly.
 - An alternate tag equal to another field's canonical tag, or an alias equal to another's canonical name -> legal, and it never wins.
@@ -930,13 +1009,14 @@ A prefix carrying both verbs, and one carrying neither, both answer nothing.
 
     ```bash
     cargo test -p yggdryl --lib fix::tests
-    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
+    cargo test -p yggdryl --lib -- fix::tests::a_field_without_a_tag fix::tests::a_name_or_alias fix::tests::tier_order fix::tests::a_tag_query fix::tests::an_insert_conflict fix::tests::reinserting fix::tests::a_merge_follows fix::tests::a_rejected_merge fix::tests::removal_keeps fix::tests::specialized_and_generic fix::tests::iteration_follows fix::tests::iteration_and_the_cursor fix::tests::nestedness_routes fix::tests::an_omitted_branch_infers fix::tests::protocol_and_msgtype_inference fix::tests::a_bridge_configuration_states fix::tests::a_nested_field_can_never fix::tests::two_branches_may_hold fix::tests::the_default_resolves
     cargo test -p yggdryl --test fix global
     cargo test -p yggdryl --lib -- fix::tests::a_lineage fix::tests::a_version_filters fix::tests::a_removed_entry fix::tests::two_entries
     cargo test -p yggdryl --lib -- fix::tests::a_branch_answers_to_its_aliases fix::tests::a_branch_alias_is_held fix::tests::merge_with_folds_the_fields
     cargo test -p yggdryl --lib -- fix::tests::a_code_set fix::tests::an_alias_shares fix::tests::an_ambiguous_spelling fix::tests::tier_three fix::tests::a_version_hides fix::tests::two_codes_may
     cargo test -p yggdryl --test allocations a_fix_lineage_read a_fix_code_lookup
     cargo bench -p yggdryl --bench fix -- fix/resolve
+    cargo bench -p yggdryl --bench fix -- "fix/classify|fix/infer"
     cargo bench -p yggdryl --bench fix -- fix/lineage
     cargo test -p yggdryl --lib -- fix::tests::a_field_merge fix::tests::a_merge_keeps fix::tests::a_merge_of_disagreeing fix::tests::a_merge_adding_nothing
     cargo test -p yggdryl --lib -- fix::tests::add_fields_adds_what_is_absent fix::tests::add_fields_refuses_the_way
@@ -971,7 +1051,7 @@ The timing runs report release builds on one Windows x86_64 host, so they are bo
 
 | assertion | scope |
 | --- | --- |
-| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, iteration, every lineage read and every code lookup including a refused document |
+| zero allocations in Rust | canonical tag, identifier, folded name, alias, miss, path, protocol inference, MsgType inference, direction inference — a bridge configuration document included — iteration, every lineage read and every code lookup including a refused document |
 
 ### A merge
 
@@ -1001,23 +1081,56 @@ Both are dominated by re-rendering the merged lineage and code documents, which 
 
 Tier 1 addresses the record it wants rather than parsing every code it passes, which is why it barely moves with the set's size until the value it seeks is at the end. Tier 2 cannot: it must run the whole set, because two codes folding to one spelling have to answer nothing rather than the first. That is the cost the ambiguity rule buys, and it is still under building a map to answer one question.
 
+### Classifying a capture
+
+`fix/classify`, over a `.log` handle read as records - 4,000 lines cycling the five shapes, of which the bridge configuration documents are most of the bytes. Release build, one Windows x86_64 host; the baseline is the same read with the three classification columns off, which is the only honest comparison because it is the same work minus the readings.
+
+| case | median | per row | against the plain read |
+| --- | --- | --- | --- |
+| `read_arrow_reader`, no classification | 11.4 ms | 2.84 us | - |
+| the same with `mimetype`, `msgtype` and `direction` | 76.8 ms | 19.2 us | 6.8x |
+
+The three readings on their own, one line each:
+
+| shape | bytes | `mimetype` | `msgtype` | `direction` |
+| --- | --- | --- | --- | --- |
+| framed FIX with prose either side | 85 | 1.54 us | 1.53 us | 835 ns |
+| a bare tag stream | 64 | 1.47 us | 1.26 us | 475 ns |
+| a bridge row keyed by name | 78 | 906 ns | 814 ns | 530 ns |
+| a sentence nothing matches | 52 | 1.15 us | 1.12 us | 2.15 us |
+| a bridge configuration document | 840 | 16.4 us | 16.3 us | 5.27 us |
+
+The scan is linear in the line, so a document is a long line rather than a different kind of work. The one asymmetry is the sentence: with no frame to bound the prose, a direction is read against the whole of it - which is exactly what a document does *not* pay, because its bound is where the object opens.
+
+Classification is opt-in per column for that reason. A capture that only needs rows pays the 2.84 us; one that needs to know what each line is pays the reading over the bytes it has.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- "fix/classify|fix/infer"
+```
+
 ### A version-filtered read
 
-`fix/lineage`, over a field carrying three entries in a dictionary of 400 dated ones. Release build, one Windows x86_64 host, twenty samples; the host's own baselines moved by up to 1.8x between runs, so the ratios are the measurement and the absolute figures are a scale.
+`fix/lineage`, over a field carrying three entries - renamed once, retyped twice - in a dictionary of 400 dated ones. Release build, one Windows x86_64 host, the command below; two runs of it moved by up to 14% against each other, so the ratios are the measurement and the absolute figures are a scale.
 
 | case | median | against |
 | --- | --- | --- |
-| `get_field` on an undated key | 8.2 ns | the unfiltered read |
-| `get_field_at` on a dated key | 519 ns | 63x the unfiltered read |
-| `since` | 208 ns | one entry |
-| `defined_at` | 458 ns | three entries |
-| `name_at` | 494 ns | three entries |
-| `dtype_at` | 964 ns | three entries plus building a `DataType` |
-| one `fix:` property lookup | 103 ns | the floor every `fix:` accessor pays |
-| one `Version` parse | 36 ns | paid per entry the scan reaches |
-| `newest` / `versions` | 204 us / 218 us | every lineage in the dictionary, walked once |
+| `get_field` on an undated key | 9.9 ns | the unfiltered read |
+| `get_field_at` on a dated key | 807 ns | 81x the unfiltered read |
+| `since` | 327 ns | one entry |
+| `defined_at` | 746 ns | three entries |
+| `name_at` | 621 ns | three entries |
+| `dtype_at` | 1.32 us | three entries plus building a `DataType` |
+| one `fix:` property lookup | 35 ns | the floor every `fix:` accessor pays |
+| one `Version` parse | 40 ns | paid per entry the scan reaches |
+| `set_lineage` | 5.42 us | resolving three datatypes, collapsing, rendering, and rewriting the aliases |
+| `newest` | 1.6 ns | held after the first ask |
+| `versions` | 2.29 ms | every lineage in the dictionary, folded once |
 
-Two facts the table is for. A single-entry read is about half fixed cost - one `fix:` metadata lookup plus one version parse - and the scan itself is roughly 110 ns per entry, so a lineage is cheap to hold and not free to ask. And `newest` and `versions` walk every field, so they are answered once and held, never per row.
+Three facts the table is for. A read pays about 75 ns of fixed cost - one `fix:` metadata lookup plus one version parse - before it scans anything, and each entry past the first costs roughly 210 ns, so a lineage is cheap to hold and not free to ask. `newest` is held after the first ask while `versions` folds every lineage in the dictionary, so both are answered once and never per row.
+
+And the writer is where the normalization is paid. Against the same benchmark on the same host before the datatypes were resolved and the equal entries dropped, `set_lineage` costs 45% more while every read moved by less than the two runs moved against each other. That is the trade the writer's derivations buy: one resolution and one comparison per entry at write time, against a history that every later read walks whole.
 
 Criterion takes ten samples with short warm-up and measurement windows in this phase.
 

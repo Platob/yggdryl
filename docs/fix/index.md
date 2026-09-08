@@ -289,7 +289,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## Nesting needs no second type
 
-A component is a Struct field; a repeating group is a List of that Struct, its counter tag the group's own `fix:tag`. A list is transparent to a dotted path, so `NoPartyIDs.PartyID` and `NoPartyIDs.item.PartyID` spell one route.
+A component is a Struct field; a repeating group is a List of that Struct, its counter tag the group's own `fix:tag`. The occurrence carries the component's own name, derived from the counter's - `NoPartyIDs` heads a `PartyID` - and a read steps through the list without spending a path segment on it, so `NoPartyIDs.PartyID` reaches the member tag 448 rather than the occurrence that shares its name.
 
 === "Rust"
 
@@ -301,14 +301,14 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     party_id.as_fix_mut().set_tag(448)?;
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452)?;
-    let item = DataType::from_fields([party_id, role])?.required_field("item");
+    let item = DataType::from_fields([party_id, role])?.required_field("PartyID");
     let mut group = DataType::list(item).nullable_field("NoPartyIDs");
     group.as_fix_mut().set_tag(453)?;
 
     let registry = FixRegistry::from_fields([group])?;
     assert_eq!(registry.field_by_path("NoPartyIDs", Some(&standard))?.as_fix().tag()?, Some(453));
     assert_eq!(registry.field_by_path("NoPartyIDs.PartyID", Some(&standard))?.as_fix().tag()?, Some(448));
-    assert_eq!(registry.field_by_path("NoPartyIDs.item.PartyRole", Some(&standard))?.name(), "PartyRole");
+    assert_eq!(registry.field_by_path("NoPartyIDs.PartyRole", Some(&standard))?.name(), "PartyRole");
     // A member is reached through its group, not registered on its own.
     assert!(registry.get_field_by_name("PartyID", Some(&standard)).is_none());
     ```
@@ -323,7 +323,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     party_id.fix.tag = 448
     role = Field("PartyRole", "int32")
     role.fix.tag = 452
-    item = Field("item", DataType.from_fields([party_id, role]), nullable=False)
+    item = Field("PartyID", DataType.from_fields([party_id, role]), nullable=False)
     group = types.list("NoPartyIDs", item)
     group.fix.tag = 453
 
@@ -331,7 +331,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     assert registry.field_by_path("NoPartyIDs", STANDARD_BRANCH).fix.tag == 453
     assert registry.field_by_path("NoPartyIDs.PartyID", STANDARD_BRANCH).fix.tag == 448
     assert (
-        registry.field_by_path("NoPartyIDs.item.PartyRole", STANDARD_BRANCH).name
+        registry.field_by_path("NoPartyIDs.PartyRole", STANDARD_BRANCH).name
         == "PartyRole"
     )
     # A member is reached through its group, not registered on its own.
@@ -348,7 +348,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     partyId.fix.tag = 448
     const role = Field.from('PartyRole: int32')
     role.fix.tag = 452
-    const item = fields.struct('item', [partyId, role], { nullable: false })
+    const item = fields.struct('PartyID', [partyId, role], { nullable: false })
     const group = fields.list('NoPartyIDs', item)
     group.fix.tag = 453
 
@@ -356,7 +356,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
     const registry = fix.FixRegistry.fromFields([group])
     assert.equal(registry.fieldByPath('NoPartyIDs', standard).fix.tag, 453)
     assert.equal(registry.fieldByPath('NoPartyIDs.PartyID', standard).fix.tag, 448)
-    assert.equal(registry.fieldByPath('NoPartyIDs.item.PartyRole', standard).name, 'PartyRole')
+    assert.equal(registry.fieldByPath('NoPartyIDs.PartyRole', standard).name, 'PartyRole')
     // A member is reached through its group, not registered on its own.
     assert.equal(registry.getFieldByName(standard, 'PartyID'), null)
     ```
@@ -371,7 +371,7 @@ A component is a Struct field; a repeating group is a List of that Struct, its c
 - A tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a named branch, canonical or alternate -> refused naming `fix:branch` and both bounds, from a setter, a read, an insert, or a shard load.
 - `FixBranch::from_str("standard")` -> an ordinary named branch whose `is_standard()` is `false`; only the empty name is the standard branch.
 - `FixId::from_parts` takes the branch by reference and `set_id` takes the branch and the tag, so neither clones a branch.
-- `get_field_by_path` is transparent to a list on a read; `set_field_by_path` / `remove_field_by_path` spell the item (`NoPartyIDs.item.PartyID`).
+- `get_field_by_path` steps through a list on a read, so `NoPartyIDs.PartyID` is the member; the core walk `set_field_by_path` / `remove_field_by_path` take is not transparent, so a mutation names the occurrence too (`NoPartyIDs.PartyID.PartyID`).
 - A group member is reached only through its group; `get_field_by_name("PartyID")` answers none.
 
 ## Commands

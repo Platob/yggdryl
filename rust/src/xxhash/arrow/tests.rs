@@ -234,6 +234,14 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("SENT"), Scalar::from("RECV"), Scalar::Null]),
         ),
         (
+            Field::new("state", DataType::State, true),
+            Scalar::from_sequence([Scalar::from("2NEW"), Scalar::from("8FILLED"), Scalar::Null]),
+        ),
+        (
+            Field::new("timeinforce", DataType::TimeInForce, true),
+            Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
+        ),
+        (
             Field::new("uuid", DataType::Uuid, true),
             Scalar::from_sequence([
                 DataType::Uuid

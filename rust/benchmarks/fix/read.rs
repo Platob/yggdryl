@@ -2,7 +2,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::{FixCodec, Version};
+use yggdryl::{FixBranch, FixCodec, Version};
 
 use super::seed;
 
@@ -18,6 +18,23 @@ const NAMED: &str =
     "ACCOUNT=A1|MSGTYPE=D|CLORDID=ORDER-1|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|ORDTYPE=2";
 const GROUPED: &str = "MSGTYPE=D|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=SYNTH-01\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=SYNTH-02\u{4}\u{3}PARTYIDSOURCE=D\u{4}\u{3}PARTYROLE=3";
 
+/// One Jolokia read of one session interface, as a bridge answers it.
+///
+/// A fifth dialect, and the one that is a document rather than a run of pairs:
+/// it is parsed as JSON, walked into the same pairs the others produce, and
+/// built by the same builder - so what it costs over a frame is the parse and
+/// the walk, which is what this measures.
+const ULCONFIG: &str = concat!(
+    r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
+    r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","#,
+    r#""TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","#,
+    r#""PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"#,
+    r#""OutgoingMsgSeqNum":129,"IncomingMsgSeqNum":129,"LogLevel":-1,"PriorityLevel":5,"#,
+    r#""Name":"ULMSG_BROKER_TO_DMZ","Version":"2.0.3","State":"logged","Type":"A","#,
+    r#""NeedReload":false,"NotificationsStatus":false,"BinaryName":"ULMsg.jar","#,
+    r#""ClassName":"ULMsg","MinimumBridgeRevision":"20050101000000"},"status":200}"#,
+);
+
 pub fn benchmarks(criterion: &mut Criterion) {
     let reader = FixCodec::new(Arc::new(seed()));
     let mut group = criterion.benchmark_group("fix/read");
@@ -32,7 +49,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         group.bench_function(label, |bencher| {
             bencher.iter(|| {
                 black_box(&reader)
-                    .read_line(black_box(row).as_bytes())
+                    .transform_line(black_box(row).as_bytes(), false)
                     .expect("a readable row")
             });
         });
@@ -46,13 +63,35 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("tagged_at_version", |bencher| {
         bencher.iter(|| {
             black_box(&dated)
-                .read_line(black_box(BARE).as_bytes())
+                .transform_line(black_box(BARE).as_bytes(), false)
                 .expect("a readable row")
         });
     });
 
+    // A bridge configuration, against a dictionary that types it and one that
+    // does not, so what the dictionary is worth on this shape is a number.
+    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
+    let typed = FixCodec::new(Arc::new(
+        seed()
+            .with_ulbridge_fields()
+            .expect("ULBridge's own fields"),
+    ))
+    .with_branch(&branch);
+    group.throughput(Throughput::Bytes(ULCONFIG.len() as u64));
+    for (label, reader) in [("ulconfig", &typed), ("ulconfig_untyped", &reader)] {
+        group.bench_function(label, |bencher| {
+            bencher.iter(|| {
+                black_box(reader)
+                    .transform_line(black_box(ULCONFIG).as_bytes(), false)
+                    .expect("a readable document")
+            });
+        });
+    }
+
     // The emit that closes the round trip, from the entries rather than the row.
-    let message = reader.read_line(BARE.as_bytes()).expect("a readable row");
+    let message = reader
+        .transform_line(BARE.as_bytes(), false)
+        .expect("a readable row");
     group.bench_function("emit", |bencher| {
         bencher.iter(|| black_box(&message).into_bytes(black_box(b'|')));
     });

@@ -30,6 +30,8 @@ pub(super) const TAG_KEY: &str = "fix:tag";
 const TAGS: &str = "tags";
 /// The alternate names, comma-separated, highest priority first.
 const ALIASES: &str = "aliases";
+/// The spellings that mean "nothing was sent" for this field.
+const NULLS: &str = "nulls";
 /// The specification's own wording.
 /// What a field is for is not FIX's to own.
 ///
@@ -149,8 +151,37 @@ impl<'field> FixField<'field> {
     /// the stored text, which the field already owns, so reading them costs
     /// the same whether one is taken or all are. An absent property yields
     /// nothing.
-    pub fn aliases(&self) -> FixAliases<'field> {
-        FixAliases::over(self.get(ALIASES))
+    pub fn aliases(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(ALIASES))
+    }
+
+    /// Iterates the spellings that mean "nothing was sent" for this field.
+    ///
+    /// A venue writes an absence in its own vocabulary - `N/A` on a price,
+    /// `0` on an identifier, `NONE` on a party - and which spelling means it
+    /// is a fact about the field rather than about the capture. A value the
+    /// list names types as null in the row while the entry keeps it exactly
+    /// as it arrived, because the row is the interpretation and the entries
+    /// are what the wire carried.
+    ///
+    /// This is the narrow half of the pair.
+    /// [`FixCodec::with_null_values`](crate::FixCodec::with_null_values) is
+    /// the capture's own convention and is applied to every key before one is
+    /// resolved at all; this is applied once the field is known. The iterator
+    /// is lazy and allocates nothing, and an absent property yields nothing.
+    pub fn nulls(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(NULLS))
+    }
+
+    /// Whether `value` is a spelling this field states as an absence.
+    ///
+    /// Compared ASCII case-insensitively against the trimmed text, exactly as
+    /// the capture-wide list compares: a venue writing `n/a` and `N/A` in one
+    /// file means the same absence twice.
+    pub fn is_null_value(&self, value: &str) -> bool {
+        let trimmed = value.trim_matches(|held: char| held.is_ascii_whitespace());
+        self.nulls()
+            .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
     }
 
     /// Returns the specification's own wording for this field.
@@ -262,11 +293,14 @@ impl<'field> FixField<'field> {
             if entry.since() > at {
                 break;
             }
-            if let Some(dtype) = entry.dtype() {
-                newest = Some(dtype);
+            if entry.dtype().is_some() {
+                newest = Some(entry);
             }
         }
-        newest.map(DataType::from_str).transpose()
+        newest
+            .map(FixLineageEntry::parse_dtype)
+            .transpose()
+            .map(Option::flatten)
     }
 
     /// The newest value at or before `at` that an entry states.
@@ -548,6 +582,56 @@ impl FixFieldMut<'_> {
             return Ok(());
         }
         self.store(ALIASES, rendered)
+    }
+
+    /// Records the spellings that mean "nothing was sent" for this field.
+    ///
+    /// Empty input removes the property. A spelling is stored exactly as
+    /// given, because a venue's own casing is what a reader recognizes it by,
+    /// and matched case-insensitively on the way back.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a spelling contains the separator or repeats an
+    /// earlier one with ASCII case folded, leaving the field unchanged. An
+    /// empty spelling is admitted, and is how a field states that the empty
+    /// value is its absence.
+    pub fn set_nulls<I, S>(&mut self, spellings: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut rendered = String::new();
+        let mut count = 0;
+        for spelling in spellings {
+            let spelling = spelling.as_ref();
+            if spelling.contains(SEPARATOR) {
+                return Err(self.rejected(
+                    NULLS,
+                    format_smolstr!("expected a spelling without {SEPARATOR:?}, got {spelling:?}"),
+                ));
+            }
+            if count > 0
+                && rendered
+                    .split(SEPARATOR)
+                    .any(|held| held.eq_ignore_ascii_case(spelling))
+            {
+                return Err(self.rejected(
+                    NULLS,
+                    format_smolstr!("expected each spelling once, got {spelling:?} twice"),
+                ));
+            }
+            if count > 0 {
+                rendered.push(SEPARATOR);
+            }
+            rendered.push_str(spelling);
+            count += 1;
+        }
+        if count == 0 {
+            self.remove(NULLS);
+            return Ok(());
+        }
+        self.store(NULLS, rendered)
     }
 
     /// Records the specification's own wording for this field.
@@ -849,12 +933,12 @@ impl FixFieldMut<'_> {
 /// which the writer never produces, is skipped rather than reported: the
 /// typed rejection belongs to the write, and a read stays cheap.
 #[derive(Clone, Debug)]
-pub struct FixAliases<'field> {
+pub struct FixSpellings<'field> {
     parts: Option<Split<'field, char>>,
 }
 
-impl<'field> FixAliases<'field> {
-    /// Walk one stored `fix:aliases` value, or nothing for an absent one.
+impl<'field> FixSpellings<'field> {
+    /// Walk one stored comma-separated value, or nothing for an absent one.
     fn over(stored: Option<&'field str>) -> Self {
         Self {
             parts: stored.map(|stored| stored.split(SEPARATOR)),
@@ -862,7 +946,7 @@ impl<'field> FixAliases<'field> {
     }
 }
 
-impl<'field> Iterator for FixAliases<'field> {
+impl<'field> Iterator for FixSpellings<'field> {
     type Item = &'field str;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -877,20 +961,20 @@ impl<'field> Iterator for FixAliases<'field> {
     }
 }
 
-impl DoubleEndedIterator for FixAliases<'_> {
+impl DoubleEndedIterator for FixSpellings<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.parts.as_mut()?.rfind(|alias| !alias.is_empty())
     }
 }
 
-impl FusedIterator for FixAliases<'_> {}
+impl FusedIterator for FixSpellings<'_> {}
 
 /// The `fix:` keys a merge folds, as a `const` listing.
 ///
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 6] = [BRANCH, TAG, TAGS, ALIASES, LINEAGE, CODES];
+const MERGED_KEYS: [&str; 7] = [BRANCH, TAG, TAGS, ALIASES, NULLS, LINEAGE, CODES];
 
 /// Render aliases the way the setter renders them.
 fn render_aliases(aliases: &[&str]) -> Option<String> {

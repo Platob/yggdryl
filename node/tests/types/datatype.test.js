@@ -287,6 +287,8 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
     'mic',
     'msgdirection',
     'side',
+    'state',
+    'timeinforce',
   ])
   // `exchange` is FIX's name for the ISO 10383 code, so it is one list.
   assert.deepEqual(prebuilt.mic, prebuilt.exchange)

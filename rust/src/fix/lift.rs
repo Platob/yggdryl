@@ -331,7 +331,7 @@ fn at(occurrence: &Scalar, position: Option<usize>) -> Option<&Scalar> {
     (!held.is_null()).then_some(held)
 }
 
-/// The `item` field a group's List declares.
+/// The occurrence field a group's List declares.
 fn item_of(field: &Field) -> Option<&Field> {
     match field.dtype() {
         DataType::List(item) | DataType::LargeList(item) => Some(item),
@@ -356,7 +356,7 @@ impl FixMsg {
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     /// let reader = FixCodec::new(Arc::new(registry));
-    /// let order = reader.read_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|")?;
+    /// let order = reader.transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=0|", false)?;
     ///
     /// assert_eq!(order.lifted("id").and_then(yggdryl::Scalar::as_str), Some("ORDER-1"));
     /// assert_eq!(order.lifted("symbol").and_then(yggdryl::Scalar::as_str), Some("AAPL"));

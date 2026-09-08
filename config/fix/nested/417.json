@@ -177,7 +177,8 @@
             {
               "name": "underlyingcomplexeventperioddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -187,8 +188,8 @@
             {
               "name": "underlyingcomplexeventperiodtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -388,7 +389,8 @@
             {
               "name": "underlyingcomplexeventschedulestartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -398,7 +400,8 @@
             {
               "name": "underlyingcomplexeventscheduleenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

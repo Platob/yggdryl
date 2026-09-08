@@ -142,13 +142,17 @@ pub enum DataTypeId {
     Side,
     /// FIX's message type, eight ASCII bytes.
     MsgType,
+    /// What state one thing is in.
+    State,
+    /// How long an order stands.
+    TimeInForce,
     /// Which way a captured line moved, four ASCII bytes.
     MsgDirection,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 58] = [
+    pub const ALL: [Self; 60] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -206,6 +210,8 @@ impl DataTypeId {
         Self::Version,
         Self::Side,
         Self::MsgType,
+        Self::State,
+        Self::TimeInForce,
         Self::MsgDirection,
     ];
 
@@ -264,6 +270,8 @@ impl DataTypeId {
             Self::Cfi => "cfi",
             Self::Side => "side",
             Self::MsgType => "msgtype",
+            Self::State => "state",
+            Self::TimeInForce => "timeinforce",
             Self::MsgDirection => "msgdirection",
             Self::Uuid => "uuid",
             Self::List => "list",
@@ -348,6 +356,8 @@ impl DataTypeId {
             | Self::Cfi
             | Self::Side
             | Self::MsgType
+            | Self::State
+            | Self::TimeInForce
             | Self::MsgDirection => DataTypeKind::Ascii,
             Self::Uuid => DataTypeKind::Uuid,
             Self::List
@@ -490,7 +500,7 @@ impl DataTypeId {
             Self::Currency => Some(3),
             Self::Cfi => Some(6),
             Self::Side | Self::MsgDirection => Some(4),
-            Self::MsgType => Some(8),
+            Self::MsgType | Self::State | Self::TimeInForce => Some(8),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
@@ -576,7 +586,7 @@ mod tests {
 
     #[test]
     fn the_ascii_family_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 58);
+        assert_eq!(DataTypeId::ALL.len(), 60);
         for id in [
             DataTypeId::Ascii,
             DataTypeId::FixedAscii,

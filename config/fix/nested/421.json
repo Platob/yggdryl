@@ -11,7 +11,8 @@
             {
               "name": "underlyingprovisionoptionexercisefixeddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -63,7 +64,8 @@
             {
               "name": "underlyingprovisiondateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -83,7 +85,8 @@
             {
               "name": "underlyingprovisiondateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

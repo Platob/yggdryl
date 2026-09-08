@@ -7,6 +7,17 @@
 //! understands, and hands the pairs over. None of them parses a message and
 //! none of them builds a tree of its own.
 //!
+//! # Why `transform_*` and not `read_*`
+//!
+//! `read_*` names an I/O operation in this crate: it asks a handle for bytes
+//! and names the core type it answers, as `read_all_bytes` and
+//! `read_arrow_reader` do. A codec asks nothing of storage. It is handed
+//! bytes, a record or a batch the caller already holds and answers the same
+//! rows in the message vocabulary, so the family is named for what it does to
+//! its input rather than for where the input came from. The two families then
+//! compose without either shadowing the other: a handle's `read_arrow_reader`
+//! feeds this codec's [`FixCodec::transform_arrow_reader`].
+//!
 //! # A row is a log line
 //!
 //! A capture line is a message wrapped in whatever the process printed around
@@ -155,7 +166,7 @@ impl FixCodec {
         self
     }
 
-    /// Names the record column [`Self::read_record`] reads the payload from.
+    /// Names the record column [`Self::transform_record`] reads the payload from.
     #[must_use]
     pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self {
         self.payload_column = column.into();
@@ -186,7 +197,8 @@ impl FixCodec {
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    /// Reads one log line, picking its dialect from the frame.
+    /// Transforms one log line into a message, picking its dialect from the
+    /// frame.
     ///
     /// The prefix a process printed around the message is located and dropped
     /// first, then one shallow look decides which of the three readers owns
@@ -202,7 +214,7 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] for input that is not a row at all.
-    pub fn read_line(&self, row: &[u8]) -> Result<FixMsg> {
+    pub fn transform_line(&self, row: &[u8], enrich: bool) -> Result<FixMsg> {
         if row.is_empty() {
             return Err(Error::Parse {
                 target: "fix",
@@ -213,19 +225,26 @@ impl FixCodec {
         let start = line::payload_at(row).unwrap_or(row.len());
         let body = &row[start..];
         if numeric_frame(body) {
-            return self.read_fix_line(body);
+            return self.transform_fix_line(body, enrich);
+        }
+        // A payload opening with `{` is a bridge configuration document, and
+        // nothing else is: the locator points at a key, which starts with a
+        // digit or a letter, and points at an object only where it found one.
+        // So the test costs one byte rather than a second classification.
+        if body.first() == Some(&b'{') {
+            return self.transform_ulconfig_line(body, enrich);
         }
         // A FIXML row states no `key=value` frame, so the locator finds none
         // and leaves nothing to read. The document is the payload, and it
         // opens at the first tag - which is also how a prefix is dropped from
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
-            return self.read_fixml_line(row);
+            return self.transform_fixml_line(row, enrich);
         }
-        self.read_ullink_line(body)
+        self.transform_ullink_line(body, enrich)
     }
 
-    /// Reads one numeric FIX frame.
+    /// Transforms one numeric FIX frame.
     ///
     /// The separator is the one [`Self::with_separator`] pinned; with none
     /// pinned a frame spelling its `SOH` as `\x01`, `^A` or `<SOH>` is
@@ -240,18 +259,18 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn read_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
+    pub fn transform_fix_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
         if let Some(separator) = self.separator {
-            return self.split_fix(body, separator);
+            return self.split_fix(body, separator, enrich);
         }
         match unescaped(body) {
-            Some(held) => self.split_fix(&held, 0x01),
-            None => self.split_fix(body, separator_of(body)),
+            Some(held) => self.split_fix(&held, 0x01, enrich),
+            None => self.split_fix(body, separator_of(body), enrich),
         }
     }
 
     /// One numeric frame split on one byte.
-    fn split_fix(&self, body: &[u8], separator: u8) -> Result<FixMsg> {
+    fn split_fix(&self, body: &[u8], separator: u8, enrich: bool) -> Result<FixMsg> {
         let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
         for segment in split(body, separator) {
             let Some((key, value)) = split_pair(segment) else {
@@ -263,10 +282,10 @@ impl FixCodec {
                 break;
             }
         }
-        self.build(&pairs)
+        self.build(&pairs, enrich)
     }
 
-    /// Reads one bridge row of `NAME=VALUE` pairs.
+    /// Transforms one bridge row of `NAME=VALUE` pairs.
     ///
     /// A key opening with `#` names a group: `#NOPARTYIDS=1` is the counter
     /// and `#NOPARTYIDS[0]=…` is one occurrence whose *value* is a run of
@@ -276,7 +295,7 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal, which a row's content cannot provoke.
-    pub fn read_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
+    pub fn transform_ullink_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
         let separator = if memchr::memchr(b'|', body).is_some() {
             b'|'
         } else {
@@ -308,10 +327,10 @@ impl FixCodec {
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        self.build(&pairs)
+        self.build(&pairs, enrich)
     }
 
-    /// Reads one FIXML row: every element's attributes, in document order.
+    /// Transforms one FIXML row: every element's attributes, in document order.
     ///
     /// FIXML spells a field as an XML attribute and a component as a nested
     /// element, so the attributes *are* the pairs and the nesting flattens the
@@ -327,7 +346,7 @@ impl FixCodec {
     ///
     /// Returns [`Error::Parse`] naming the byte position when the row is not
     /// well-formed XML, and the builder's refusal otherwise.
-    pub fn read_fixml_line(&self, body: &[u8]) -> Result<FixMsg> {
+    pub fn transform_fixml_line(&self, body: &[u8], enrich: bool) -> Result<FixMsg> {
         let mut reader = quick_xml::Reader::from_reader(body);
         let mut buffer = Vec::new();
         let mut owned: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
@@ -360,16 +379,16 @@ impl FixCodec {
             .iter()
             .map(|(key, value)| (key.as_slice(), value.as_slice()))
             .collect();
-        self.build(&pairs)
+        self.build(&pairs, enrich)
     }
 
-    /// Reads one generic record: its payload column, under its own columns.
+    /// Transforms one generic record: its payload column, under its own columns.
     ///
     /// The crate already has a generic record - a name-to-value map, one
     /// `Scalar` variant - and every row-oriented reader in it produces one, so
     /// taking that shape means this accepts a row from any of them with no
     /// conversion at the boundary. The payload column is read by
-    /// [`Self::read_line`]; every other named column is a fact this codec
+    /// [`Self::transform_line`]; every other named column is a fact this codec
     /// already holds, stated per row.
     ///
     /// | column | supplies |
@@ -390,19 +409,20 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when the value is not a record at all.
-    pub fn read_record(&self, record: &Scalar) -> Result<FixMsg> {
-        super::batch::read_record_with(self, record, &self.payload_column)
+    pub fn transform_record(&self, record: &Scalar, enrich: bool) -> Result<FixMsg> {
+        super::batch::transform_record_with(self, record, &self.payload_column, enrich)
     }
 
-    /// Reads a stream of generic records, one message per record, lazily.
+    /// Transforms a stream of generic records, one message per record, lazily.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
     /// million rows costs one message at a time. Each record is read exactly
-    /// as [`Self::read_record`] reads it, so what a row states about itself
+    /// as [`Self::transform_record`] reads it, so what a row states about itself
     /// still outranks what this codec holds for the run.
-    pub fn read_records<'codec, I>(
+    pub fn transform_records<'codec, I>(
         &'codec self,
         records: I,
+        enrich: bool,
     ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
     where
         I: IntoIterator<Item = Scalar>,
@@ -410,10 +430,11 @@ impl FixCodec {
     {
         records
             .into_iter()
-            .map(move |record| self.read_record(&record))
+            .map(move |record| self.transform_record(&record, enrich))
     }
 
-    /// Reads one Arrow batch of capture rows into one Arrow batch of messages.
+    /// Transforms one Arrow batch of capture rows into one Arrow batch of
+    /// messages.
     ///
     /// The batch a text reader answers with is already the shape this wants -
     /// one row per line, the payload in a named column and the capture's own
@@ -422,21 +443,22 @@ impl FixCodec {
     /// through ahead of the FIX ones.
     ///
     /// One batch in, one batch out, with the row count preserved. Use
-    /// [`Self::read_arrow_reader`] for a stream, which is the same read
+    /// [`Self::transform_arrow_reader`] for a stream, which is the same read
     /// without holding a batch's worth of messages at once.
     ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the options do not make a
     /// root field, and the Arrow layer's own failure.
-    pub fn read_arrow_batch(
+    pub fn transform_arrow_batch(
         &self,
         batch: &arrow_array::RecordBatch,
         options: &super::FixOptions,
+        enrich: bool,
     ) -> Result<arrow_array::RecordBatch> {
         let schema = batch.schema();
         let source = crate::arrow::batch_reader(schema, [batch.clone()]);
-        let mut read = self.read_arrow_reader(source, options)?;
+        let mut read = self.transform_arrow_reader(source, options, enrich)?;
         let first = read
             .next()
             .transpose()
@@ -449,7 +471,7 @@ impl FixCodec {
         }
     }
 
-    /// Reads a stream of Arrow batches into a stream of message batches.
+    /// Transforms a stream of Arrow batches into a stream of message batches.
     ///
     /// The payload column is this codec's, so a reader whose payload is not
     /// `body` names it with [`Self::with_payload_column`] once for the run.
@@ -458,12 +480,87 @@ impl FixCodec {
     ///
     /// Returns the schema grammar's refusal when the options do not make a
     /// root field, or the source reader's own failure.
-    pub fn read_arrow_reader(
+    pub fn transform_arrow_reader(
+        &self,
+        source: crate::arrow::BatchReader,
+        options: &super::FixOptions,
+        enrich: bool,
+    ) -> Result<crate::arrow::BatchReader> {
+        // The flag is the argument the caller passed rather than whatever the
+        // options happened to carry, so one spelling decides it.
+        let mut options = options.clone();
+        options.enrich = enrich;
+        super::batch::FixBatchReader::from_codec(self, source, &options)
+    }
+
+    /// Reads one Arrow batch of capture rows into one batch of filled messages.
+    ///
+    /// [`Self::transform_arrow_batch`] with the filling asked for, which is
+    /// the spelling a caller who always wants it writes once.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::transform_arrow_batch`] returns.
+    pub fn enrich_arrow_batch(
+        &self,
+        batch: &arrow_array::RecordBatch,
+        options: &super::FixOptions,
+    ) -> Result<arrow_array::RecordBatch> {
+        self.transform_arrow_batch(batch, options, true)
+    }
+
+    /// Reads a stream of capture batches into a stream of filled messages.
+    ///
+    /// [`Self::transform_arrow_reader`] with the filling asked for.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::transform_arrow_reader`] returns.
+    pub fn enrich_arrow_reader(
         &self,
         source: crate::arrow::BatchReader,
         options: &super::FixOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        super::batch::FixBatchReader::from_codec(self, source, options)
+        self.transform_arrow_reader(source, options, true)
+    }
+
+    /// Fills what one message implies but did not carry.
+    ///
+    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is,
+    /// and a fill stating `LastQty` and `LastPx` has said what it was worth.
+    /// The rules are the specification's own tables read as
+    /// implications - FIX 4.4's Appendix D for an order's life, 4.2's
+    /// Appendix O for what a foreign exchange trade settles on - and a rule
+    /// answers only where every input is stated and typed.
+    ///
+    /// Only the row is filled. The entries are what arrived and are carried
+    /// through untouched, so [`FixMsg::into_bytes`] re-emits the received line
+    /// byte for byte whether the message was enriched or not. A stated value
+    /// is never overwritten, which also makes this idempotent.
+    ///
+    /// # Errors
+    ///
+    /// Returns the value contract's refusal when a derived value does not fit
+    /// the column the dictionary declares for it.
+    pub fn enrich_fixmsg(&self, message: FixMsg) -> Result<FixMsg> {
+        super::enrich::enrich(&self.registry, message)
+    }
+
+    /// Fills a stream of messages, lazily.
+    ///
+    /// Nothing is collected: the iterator is the stream, so a capture of ten
+    /// million messages costs one at a time.
+    pub fn enrich_fixmsgs<'codec, I>(
+        &'codec self,
+        messages: I,
+    ) -> impl Iterator<Item = Result<FixMsg>> + 'codec
+    where
+        I: IntoIterator<Item = FixMsg>,
+        I::IntoIter: 'codec,
+    {
+        messages
+            .into_iter()
+            .map(move |message| self.enrich_fixmsg(message))
     }
 
     /// Builds one message from pairs the caller already split.
@@ -471,16 +568,21 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the builder's refusal.
-    pub fn read_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg>
+    pub fn transform_pairs<'a, I>(&self, pairs: I, enrich: bool) -> Result<FixMsg>
     where
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
         let held: Vec<(&[u8], &[u8])> = pairs.into_iter().collect();
-        self.build(&held)
+        self.build(&held, enrich)
+    }
+
+    /// The build a reader outside this module funnels into.
+    pub(super) fn build_pairs(&self, pairs: &[(&[u8], &[u8])], enrich: bool) -> Result<FixMsg> {
+        self.build(pairs, enrich)
     }
 
     /// The one build every reader funnels into.
-    fn build(&self, pairs: &[(&[u8], &[u8])]) -> Result<FixMsg> {
+    fn build(&self, pairs: &[(&[u8], &[u8])], enrich: bool) -> Result<FixMsg> {
         // A row states no dialect, so the caller's pin is the only source: a
         // capture is one session and the branch is a fact about the run.
         let branch = self.branch.clone().unwrap_or_default();
@@ -504,7 +606,11 @@ impl FixCodec {
             builder.push(key, value);
         }
         let (field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
-        FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)
+        let built = FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)?;
+        if enrich {
+            return self.enrich_fixmsg(built);
+        }
+        Ok(built)
     }
 
     /// The direct members the addressed repeating group declares.

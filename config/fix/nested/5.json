@@ -98,7 +98,7 @@
     "metadata": {
       "description": "The number of Distribution Instructions on a Registration Instructions message",
       "display": "NoDistribInsts",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nodistribinsts\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nodistribinsts\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "510"
     }
   },
@@ -151,7 +151,7 @@
     "metadata": {
       "description": "The number of Contract Amount details on an Execution Report message",
       "display": "NoContAmts",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nocontamts\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nocontamts\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "518"
     }
   },
@@ -204,7 +204,7 @@
     "metadata": {
       "description": "Number of affected orders in the repeating group of order ids.",
       "display": "NoAffectedOrders",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noaffectedorders\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noaffectedorders\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "534"
     }
   },
@@ -267,7 +267,7 @@
     "metadata": {
       "description": "Number of NestedPartyID (524), NestedPartyIDSource (525), and NestedPartyRole (538) entries",
       "display": "NoNestedPartyIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nonestedpartyids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nonestedpartyids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "539"
     }
   },
@@ -345,7 +345,8 @@
             {
               "name": "tradeoriginationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -355,7 +356,8 @@
             {
               "name": "tradedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -927,7 +929,8 @@
             {
               "name": "exdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1455,7 +1458,7 @@
       "description": "Number of Side repeating group instances.",
       "display": "NoSides",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OneSide\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"One Side\"},{\"value\":\"2\",\"name\":\"BothSides\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Both Sides\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosides\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosides\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "552"
     }
   },
@@ -1581,7 +1584,8 @@
             {
               "name": "legsettldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1868,7 +1872,7 @@
     "metadata": {
       "description": "Number of InstrumentLeg repeating group instances.",
       "display": "NoLegs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegs\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegs\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "555"
     }
   },
@@ -1953,7 +1957,7 @@
     "metadata": {
       "description": "Number of Security Type repeating group instances.",
       "display": "NoSecurityTypes",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecuritytypes\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nosecuritytypes\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "558"
     }
   },
@@ -1986,7 +1990,7 @@
     "metadata": {
       "description": "Number of clearing instructions",
       "display": "NoClearingInstructions",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noclearinginstructions\",\"type\":\"int\"},{\"since\":\"4.4\",\"name\":\"noclearinginstructions\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"noclearinginstructions\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "576"
     }
   },
@@ -2002,7 +2006,8 @@
             {
               "name": "tradedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -2043,7 +2048,7 @@
     "metadata": {
       "description": "Number of Date fields provided in date range",
       "display": "NoDates",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nodates\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nodates\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "580"
     }
   }

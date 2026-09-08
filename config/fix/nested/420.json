@@ -277,8 +277,8 @@
             {
               "name": "underlyingcashsettlvaluationtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -864,7 +864,8 @@
             {
               "name": "underlyingprovisioncashsettlpaymentdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

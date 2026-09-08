@@ -250,7 +250,8 @@
   {
     "name": "paymentstreampaymentdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -287,7 +288,8 @@
   {
     "name": "paymentstreampricingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -349,7 +351,8 @@
   {
     "name": "pricingdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -374,7 +377,8 @@
   {
     "name": "pricingdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -386,14 +390,14 @@
   {
     "name": "pricingtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the local market time of the pricing or fixing.",
       "display": "PricingTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"pricingtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"pricingtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"pricingtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "41235"
     }
   },
@@ -448,7 +452,8 @@
   {
     "name": "streamcalculationperioddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -479,7 +484,7 @@
     "metadata": {
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
       "display": "StreamCalculationPeriodDatesXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcalculationperioddatesxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcalculationperioddatesxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcalculationperioddatesxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41244"
     }
   },
@@ -492,7 +497,7 @@
     "metadata": {
       "description": "Cross reference to another calculation period for duplicating its properties.",
       "display": "StreamCalculationPeriodDatesXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcalculationperioddatesxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcalculationperioddatesxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcalculationperioddatesxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41245"
     }
   },
@@ -755,7 +760,8 @@
   {
     "name": "streamcommoditysettldateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -780,7 +786,8 @@
   {
     "name": "streamcommoditysettldateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -848,7 +855,7 @@
     "metadata": {
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
       "display": "StreamCommodityXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommodityxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommodityxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommodityxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41275"
     }
   },
@@ -861,7 +868,7 @@
     "metadata": {
       "description": "Reference to a stream commodity elsewhere in the message.",
       "display": "StreamCommodityXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommodityxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"streamcommodityxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"streamcommodityxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "41276"
     }
   },

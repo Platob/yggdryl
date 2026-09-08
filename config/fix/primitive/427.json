@@ -52,7 +52,8 @@
   {
     "name": "paymentstubstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -164,7 +165,8 @@
   {
     "name": "returnratevaluationstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +228,8 @@
   {
     "name": "returnratevaluationstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -238,7 +241,8 @@
   {
     "name": "returnratevaluationenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -300,7 +304,8 @@
   {
     "name": "returnratevaluationenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -560,21 +565,22 @@
   {
     "name": "returnratequotetime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time when the quote is to be generated.",
       "display": "ReturnRateQuoteTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratequotetime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"returnratequotetime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratequotetime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42749"
     }
   },
   {
     "name": "returnratequotedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -586,14 +592,14 @@
   {
     "name": "returnratequoteexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "ReturnRateQuoteExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratequoteexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"returnratequoteexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratequoteexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42751"
     }
   },
@@ -661,14 +667,14 @@
   {
     "name": "returnratevaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "ReturnRateValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratevaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"returnratevaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"returnratevaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42757"
     }
   },
@@ -812,7 +818,8 @@
   {
     "name": "returnratevaluationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -849,7 +856,8 @@
   {
     "name": "settlmethodelectiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -924,7 +932,8 @@
   {
     "name": "settlmethodelectiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -948,7 +957,8 @@
   {
     "name": "streamversioneffectivedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -997,7 +1007,8 @@
   {
     "name": "underlyingcashsettldateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1072,7 +1083,8 @@
   {
     "name": "underlyingcashsettldateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

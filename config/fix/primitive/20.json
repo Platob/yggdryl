@@ -63,7 +63,8 @@
   {
     "name": "underlyingindexannexdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -249,7 +250,8 @@
   {
     "name": "underlyingsettledentitymatrixpublicationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -508,7 +510,8 @@
   {
     "name": "underlyingdateddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -520,7 +523,8 @@
   {
     "name": "underlyinginterestaccrualdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -645,7 +649,9 @@
   {
     "name": "underlyingcomplexeventstartdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {
@@ -657,7 +663,9 @@
   {
     "name": "underlyingcomplexeventenddate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
     },
     "nullable": true,
     "metadata": {
@@ -708,7 +716,8 @@
   {
     "name": "legeventdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -970,7 +979,8 @@
   {
     "name": "previousclearingbusinessdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -982,7 +992,8 @@
   {
     "name": "valuationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -994,14 +1005,14 @@
   {
     "name": "valuationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The valuation time of the trade.",
       "display": "ValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"valuationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":162,\"name\":\"valuationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"valuationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "2086"
     }
   },

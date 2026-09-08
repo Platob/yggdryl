@@ -243,7 +243,7 @@
     "metadata": {
       "description": "Cross reference to another notional amount for duplicating its properties.",
       "display": "UnderlyingNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingnotionalxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyingnotionalxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2619"
     }
   },
@@ -391,7 +391,7 @@
     "metadata": {
       "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
       "display": "UnderlyingInstrumentXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"underlyinginstrumentxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyinginstrumentxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "2631"
     }
   },

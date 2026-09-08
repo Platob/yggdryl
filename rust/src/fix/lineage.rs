@@ -32,7 +32,7 @@ const SINCE: &str = "since";
 const EP: &str = "ep";
 /// The spelling the field carries from that version on.
 const NAME: &str = "name";
-/// The FIX datatype name the field carries from that version on.
+/// The datatype the field carries from that version on, resolved.
 const TYPE: &str = "type";
 /// Whether the specification deprecated the field at that version.
 const DEPRECATED: &str = "deprecated";
@@ -135,7 +135,11 @@ impl<'field> FixLineageEntry<'field> {
         self
     }
 
-    /// Sets the FIX datatype name the field carries from this version on.
+    /// Sets the datatype the field carries from this version on.
+    ///
+    /// A FIX datatype name and the crate's own spelling are both accepted -
+    /// the grammar resolves either - and the resolved type is what the writer
+    /// stores.
     #[must_use]
     pub const fn with_dtype(mut self, dtype: &'field str) -> Self {
         self.dtype = Some(dtype);
@@ -187,24 +191,46 @@ impl<'field> FixLineageEntry<'field> {
         self.name
     }
 
-    /// Returns the FIX datatype name from this version on, unparsed.
+    /// Returns the datatype from this version on, as text, unparsed.
     ///
-    /// The spelling is the one the schema grammar already resolves - `Qty`,
-    /// `int`, `UTCTimestamp` - so a reader needs no second table and the
-    /// stored document stays readable. [`Self::parse_dtype`] resolves it.
+    /// A *stored* entry states the crate's serialized datatype - the same
+    /// `{"type":"utf8"}` document the field's own datatype is stored as - so
+    /// a parameterized type carries its parameters where every other reader
+    /// of a datatype expects them. A *built* entry may state a FIX datatype
+    /// name instead, because [`Self::with_dtype`] takes whatever spelling the
+    /// caller has and the writer resolves it; the two forms never
+    /// coexist in one stored document. [`Self::parse_dtype`] answers either.
+    ///
+    /// Storing the resolved type rather than the FIX name is what makes a
+    /// history comparable: `char` and `String` are one type under two
+    /// spellings, and a reader asking what changed must not be told a rename
+    /// was a retype. The FIX spelling is not recoverable, which is the
+    /// accepted cost - it is a spelling, not a type, and every reader wanted
+    /// the type.
     #[must_use]
     pub const fn dtype(self) -> Option<&'field str> {
         self.dtype
     }
 
-    /// Resolves the FIX datatype name this entry states.
+    /// Resolves the datatype this entry states.
+    ///
+    /// A stored entry holds a serialized datatype and a built one may hold a
+    /// FIX datatype name, so the leading byte says which reader answers: only
+    /// a document opens with `{`.
     ///
     /// # Errors
     ///
-    /// Returns the grammar's own refusal when the stored spelling names no
-    /// datatype.
+    /// Returns the reader's own refusal when the text names no datatype.
     pub fn parse_dtype(self) -> Result<Option<DataType>> {
-        self.dtype.map(DataType::from_str).transpose()
+        self.dtype
+            .map(|held| {
+                if held.starts_with('{') {
+                    DataType::from_json(held)
+                } else {
+                    DataType::from_str(held)
+                }
+            })
+            .transpose()
     }
 
     /// Returns the specification's wording as of this version, still escaped
@@ -243,8 +269,29 @@ impl<'field> FixLineageEntry<'field> {
         self.removed
     }
 
+    /// Whether this entry states nothing `held` did not already state.
+    ///
+    /// Every stated fact is compared but the datatype, which the caller has
+    /// already resolved and compares itself: two spellings of one type are
+    /// equal here, and comparing the raw spellings would call that a change.
+    /// The pedigree is deliberately not compared - it dates the statement
+    /// rather than being one.
+    const fn states_nothing_beyond(self, held: Self) -> bool {
+        // `Option<&str>` has no const `PartialEq`, so the two spellings are
+        // compared through the same byte equality the rest of this document
+        // uses.
+        same_text(self.name, held.name)
+            && same_text(self.doc, held.doc)
+            && self.deprecated == held.deprecated
+            && self.removed == held.removed
+    }
+
     /// Renders this entry into the document being written.
-    fn write_into(self, writer: &mut Writer) -> Result<()> {
+    ///
+    /// The datatype is written as `dtype` spells it rather than as the entry
+    /// carries it, because the resolution the writer already performed is
+    /// what gets stored.
+    fn write_into(self, writer: &mut Writer, dtype: Option<&DataType>) -> Result<()> {
         writer.open_element();
         writer.text(true, SINCE, &self.since().to_string())?;
         if let Some(ep) = self.ep() {
@@ -253,8 +300,8 @@ impl<'field> FixLineageEntry<'field> {
         if let Some(name) = self.name {
             writer.text(false, NAME, name)?;
         }
-        if let Some(dtype) = self.dtype {
-            writer.text(false, TYPE, dtype)?;
+        if let Some(dtype) = dtype {
+            writer.document(false, TYPE, &dtype.clone().into_json()?);
         }
         if self.deprecated {
             writer.flag(false, DEPRECATED);
@@ -267,6 +314,63 @@ impl<'field> FixLineageEntry<'field> {
         }
         writer.close_element();
         Ok(())
+    }
+}
+
+/// Adopts a temporal type backward over the string entries preceding it.
+///
+/// A field FIX transmitted as text and later declared temporal was always
+/// carrying an instant: `20240102-10:15:30` parses the same under FIX.4.2,
+/// where the specification called the field a `String`, as under the version
+/// that called it a `UTCTimestamp`. Stating the later type at the earlier
+/// version is therefore what the crate can consistently parse, and the entry
+/// stops claiming a retype that never happened on the wire.
+///
+/// Only a string yields, and only to a temporal. Every other pair is a real
+/// constraint - `String` to `Currency`, `String` to `Boolean`, `int` to
+/// `Qty` - where the later type accepts strictly less than the earlier one
+/// did, so back-typing it would claim the earlier version refused values it
+/// carried. The walk runs newest first so a history with two temporal eras
+/// gives each era its own preceding run.
+fn back_type(typed: &mut [Option<DataType>]) {
+    for at in (1..typed.len()).rev() {
+        let Some(later) = typed[at].clone() else {
+            continue;
+        };
+        if !later.id().is_temporal() {
+            continue;
+        }
+        let mut earlier = at;
+        while earlier > 0
+            && typed[earlier - 1]
+                .as_ref()
+                .is_some_and(|held| held.id().is_string())
+        {
+            earlier -= 1;
+            typed[earlier] = Some(later.clone());
+        }
+    }
+}
+
+/// Whether two optional borrowed spellings are the same statement.
+const fn same_text(left: Option<&str>, right: Option<&str>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => {
+            let (left, right) = (left.as_bytes(), right.as_bytes());
+            if left.len() != right.len() {
+                return false;
+            }
+            let mut at = 0;
+            while at < left.len() {
+                if left[at] != right[at] {
+                    return false;
+                }
+                at += 1;
+            }
+            true
+        }
+        _ => false,
     }
 }
 
@@ -295,10 +399,28 @@ impl<'field> FixLineage<'field> {
 
     /// Renders entries into the one canonical document they have.
     ///
+    /// Two derivations are the writer's, so every dialect gets them and no
+    /// reader has to repeat them:
+    ///
+    /// - each entry's datatype is resolved and stored as the crate datatype
+    ///   it names, so `char` and `String` become one `utf8`;
+    /// - an entry that then states nothing its predecessor did not is
+    ///   dropped, because a dated point saying what was already true is not
+    ///   a point in a history.
+    ///
+    /// The oldest entry is never dropped: it is what `since` reads, and a
+    /// field with no lineage means "defined at every version", so removing
+    /// the last entry would change what the field says rather than shorten
+    /// how it says it. `ep` is the entry's date and not one of its
+    /// statements, so an extension pack that changed nothing is exactly the
+    /// entry worth dropping.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::Parse`] when two entries share a pedigree, because
-    /// two statements about one dated point cannot both be the field's.
+    /// two statements about one dated point cannot both be the field's, and
+    /// the grammar's refusal when an entry names no datatype the crate
+    /// resolves.
     pub(super) fn render(entries: &[FixLineageEntry<'_>]) -> Result<String> {
         let mut ordered: Vec<FixLineageEntry<'_>> = entries.to_vec();
         ordered.sort_by_key(|entry| entry.pedigree());
@@ -322,9 +444,22 @@ impl<'field> FixLineage<'field> {
                 },
             });
         }
+        let mut typed: Vec<Option<DataType>> = Vec::with_capacity(ordered.len());
+        for entry in &ordered {
+            typed.push(entry.parse_dtype()?);
+        }
+        back_type(&mut typed);
+
         let mut writer = Writer::open_array(ENTRIES);
-        for entry in ordered {
-            entry.write_into(&mut writer)?;
+        let mut kept: Option<(FixLineageEntry<'_>, Option<DataType>)> = None;
+        for (entry, dtype) in ordered.into_iter().zip(typed) {
+            if let Some((held, ref typed)) = kept {
+                if entry.states_nothing_beyond(held) && dtype == *typed {
+                    continue;
+                }
+            }
+            entry.write_into(&mut writer, dtype.as_ref())?;
+            kept = Some((entry, dtype));
         }
         writer.close_array();
         Ok(writer.finish())
@@ -364,7 +499,7 @@ impl<'field> FixLineage<'field> {
                 SINCE => since = Some(self.cursor.read_version(SINCE)?),
                 EP => ep = Some(self.cursor.read_number(EP)?),
                 NAME => name = Some(self.cursor.read_word(NAME)?),
-                TYPE => dtype = Some(self.cursor.read_word(TYPE)?),
+                TYPE => dtype = Some(self.cursor.read_document(TYPE)?),
                 DEPRECATED => deprecated = self.cursor.read_flag()?,
                 REMOVED => removed = self.cursor.read_flag()?,
                 _ => doc = Some(self.cursor.read_string()?),

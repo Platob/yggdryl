@@ -177,14 +177,36 @@ fn iso_error(target: &'static str, position: usize, reason: &'static str) -> Err
 }
 
 /// Read exactly `width` ASCII digits at `position`.
+///
+/// Accumulated directly rather than sliced and re-parsed: every caller here
+/// asks for two or four digits, and `str::parse` re-walks the bytes, re-checks
+/// each one and builds a error value this never needs. The widths are bounded
+/// by the callers, so the accumulator cannot overflow.
 fn digits(text: &str, position: usize, width: usize, target: &'static str) -> Result<i64> {
-    let slice = text
-        .get(position..position + width)
-        .filter(|slice| slice.bytes().all(|byte| byte.is_ascii_digit()))
-        .ok_or_else(|| iso_error(target, position, "expected digits"))?;
-    slice
-        .parse::<i64>()
-        .map_err(|_| iso_error(target, position, "expected digits"))
+    let bytes = text.as_bytes();
+    let Some(slice) = bytes.get(position..position + width) else {
+        return Err(iso_error(target, position, "expected digits"));
+    };
+    let mut held: i64 = 0;
+    for byte in slice {
+        if !byte.is_ascii_digit() {
+            return Err(iso_error(target, position, "expected digits"));
+        }
+        held = held * 10 + i64::from(byte - b'0');
+    }
+    Ok(held)
+}
+
+/// Whether the byte at `position` is an ASCII digit.
+///
+/// What separates the two spellings of every field here: a compact reading
+/// runs its digits together where an extended one puts a separator between
+/// them, so one look decides which is being read and neither pays for the
+/// other.
+fn is_digit_at(text: &str, position: usize) -> bool {
+    text.as_bytes()
+        .get(position)
+        .is_some_and(u8::is_ascii_digit)
 }
 
 /// Expect one literal byte at `position`.
@@ -195,32 +217,47 @@ fn literal(text: &str, position: usize, byte: u8, target: &'static str) -> Resul
     Err(iso_error(target, position, "unexpected separator"))
 }
 
-/// Parse `YYYY-MM-DD` into a day count since the Unix epoch.
+/// Parse `YYYY-MM-DD` or `YYYYMMDD` into a day count since the Unix epoch.
 pub(crate) fn parse_date(text: &str) -> Result<i32> {
-    let days = parse_date_at(text, 0)?;
-    if text.len() != 10 {
-        return Err(iso_error("date", 10, "trailing text after the date"));
+    let (days, end) = parse_date_at(text, 0)?;
+    if text.len() != end {
+        return Err(iso_error("date", end, "trailing text after the date"));
     }
     Ok(days)
 }
 
-/// Parse the ten date characters starting at `position`.
-fn parse_date_at(text: &str, position: usize) -> Result<i32> {
+/// Parse the date at `position`, answering it and the position after it.
+///
+/// Both spellings are read: the extended `YYYY-MM-DD` and the compact
+/// `YYYYMMDD` a wire writes when every byte counts. FIX is the reason - it
+/// spells every date and the date half of every timestamp compactly - and a
+/// log line quoting one is the same value however it was written.
+fn parse_date_at(text: &str, position: usize) -> Result<(i32, usize)> {
     let year = digits(text, position, 4, "date")?;
-    literal(text, position + 4, b'-', "date")?;
-    let month = digits(text, position + 5, 2, "date")?;
-    literal(text, position + 7, b'-', "date")?;
-    let day = digits(text, position + 8, 2, "date")?;
+    let compact = is_digit_at(text, position + 4);
+    let (month_at, day_at, end) = if compact {
+        (position + 4, position + 6, position + 8)
+    } else {
+        literal(text, position + 4, b'-', "date")?;
+        (position + 5, position + 8, position + 10)
+    };
+    let month = digits(text, month_at, 2, "date")?;
+    if !compact {
+        literal(text, position + 7, b'-', "date")?;
+    }
+    let day = digits(text, day_at, 2, "date")?;
     if !(1..=12).contains(&month) {
-        return Err(iso_error("date", position + 5, "month must be 01 to 12"));
+        return Err(iso_error("date", month_at, "month must be 01 to 12"));
     }
     let days = days_from_civil(year as i32, month as u32, day as u32);
     // Round-tripping the civil date rejects a day the month does not have,
     // such as February 30th, without a table of month lengths.
     if day < 1 || civil_from_days(days) != (year as i32, month as u32, day as u32) {
-        return Err(iso_error("date", position + 8, "no such day in this month"));
+        return Err(iso_error("date", day_at, "no such day in this month"));
     }
-    i32::try_from(days).map_err(|_| iso_error("date", position, "date is out of range"))
+    let days =
+        i32::try_from(days).map_err(|_| iso_error("date", position, "date is out of range"))?;
+    Ok((days, end))
 }
 
 /// Read the optional `.fraction` at `position`, returning its count at the
@@ -296,15 +333,25 @@ fn parse_clock_at(
     target: &'static str,
 ) -> Result<(i64, TimeUnit, usize)> {
     let hours = digits(text, position, 2, target)?;
-    literal(text, position + 2, b':', target)?;
-    let minutes = digits(text, position + 3, 2, target)?;
-    literal(text, position + 5, b':', target)?;
-    let seconds = digits(text, position + 6, 2, target)?;
+    // The compact `HHMMSS` beside the extended `HH:MM:SS`, decided by one
+    // look, exactly as the date is.
+    let compact = is_digit_at(text, position + 2);
+    let (minutes_at, seconds_at, end) = if compact {
+        (position + 2, position + 4, position + 6)
+    } else {
+        literal(text, position + 2, b':', target)?;
+        (position + 3, position + 6, position + 8)
+    };
+    let minutes = digits(text, minutes_at, 2, target)?;
+    if !compact {
+        literal(text, position + 5, b':', target)?;
+    }
+    let seconds = digits(text, seconds_at, 2, target)?;
     if minutes >= 60 || seconds >= 60 {
         return Err(iso_error(target, position, "clock reading out of range"));
     }
     let whole = hours * 3_600 + minutes * 60 + seconds;
-    let (fraction, unit, end) = parse_fraction_at(text, position + 8, target)?;
+    let (fraction, unit, end) = parse_fraction_at(text, end, target)?;
     let per = per_second(unit).expect("a fraction width names a resolution unit");
     Ok((whole * per + fraction, unit, end))
 }
@@ -324,14 +371,27 @@ pub(crate) fn parse_time(text: &str) -> Result<(i64, TimeUnit)> {
     Ok((count.rem_euclid(DAY * per), unit))
 }
 
-/// Parse a naive `YYYY-MM-DDTHH:MM:SS[.fraction]`, returning the end position.
+/// Parse a naive datetime, returning the position after it.
+///
+/// Every spelling of one instant: the extended
+/// `YYYY-MM-DDTHH:MM:SS[.fraction]`, the compact `YYYYMMDDHHMMSS[.fraction]`
+/// a wire writes, and the FIX form `YYYYMMDD-HH:MM:SS[.fraction]` that mixes
+/// them. The separator between the halves is required only where the clock
+/// would otherwise run into the date: a compact date is eight digits and a
+/// compact clock six, so `YYYYMMDDHHMMSS` reads without one, while the
+/// extended date must still be closed before the clock opens.
 fn parse_datetime_at(text: &str, target: &'static str) -> Result<(i64, TimeUnit, usize)> {
-    let days = parse_date_at(text, 0)?;
-    match text.as_bytes().get(10) {
-        Some(b'T' | b't' | b' ') => {}
-        _ => return Err(iso_error(target, 10, "expected T between date and time")),
-    }
-    let (in_day, unit, end) = parse_clock_at(text, 11, target)?;
+    let (days, after) = parse_date_at(text, 0)?;
+    let clock_at = match text.as_bytes().get(after) {
+        Some(b'T' | b't' | b' ' | b'-') => after + 1,
+        // A compact date runs straight into its clock, which is the whole
+        // point of writing it that way.
+        Some(byte) if byte.is_ascii_digit() && after == 8 => after,
+        _ => {
+            return Err(iso_error(target, after, "expected T between date and time"));
+        }
+    };
+    let (in_day, unit, end) = parse_clock_at(text, clock_at, target)?;
     let per = per_second(unit).expect("the clock parsed at a resolution unit");
     let count = i64::from(days)
         .checked_mul(DAY * per)

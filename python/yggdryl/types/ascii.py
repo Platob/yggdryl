@@ -27,10 +27,12 @@ if TYPE_CHECKING:
     SideField: TypeAlias = TypedField[Literal["side"], str]
     MsgTypeField: TypeAlias = TypedField[Literal["msgtype"], str]
     MsgDirectionField: TypeAlias = TypedField[Literal["msgdirection"], str]
+    StateField: TypeAlias = TypedField[Literal["state"], str]
+    TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
     AsciiField = FixedAsciiField = CountryField = CurrencyField = MicField = (
         CfiField
-    ) = SideField = MsgTypeField = MsgDirectionField = Field
+    ) = SideField = MsgTypeField = MsgDirectionField = StateField = TimeInForceField = Field
 
 _ASCII = simple_dtype("ascii")
 _COUNTRY = simple_dtype("country")
@@ -40,6 +42,8 @@ _CFI = simple_dtype("cfi")
 _SIDE = simple_dtype("side")
 _MSGTYPE = simple_dtype("msgtype")
 _DIRECTION = simple_dtype("msgdirection")
+_STATE = simple_dtype("state")
+_TIMEINFORCE = simple_dtype("timeinforce")
 
 
 def ascii(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> AsciiField:
@@ -114,12 +118,31 @@ def msgdirection(
     return new_field(MsgDirectionField, name, _DIRECTION, nullable, metadata)
 
 
+def state(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> StateField:
+    """What state one thing is in, ranked so the stored bytes sort by lifecycle."""
+
+    return new_field(StateField, name, _STATE, nullable, metadata)
+
+
+def timeinforce(
+    name: str,
+    *,
+    nullable: bool = True,
+    metadata: MetadataInput = None,
+) -> TimeInForceField:
+    """FIX ``TimeInForce(59)``, the wire value rather than a name for it."""
+
+    return new_field(TimeInForceField, name, _TIMEINFORCE, nullable, metadata)
+
+
 __all__ = [
     "AsciiField",
     "CfiField",
     "CountryField",
     "CurrencyField",
     "MsgDirectionField",
+    "StateField",
+    "TimeInForceField",
     "FixedAsciiField",
     "MicField",
     "MsgTypeField",

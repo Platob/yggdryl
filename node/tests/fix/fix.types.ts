@@ -62,6 +62,8 @@ const removedById: Field | null = loaded.removeById('5001:cme')
 const walk: Generator<Field> = loaded.keys()
 const drained: Field[] = [...loaded]
 const forOf: Field[] = [...loaded.keys()]
+const branchName: string = loaded.branchByDigest(0)
+const branchOrNull: string | null = loaded.getBranchByDigest(0)
 const same: boolean = loaded.equals(built)
 const registryHash: bigint = loaded.stableHash()
 const copy: FixRegistry = loaded.clone()
@@ -213,16 +215,15 @@ const readerClass: typeof FixCodec = fix.FixCodec
 const reader: FixCodec = new fix.FixCodec(loaded)
 const pinned: FixCodec = new fix.FixCodec(loaded, {
   branch: 'cme',
-  sourceVersion: '4.2',
-  targetVersion: '4.4',
+  version: '4.2',
   nullValues: ['<none>'],
 })
 const readRegistry: FixRegistry = reader.registry
-const fromText: FixMsg = reader.readLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromBytes: FixMsg = reader.readLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
-const fromFrame: FixMsg = reader.readFixLine(Buffer.from('8=FIX.4.4'), 1)
-const fromBridge: FixMsg = reader.readUllinkLine(Buffer.from('#SYMBOL=TTF'))
-const fromPairs: FixMsg = reader.readPairs([['55', 'AAPL']])
+const fromText: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromBytes: FixMsg = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|'))
+const fromFrame: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4'), 1)
+const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF'))
+const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
 const readerCopy: FixCodec = reader.clone()
 
 // The projection is the fixed row's index, and the schema is its root.
@@ -255,9 +256,11 @@ const lift: Array<[string, Scalar]> = fromText.lift()
 const party: Array<Scalar | null> | null = fromText.party('1')
 const regulatory: Scalar | null = fromText.trdRegTimestamp('1')
 const anomalies: string[] = fromText.anomalies()
-const arrivals: Array<[number, string | null, string, string]> = fromText.arrivals()
+const arrivals: Array<[number, number, string, string]> = fromText.arrivals()
 const wire: Buffer = fromText.toBytes(124)
 
+void branchName
+void branchOrNull
 void readerClass
 void pinned
 void readRegistry

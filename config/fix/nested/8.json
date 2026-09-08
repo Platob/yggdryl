@@ -38,7 +38,7 @@
     "metadata": {
       "description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
       "display": "NoSettlPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nosettlpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "801"
     }
   },
@@ -81,7 +81,7 @@
     "metadata": {
       "description": "Number of PartySubID (523)and PartySubIDType (803) entries",
       "display": "NoPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nopartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "802"
     }
   },
@@ -124,7 +124,7 @@
     "metadata": {
       "description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
       "display": "NoNestedPartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonestedpartysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonestedpartysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "804"
     }
   },
@@ -167,7 +167,7 @@
     "metadata": {
       "description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
       "display": "NoNested2PartySubIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partysubids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nonested2partysubids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "806"
     }
   },
@@ -200,7 +200,7 @@
     "metadata": {
       "description": "Number of Usernames to which this this response is directed",
       "display": "NoUsernames",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nousernames\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nousernames\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "809"
     }
   },
@@ -233,7 +233,7 @@
     "metadata": {
       "description": "Number of alternative market data sources",
       "display": "NoAltMDSource",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noaltmdsource\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noaltmdsource\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "816"
     }
   },
@@ -286,7 +286,7 @@
     "metadata": {
       "description": "Number of repeating OrderCapacity entries.",
       "display": "NoCapacities",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocapacities\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nocapacities\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "862"
     }
   },
@@ -312,7 +312,8 @@
             {
               "name": "eventdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -412,7 +413,7 @@
     "metadata": {
       "description": "Number of repeating EventType entries.",
       "display": "NoEvents",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noevents\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noevents\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "864"
     }
   },
@@ -455,7 +456,7 @@
     "metadata": {
       "description": "Number of repeating InstrAttribType entries.",
       "display": "NoInstrAttrib",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrattrib\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"noinstrattrib\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "870"
     }
   },
@@ -498,7 +499,7 @@
     "metadata": {
       "description": "Number of underlying stipulation entries",
       "display": "NoUnderlyingStips",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingstips\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nounderlyingstips\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "887"
     }
   },
@@ -541,7 +542,7 @@
     "metadata": {
       "description": "Number of trades in repeating group.",
       "display": "NoTrades",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrades\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"notrades\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "897"
     }
   }

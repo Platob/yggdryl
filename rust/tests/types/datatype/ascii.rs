@@ -270,3 +270,111 @@ fn an_ascii_column_is_an_iceberg_string() {
         Some("string")
     );
 }
+
+#[test]
+fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
+    use yggdryl::types::State;
+
+    // The stored bytes, sorted by nothing but ASCII. This is the whole claim:
+    // whatever sorts the column - a Parquet row group's bounds, an external
+    // sort, an ORDER BY in something that never heard of this crate - puts
+    // every live state before every ended one.
+    let mut held: Vec<&str> = yggdryl::AsciiEnum::STATES.to_vec();
+    held.sort_unstable();
+    assert_eq!(
+        held.as_slice(),
+        yggdryl::AsciiEnum::STATES,
+        "the vocabulary is declared in the order it sorts",
+    );
+
+    let ordered = [
+        "1PENDING", "2NEW", "4PARTFIL", "6PENDCXL", "8FILLED", "9CANCELD", "AREJECTD",
+    ];
+    let mut shuffled = [
+        "AREJECTD", "8FILLED", "2NEW", "6PENDCXL", "1PENDING", "9CANCELD", "4PARTFIL",
+    ];
+    shuffled.sort_unstable();
+    assert_eq!(shuffled, ordered);
+
+    // Every ending is told apart from every other without reading a name.
+    for held in ["1PENDING", "2NEW", "4PARTFIL", "6PENDCXL", "7REPLACD"] {
+        assert!(State::new(held).unwrap().is_live(), "{held}");
+    }
+    assert!(State::new("8FILLED").unwrap().is_done());
+    assert!(State::new("9CANCELD").unwrap().is_cancelled());
+    assert!(State::new("AREJECTD").unwrap().is_failed());
+    for held in ["8FILLED", "9CANCELD", "AREJECTD"] {
+        assert!(!State::new(held).unwrap().is_live(), "{held}");
+    }
+}
+
+#[test]
+fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
+    use yggdryl::types::State;
+
+    // One value, three vocabularies: the wire code an ExecutionReport carries,
+    // the specification's name for it, and the word a scheduler uses.
+    for (spelling, expected) in [
+        ("0", "2NEW"),
+        ("1", "4PARTFIL"),
+        ("2", "8FILLED"),
+        ("8", "AREJECTD"),
+        ("F", "4TRADE"),
+        ("New", "2NEW"),
+        ("PartiallyFilled", "4PARTFIL"),
+        ("DoneForDay", "8DONEDAY"),
+        ("done_for_day", "8DONEDAY"),
+        ("DONE FOR DAY", "8DONEDAY"),
+        ("running", "3RUNNING"),
+        ("succeeded", "8SUCCESS"),
+        ("timed out", "ATIMEOUT"),
+        ("failed", "AFAILED"),
+        // A stored value names itself, so resolving one twice is resolving it
+        // once.
+        ("8FILLED", "8FILLED"),
+    ] {
+        let held =
+            State::from_spelling(spelling).unwrap_or_else(|| panic!("{spelling} names no state"));
+        assert_eq!(held.as_str(), expected, "{spelling}");
+        assert_eq!(
+            State::from_spelling(held.as_str()).unwrap().as_str(),
+            expected,
+            "{spelling} resolves to itself",
+        );
+    }
+
+    // A wire code never folds: `A` is PendingNew and `a` is not a code at all.
+    assert_eq!(State::from_spelling("A").unwrap().as_str(), "1PENDNEW");
+    assert_eq!(State::from_spelling("a"), None);
+    assert_eq!(State::from_spelling("whatever"), None);
+    assert_eq!(State::from_spelling(""), None);
+}
+
+#[test]
+fn the_two_eight_byte_codes_are_ordinary_datatypes_everywhere_else() {
+    use yggdryl::{DataTypeKind, Scalar};
+
+    for (name, dtype) in [
+        ("state", DataType::State),
+        ("timeinforce", DataType::TimeInForce),
+    ] {
+        // Parsed, displayed and round-tripped by the grammar like any other.
+        assert_eq!(DataType::from_str(name).unwrap(), dtype);
+        assert_eq!(dtype.to_string(), name);
+        assert_eq!(dtype.kind(), DataTypeKind::Ascii);
+        assert!(dtype.is_code());
+        assert_eq!(dtype.ascii_width(), Some(8));
+
+        // And it crosses Arrow as the fixed width it is, extension name and
+        // all, so a column round-trips without becoming plain bytes.
+        let field = Field::new(name, dtype.clone(), true);
+        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        assert_eq!(recovered, field);
+    }
+
+    // A value wider than the storage is refused by the datatype rather than
+    // truncated into something that reads.
+    assert!(DataType::State.scalar(Scalar::from("2NEW")).is_ok());
+    assert!(DataType::State.scalar(Scalar::from("WAYTOOLONG")).is_err());
+    assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
+}

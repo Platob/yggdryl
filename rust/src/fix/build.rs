@@ -161,16 +161,47 @@ impl<'registry> Builder<'registry> {
     }
 
     /// The registry field one key names, and the tag it carries.
+    ///
+    /// A name is looked for in this message's branch and then in the standard
+    /// one, which is the tier [`FixMsg`](super::FixMsg) reads a built message
+    /// by: a row transcribed against a venue's dictionary names that venue's
+    /// fields by the venue's spellings while still carrying `MsgType`,
+    /// `SenderCompID` and every other specification field. Building it under
+    /// one branch alone would drop exactly those identities before a reader
+    /// could ask for them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
         let field = if let Some(tag) = super::field::parse_tag(key) {
             self.registry.get_primitive_field(tag)
         } else {
-            self.registry
-                .get_field_by_path(key, Some(&self.branch))
+            self.by_path(key, &self.branch)
+                .or_else(|| {
+                    (!self.branch.is_standard())
+                        .then(|| self.by_path(key, &super::FixBranch::STANDARD))
+                        .flatten()
+                })
                 .filter(|field| !super::registry::is_nested(field))
         }?;
         let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
         Some((field, tag))
+    }
+
+    /// One name looked for in exactly one dictionary.
+    fn by_path(&self, key: &str, branch: &FixBranch) -> Option<&'registry Field> {
+        self.registry.get_field_by_path(key, Some(branch))
+    }
+
+    /// A group's own field, under the same tier a member resolves by.
+    fn by_group(&self, group: &str) -> Option<&'registry Field> {
+        self.registry
+            .get_field_by_name(group, Some(&self.branch))
+            .or_else(|| {
+                (!self.branch.is_standard())
+                    .then(|| {
+                        self.registry
+                            .get_field_by_name(group, Some(&FixBranch::STANDARD))
+                    })
+                    .flatten()
+            })
     }
 
     /// The field a key builds under, cloned and projected to the version.
@@ -210,6 +241,14 @@ impl<'registry> Builder<'registry> {
     /// answers `Ok`. A parse error is for input that is not a message at all.
     fn typed(&self, field: &Field, raw: &[u8], text: &str) -> Scalar {
         let view = field.as_fix();
+        // A spelling this field states as its own absence types as null while
+        // the entry keeps the text: which spelling means "nothing was sent" is
+        // a fact about the field, and the row is the interpretation where the
+        // entries are what arrived. The capture-wide list is the other half of
+        // the pair and was applied before this key was resolved at all.
+        if view.is_null_value(text) {
+            return Scalar::Null;
+        }
         let translated = match self.version {
             Some(at) => view.code_value_at(at, text),
             None => view.code_value(text),
@@ -307,7 +346,7 @@ impl<'registry> Builder<'registry> {
         // carrying one tag.
         let (group_field, group_tag) = match self.counter(group) {
             Some(held) => held,
-            None => match self.registry.get_field_by_name(group, Some(&self.branch)) {
+            None => match self.by_group(group) {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
                     (self.project(known), tag)
@@ -570,7 +609,25 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime64 { .. } => {
+        DataType::DateTime64 { timezone, .. } => {
+            // The zone a value states outranks the column's, and a column
+            // stating none takes no zone rather than Z: a `LocalMktDate` and
+            // a `LocalMktDatetime` are local market values, and rendering
+            // them as instants would make the reading claim a zone the wire
+            // never sent.
+            let implied = if timezone.is_naive() { "" } else { "Z" };
+            // A date states no clock, so it reads as that day at midnight.
+            // This is what makes `UTCDateOnly` and `LocalMktDate` instants
+            // rather than a second temporal type to cast through.
+            if text.len() == 8 && text.bytes().all(|byte| byte.is_ascii_digit()) {
+                let rendered = format_smolstr!(
+                    "{}-{}-{}T00:00:00{implied}",
+                    &text[..4],
+                    &text[4..6],
+                    &text[6..8],
+                );
+                return Some(Scalar::from(rendered.as_str()));
+            }
             let dated = fix_date(text);
             let (clock, zone) = zoned(dated.as_ref().map_or(text, |(_, rest)| *rest));
             let date = match dated.as_ref() {
@@ -585,7 +642,7 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             // `HH:MM` is the one width a FIX clock may stop at, and only a
             // `TZTimeOnly` does; anything else is left to fail the read.
             let seconds = if clock.len() == 5 { ":00" } else { "" };
-            let zone = zone.unwrap_or("Z");
+            let zone = zone.unwrap_or(implied);
             let rendered = format_smolstr!("{date}T{clock}{seconds}{zone}");
             Some(Scalar::from(rendered.as_str()))
         }

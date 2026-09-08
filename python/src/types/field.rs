@@ -2731,6 +2731,33 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// The spellings that mean "nothing was sent" for this field.
+    ///
+    /// A value the list names types as null in a row while the arrival record
+    /// keeps it exactly as it arrived. Assigning an empty iterable removes the
+    /// property.
+    #[getter]
+    fn nulls(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("nulls")?;
+        let field = self.borrow_field(py)?;
+        Ok(field.inner.as_fix().nulls().map(str::to_owned).collect())
+    }
+
+    #[setter]
+    fn set_nulls(&self, spellings: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("nulls")?;
+        let mut parsed = Vec::new();
+        for value in spellings.try_iter()? {
+            parsed.push(value?.extract::<String>()?);
+        }
+        let mut field = self.borrow_field_mut(spellings.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_nulls(parsed)
+            .map_err(value_error)
+    }
+
     /// The specification's own wording for this field.
     #[getter]
     fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {

@@ -214,6 +214,15 @@ impl FixMsg {
         &self.entries
     }
 
+    /// Takes the arrival record, consuming the message.
+    ///
+    /// What a rebuild needs: the entries are what arrived and are carried
+    /// through unchanged, so moving them costs nothing where cloning a whole
+    /// capture's worth would.
+    pub(super) fn into_entries(self) -> Vec<FixEntry> {
+        self.entries
+    }
+
     /// Returns what this message says about itself that does not add up.
     ///
     /// Derived by comparing the row against the entries, never stored, so

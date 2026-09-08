@@ -334,11 +334,14 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     assert named.field_by_name("ticker", "").name == "symbol"
     # A path reaches a repeating group and one of its members.
     assert seed.field_by_path("NoPartyIDs", "").fix.tag == 453
-    assert seed.field_by_path("nopartyids.item.partyid", "").fix.tag == 448
-    assert seed.field_by_path("nopartyids.item.partyrole", "").name == "partyrole"
+    # An occurrence is not a path segment: the walk steps through the list
+    # and the member is spelled directly under the counter.
+    assert seed.field_by_path("nopartyids.partyid", "").fix.tag == 448
+    assert seed.field_by_path("nopartyids.partyrole", "").name == "partyrole"
+    assert seed.get_field_by_path("nopartyids.partyid.partyid", "") is None
 
     # The generic pair answers exactly what the specialized one does.
-    for key in (55, "Symbol", "nopartyids", "nopartyids.item.partyid"):
+    for key in (55, "Symbol", "nopartyids", "nopartyids.partyid"):
         assert seed.get_field(key) == seed[key]
         assert seed.field(key) == seed[key]
         assert key in seed
@@ -363,6 +366,12 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
             b"D",
         ),
         (b"level=INFO message=random", MimeType.KEYVALUE, None),
+        (
+            b'{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
+            b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
+            MimeType.ULCONFIG,
+            b"Plugin",
+        ),
     )
     for line, protocol, msgtype in cases:
         assert MimeType.infer_bytes(line) == protocol
@@ -380,6 +389,18 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow(
     empty = FixRegistry()
     assert MimeType.infer_bytes_msgtype(b"35=AE|") == b"AE"
     assert MimeType.infer_text_msgtype("MSGTYPE=AE|") == "AE"
+
+    # A bridge configuration states its own half of the exchange, and the
+    # `send` its own payload spells is never read as the marker.
+    answered = (
+        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
+        '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
+    )
+    assert MimeType.infer_text(answered) == MimeType.ULCONFIG
+    assert MimeType.infer_text_direction(answered) == "RECV"
+    assert MimeType.infer_text_msgtype(answered) == "read"
+    asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
+    assert MimeType.infer_text_direction(asked) == "SENT"
 
 
 def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> None:
@@ -1111,21 +1132,21 @@ def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> No
     """One reader, five entry points, and each is the core's own."""
     reader = FixCodec(seed)
 
-    framed = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
+    framed = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|")
     assert framed.by_tag(55).as_py() == "AAPL"
-    assert reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
-    assert reader.read_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
+    assert reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|").by_tag(55).as_py() == "AAPL"
+    assert reader.transform_fix_line(b"8=FIX.4.4\x0135=D\x0155=AAPL\x0110=0\x01", 1).by_tag(
         55
     ).as_py() == "AAPL"
-    assert reader.read_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
+    assert reader.transform_pairs([("55", "AAPL")]).by_tag(55).as_py() == "AAPL"
 
     # A bridge frame, byte for byte: `#`-prefixed name keys, one occurrence
     # whose value packs its members behind the two control bytes ULLINK uses.
-    bridge = reader.read_ullink_line(
+    bridge = reader.transform_ullink_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
-    inferred = reader.read_line(
+    inferred = reader.transform_line(
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     )
@@ -1168,11 +1189,11 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     # Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
     # pinned version is what decides which name the row answers to.
     dated = FixCodec(seed, version="4.2")
-    assert dated.read_line(b"8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
+    assert dated.transform_line(b"8=FIX.4.4|35=8|32=100|10=0|").get_by_name("lastshares") is not None
 
     # A stated absence produces no field at all.
     silent = FixCodec(seed, null_values=["<none>"])
-    assert silent.read_line(b"8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
+    assert silent.transform_line(b"8=FIX.4.4|35=D|55=<none>|10=0|").get_by_tag(55) is None
 
     with pytest.raises(ValueError):
         FixCodec(seed, branch="not a branch")
@@ -1183,7 +1204,10 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     schema = fix_schema(seed, "FixMessage")
     columns = [child.name for child in schema]
     assert columns[:3] == ["8", "9", "35"], "named by tag, in message order"
-    assert columns[-2:] == ["entries", "unmapped"], "and the two lists close it"
+    assert columns[-2:] == [
+        "nofixentries",
+        "nounmappedfixentries",
+    ], "and the two lists close it"
     assert fix_schema_tags()[:3] == [8, 9, 35]
 
     projection = FixProjection(seed, "FixMessage")
@@ -1194,7 +1218,7 @@ def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> No
     assert projection.field.name == "FixMessage"
 
     reader = FixCodec(seed)
-    row = reader.read_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
+    row = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(projection).as_py()
     assert len(row) == len(columns)
     assert row[projection.position_of(35)] == "D"
     assert row[projection.position_of(55)] == "AAPL"
@@ -1225,7 +1249,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A carried column carries no tag, so a row answers null there: the capture
     # fills it, and nothing in the message says what it held.
-    row = FixCodec(seed).read_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
+    row = FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
     assert row[0] is None
     assert row[carried.position_of(35)] == "D"
 
@@ -1255,7 +1279,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     held = fields["msghash"]
     assert held.metadata["digest:role"] == "holder"
     assert held.metadata["digest:algorithm"] == "xxh3-128"
-    assert held.metadata["digest:sources"] == '["entries"]'
+    assert held.metadata["digest:sources"] == '["nofixentries"]'
     assert held.description is not None
 
     held = fields["unixpartition"]
@@ -1317,6 +1341,20 @@ def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     # in the user-defined range.
     assert registry.branch_of(f"{USER_TAG_MIN}:cme") == branch
     assert registry.branch_of(f"{USER_TAG_MIN}:absent") is None
+
+    # An entry carries its dialect as the branch digest, so the registry is
+    # what turns a capture's `bid` column back into the branch. The digest is
+    # one way; without this table an outside reader would have to reproduce
+    # the hash to join the two.
+    assert registry.branch_by_digest(branch.digest()) == branch
+    assert registry.get_branch_by_digest(branch.digest()) == branch
+    # Only a declared branch resolves. The standard branch is the absence of a
+    # declaration rather than one, so its digest - always zero - names nothing
+    # here, and a value no `u32` holds names nothing either.
+    assert registry.get_branch_by_digest(0) is None
+    assert registry.get_branch_by_digest(-1) is None
+    with pytest.raises(ValueError):
+        registry.branch_by_digest(-1)
 
     # The standard branch declares no dialect and no session.
     with pytest.raises(ValueError):

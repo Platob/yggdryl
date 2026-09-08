@@ -8,9 +8,9 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec`, `fix_schema`, `fix_schema_tags`, `FixProjection`, `FixMsg::to_row`, `fix_crate_fields` |
 | Columns | named by tag as decimal text - `"35"`, never `"msgtype"`; the spelling stays on the field's `display` |
-| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's derived facts, then `entries` and `unmapped` |
+| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's derived facts, then `nofixentries` and `nounmappedfixentries` |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
-| Lossless | `entries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
+| Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Refuses | nothing a row's content can do; a line the reader cannot read is a message with nothing in it, and the row count still matches the capture's |
 | Cached | a reader holds one version's projections; a clone gets a cache of its own |
 
@@ -30,9 +30,9 @@ One line in, one row out, with the columns named by tag.
 
     let projection = FixProjection::new(&registry, "FixMessage")?;
     let reader = FixCodec::new(Arc::clone(&registry));
-    let order = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")?;
+    let order = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|", false)?;
 
-    let row = order.to_row(&projection);
+    let row = order.to_row(&projection)?;
     let held = row.as_sequence().expect("a row");
     let at = projection.position_of(35).expect("the msgtype column");
     assert_eq!(held[at].as_str(), Some("D"));
@@ -53,7 +53,7 @@ One line in, one row out, with the columns named by tag.
     projection = FixProjection(registry, "FixMessage")
     reader = FixCodec(registry)
 
-    order = reader.read_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
+    order = reader.transform_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|")
     row = order.to_row(projection).as_py()
 
     assert row[projection.position_of(35)] == "D"
@@ -73,7 +73,7 @@ One line in, one row out, with the columns named by tag.
     const projection = new fix.FixProjection(registry, 'FixMessage')
     const reader = new fix.FixCodec(registry)
 
-    const order = reader.readLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
+    const order = reader.transformLine(Buffer.from('sending >> 8=FIX.4.4|35=D|55=AAPL|54=1|44=10.5|9999=x|10=0|'))
     const row = order.toRow(projection).toJSON()
 
     assert.equal(row[projection.positionOf(35)], 'D')
@@ -96,7 +96,9 @@ This section renders `assets/fix.json` and needs JavaScript.
 
 ## A reader is the whole parse surface
 
-Five entry points, because a capture holds five shapes and guessing between them is what a reader exists to avoid. `text` and `bytes` take a captured line whatever it is wrapped in and read the verb in front of the frame; `fixtext` takes a numeric frame whose separator the caller states; `ultext` takes a bridge frame whose keys are names; `pairs` takes what a caller already split.
+Six entry points, because a capture holds six shapes and guessing between them is what a reader exists to avoid. `text` and `bytes` take a captured line whatever it is wrapped in and read the verb in front of the frame; `fixtext` takes a numeric frame whose separator the caller states; `ultext` takes a bridge frame whose keys are names; `ulconfig` takes a [bridge configuration document](registry.md#a-bridge-configuration-is-a-document-that-names-itself); `pairs` takes what a caller already split.
+
+Every one of them ends in the same builder, so a document is typed by the rules that type a frame — one nesting builder, one fold, one code translation, one value contract.
 
 Each is the core's own method under the same name in all three languages.
 
@@ -114,7 +116,7 @@ Each is the core's own method under the same name in all three languages.
     // value packs its members behind the two control bytes ULLINK uses.
     let bridge: &[u8] = b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
-    let held = reader.read_line(bridge)?;
+    let held = reader.transform_line(bridge, false)?;
 
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
     assert_eq!(held.by_tag(44)?.as_f64(), Some(41.25));
@@ -134,7 +136,7 @@ Each is the core's own method under the same name in all three languages.
 
     # A bridge frame: `#`-prefixed name keys, and one group occurrence whose
     # value packs its members behind the two control bytes ULLINK uses.
-    held = reader.read_line(
+    held = reader.transform_line(
         b"|#SYMBOL=TTF|#SIDE=1|#PRICE=41.25|#NOPARTYIDS=1"
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|"
     )
@@ -162,7 +164,7 @@ Each is the core's own method under the same name in all three languages.
         '|#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|',
       'binary',
     )
-    const held = reader.readLine(bridge)
+    const held = reader.transformLine(bridge)
 
     assert.equal(held.byTag(55).toJSON(), 'TTF')
     assert.equal(held.byTag(44).toJSON(), 41.25)
@@ -209,7 +211,7 @@ The names are still reachable, because the field under each column carries its o
 
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(&columns[..3], ["8", "9", "35"]);
-    assert_eq!(&columns[columns.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(&columns[columns.len() - 2..], ["nofixentries", "nounmappedfixentries"]);
     assert_eq!(&fix_schema_tags()[..3], [8, 9, 35]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `35`.
@@ -229,7 +231,7 @@ The names are still reachable, because the field under each column carries its o
 
     columns = [child.name for child in schema]
     assert columns[:3] == ["8", "9", "35"]
-    assert columns[-2:] == ["entries", "unmapped"]
+    assert columns[-2:] == ["nofixentries", "nounmappedfixentries"]
     assert fix_schema_tags()[:3] == [8, 9, 35]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `35`.
@@ -248,7 +250,7 @@ The names are still reachable, because the field under each column carries its o
 
     assert.equal(schema.fieldAt(0).name, '8')
     assert.equal(schema.fieldAt(2).name, '35')
-    assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'entries')
+    assert.equal(schema.fieldAt(schema.fieldLen - 2).name, 'nofixentries')
     assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `35`.
@@ -259,9 +261,9 @@ The names are still reachable, because the field under each column carries its o
 
 Two lists close every row.
 
-`entries` is the whole arrival record: every pair, in arrival order, untranslated. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
+`nofixentries` is the whole arrival record: every pair, in arrival order, untranslated, and a group's members riding under the counter pair that heads them. It is a counter-named list like every FIX group, its occurrence a `fixentry` struct. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
 
-`unmapped` is a **view** over that record rather than the rest of it: the pairs no dictionary explained, in the order they arrived. It holds nothing `entries` does not, and it exists so a venue onboarding a new field finds it by reading one column instead of filtering a million rows. On a well-known dialect it is empty on every row and costs a validity bit.
+`nounmappedfixentries` is a **view** over that record rather than the rest of it: the pairs no dictionary explained, discovered pre-order at any depth and flattened to one level, in the order they arrived. It holds nothing `nofixentries` does not, and it exists so a venue onboarding a new field finds it by reading one column instead of filtering a million rows. On a well-known dialect it is empty on every row and costs a validity bit.
 
 ## The crate's own columns
 
@@ -291,7 +293,7 @@ Two of them declare more than a type, in the protocols the crate already has rat
     assert_eq!(digest.name(), "msghash");
     assert_eq!(digest.display(), Some("MsgHash"));
     assert!(digest.as_digest().is_holder());
-    assert_eq!(digest.as_digest().sources()?, Some(vec!["entries".to_owned()]));
+    assert_eq!(digest.as_digest().sources()?, Some(vec!["nofixentries".to_owned()]));
 
     let partition = &fields[4];
     assert_eq!(partition.name(), "unixpartition");
@@ -312,7 +314,7 @@ Two of them declare more than a type, in the protocols the crate already has rat
     assert digest.metadata["display"] == "MsgHash"
     assert digest.metadata["digest:role"] == "holder"
     assert digest.metadata["digest:algorithm"] == "xxh3-128"
-    assert digest.metadata["digest:sources"] == '["entries"]'
+    assert digest.metadata["digest:sources"] == '["nofixentries"]'
 
     partition = fields["unixpartition"]
     assert partition.metadata["display"] == "UnixPartition"
@@ -333,7 +335,7 @@ Two of them declare more than a type, in the protocols the crate already has rat
     assert.equal(digest.name, 'msghash')
     assert.equal(digest.display, 'MsgHash')
     assert.equal(digest.getProperty('digest', 'role'), 'holder')
-    assert.equal(digest.getProperty('digest', 'sources'), '["entries"]')
+    assert.equal(digest.getProperty('digest', 'sources'), '["nofixentries"]')
 
     const partition = held[4]
     assert.equal(partition.name, 'unixpartition')
@@ -343,6 +345,66 @@ Two of them declare more than a type, in the protocols the crate already has rat
     assert.equal(partition.getProperty('partition', 'sources'), '["30004"]')
     assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
     ```
+
+## A bridge configuration is a dictionary of its own
+
+A [bridge configuration document](registry.md#a-bridge-configuration-is-a-document-that-names-itself) states what a session interface *is* — which venue it talks to, over which host and port, at which sequence numbers, in which state — and FIX publishes almost none of it. Four rules read it, and the first is the one the crate's own columns already keep.
+
+**A field the specification has is never given a second tag.** ULBridge spells `SenderCompID`, `TargetCompID` and `BeginString` under FIX's own names, so they resolve to tags 49, 56 and 8 with nothing added.
+
+**Everything else is ULBridge's own dictionary.** The `ulbridge` branch, tags from 20001. Not the standard branch, because the specification publishes no `PrimaryHost`; not [the crate's](#the-crates-own-columns), because the crate did not invent one. Being a branch is also what lets a venue keep its own 20001 without colliding.
+
+**A name resolves in the message's branch and then in the standard one.** That is the tier a built message is read by, so building it under one dictionary alone would drop tag 49 the moment a reader pinned the bridge's.
+
+**One entry or fifty is one shape.** Jolokia answers a single read with one attribute map and a wildcard read with a map keyed by ObjectName; both read as one repeating group, `SessionInterfaces`, whose occurrences are the MBeans the document answered for in canonical ObjectName order.
+
+| the document says | the row holds |
+| --- | --- |
+| the `request` it echoes, or the request itself | `MBean` 20001, `Operation` 20002 |
+| `status`, `error` | `Status` 20003, `Error` 20004 |
+| each MBean the `value` answers for | one `SessionInterfaces` 20005 occurrence |
+| that entry's ObjectName | `SessionInterface`, `MBeanType`, `PluginType` |
+| `SenderCompID`, `TargetCompID`, `BeginString` | FIX's 49, 56, 8 |
+| every other attribute | its own tag, typed — a port is a number, `NeedReload` is a boolean |
+| an attribute that is an object or an array | the JSON it is, under its own name |
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixBranch, FixCodec, FixRegistry, Scalar, ULBRIDGE_BRANCH};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_ulbridge_fields()?;
+    let reader = FixCodec::new(Arc::new(registry)).with_branch(&FixBranch::from_str(ULBRIDGE_BRANCH)?);
+
+    let document = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","CurrentPort":7061,"BackupHost":null,"NeedReload":false},"status":200}"#;
+    let held = reader.transform_line(document, false)?;
+
+    // The envelope is what the exchange was, and it types.
+    assert_eq!(held.by_tag(yggdryl::OPERATION_TAG)?, &Scalar::from("read"));
+    assert_eq!(held.by_tag(yggdryl::STATUS_TAG)?, &Scalar::from(200_i64));
+
+    // The entry is one occurrence, and FIX's own names keep FIX's own tags.
+    assert_eq!(held.by_path("SessionInterfaces.0.SenderCompID")?, &Scalar::from("ULB_BKRBDG"));
+    assert_eq!(held.by_path("SessionInterfaces.0.MBeanType")?, &Scalar::from("Plugin"));
+    // A port is a number and a flag is a boolean, not the text they arrived as.
+    assert_eq!(held.by_path("SessionInterfaces.0.CurrentPort")?, &Scalar::from(7061_i64));
+    assert_eq!(held.by_path("SessionInterfaces.0.NeedReload")?, &Scalar::from(false));
+    // A stated null is an absence: no field, no entry.
+    assert!(held.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+    ```
+
+Rust only: neither binding registers ULBridge's fields today, and a dictionary that does not have them keeps every key under its own folded spelling rather than dropping it.
+
+### Edges
+
+- A group inside a group — `ExtendedActions[i].parameters[j]` — is one level deeper than a key addresses, so it is retained as the JSON it is. The four arrays a session interface always carries are declared, so each has a name and a tag; anything else keeps its own folded spelling.
+- A bulk answer is an array of these and reads as the first response in it: one line is one message, and a document declares one exchange.
+- A request document carries no `value`, so it is the envelope alone — which is also what says it went out rather than came back.
+- A sentinel is a number the bridge sent: `BackupPort: -1` and `LogLevel: -1` land as `-1`, never as an absence. A stated `null` is the absence.
+- Without `with_ulbridge_fields`, every attribute is still kept — as nullable text under its own folded spelling, with no tag.
 
 ## A projection resolves the columns once
 
@@ -455,6 +517,28 @@ A carried column whose name a FIX column already takes is dropped rather than re
 - `position_of` on a tag the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.
 - Switching [deduplication](arrow.md#a-row-in-is-a-row-out) on surrenders the row-in / row-out correspondence, so it is off by default and what went is counted rather than silent.
+
+## Performance
+
+`fix/read`, one line each against the tracked seed dictionary. Release build, one Linux x86_64 container; a capture is read line by line, so the per-line figure is the whole cost.
+
+| shape | bytes | median |
+| --- | --- | --- |
+| a framed tag stream with prose either side | 85 | 12.8 us |
+| a bare tag stream | 64 | 12.4 us |
+| a bridge row keyed by name | 78 | 15.2 us |
+| a bridge row with a packed repeating group | 147 | 21.8 us |
+| a bridge configuration document | 630 | 80.6 us |
+| the same, on a dictionary without ULBridge's fields | 630 | 74.0 us |
+| the emit that closes the round trip | | 144 ns |
+
+A document costs about six times a frame at ten times the bytes, and the difference is what it is: a frame is split on a byte and a document is parsed as JSON and walked. Typing it against ULBridge's own dictionary adds 9% over reading it untyped, which is what resolving thirty names costs — and what buys a port that is a number rather than the text it arrived as.
+
+Regenerate with:
+
+```bash
+cargo bench -p yggdryl --bench fix -- fix/read
+```
 
 ## Commands
 

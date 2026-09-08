@@ -197,7 +197,12 @@ pub fn show(store: &Store, key: &str) -> Result<()> {
                 entry.since().to_string(),
                 entry.ep().map_or_else(String::new, |ep| ep.to_string()),
                 entry.name().unwrap_or_default().to_owned(),
-                entry.dtype().unwrap_or_default().to_owned(),
+                entry
+                    .parse_dtype()
+                    .ok()
+                    .flatten()
+                    .map(|dtype| dtype.to_string())
+                    .unwrap_or_default(),
                 if entry.is_deprecated() {
                     "deprecated"
                 } else {

@@ -308,7 +308,8 @@
   {
     "name": "posttradepaymentcalculationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -320,7 +321,8 @@
   {
     "name": "posttradepaymentvaluedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -332,7 +334,8 @@
   {
     "name": "posttradepaymentfinalvaluedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -668,7 +671,8 @@
   {
     "name": "collateralizationvaluedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -680,7 +684,8 @@
   {
     "name": "regulatoryreporttypebusinessdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -766,7 +771,8 @@
   {
     "name": "terminationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -835,7 +841,7 @@
       "display": "RoutingArrangementIndicator",
       "fix:aliases": "routingarrangmentindicator",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"routingarrangmentindicator\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"routingarrangementindicator\",\"type\":\"int\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"routingarrangmentindicator\",\"type\":{\"type\":\"int32\"}},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"routingarrangementindicator\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "2883"
     }
   },
@@ -850,7 +856,7 @@
       "display": "ContraRoutingArrangementIndicator",
       "fix:aliases": "contraroutingarrangmentindicator",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NoRoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"doc\":\"No routing arrangement in place\"},{\"value\":\"1\",\"name\":\"RoutingArrangementInPlace\",\"since\":\"5.0SP2\",\"ep\":256,\"sort\":1,\"doc\":\"Routing arrangement in place\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"contraroutingarrangmentindicator\",\"type\":\"int\"},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"contraroutingarrangementindicator\",\"type\":\"int\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"contraroutingarrangmentindicator\",\"type\":{\"type\":\"int32\"}},{\"since\":\"5.0SP2\",\"ep\":256,\"name\":\"contraroutingarrangementindicator\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "2884"
     }
   },

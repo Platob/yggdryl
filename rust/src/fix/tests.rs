@@ -12,8 +12,8 @@ use super::store::shard_of;
 use crate::holder::local::Folder;
 use crate::types::MsgType;
 use crate::{
-    DataType, Error, Field, FixBranch, FixCode, FixEntry, FixId, FixKey, FixLineageEntry, FixMsg,
-    FixPedigree, FixRegistry, MimeType, Scalar, Version,
+    DataType, Error, Field, FixBranch, FixCode, FixEntry, FixId, FixKey, FixLineage,
+    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
 };
 
 /// The venue dictionary every branched case is written against.
@@ -198,6 +198,41 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
             None,
         ),
         (
+            // A bridge configuration document: JSON, and the namespace that
+            // says whose. The first ObjectName's `type=` is what the entry is,
+            // and `plugin-type=` shares its last five bytes without being it.
+            br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Category":"InterBridge"},"status":200}"#,
+            MimeType::ULCONFIG,
+            Some(b"Plugin"),
+        ),
+        (
+            // A wildcard read names no type in its own MBean, so the entry it
+            // answers with names the document's.
+            br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"X"}},"status":200}"#,
+            MimeType::ULCONFIG,
+            Some(b"ConfigurationPlugin"),
+        ),
+        (
+            // Neither MBean names a type, so the operation is what is left.
+            br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
+            MimeType::ULCONFIG,
+            Some(b"read"),
+        ),
+        (
+            // The namespace is the whole of what makes the reading: JSON
+            // without it is JSON.
+            br#"{"request":{"mbean":"java.lang:type=Memory","type":"read"},"status":200}"#,
+            MimeType::JSON,
+            None,
+        ),
+        (
+            // A raw `MSGTYPE=` in front of a document still outranks it, the
+            // same way it outranks a frame it is relaying.
+            br#"MSGTYPE=8 {"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
+            MimeType::ULLINK,
+            Some(b"8"),
+        ),
+        (
             b"MsgType=prefix 8=FIX.4.4|35=D|55=AAPL|10=001| Symbol=suffix",
             MimeType::FIXUL,
             Some(b"prefix"),
@@ -255,6 +290,285 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
         assert_eq!(MsgType::infer_text(&line), Some("UDF"));
     }
     assert_eq!(MsgType::infer_text("35=U|"), Some("U"));
+}
+
+#[test]
+fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
+    use crate::types::MsgDirection;
+
+    const ANSWERED: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin":{"ExtendedActions":[{"name":"send-test-request","description":"Send a test request message.","parameters":[{"name":"test-request-id","description":"The outgoing test request ID to send"}]}]}},"status":200}"#;
+    const ASKED: &[u8] =
+        br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
+
+    // The document says which half it is, and the words inside it - `send`,
+    // `outgoing`, `in` - are its own payload rather than a transport marker.
+    // Without the bound they would answer, and answer wrongly.
+    assert_eq!(
+        MsgDirection::infer_bytes(ANSWERED),
+        Some(MsgDirection::RECV)
+    );
+    assert_eq!(MsgDirection::infer_bytes(ASKED), Some(MsgDirection::SENT));
+    // An error is an answer that came back, not a request that went out.
+    let failed =
+        br#"{"request":{"mbean":"com.ullink.ulbridge:*","type":"read"},"error":"no such MBean"}"#;
+    assert_eq!(MsgDirection::infer_bytes(failed), Some(MsgDirection::RECV));
+    // A write states a `value` of its own, and it is still what went out: the
+    // echoed request is the reading, not the keys an answer happens to share.
+    let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
+    assert_eq!(MsgDirection::infer_bytes(write), Some(MsgDirection::SENT));
+    assert_eq!(MimeType::infer_bytes(write), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(write), Some(&b"Bridge"[..]));
+
+    // A bulk read answers an array of these, and an array closes with `]`.
+    let bulk = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin","type":"read"},"status":200},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}]"#;
+    assert_eq!(MimeType::infer_bytes(bulk), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(bulk), Some(&b"Plugin"[..]));
+    assert_eq!(MsgDirection::infer_bytes(bulk), Some(MsgDirection::RECV));
+
+    // The `type=` is read inside the ObjectName that states it, so a value
+    // elsewhere spelling the same five bytes is that value's business.
+    let quoting = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"Comment":"routed by ,type=Decoy"},"status":200}"#;
+    assert_eq!(MsgType::infer_bytes(quoting), Some(&b"read"[..]));
+
+    // Nothing is stated, and nothing is taken off a line with no marker on it.
+    let (direction, body) = MsgDirection::split_bytes(ANSWERED);
+    assert_eq!(direction, Some(MsgDirection::RECV));
+    assert_eq!(body, ANSWERED);
+
+    // A verb the transport wrote outranks what the document says of itself,
+    // and reading it takes the marker off exactly as it does for a frame.
+    let marked = [b"sending >> ".as_slice(), ANSWERED].concat();
+    let (direction, body) = MsgDirection::split_bytes(&marked);
+    assert_eq!(direction, Some(MsgDirection::SENT));
+    assert_eq!(body, [b">> ".as_slice(), ANSWERED].concat());
+    // The bound is the whole prefix, so a `[jolokia]` in the prose is prose.
+    let stamped = [
+        b"2026-08-14 09:12:03 INFO [jolokia] recv << ".as_slice(),
+        ANSWERED,
+    ]
+    .concat();
+    assert_eq!(
+        MsgDirection::infer_bytes(&stamped),
+        Some(MsgDirection::RECV)
+    );
+    assert_eq!(MimeType::infer_bytes(&stamped), MimeType::ULCONFIG);
+    assert_eq!(MsgType::infer_bytes(&stamped), Some(&b"Plugin"[..]));
+
+    // The default fills silence and never overrides the statement.
+    assert_eq!(
+        MsgDirection::at_payload(ANSWERED, 0, Some(MsgDirection::SENT)),
+        Some(MsgDirection::RECV),
+    );
+
+    // A reading wider than the type is a type the capture carried: it is
+    // coerced into the column rather than dropped, and stays put.
+    let held = MsgType::coerce("ConfigurationPlugin");
+    assert!(held.is_synthetic());
+    assert_eq!(held, MsgType::coerce("ConfigurationPlugin"));
+    assert_ne!(held, MsgType::coerce("Plugin"));
+    assert_eq!(MsgType::coerce("Plugin").as_str(), "Plugin");
+
+    // A class the bridge spells is not an MBean it names: every `$type`,
+    // `className` and init file in these documents carries one, and a record
+    // quoting one is an ordinary JSON record.
+    let quoted = br#"{"level":"INFO","message":"reloading com.ullink.ulbridge2.plugins.ULMsg"}"#;
+    assert_eq!(MimeType::infer_bytes(quoted), MimeType::JSON);
+    assert_eq!(MsgDirection::infer_bytes(quoted), None);
+    // The namespace also has to stand inside the document rather than in the
+    // prose in front of it, or the prose is what named it.
+    let prose = br#"reloading com.ullink.ulbridge.sessioninterfaces.plugins:* {"level":"INFO"}"#;
+    assert_eq!(MimeType::infer_bytes(prose), MimeType::OCTET_STREAM);
+    // An unterminated document is not one.
+    let truncated = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","#;
+    assert_eq!(MimeType::infer_bytes(truncated), MimeType::OCTET_STREAM);
+
+    // The whole reading is borrowed out of the caller's bytes.
+    let read = MsgType::infer_bytes(ANSWERED).unwrap();
+    assert!(ANSWERED.as_ptr_range().contains(&read.as_ptr()));
+}
+
+/// One Jolokia read of one session interface, trimmed to what is read.
+const ULCONFIG_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"OutgoingMsgSeqNum":129,"NeedReload":false,"Name":"ULMSG_BROKER_TO_POSTTRADE","ExtendedActions":[{"name":"hot-reset","enabled":true}]},"status":200}"#;
+
+/// One wildcard read, answering for two MBeans of different types.
+const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"PICTET_BPAG"}},"status":200}"#;
+
+/// A codec over the shipped dictionary, pinned to ULBridge's own.
+fn ulbridge_codec() -> crate::FixCodec {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root).unwrap())
+        .unwrap()
+        .with_ulbridge_fields()
+        .unwrap();
+    let branch = FixBranch::from_str(crate::ULBRIDGE_BRANCH).unwrap();
+    crate::FixCodec::new(Arc::new(registry)).with_branch(&branch)
+}
+
+#[test]
+fn a_bridge_configuration_reads_as_the_envelope_and_one_occurrence_per_mbean() {
+    let codec = ulbridge_codec();
+    let msg = codec.transform_line(ULCONFIG_SINGLE, false).unwrap();
+
+    // The envelope is what the exchange was, and it types: a status is a
+    // number rather than the text it arrived as.
+    assert_eq!(
+        msg.by_tag(crate::MBEAN_TAG).unwrap().as_str(),
+        Some(
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin"
+        ),
+    );
+    assert_eq!(
+        msg.by_tag(crate::OPERATION_TAG).unwrap(),
+        &Scalar::from("read")
+    );
+    assert_eq!(
+        msg.by_tag(crate::STATUS_TAG).unwrap(),
+        &Scalar::from(200_i64)
+    );
+
+    // A field the specification publishes keeps the specification's tag, and
+    // it resolves under a pinned venue branch because a name is looked for in
+    // the message's own dictionary first and in the standard one after.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.SenderCompID").unwrap(),
+        &Scalar::from("ULB_BKRBDG"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.TargetCompID").unwrap(),
+        &Scalar::from("ULB_PTBDG"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.BeginString").unwrap(),
+        &Scalar::from("FIX.4.2"),
+    );
+
+    // The ObjectName's own properties are read where the classifier reads
+    // them, so one spelling answers for the column and for the row.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.MBeanType").unwrap(),
+        &Scalar::from("Plugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.PluginType").unwrap(),
+        &Scalar::from("FIX"),
+    );
+
+    // Everything else types to what it is rather than to the text it was.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.CurrentPort").unwrap(),
+        &Scalar::from(7061_i64),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.BackupPort").unwrap(),
+        &Scalar::from(-1_i64),
+        "a sentinel is a number the bridge sent, not an absence",
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.NeedReload").unwrap(),
+        &Scalar::from(false),
+    );
+    // A stated null is an absence: no field, no entry.
+    assert!(msg.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+
+    // A group inside a group is one level deeper than a key addresses, so it
+    // is retained as the JSON it is rather than dropped.
+    let actions = msg
+        .by_path("SessionInterfaces.0.ExtendedActions")
+        .unwrap()
+        .as_str()
+        .expect("the array, as text");
+    assert!(actions.contains("hot-reset"), "{actions}");
+}
+
+#[test]
+fn a_wildcard_read_is_one_occurrence_per_mbean_it_answered_for() {
+    let codec = ulbridge_codec();
+    let msg = codec.transform_line(ULCONFIG_WILDCARD, false).unwrap();
+
+    // One entry or fifty is one shape: the request's own MBean is a pattern
+    // and every MBean it matched is an occurrence, in canonical ObjectName
+    // order because a JSON object has no order of its own.
+    assert_eq!(
+        msg.by_tag(crate::MBEAN_TAG).unwrap(),
+        &Scalar::from("com.ullink.ulbridge.sessioninterfaces.plugins:*"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.Name").unwrap(),
+        &Scalar::from("A")
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.Name").unwrap(),
+        &Scalar::from("B")
+    );
+    // Each occurrence states its own type, whatever the document declared.
+    assert_eq!(
+        msg.by_path("SessionInterfaces.0.MBeanType").unwrap(),
+        &Scalar::from("ConfigurationPlugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.MBeanType").unwrap(),
+        &Scalar::from("Plugin"),
+    );
+    assert_eq!(
+        msg.by_path("SessionInterfaces.1.SenderCompID").unwrap(),
+        &Scalar::from("PICTET_BPAG"),
+    );
+
+    // A dictionary without ULBridge's fields keeps every key rather than
+    // dropping it: a venue sends fields no dictionary has.
+    let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
+    let plain = bare.transform_line(ULCONFIG_WILDCARD, false).unwrap();
+    assert!(
+        plain.get_by_name("mbean").is_some(),
+        "kept under its own folded spelling, untyped",
+    );
+    assert!(
+        plain.get_by_tag(crate::MBEAN_TAG).is_none(),
+        "and with no tag"
+    );
+}
+
+#[test]
+fn ulbridge_fields_are_a_dictionary_of_their_own() {
+    let held = crate::fix_ulbridge_fields().unwrap();
+    let branch = FixBranch::from_str(crate::ULBRIDGE_BRANCH).unwrap();
+    assert_eq!(held[0].name(), "MBean");
+    // The branch is what keeps a venue's own 20001 a different field.
+    assert_eq!(
+        held[0].as_fix().id().unwrap(),
+        Some(FixId::from_parts(&branch, crate::MBEAN_TAG).unwrap()),
+    );
+    assert_ne!(
+        held[0].as_fix().id().unwrap().unwrap(),
+        FixId::standard(crate::MBEAN_TAG),
+    );
+
+    // Every tag this dictionary claims is inside FIX's user-defined range,
+    // which is the one range a non-standard branch may claim at all.
+    for field in held {
+        let tag = field.as_fix().tag().unwrap().expect("a tag");
+        assert!(tag >= crate::ULBRIDGE_TAG_MIN, "{}: {tag}", field.name());
+        assert!(tag < FixId::USER_TAG_MAX, "{}: {tag}", field.name());
+        assert!(field.description().is_some(), "{}", field.name());
+    }
+
+    // The names FIX already publishes are not among them: a field the
+    // specification has is never given a second tag.
+    for published in ["SenderCompID", "TargetCompID", "BeginString"] {
+        assert!(
+            !held.iter().any(|field| field.name() == published),
+            "{published} is FIX's own",
+        );
+    }
+
+    // Registering is idempotent in the sense that matters: the same fields
+    // twice is a replacement, never a conflict.
+    let registry = FixRegistry::new()
+        .with_ulbridge_fields()
+        .unwrap()
+        .with_ulbridge_fields()
+        .unwrap();
+    assert_eq!(registry.len(), held.len());
 }
 
 #[test]
@@ -2537,9 +2851,9 @@ fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
         stored,
         concat!(
             r#"{"entries":["#,
-            r#"{"since":"2.7","name":"LastShares","type":"int"},"#,
-            r#"{"since":"4.2","name":"LastShares","type":"Qty"},"#,
-            r#"{"since":"4.3","name":"LastQty","type":"Qty"}]}"#,
+            r#"{"since":"2.7","name":"LastShares","type":{"type":"int32"}},"#,
+            r#"{"since":"4.2","name":"LastShares","type":{"type":"float64"}},"#,
+            r#"{"since":"4.3","name":"LastQty","type":{"type":"float64"}}]}"#,
         )
     );
 
@@ -2571,6 +2885,292 @@ fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
     // A read that cannot parse answers nothing rather than a wrong answer.
     assert_eq!(edited.as_fix().name_at(version("4.2")), None);
     assert_eq!(edited.as_fix().since(), None);
+}
+
+/// The committed dictionary, as the codec every enrichment case reads with.
+fn enriching() -> super::FixCodec {
+    super::FixCodec::new(Arc::new(committed()))
+}
+
+#[test]
+fn a_report_states_what_is_left_once_it_has_stated_the_rest() {
+    let codec = enriching();
+    // Appendix D: a part-filled working order. What is left is what was
+    // ordered minus what was done, and the fill's worth is its quantity at
+    // its price.
+    let held = codec
+        .transform_fix_line(
+            b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|",
+            true,
+        )
+        .expect("a readable report");
+    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
+    assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
+    // One fill, so the average is that fill's price.
+    assert_eq!(held.by_tag(6).unwrap(), &Scalar::from(10.5_f64));
+
+    // A closed order leaves nothing, whatever the arithmetic of the other two
+    // would say: Appendix D shows zero on every terminal row.
+    let closed = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=4|150=4|38=100|14=40|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
+
+    // The same identity read backwards: what was ordered is what is left plus
+    // what was done.
+    let ordered = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|14=40|151=60|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(ordered.by_tag(38).unwrap(), &Scalar::from(100.0_f64));
+}
+
+#[test]
+fn a_stated_value_is_never_replaced_and_filling_twice_changes_nothing() {
+    let codec = enriching();
+    // The venue's own arithmetic wins even where it disagrees with the
+    // specification's: the row says what was sent.
+    let held = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|151=999|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(999.0_f64));
+
+    // Idempotent: a value derived once is a stated value the second time, so
+    // a second pass derives it to itself.
+    let once = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|14=40|10=0|", true)
+        .expect("a readable report");
+    let twice = codec.enrich_fixmsg(once.clone()).expect("a second pass");
+    assert_eq!(once, twice);
+}
+
+#[test]
+fn filling_leaves_the_wire_exactly_as_it_arrived() {
+    let codec = enriching();
+    const LINE: &[u8] = b"8=FIX.4.4|35=8|39=1|38=100|14=40|32=40|31=10.5|54=1|10=0|";
+    let bare = codec
+        .transform_fix_line(LINE, false)
+        .expect("a readable report");
+    let filled = codec
+        .transform_fix_line(LINE, true)
+        .expect("a readable report");
+
+    // The row gained columns.
+    assert_eq!(bare.get_by_tag(151), None);
+    assert_eq!(filled.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
+    // The entries did not, so the two re-emit the same bytes: the entries are
+    // what arrived and the row is the reading of them.
+    assert_eq!(bare.entries(), filled.entries());
+    assert_eq!(bare.into_bytes(b'|'), filled.into_bytes(b'|'));
+    assert_eq!(filled.into_bytes(b'|'), LINE);
+}
+
+#[test]
+fn a_rule_answers_nothing_rather_than_a_guess() {
+    let codec = enriching();
+    // An input the message never stated: nothing is derived from an absence.
+    let held = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=100|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(held.get_by_tag(151), None, "no CumQty to subtract");
+
+    // A negative remainder means the two inputs were never about one order,
+    // so the rule declines rather than stating a quantity that cannot exist.
+    let crossed = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=1|38=40|14=100|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(crossed.get_by_tag(151), None);
+
+    // A status the matrices do not place answers nothing either.
+    let unknown = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=Z|38=100|14=40|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(unknown.get_by_tag(151), None);
+
+    // A message type the rule does not speak for is left alone: an order has
+    // no remainder to state until something reports on it.
+    let order = codec
+        .transform_fix_line(b"8=FIX.4.4|35=D|38=100|14=40|10=0|", true)
+        .expect("a readable order");
+    assert_eq!(order.get_by_tag(151), None);
+}
+
+#[test]
+fn a_foreign_exchange_trade_settles_in_the_currency_it_was_dealt_in() {
+    let codec = enriching();
+    // Appendix O: the settlement currency defaults to the dealt one, and the
+    // settled amount is the traded amount at the stated rate.
+    let held = codec
+        .transform_fix_line(
+            b"8=FIX.4.4|35=8|39=2|150=F|38=100|14=100|32=100|31=1.25|15=EUR|155=1.1|10=0|",
+            true,
+        )
+        .expect("a readable report");
+    assert_eq!(held.by_tag(381).unwrap(), &Scalar::from(125.0_f64));
+    assert_eq!(
+        held.by_tag(119).unwrap(),
+        &Scalar::from(137.5_f64),
+        "the traded amount at the stated rate",
+    );
+    let settled = held.by_tag(120).unwrap();
+    assert_eq!(settled.as_str(), Some("EUR"));
+
+    // A trade that states its own settlement currency keeps it.
+    let stated = codec
+        .transform_fix_line(b"8=FIX.4.4|35=8|39=2|15=EUR|120=USD|10=0|", true)
+        .expect("a readable report");
+    assert_eq!(stated.by_tag(120).unwrap().as_str(), Some("USD"));
+}
+
+#[test]
+fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
+    let mut field = DataType::Float64.nullable_field("StopPx");
+    field.as_fix_mut().set_tag(99).unwrap();
+    field.as_fix_mut().set_nulls(["N/A", "NONE", ""]).unwrap();
+    assert_eq!(field.get_metadata("fix:nulls"), Some("N/A,NONE,"));
+    assert_eq!(
+        field.as_fix().nulls().collect::<Vec<_>>(),
+        ["N/A", "NONE"],
+        "an empty spelling is stored and walked past, as every list here does",
+    );
+
+    // Matched case-insensitively against the trimmed text, exactly as the
+    // capture-wide list matches.
+    for held in ["N/A", "n/a", " none ", "NONE"] {
+        assert!(field.as_fix().is_null_value(held), "{held}");
+    }
+    for held in ["12.5", "NA", "N/A/"] {
+        assert!(!field.as_fix().is_null_value(held), "{held}");
+    }
+
+    // The row types it as null; the entry keeps what arrived, because the
+    // entries are the wire and the row is the reading of it.
+    let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
+    let message = super::FixCodec::new(Arc::clone(&registry))
+        .transform_fix_line(b"99=N/A|", false)
+        .expect("a readable frame");
+    assert_eq!(message.get_by_tag(99), Some(&Scalar::Null));
+    let entry = message
+        .entries()
+        .iter()
+        .find(|held| held.tag() == 99)
+        .expect("the pair still arrived");
+    assert_eq!(entry.value(), "N/A");
+
+    // A value the list does not name is read as the price it is.
+    let message = super::FixCodec::new(registry)
+        .transform_fix_line(b"99=12.5|", false)
+        .expect("a readable frame");
+    assert_eq!(message.by_tag(99).unwrap(), &Scalar::from(12.5_f64));
+}
+
+#[test]
+fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
+    let mut field = DataType::Utf8.nullable_field("Account");
+    field.as_fix_mut().set_tag(1).unwrap();
+
+    let error = field.as_fix_mut().set_nulls(["a,b"]).unwrap_err();
+    assert!(error.to_string().contains("without ','"), "{error}");
+    let error = field.as_fix_mut().set_nulls(["NONE", "none"]).unwrap_err();
+    assert!(error.to_string().contains("twice"), "{error}");
+    // A refusal leaves the field exactly as it was.
+    assert_eq!(field.get_metadata("fix:nulls"), None);
+
+    // Empty input removes the property.
+    field.as_fix_mut().set_nulls(["NONE"]).unwrap();
+    field.as_fix_mut().set_nulls::<[&str; 0], &str>([]).unwrap();
+    assert_eq!(field.get_metadata("fix:nulls"), None);
+}
+
+#[test]
+fn a_lineage_stores_the_type_a_spelling_resolves_to_and_drops_a_rename_of_it() {
+    let mut field = DataType::Utf8.nullable_field("account");
+    field.as_fix_mut().set_tag(1).unwrap();
+    // The specification renamed the type without changing it: `char` and
+    // `String` are one `utf8`.
+    field
+        .as_fix_mut()
+        .set_lineage(&[
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
+                .with_name("account")
+                .with_dtype("char"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_name("account")
+                .with_dtype("String"),
+        ])
+        .unwrap();
+    assert_eq!(
+        field.as_metadata().get("fix:lineage"),
+        Some(r#"{"entries":[{"since":"2.7","name":"account","type":{"type":"utf8"}}]}"#)
+    );
+    // The oldest entry survives, so `since` still dates the field.
+    assert_eq!(field.as_fix().since(), Some(version("2.7")));
+    // And the type is answered at both versions, from the one entry left.
+    assert_eq!(
+        field.as_fix().dtype_at(version("4.4")).unwrap(),
+        Some(DataType::Utf8)
+    );
+}
+
+#[test]
+fn only_a_type_equivalent_entry_collapses() {
+    // Each of these differs from its predecessor in exactly one stated fact,
+    // so none of them collapses.
+    for entries in [
+        vec![
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None))
+                .with_name("kept")
+                .with_dtype("char"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_name("renamed")
+                .with_dtype("String"),
+        ],
+        vec![
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_dtype("String")
+                .deprecate(),
+        ],
+        vec![
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_dtype("String")
+                .remove(),
+        ],
+        vec![
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("char"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                .with_dtype("String")
+                .with_doc("said differently"),
+        ],
+        // A genuine retype is a change, whatever the spellings look like.
+        vec![
+            FixLineageEntry::new(FixPedigree::new(version("2.7"), None)).with_dtype("int"),
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("Qty"),
+        ],
+    ] {
+        let mut field = DataType::Utf8.nullable_field("kept");
+        // The last two cases retype to something the field is not, so the
+        // lineage is rendered directly rather than through the agreement
+        // check `set_lineage` makes.
+        let rendered = FixLineage::render(&entries).expect("the entries render");
+        let held: Vec<_> = FixLineage::over(Some(&rendered))
+            .map(|entry| entry.expect("a readable entry"))
+            .collect();
+        assert_eq!(held.len(), 2, "{rendered}");
+        field.as_fix_mut().set_tag(9993).unwrap();
+    }
+
+    // An extension pack that stated nothing new is exactly what collapses:
+    // `ep` dates the statement rather than being one.
+    let rendered = FixLineage::render(&[
+        FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None)).with_dtype("char"),
+        FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), Some(309))).with_dtype("String"),
+    ])
+    .expect("the entries render");
+    assert_eq!(
+        rendered,
+        r#"{"entries":[{"since":"5.0SP2","type":{"type":"utf8"}}]}"#
+    );
 }
 
 #[test]
@@ -2952,7 +3552,12 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
         .as_fix_mut()
         .set_lineage(&[
             FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_name("LastQty"),
-            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None)).with_name("LastQty"),
+            // This entry states a type the 4.3 one does not, so the merge is
+            // read on three pedigrees rather than on the collapse of two
+            // that say the same thing.
+            FixLineageEntry::new(FixPedigree::new(version("5.0SP2"), None))
+                .with_name("LastQty")
+                .with_dtype("String"),
         ])
         .unwrap();
     incoming
@@ -3289,6 +3894,249 @@ fn the_fix_walk_reaches_through_a_group_and_never_matches_its_occurrence() {
 }
 
 #[test]
+fn a_temporal_type_is_adopted_backward_and_no_other_family_is() {
+    // A field FIX carried as text before it declared it temporal: the
+    // earlier entry adopts the later type and the two then state one thing.
+    let rendered = FixLineage::render(&[
+        FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("String"),
+        FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype("UTCTimestamp"),
+    ])
+    .expect("the entries render");
+    assert_eq!(
+        rendered,
+        concat!(
+            r#"{"entries":[{"since":"4.2","type":"#,
+            r#"{"type":"datetime64","unit":"nanosecond","timezone":"UTC"}}]}"#,
+        )
+    );
+
+    // Two temporal eras each take their own preceding run of strings.
+    let rendered = FixLineage::render(&[
+        FixLineageEntry::new(FixPedigree::new(version("4.0"), None)).with_dtype("String"),
+        FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("LocalMktDate"),
+        FixLineageEntry::new(FixPedigree::new(version("4.3"), None)).with_dtype("String"),
+        FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype("UTCTimeOnly"),
+    ])
+    .expect("the entries render");
+    assert_eq!(
+        rendered,
+        concat!(
+            r#"{"entries":[{"since":"4","type":{"type":"datetime64","unit":"nanosecond"}},"#,
+            r#"{"since":"4.3","type":{"type":"time64","unit":"nanosecond"}}]}"#,
+        )
+    );
+
+    // Every other later type is a constraint the earlier version did not
+    // carry, so nothing is adopted backward and both entries stand.
+    for (earlier, later) in [
+        ("String", "Boolean"),
+        ("String", "Currency"),
+        ("String", "Exchange"),
+        ("String", "Country"),
+        ("String", "int"),
+        ("int", "Qty"),
+        ("int", "SeqNum"),
+        ("int", "char"),
+        ("PriceOffset", "char"),
+        // A temporal never yields either: the earlier type already held an
+        // instant, and widening it backward would restate a real retype. The
+        // zone is what differs here - `UTCDateOnly` and `UTCTimestamp` are one
+        // type now, both being an instant in UTC.
+        ("LocalMktDate", "UTCTimestamp"),
+    ] {
+        let rendered = FixLineage::render(&[
+            FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype(earlier),
+            FixLineageEntry::new(FixPedigree::new(version("4.4"), None)).with_dtype(later),
+        ])
+        .expect("the entries render");
+        let held: Vec<_> = FixLineage::over(Some(&rendered))
+            .map(|entry| entry.expect("a readable entry"))
+            .collect();
+        assert_eq!(held.len(), 2, "{earlier} -> {later}: {rendered}");
+    }
+}
+
+#[test]
+fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
+    // G8-R7: an earlier entry may only adopt a later temporal type where the
+    // text FIX actually transmitted at the earlier version still parses as
+    // that type through the reader the crate already has. These are the three
+    // types the committed corpus adopts backward, each against the spelling
+    // its FIX datatype states on the wire.
+    for (tag, spelling, wire, dtype) in [
+        (
+            9_001,
+            "UTCTimeOnly",
+            "10:15:30.123",
+            DataType::Time64(crate::TimeUnit::Nanosecond),
+        ),
+        (
+            9_002,
+            "LocalMktTime",
+            "10:15:30",
+            DataType::Time64(crate::TimeUnit::Nanosecond),
+        ),
+        (
+            9_003,
+            "UTCTimestamp",
+            "20240102-10:15:30.123",
+            DataType::DateTime64 {
+                unit: crate::TimeUnit::Nanosecond,
+                timezone: crate::Timezone::UTC,
+            },
+        ),
+        (
+            9_004,
+            "TZTimeOnly",
+            "10:15:30-05:00",
+            DataType::DateTime64 {
+                unit: crate::TimeUnit::Nanosecond,
+                timezone: crate::Timezone::UTC,
+            },
+        ),
+        (
+            9_005,
+            "LocalMktDate",
+            "20240102",
+            DataType::DateTime64 {
+                unit: crate::TimeUnit::Nanosecond,
+                timezone: crate::Timezone::NAIVE,
+            },
+        ),
+    ] {
+        let held: DataType = spelling.parse().expect("a resolvable FIX datatype");
+        assert_eq!(held, dtype, "{spelling}");
+
+        let mut field = held.nullable_field("dated");
+        field.as_fix_mut().set_tag(tag).unwrap();
+        let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
+        let message = super::FixCodec::new(registry)
+            .transform_pairs([(tag.to_string().as_bytes(), wire.as_bytes())], false)
+            .expect("the row builds");
+        assert_ne!(
+            message.by_tag(tag).unwrap(),
+            &Scalar::Null,
+            "{spelling} reads {wire}",
+        );
+    }
+}
+
+/// One stored document with every `since` value spelled as `Version` spells it.
+///
+/// The generator writes the source file's spelling, the crate writes its own,
+/// and the two parse to one version. Nothing else in the document is touched.
+fn canonical_versions(document: &str) -> String {
+    let mut out = String::with_capacity(document.len());
+    let mut rest = document;
+    while let Some(at) = rest.find(r#""since":""#) {
+        let (head, tail) = rest.split_at(at + r#""since":""#.len());
+        out.push_str(head);
+        let end = tail.find('"').expect("a closed version");
+        let (spelling, tail) = tail.split_at(end);
+        out.push_str(
+            &spelling
+                .parse::<Version>()
+                .expect("a readable version")
+                .to_string(),
+        );
+        rest = tail;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Every field in the committed dictionary, occurrences and members included.
+fn every_committed_field(registry: &FixRegistry) -> Vec<Field> {
+    fn walk(field: &Field, out: &mut Vec<Field>) {
+        out.push(field.clone());
+        match field.dtype() {
+            DataType::List(item) | DataType::LargeList(item) => walk(item, out),
+            DataType::Struct(fields) => {
+                for held in fields.iter() {
+                    walk(held, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for field in registry.iter() {
+        walk(field, &mut out);
+    }
+    out
+}
+
+#[test]
+fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
+    let registry = committed();
+    let mut lineages = 0_usize;
+    let mut entries = 0_usize;
+    for field in every_committed_field(&registry) {
+        let view = field.as_fix();
+        let Some(stored) = field.as_metadata().get("fix:lineage") else {
+            continue;
+        };
+        lineages += 1;
+        let held: Vec<_> = view
+            .lineage()
+            .map(|entry| entry.expect("a readable entry"))
+            .collect();
+        assert!(!held.is_empty(), "{} keeps its oldest entry", field.name());
+        entries += held.len();
+
+        // Every stored type resolves: the generator writes the crate's own
+        // serialized datatype, so nothing here is an unresolvable spelling.
+        for entry in &held {
+            assert!(
+                entry.parse_dtype().expect("a resolvable type").is_some(),
+                "{} at {}",
+                field.name(),
+                entry.since()
+            );
+        }
+
+        // The cross-host assertion: the dictionary generator wrote this
+        // document in Python, and re-rendering the entries it holds through
+        // the Rust writer must reproduce it byte for byte, or the two hosts
+        // have forked on either normalization or collapse.
+        //
+        // A version is canonicalized first because the two hosts spell one
+        // version two ways and always have: the generator carries the source
+        // file's own `4.0` while `Version` displays the same value as `4`.
+        // Both parse to one version, so this is a spelling the assertion
+        // must not be sensitive to; every other byte it is.
+        assert_eq!(
+            FixLineage::render(&held).expect("the entries render"),
+            canonical_versions(stored),
+            "{}",
+            field.name()
+        );
+
+        // Nothing collapsible survives: two adjacent entries always differ in
+        // something one of them states.
+        for pair in held.windows(2) {
+            let (older, newer) = (pair[0], pair[1]);
+            assert!(
+                older.parse_dtype().unwrap() != newer.parse_dtype().unwrap()
+                    || older.name() != newer.name()
+                    || older.is_deprecated() != newer.is_deprecated()
+                    || older.is_removed() != newer.is_removed()
+                    || older.doc() != newer.doc(),
+                "{} states nothing new at {}",
+                field.name(),
+                newer.since()
+            );
+        }
+    }
+    assert_eq!(lineages, 1_564, "fields carrying a lineage");
+    // 1,926 before these two phases: 268 entries stated nothing their
+    // predecessor did not once types were resolved and the temporal ones
+    // adopted backward, and one more was a second statement about one dated
+    // point.
+    assert_eq!(entries, 1_669, "lineage entries");
+}
+
+#[test]
 fn every_shipped_occurrence_carries_the_name_the_rust_rule_derives() {
     let registry = committed();
     let mut named = 0_usize;
@@ -3329,7 +4177,7 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
     //
     // The shape this replaced, laid out by the same rules, is declared beside
     // it so the saving is measured rather than reasoned about: a name is a
-    // whole `SmolStr` where a digest is eight bytes.
+    // whole `SmolStr` where a digest is four bytes that pack beside the tag.
     struct Was {
         _tag: i32,
         _branch: Option<SmolStr>,
@@ -3337,13 +4185,12 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
         _value: SmolStr,
     }
     assert_eq!(std::mem::size_of::<Was>(), 80, "the branch-name entry");
-    // 80 before this work; 64 once the name became a digest; 88 once the
-    // children vector joined. The digest saved sixteen bytes and the
-    // recursion spent twenty-four, and an entry that never nests allocates
-    // nothing for it.
+    // 80 with the branch as a name, and 80 again with it as an XXH32 beside
+    // the tag and a children vector added: the digest paid for the recursion.
+    // An entry that never nests allocates nothing for that vector.
     assert_eq!(
         std::mem::size_of::<FixEntry>(),
-        88,
+        80,
         "one entry, as this tree lays it out",
     );
 
@@ -3356,37 +4203,31 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
 
     // The reverse resolution the digest exists for.
     assert_eq!(
-        registry.branch_by_bid(i64::from(cme.digest())).unwrap(),
+        registry.branch_by_digest(cme.digest() as i32).unwrap(),
         &cme
     );
     // 0 is the standard branch and resolves to it, so a reader joining the
     // column never meets a row it cannot explain.
-    assert_eq!(registry.get_branch_by_bid(0), Some(&FixBranch::STANDARD),);
-    // A value no digest can hold names no branch rather than panicking.
-    assert!(registry.get_branch_by_bid(-1).is_none());
-    assert!(
-        registry
-            .get_branch_by_bid(i64::from(u32::MAX) + 1)
-            .is_none()
-    );
-    let refused = registry.branch_by_bid(-1).unwrap_err();
+    assert_eq!(registry.get_branch_by_digest(0), Some(&FixBranch::STANDARD),);
+    // A digest no branch carries names none rather than panicking. The
+    // argument is the entry's own signed reading, so this is an ordinary
+    // absence rather than a range refusal: every `i32` is a legal digest.
+    assert!(registry.get_branch_by_digest(-1).is_none());
+    let refused = registry.branch_by_digest(-1).unwrap_err();
     assert!(refused.is_absent(), "{refused}");
 
     // Every entry states a dialect, the standard one included, and a standard
     // row states 0 rather than nothing.
     let codec = super::FixCodec::new(Arc::clone(&registry)).with_branch(&cme);
     let msg = codec
-        .read_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|")
+        .transform_fix_line(b"55=AAPL|5055=XYZ|VenueOwnThing=?|", false)
         .expect("a readable frame");
     let entries = msg.entries();
     assert!(!entries.is_empty());
-    for entry in entries {
-        assert!(entry.bid() >= 0, "{}", entry.key());
-    }
     let venue = entries.iter().find(|held| held.tag() == 5_055).unwrap();
-    assert_eq!(venue.bid(), i64::from(cme.digest()));
+    assert_eq!(venue.branch(), cme.digest() as i32);
     assert_eq!(
-        registry.branch_by_bid(venue.bid()).unwrap(),
+        registry.branch_by_digest(venue.branch()).unwrap(),
         &cme,
         "the digest resolves to the dialect that answered the pair",
     );
@@ -3395,8 +4236,8 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
         .iter()
         .find(|held| held.tag() == 0)
         .expect("the key no dictionary explained");
-    assert_eq!(unknown.bid(), i64::from(FixBranch::STANDARD.digest()));
-    assert_eq!(unknown.bid(), 0);
+    assert_eq!(unknown.branch(), FixBranch::STANDARD.digest() as i32);
+    assert_eq!(unknown.branch(), 0);
     assert_eq!(unknown.id(), None, "no tag is no identity");
 
     // The identity an entry names is packed from the digest it stores.
@@ -3404,7 +4245,7 @@ fn an_entry_carries_its_dialect_as_a_fixed_width_digest() {
 }
 
 #[test]
-fn the_entry_column_states_a_non_null_bid() {
+fn the_entry_column_states_a_non_null_branch() {
     let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
     for column in [super::ENTRIES_COLUMN, super::UNMAPPED_COLUMN] {
         let held = root
@@ -3426,14 +4267,14 @@ fn the_entry_column_states_a_non_null_bid() {
             let names: Vec<&str> = members.iter().map(Field::name).collect();
             assert_eq!(
                 names,
-                ["tag", "bid", "key", "value", "nofixentries"],
+                ["tag", "branch", "key", "value", "nofixentries"],
                 "{column} level {level}",
             );
-            let bid = &members[1];
-            assert_eq!(bid.dtype(), &DataType::Int64, "{column} level {level}");
+            let branch = &members[1];
+            assert_eq!(branch.dtype(), &DataType::Int32, "{column} level {level}");
             assert!(
-                !bid.is_nullable(),
-                "{column} bid carries no validity bitmap"
+                !branch.is_nullable(),
+                "{column} branch carries no validity bitmap"
             );
             let tail = &members[4];
             assert!(!tail.is_nullable(), "{column} level {level} tail");

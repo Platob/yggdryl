@@ -65,7 +65,7 @@ One column of frames in, batches out, the capture's own columns still in front o
         .map(|held| held.name().clone())
         .collect();
     assert_eq!(&columns[..3], ["url", "rownum", "body"]);
-    assert_eq!(&columns[columns.len() - 2..], ["entries", "unmapped"]);
+    assert_eq!(&columns[columns.len() - 2..], ["nofixentries", "nounmappedfixentries"]);
 
     let rows: usize = read.map(|batch| batch.expect("a batch").num_rows()).sum();
     assert_eq!(rows, 1, "a row in is a row out");
@@ -104,7 +104,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     # tags follow, and the two lists close it.
     columns = [field.name for field in read.schema]
     assert columns[:3] == ["url", "rownum", "body"]
-    assert columns[-2:] == ["entries", "unmapped"]
+    assert columns[-2:] == ["nofixentries", "nounmappedfixentries"]
 
     held = read.read_all()
     assert held.num_rows == 2, "a row in is a row out"
@@ -129,7 +129,7 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `branch` | `with_branch` | none | the dialect, so no row infers one |
 | `version` | `with_version` | none | the version built messages are expressed in; unpinned, each row answers for itself |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
-| `direction` | `with_direction` | `SENT` | the direction a line with no verb in front of its payload took |
+| `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took — no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
 
 `name` names the root, and is `fix` unless it is set.
@@ -178,6 +178,7 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
         b"recv 8=FIX.4.4\x0135=8\x01150=F\x0110=0\x01",
         b"toBridge #MSGTYPE=D|#SYMBOL=TTF|",
         b"20260821 10:30:00 nothing framed here",
+        br#"{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}"#,
     ];
     let column: ArrayRef = Arc::new(BinaryArray::from(lines));
 
@@ -190,13 +191,18 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
     assert_eq!(mimetype.value(0), "text/fix");
     assert_eq!(mimetype.value(1), "text/ullink");
     assert_eq!(mimetype.value(2), "application/octet-stream");
+    assert_eq!(mimetype.value(3), "text/ulconfig");
     // A bridge writes its own type in front of the frame it relays.
     assert_eq!(msgtype.value(0), "8");
     assert_eq!(msgtype.value(1), "D");
     assert!(msgtype.is_null(2));
-    // The default names what an unmarked line took; a marked one keeps its own.
+    // A configuration document declares what the MBean it names is.
+    assert_eq!(msgtype.value(3), "Bridge");
+    // The default names what a line stating nothing took; a marked line and a
+    // document that says which half it is both keep their own.
     assert_eq!(direction.value(0), MsgDirection::RECV);
     assert_eq!(direction.value(1), MsgDirection::SENT);
+    assert_eq!(direction.value(3), MsgDirection::RECV);
     ```
 
 === "Python"
@@ -211,22 +217,30 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
             b"recv 8=FIX.4.4\x0135=8\x01150=F\x0110=0\x01",
             b"toBridge #MSGTYPE=D|#SYMBOL=TTF|",
             b"20260821 10:30:00 nothing framed here",
+            b'{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}',
         ],
         pa.binary(),
     )
 
     mimetype, msgtype, direction = classify_arrow_array(lines, "sent")
 
-    assert mimetype.to_pylist() == ["text/fix", "text/ullink", "application/octet-stream"]
-    # A bridge writes its own type in front of the frame it relays.
-    assert msgtype.to_pylist() == ["8", "D", None]
-    # The default names what an unmarked line took; a marked one keeps its own.
-    assert direction.to_pylist() == ["RECV", "SENT", "SENT"]
+    assert mimetype.to_pylist() == [
+        "text/fix",
+        "text/ullink",
+        "application/octet-stream",
+        "text/ulconfig",
+    ]
+    # A bridge writes its own type in front of the frame it relays, and a
+    # configuration document declares what the MBean it names is.
+    assert msgtype.to_pylist() == ["8", "D", None, "Bridge"]
+    # The default names what a line stating nothing took; a marked line and a
+    # document that says which half it is both keep their own.
+    assert direction.to_pylist() == ["RECV", "SENT", "SENT", "RECV"]
     ```
 
 ## Back to the wire
 
-`write_fix` streams a batch back out as frames, rebuilt from each row's `entries` and never from its columns: the fixed columns are a *reading* of the message, so a frame rebuilt from them would be one nobody sent. A batch carrying no `entries` column cannot be written and says so plainly. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held. Rust only.
+`write_fix` streams a batch back out as frames, rebuilt from each row's `nofixentries` and never from its columns: the fixed columns are a *reading* of the message, so a frame rebuilt from them would be one nobody sent. The walk is pre-order, so a group's members follow the counter that heads them, exactly as they arrived. A batch carrying no `nofixentries` column cannot be written and says so plainly. One batch is pulled, its rows written, and it is dropped; no buffer bigger than a row is held. Rust only.
 
 ## Edges
 

@@ -8,7 +8,7 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "LegPaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42400"
     }
   },
@@ -65,7 +65,8 @@
   {
     "name": "legpaymentstreamcompoundingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -203,7 +204,8 @@
   {
     "name": "legpaymentstreamboundsfirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -215,7 +217,8 @@
   {
     "name": "legpaymentstreamboundslastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -239,7 +242,8 @@
   {
     "name": "legpaymentstreamcompoundingenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -301,7 +305,8 @@
   {
     "name": "legpaymentstreamcompoundingenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -539,7 +544,8 @@
   {
     "name": "legpaymentstreamcompoundingstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -601,7 +607,8 @@
   {
     "name": "legpaymentstreamcompoundingstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -637,7 +644,8 @@
   {
     "name": "legpaymentstreamfinalpricepaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -699,7 +707,8 @@
   {
     "name": "legpaymentstreamfinalpricepaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -711,7 +720,8 @@
   {
     "name": "legpaymentstreamfixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -736,7 +746,8 @@
   {
     "name": "legpaymentstreamfirstobservationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -773,7 +784,8 @@
   {
     "name": "legpaymentstreamfirstobservationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1039,7 +1051,8 @@
   {
     "name": "legpaymentstubenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1114,7 +1127,8 @@
   {
     "name": "legpaymentstubenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1138,7 +1152,8 @@
   {
     "name": "legpaymentstubstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

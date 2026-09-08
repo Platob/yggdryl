@@ -38,7 +38,7 @@
     "metadata": {
       "description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
       "display": "NoRoutingIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noroutingids\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noroutingids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noroutingids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "215"
     }
   },
@@ -81,7 +81,7 @@
     "metadata": {
       "description": "Number of stipulation entries",
       "display": "NoStipulations",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostipulations\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nostipulations\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "232"
     }
   },
@@ -114,7 +114,7 @@
     "metadata": {
       "description": "Number of MDEntryType (269) fields requested.",
       "display": "NoMDEntryTypes",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentrytypes\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentrytypes\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentrytypes\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "267"
     }
   },
@@ -290,7 +290,9 @@
             {
               "name": "mdentrydate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -481,7 +483,8 @@
             {
               "name": "expiredate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -993,7 +996,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1216,7 +1220,7 @@
     "metadata": {
       "description": "Number of entries in Market Data message.",
       "display": "NoMDEntries",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomdentries\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"nomdentries\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "268"
     }
   },
@@ -1406,7 +1410,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1426,7 +1431,8 @@
             {
               "name": "settldate2",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -1563,7 +1569,7 @@
     "metadata": {
       "description": "The number of quote entries for a QuoteSet.",
       "display": "NoQuoteEntries",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquoteentries\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquoteentries\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquoteentries\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "295"
     }
   },
@@ -1658,7 +1664,7 @@
     "metadata": {
       "description": "The number of sets of quotes in the message.",
       "display": "NoQuoteSets",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquotesets\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noquotesets\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"noquotesets\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "296"
     }
   }

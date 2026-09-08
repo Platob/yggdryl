@@ -16,6 +16,28 @@ use smol_str::SmolStr;
 
 use super::{FixBranch, FixId};
 
+/// A branch digest as an entry stores it.
+///
+/// The XXH32 is a `u32` and the column is an `i32`, which is the same four
+/// bytes read as signed: the digest's exact width, and the widest signed
+/// integer every exchange format this crate writes can hold, Avro having no
+/// unsigned one. A digest above `i32::MAX` therefore reads negative.
+#[allow(clippy::cast_possible_wrap)]
+pub(super) const fn signed(digest: u32) -> i32 {
+    digest as i32
+}
+
+/// The same four bytes read back as the digest they are.
+#[allow(clippy::cast_sign_loss)]
+pub(super) const fn unsigned(branch: i32) -> u32 {
+    branch as u32
+}
+
+/// The standard branch's digest, which is zero.
+fn standard_digest() -> i32 {
+    signed(FixBranch::STANDARD.digest())
+}
+
 /// One key/value pair as it arrived, beside the field it named.
 ///
 /// Every part is present. `tag` is `0` when the key named no field, which is
@@ -25,7 +47,7 @@ use super::{FixBranch, FixId};
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FixEntry {
     tag: i32,
-    bid: i64,
+    branch: i32,
     key: SmolStr,
     value: SmolStr,
     // Last, so the four scalar members keep their positions in every
@@ -40,7 +62,7 @@ impl FixEntry {
     pub fn new(tag: i32, key: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self {
         Self {
             tag,
-            bid: i64::from(FixBranch::STANDARD.digest()),
+            branch: standard_digest(),
             key: key.into(),
             value: value.into(),
             children: Vec::new(),
@@ -54,7 +76,7 @@ impl FixEntry {
     /// branch on an absence.
     #[must_use]
     pub fn with_branch(mut self, branch: &FixBranch) -> Self {
-        self.bid = i64::from(branch.digest());
+        self.branch = signed(branch.digest());
         self
     }
 
@@ -74,18 +96,21 @@ impl FixEntry {
     /// Held as the digest rather than the name because an entry is a *row*.
     /// A name is readable in a debug line and nothing else: it is variable
     /// width in a fixed-width column, and joining a capture to a dialect
-    /// manifest by it means string comparison. The digest is eight bytes, and
-    /// [`FixRegistry::branch_by_bid`](crate::FixRegistry::branch_by_bid)
+    /// manifest by it means string comparison. The digest is four bytes, and
+    /// [`FixRegistry::branch_by_digest`](crate::FixRegistry::branch_by_digest)
     /// resolves it back to the whole declaration - which is what makes the
     /// capture self-describing rather than merely legible.
     ///
-    /// Signed 64-bit rather than the digest's own `u32`: values above
-    /// `i32::MAX` must not read as negative, and Avro has no unsigned integer,
-    /// so this is the narrowest type that round-trips exactly through Arrow
-    /// IPC, Parquet and Avro alike.
+    /// Signed 32-bit: the digest is an XXH32 of the branch's folded name, so
+    /// four bytes is its exact width, and signed storage is the bit-preserving
+    /// view of it that every exchange format this crate writes can hold -
+    /// Avro has no unsigned integer, and a wider column would store two bytes
+    /// of sign extension per entry to say nothing. A digest above `i32::MAX`
+    /// therefore reads negative, which is the same reading
+    /// [`FixBranch::digest`] answers unsigned.
     #[must_use]
-    pub const fn bid(&self) -> i64 {
-        self.bid
+    pub const fn branch(&self) -> i32 {
+        self.branch
     }
 
     /// Returns the entries that arrived under this one, in arrival order.
@@ -156,8 +181,6 @@ impl FixEntry {
         if self.tag == 0 {
             return None;
         }
-        u32::try_from(self.bid)
-            .ok()
-            .map(|digest| FixId::pack(digest, self.tag))
+        Some(FixId::pack(unsigned(self.branch), self.tag))
     }
 }

@@ -130,7 +130,7 @@
     "metadata": {
       "description": "Number of executions or trades.",
       "display": "NoExecs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"noexecs\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noexecs\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"noexecs\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "124"
     }
   },
@@ -233,7 +233,7 @@
     "metadata": {
       "description": "Number of repeating groups of miscellaneous fees",
       "display": "NoMiscFees",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"nomiscfees\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"nomiscfees\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"nomiscfees\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "136"
     }
   },
@@ -289,7 +289,8 @@
             {
               "name": "settldate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -389,7 +390,8 @@
             {
               "name": "tradeoriginationdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -449,7 +451,8 @@
             {
               "name": "settldate2",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -880,7 +883,7 @@
     "metadata": {
       "description": "Specifies the number of repeating symbols specified.",
       "display": "NoRelatedSym",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"norelatedsym\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"norelatedsym\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"norelatedsym\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "146"
     }
   },
@@ -913,7 +916,7 @@
     "metadata": {
       "description": "Number of repeating groups of IOIQualifiers (04).",
       "display": "NoIOIQualifiers",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"noioiqualifiers\",\"type\":\"int\"},{\"since\":\"4.3\",\"name\":\"noioiqualifiers\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"noioiqualifiers\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "199"
     }
   }

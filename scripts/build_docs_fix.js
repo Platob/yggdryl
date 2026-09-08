@@ -188,13 +188,19 @@ function dictionary() {
   return registry
 }
 
-/** A repeating group is a List of `item` Structs; every other field is flat. */
+/**
+ * A repeating group is a List whose occurrence is a Struct with members.
+ *
+ * The occurrence carries the component's own name - `NoPartyIDs` heads a
+ * `PartyID` - so the test is the shape rather than the name: the name is
+ * descriptive, and nothing that decides anything may read it.
+ */
 function isGroup(field) {
-  const item = field.getFieldAt(0)
-  return item !== null && item.name === 'item' && item.fieldLen > 0
+  const occurrence = field.getFieldAt(0)
+  return occurrence !== null && occurrence.fieldLen > 0
 }
 
-/** The tags one group's `item` Struct declares, in wire order. */
+/** The tags one group's occurrence Struct declares, in wire order. */
 function memberTags(field) {
   const item = field.fieldAt(0)
   const tags = []
@@ -203,6 +209,21 @@ function memberTags(field) {
     if (tag !== null) tags.push(tag)
   }
   return tags
+}
+
+/**
+ * One lineage entry's datatype, as the reader of this manifest shows it.
+ *
+ * The document stores the crate's serialized datatype, exactly as a field's
+ * own `dtype` is stored, so this is a *reading* of the package's answer and
+ * not a second vocabulary: the tag is the datatype's name and the remaining
+ * keys are its parameters, in the order the document holds them.
+ */
+function lineageType(held) {
+  if (held === null || held === undefined) return ''
+  const { type, ...rest } = held
+  const parameters = Object.values(rest)
+  return parameters.length === 0 ? type : `${type}(${parameters.join(', ')})`
 }
 
 /**
@@ -304,9 +325,9 @@ function fieldRecords(registry) {
     const codes = document(field, 'fix:codes')
     const lineage = document(field, 'fix:lineage')
     const entries = lineage === null ? [] : lineage.entries
-    // A group's own datatype spells its whole `item` Struct - two kilobytes
-    // for a large one - and the explorer shows the members from `m` instead,
-    // so the record carries the shape and not the transcription.
+    // A group's own datatype spells its whole occurrence Struct - two
+    // kilobytes for a large one - and the explorer shows the members from `m`
+    // instead, so the record carries the shape and not the transcription.
     const record = { t: tag, n: field.name, y: group ? 'list' : field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     if (view.branch !== '') record.b = view.branch
@@ -347,7 +368,7 @@ function fieldRecords(registry) {
         detail.l = entries.map((entry) => [
           entry.since ?? '',
           entry.name ?? '',
-          entry.type ?? '',
+          lineageType(entry.type),
           entry.until ?? '',
         ])
       }
@@ -451,7 +472,7 @@ function projected(registry) {
 /** One captured line, and everything the package answered about it. */
 function frameCase(registry, reader, projection, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
-  const held = reader.readLine(bytes)
+  const held = reader.transformLine(bytes)
   const row = held.toRow(projection).toJSON()
 
   const columns = SHOWN.map((tag) => {
@@ -502,7 +523,7 @@ function frameCase(registry, reader, projection, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `new fix.FixCodec(registry).readLine(Buffer.from(${JSON.stringify(line)}, 'binary'))`,
+    call: `new fix.FixCodec(registry).transformLine(Buffer.from(${JSON.stringify(line)}, 'binary'))`,
   }
 }
 

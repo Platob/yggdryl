@@ -11,7 +11,8 @@
             {
               "name": "underlyingnondeliverablefixingdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -145,7 +146,8 @@
             {
               "name": "underlyingpaymentschedulestartdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -155,7 +157,8 @@
             {
               "name": "underlyingpaymentscheduleenddateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -415,7 +418,8 @@
             {
               "name": "underlyingpaymentschedulefixingdateunadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -505,7 +509,8 @@
             {
               "name": "underlyingpaymentschedulefixingdateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -555,8 +560,8 @@
             {
               "name": "underlyingpaymentschedulefixingtime",
               "dtype": {
-                "type": "time32",
-                "unit": "second"
+                "type": "time64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -626,7 +631,8 @@
             {
               "name": "underlyingpaymentscheduleinterimexchangedateadjusted",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

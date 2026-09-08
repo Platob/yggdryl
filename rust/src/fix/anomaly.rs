@@ -148,7 +148,7 @@ impl<'msg> FixAnomalies<'msg> {
     /// Only a counter states a count. A column holding a List of values is a
     /// tag that arrived twice, not a group, and reading the second
     /// `PartyRole=1` as a count would invent one - so the column has to be
-    /// the group's own shape, a List of `item` Structs, before its value is
+    /// the group's own shape, a List of occurrence Structs, before its value is
     /// read as a number of occurrences at all.
     fn miscount(&self, entry: &'msg FixEntry) -> Option<FixAnomaly<'msg>> {
         let stated = entry.value().parse::<i64>().ok()?;

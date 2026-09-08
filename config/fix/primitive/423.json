@@ -65,7 +65,8 @@
   {
     "name": "legcashsettldateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -402,7 +403,8 @@
   {
     "name": "legdividendaccrualpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -427,7 +429,8 @@
   {
     "name": "legdividendaccrualpaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -736,7 +739,8 @@
   {
     "name": "legdividendfxtriggerdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -761,7 +765,8 @@
   {
     "name": "legdividendfxtriggerdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -797,7 +802,8 @@
   {
     "name": "legdividendperiodstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -809,7 +815,8 @@
   {
     "name": "legdividendperiodenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -858,7 +865,8 @@
   {
     "name": "legdividendperiodvaluationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -920,7 +928,8 @@
   {
     "name": "legdividendperiodvaluationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -932,7 +941,8 @@
   {
     "name": "legdividendperiodpaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -994,7 +1004,8 @@
   {
     "name": "legdividendperiodpaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1012,7 +1023,7 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "LegDividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legdividendperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legdividendperiodxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legdividendperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42385"
     }
   },
@@ -1068,7 +1079,8 @@
   {
     "name": "legmakewholedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

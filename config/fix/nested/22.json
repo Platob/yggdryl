@@ -413,7 +413,9 @@
             {
               "name": "legcomplexeventstartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -423,7 +425,9 @@
             {
               "name": "legcomplexeventenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {

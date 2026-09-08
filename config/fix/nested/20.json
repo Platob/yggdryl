@@ -413,7 +413,9 @@
             {
               "name": "underlyingcomplexeventstartdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -423,7 +425,9 @@
             {
               "name": "underlyingcomplexeventenddate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond",
+                "timezone": "UTC"
               },
               "nullable": true,
               "metadata": {
@@ -509,7 +513,8 @@
             {
               "name": "legeventdate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {

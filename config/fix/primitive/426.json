@@ -20,7 +20,7 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "PaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"paymentstreamcompoundingxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"paymentstreamcompoundingxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"paymentstreamcompoundingxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42601"
     }
   },
@@ -77,7 +77,8 @@
   {
     "name": "paymentstreamcompoundingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -215,7 +216,8 @@
   {
     "name": "paymentstreamboundsfirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -227,7 +229,8 @@
   {
     "name": "paymentstreamboundslastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -251,7 +254,8 @@
   {
     "name": "paymentstreamcompoundingenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -313,7 +317,8 @@
   {
     "name": "paymentstreamcompoundingenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -551,7 +556,8 @@
   {
     "name": "paymentstreamcompoundingstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -613,7 +619,8 @@
   {
     "name": "paymentstreamcompoundingstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -649,7 +656,8 @@
   {
     "name": "paymentstreamfinalpricepaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -711,7 +719,8 @@
   {
     "name": "paymentstreamfinalpricepaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -723,7 +732,8 @@
   {
     "name": "paymentstreamfixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -748,7 +758,8 @@
   {
     "name": "paymentstreamfirstobservationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -785,7 +796,8 @@
   {
     "name": "paymentstreamfirstobservationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1051,7 +1063,8 @@
   {
     "name": "paymentstubenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1126,7 +1139,8 @@
   {
     "name": "paymentstubenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1150,7 +1164,8 @@
   {
     "name": "paymentstubstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

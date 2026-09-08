@@ -14,7 +14,8 @@
   {
     "name": "underlyingpaymentstreamcompoundingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -152,7 +153,8 @@
   {
     "name": "underlyingpaymentstreamboundsfirstdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -164,7 +166,8 @@
   {
     "name": "underlyingpaymentstreamboundslastdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -188,7 +191,8 @@
   {
     "name": "underlyingpaymentstreamcompoundingenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -250,7 +254,8 @@
   {
     "name": "underlyingpaymentstreamcompoundingenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -488,7 +493,8 @@
   {
     "name": "underlyingpaymentstreamcompoundingstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -550,7 +556,8 @@
   {
     "name": "underlyingpaymentstreamcompoundingstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -586,7 +593,8 @@
   {
     "name": "underlyingpaymentstreamfinalpricepaymentdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -648,7 +656,8 @@
   {
     "name": "underlyingpaymentstreamfinalpricepaymentdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -660,7 +669,8 @@
   {
     "name": "underlyingpaymentstreamfixingdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -685,7 +695,8 @@
   {
     "name": "underlyingpaymentstreamfirstobservationdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -722,7 +733,8 @@
   {
     "name": "underlyingpaymentstreamfirstobservationdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -988,7 +1000,8 @@
   {
     "name": "underlyingpaymentstubenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1063,7 +1076,8 @@
   {
     "name": "underlyingpaymentstubenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1087,7 +1101,8 @@
   {
     "name": "underlyingpaymentstubstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1162,7 +1177,8 @@
   {
     "name": "underlyingpaymentstubstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

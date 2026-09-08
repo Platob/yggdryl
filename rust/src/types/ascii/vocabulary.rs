@@ -148,6 +148,62 @@ impl AsciiEnum {
     /// two things to check at every read and the one a caller forgets.
     pub const DIRECTIONS: &'static [&'static str] = &["RECV", "SENT"];
 
+    /// Every state one thing can be in, ordered from first to last.
+    ///
+    /// One vocabulary over two worlds. FIX names an order's state twice -
+    /// `OrdStatus` says where the order stands and `ExecType` says what the
+    /// report is - and a scheduler names a job's state in ordinary English.
+    /// They are the same shape: a thing is created, it works, and it ends one
+    /// of three ways. A capture and the pipeline that reads it should not need
+    /// two vocabularies and a join to answer "what happened".
+    ///
+    /// # The first byte is the rank
+    ///
+    /// A value is a rank character then a name, and the rank is what makes the
+    /// *stored bytes* sort from first state to terminal. That matters because
+    /// most things that sort a column are not this crate: a Parquet row group's
+    /// min and max, an external sort, a `ORDER BY` in whatever reads the file.
+    /// Ordering by name would put `CANCELD` before `NEW`; ordering by these
+    /// bytes puts every live state before every ended one, and that ordering
+    /// survives every format the value crosses.
+    ///
+    /// Ranks run `0`-`9` then `A`-`Z`, which is ASCII order, so thirty-six
+    /// ranks are available and eleven are used:
+    ///
+    /// | rank | meaning |
+    /// | --- | --- |
+    /// | `0` | stated, but not a state anything reached |
+    /// | `1` | asked for, not yet acknowledged |
+    /// | `2` | acknowledged, not yet working |
+    /// | `3` | working |
+    /// | `4` | working, and something has happened |
+    /// | `5` | halted, and able to resume |
+    /// | `6` | a change is outstanding |
+    /// | `7` | changed, and the new thing carries on |
+    /// | `8` | ended, having done what was asked |
+    /// | `9` | ended, because someone stopped it |
+    /// | `A` | ended, because it could not be done |
+    ///
+    /// The three endings are ranked apart deliberately: "did it finish" and
+    /// "did it work" are different questions, and a single terminal rank would
+    /// answer neither without reading the name.
+    pub const STATES: &'static [&'static str] = &[
+        "0UNKNOWN", "1PENDING", "1PENDNEW", "1QUEUED", "2ACCEPTD", "2NEW", "2STARTNG", "2SUBMITD",
+        "3RUNNING", "3STATUS", "3TRIGGER", "4INPROGR", "4PARTFIL", "4TRADE", "4TRDCORR", "4TRDCXL",
+        "4TRDHOLD", "5PAUSED", "5STOPPED", "5SUSPEND", "6PENDCXL", "6PENDRPL", "7REPLACD",
+        "8CALCULD", "8COMPLET", "8DONEDAY", "8FILLED", "8SUCCESS", "8TRDRELS", "9CANCELD",
+        "AEXPIRED", "AFAILED", "AREJECTD", "ATIMEOUT",
+    ];
+
+    /// FIX's `TimeInForceCodeSet`, the union across every version, sorted.
+    ///
+    /// The wire values rather than the names, exactly as [`Self::SIDES`] is:
+    /// a code set's value is what a message carries, and the name is what a
+    /// dictionary translates it to.
+    pub const TIMESINFORCE: &'static [&'static str] = &[
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D",
+    ];
+
     /// The prebuilt vocabularies, by the logical name that spells them.
     ///
     /// `exchange` and `mic` name one list because they name one thing: FIX
@@ -159,6 +215,8 @@ impl AsciiEnum {
         ("exchange", Self::MICS),
         ("side", Self::SIDES),
         ("msgdirection", Self::DIRECTIONS),
+        ("state", Self::STATES),
+        ("timeinforce", Self::TIMESINFORCE),
     ];
 
     /// Creates the enum a registered logical name prebuilds.

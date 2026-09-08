@@ -169,7 +169,7 @@
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommoditySettlPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommoditysettlperiodxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcommoditysettlperiodxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommoditysettlperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42014"
     }
   },
@@ -182,7 +182,7 @@
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "UnderlyingStreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommoditysettlperiodxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamcommoditysettlperiodxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamcommoditysettlperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42015"
     }
   },
@@ -195,7 +195,7 @@
     "metadata": {
       "description": "Identifier of this UnderlyingStream for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42016"
     }
   },
@@ -220,7 +220,7 @@
     "metadata": {
       "description": "Cross reference to another UnderlyingStream notional for duplicating its properties.",
       "display": "UnderlyingStreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamnotionalxidref\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":169,\"name\":\"underlyingstreamnotionalxidref\",\"type\":\"XIDREF\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingstreamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42018"
     }
   },
@@ -365,7 +365,8 @@
   {
     "name": "underlyingadditionaltermbondmaturitydate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -523,14 +524,14 @@
   {
     "name": "underlyingcashsettlvaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "Time of valuation.",
       "display": "UnderlyingCashSettlValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcashsettlvaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingcashsettlvaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcashsettlvaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42046"
     }
   },
@@ -689,7 +690,7 @@
     "metadata": {
       "description": "Name referenced from UnderlyingSettlementTermXIDRef(41315).",
       "display": "UnderlyingCashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcashsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingcashsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingcashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42059"
     }
   },
@@ -738,7 +739,7 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "UnderlyingPhysicalSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingphysicalsettltermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingphysicalsettltermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingphysicalsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42064"
     }
   },
@@ -859,7 +860,7 @@
     "metadata": {
       "description": "A named string value referenced by UnderlyingProtectionTermXIDRef(41314).",
       "display": "UnderlyingProtectionTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprotectiontermxid\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":187,\"name\":\"underlyingprotectiontermxid\",\"type\":\"XID\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"underlyingprotectiontermxid\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "42076"
     }
   },
@@ -1064,7 +1065,8 @@
   {
     "name": "underlyingprovisioncashsettlpaymentdaterangefirst",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1076,7 +1078,8 @@
   {
     "name": "underlyingprovisioncashsettlpaymentdaterangelast",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

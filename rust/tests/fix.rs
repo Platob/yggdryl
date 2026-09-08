@@ -2,6 +2,8 @@
 
 #[path = "fix/batch.rs"]
 mod batch;
+#[path = "fix/capture.rs"]
+mod capture;
 #[path = "fix/cfb.rs"]
 mod cfb;
 #[path = "fix/codec.rs"]

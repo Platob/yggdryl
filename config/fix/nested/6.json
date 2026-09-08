@@ -48,7 +48,7 @@
     "metadata": {
       "description": "Multileg instrument's individual security's NoSecurityAltID.",
       "display": "NoLegSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegsecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nolegsecurityaltid\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "604"
     }
   },
@@ -103,7 +103,7 @@
     "metadata": {
       "description": "Number of HopCompID entries in repeating group.",
       "display": "NoHops",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nohops\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nohops\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "627"
     }
   },
@@ -189,7 +189,8 @@
             {
               "name": "legversuspurchasedate",
               "dtype": {
-                "type": "date32"
+                "type": "datetime64",
+                "unit": "nanosecond"
               },
               "nullable": true,
               "metadata": {
@@ -226,7 +227,7 @@
     "metadata": {
       "description": "Number of Allocations for the leg",
       "display": "NoLegAllocs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegallocs\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegallocs\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "670"
     }
   },
@@ -269,7 +270,7 @@
     "metadata": {
       "description": "Number of leg stipulation entries",
       "display": "NoLegStipulations",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegstipulations\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"nolegstipulations\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "683"
     }
   }

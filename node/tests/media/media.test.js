@@ -21,6 +21,7 @@ const knownMimeTypes = Object.freeze({
   PUFFIN: 'application/vnd.apache.puffin',
   PLAIN_TEXT: 'text/plain',
   ULLINK: 'text/ullink',
+  ULCONFIG: 'text/ulconfig',
   FIX: 'text/fix',
   FIXUL: 'text/fixul',
   FIXML: 'text/fixml',
@@ -70,7 +71,7 @@ const knownMimeTypes = Object.freeze({
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 61)
+  assert.equal(Object.keys(knownMimeTypes).length, 62)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {

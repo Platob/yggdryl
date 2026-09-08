@@ -773,7 +773,15 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             Ok((canonical, true))
         }
         // A code canonicalizes the same way, at the width its own type fixes.
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::MsgDirection => {
+        D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Side
+        | D::MsgType
+        | D::MsgDirection
+        | D::State
+        | D::TimeInForce => {
             if matches!(
                 (dtype, value),
                 (D::Country, Scalar::Ascii(AsciiFamily::Country(_)))
@@ -783,6 +791,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     | (D::Side, Scalar::Ascii(AsciiFamily::Side(_)))
                     | (D::MsgType, Scalar::Ascii(AsciiFamily::MsgType(_)))
                     | (D::MsgDirection, Scalar::Ascii(AsciiFamily::MsgDirection(_)))
+                    | (D::State, Scalar::Ascii(AsciiFamily::State(_)))
+                    | (D::TimeInForce, Scalar::Ascii(AsciiFamily::TimeInForce(_)))
             ) {
                 return Ok((value.clone(), false));
             }
@@ -805,6 +815,10 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }
                 D::MsgDirection => Scalar::Ascii(AsciiFamily::MsgDirection(
                     crate::types::MsgDirection::new(text)?,
+                )),
+                D::State => Scalar::Ascii(AsciiFamily::State(crate::types::State::new(text)?)),
+                D::TimeInForce => Scalar::Ascii(AsciiFamily::TimeInForce(
+                    crate::types::TimeInForce::new(text)?,
                 )),
                 _ => unreachable!("registered ASCII datatype matched above"),
             };
@@ -1432,14 +1446,20 @@ fn validate_dtype_value(
             },
             None => Err(expected(dtype.name(), value)),
         },
-        D::Country | D::Currency | D::Mic | D::Cfi | D::Side | D::MsgType | D::MsgDirection => {
-            match ascii_bytes(value) {
-                Some(bytes) => code_cell_text(dtype, bytes)
-                    .map(|_| ())
-                    .map_err(ascii_failure),
-                None => Err(expected(dtype.name(), value)),
-            }
-        }
+        D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Side
+        | D::MsgType
+        | D::MsgDirection
+        | D::State
+        | D::TimeInForce => match ascii_bytes(value) {
+            Some(bytes) => code_cell_text(dtype, bytes)
+                .map(|_| ())
+                .map_err(ascii_failure),
+            None => Err(expected(dtype.name(), value)),
+        },
         D::Uuid => match value {
             Scalar::Uuid(_) => Ok(()),
             _ => match uuid_bytes(value).map(uuid_parse) {

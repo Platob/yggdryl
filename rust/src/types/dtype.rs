@@ -108,6 +108,15 @@ pub enum DataType {
     ///
     /// Case-bearing: `A` is Logon and `a` is QuoteStatusRequest.
     MsgType,
+    /// What state one thing is in, eight ASCII bytes.
+    ///
+    /// A rank character then a name, so the stored bytes sort from the first
+    /// state to the terminal ones wherever they are sorted. One vocabulary
+    /// over FIX's `OrdStatus` and `ExecType` and an ordinary scheduler's
+    /// words, because they describe the same shape.
+    State,
+    /// How long an order stands, eight ASCII bytes.
+    TimeInForce,
     /// Which way a captured line moved, four ASCII bytes: `SENT` or `RECV`.
     ///
     /// Transport rather than FIX - every captured line has a direction
@@ -252,6 +261,8 @@ impl DataType {
             Self::Side => DataTypeId::Side,
             Self::MsgType => DataTypeId::MsgType,
             Self::MsgDirection => DataTypeId::MsgDirection,
+            Self::State => DataTypeId::State,
+            Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::List(_) => DataTypeId::List,
@@ -548,6 +559,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Side => 53,
         DataType::MsgType => 54,
         DataType::MsgDirection => 55,
+        DataType::State => 56,
+        DataType::TimeInForce => 57,
     }
 }
 

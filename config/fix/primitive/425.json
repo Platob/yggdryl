@@ -40,7 +40,8 @@
   {
     "name": "legpaymentstubstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -152,7 +153,8 @@
   {
     "name": "legreturnratevaluationstartdateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -214,7 +216,8 @@
   {
     "name": "legreturnratevaluationstartdateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +229,8 @@
   {
     "name": "legreturnratevaluationenddateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -288,7 +292,8 @@
   {
     "name": "legreturnratevaluationenddateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -548,21 +553,22 @@
   {
     "name": "legreturnratequotetime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time when the quote is to be generated.",
       "display": "LegReturnRateQuoteTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratequotetime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legreturnratequotetime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratequotetime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42548"
     }
   },
   {
     "name": "legreturnratequotedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -574,14 +580,14 @@
   {
     "name": "legreturnratequoteexpirationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "LegReturnRateQuoteExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratequoteexpirationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legreturnratequoteexpirationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratequoteexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42550"
     }
   },
@@ -649,14 +655,14 @@
   {
     "name": "legreturnratevaluationtime",
     "dtype": {
-      "type": "time32",
-      "unit": "second"
+      "type": "time64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "LegReturnRateValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratevaluationtime\",\"type\":\"String\"},{\"since\":\"5.0SP2\",\"ep\":208,\"name\":\"legreturnratevaluationtime\",\"type\":\"LocalMktTime\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0SP2\",\"name\":\"legreturnratevaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
       "fix:tag": "42556"
     }
   },
@@ -800,7 +806,8 @@
   {
     "name": "legreturnratevaluationdate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -825,7 +832,8 @@
   {
     "name": "legsettlmethodelectiondateunadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -900,7 +908,8 @@
   {
     "name": "legsettlmethodelectiondateadjusted",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -936,7 +945,8 @@
   {
     "name": "legstreamversioneffectivedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {
@@ -1022,7 +1032,8 @@
   {
     "name": "makewholedate",
     "dtype": {
-      "type": "date32"
+      "type": "datetime64",
+      "unit": "nanosecond"
     },
     "nullable": true,
     "metadata": {

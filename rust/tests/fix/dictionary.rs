@@ -3,10 +3,14 @@
 //! `config/fix` is a contract rather than a code path: it is the seed every
 //! test in these phases loads, and the one path this suite names.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Version};
+use yggdryl::{
+    DataType, Field, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, TimeUnit, Timezone,
+    Version,
+};
 
 fn seed() -> FixRegistry {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -230,4 +234,152 @@ fn every_stored_document_walks_to_its_end() {
     let role = registry.field_by_tag(452).expect("PartyRole");
     assert_eq!(role.as_fix().code_value("ClearingFirm"), Some("4"));
     assert_eq!(role.as_fix().code_name("4"), Some("ClearingFirm"));
+}
+
+/// Every field the dictionary holds, occurrences and group members included.
+fn every_field(registry: &FixRegistry) -> Vec<Field> {
+    fn walk(field: &Field, out: &mut Vec<Field>) {
+        out.push(field.clone());
+        match field.dtype() {
+            DataType::List(item) | DataType::LargeList(item) => walk(item, out),
+            DataType::Struct(fields) => {
+                for held in fields.iter() {
+                    walk(held, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for field in registry.iter() {
+        walk(field, &mut out);
+    }
+    out
+}
+
+#[test]
+fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
+    let registry = seed();
+    // Nothing anywhere is a day or a second, occurrences and group members
+    // included: a FIX date is that day's midnight, so a capture joining a
+    // settlement date to a transact time compares them without a cast, and
+    // `LocalMktTime` and `UTCTimeOnly` are one type for the same reason.
+    for field in every_field(&registry) {
+        match field.dtype() {
+            DataType::Date32 | DataType::Date64 => {
+                panic!("{} is still a day rather than an instant", field.name())
+            }
+            DataType::Time32(_) => panic!("{} is still typed to a second", field.name()),
+            DataType::Time64(unit) => assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name()),
+            DataType::DateTime64 { unit, timezone } => {
+                assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name());
+                // Two zones, and only two: what the datatype's own name says.
+                // A `UTCTimestamp` is UTC and a `LocalMktDate` states no zone,
+                // so neither reads as the other.
+                assert!(
+                    *timezone == Timezone::UTC || timezone.is_naive(),
+                    "{} states {timezone}",
+                    field.name()
+                );
+            }
+            _ => {}
+        }
+    }
+
+    // The registry's own entries, where each field is counted once.
+    let mut times = 0_usize;
+    let mut naive = 0_usize;
+    let mut utc = 0_usize;
+    for field in registry.iter() {
+        match field.dtype() {
+            DataType::Time64(_) => times += 1,
+            DataType::DateTime64 { timezone, .. } if timezone.is_naive() => naive += 1,
+            DataType::DateTime64 { .. } => utc += 1,
+            _ => {}
+        }
+    }
+    assert_eq!(times, 56, "zone-less times of day");
+    assert_eq!(naive, 368, "local values, stating no zone");
+    assert_eq!(utc, 66, "instants stated in UTC");
+}
+
+#[test]
+fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
+    let registry = seed();
+    let mut census: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for field in every_field(&registry) {
+        let view = field.as_fix();
+        let held: Vec<_> = view
+            .lineage()
+            .map(|entry| entry.expect("a readable entry"))
+            .collect();
+        for pair in held.windows(2) {
+            let (Some(older), Some(newer)) = (
+                pair[0].parse_dtype().expect("a resolvable type"),
+                pair[1].parse_dtype().expect("a resolvable type"),
+            ) else {
+                continue;
+            };
+            if older == newer {
+                continue;
+            }
+            // A text field that later declared itself temporal was always
+            // carrying the instant, so it no longer reads as a retype. A
+            // string-to-string retype cannot survive at all, because two
+            // spellings of one type are now one value and this arm is only
+            // reached where the types differ.
+            assert!(
+                !(older.id().is_string() && newer.id().is_temporal()),
+                "{} still states a string before a temporal",
+                field.name()
+            );
+            // One temporal is restated as another only where the *zone*
+            // changed, which is a real change and not a spelling: a field the
+            // specification moved from `UTCDateOnly` to `LocalMktDate` stopped
+            // stating a zone, and the reading has to say so. Precision never
+            // drifts.
+            if older.id().is_temporal() && newer.id().is_temporal() {
+                let (
+                    DataType::DateTime64 {
+                        unit: older_unit, ..
+                    },
+                    DataType::DateTime64 {
+                        unit: newer_unit, ..
+                    },
+                ) = (&older, &newer)
+                else {
+                    panic!("{} retypes one temporal family to another", field.name())
+                };
+                assert_eq!(older_unit, newer_unit, "{}", field.name());
+            }
+            *census
+                .entry((older.to_string(), newer.to_string()))
+                .or_default() += 1;
+        }
+    }
+    let total: usize = census.values().sum();
+    assert_eq!(total, 65, "surviving retypes: {census:?}");
+    assert_eq!(
+        census
+            .iter()
+            .map(|((older, newer), count)| (older.as_str(), newer.as_str(), *count))
+            .collect::<Vec<_>>(),
+        [
+            // A UTC date restated as a local market date: the zone went away,
+            // and the reading says so rather than calling both a day.
+            ("datetime64(ns,\"UTC\")", "datetime64(ns)", 12),
+            ("float64", "utf8", 1),
+            ("int32", "float64", 13),
+            ("int32", "int64", 6),
+            ("int32", "utf8", 8),
+            ("utf8", "boolean", 9),
+            ("utf8", "country", 1),
+            ("utf8", "currency", 3),
+            ("utf8", "int32", 6),
+            ("utf8", "mic", 3),
+            ("utf8", "msgdirection", 1),
+            ("utf8", "msgtype", 1),
+            ("utf8", "side", 1),
+        ]
+    );
 }

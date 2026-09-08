@@ -688,6 +688,8 @@ is six accessor pairs on the `field.fix` view: `branch`, `id`, `tag`, `tags`,
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
+| branch digests | `branchByBid` / `getBranchByBid` take the number an arrival entry carries and answer the branch's name; only a declared branch resolves |
+| `FixMsg.arrivals()` | `[tag, bid, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | name or path key | a `string`, standard branch; a colon-bearing string is a name |
 | branch, identifier | `string`, parsed by the core `FixBranch` and `FixId` |
 | `fieldByName`, `fieldByPath` | take the branch after the name it qualifies, defaulting to the standard one |

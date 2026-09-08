@@ -32,7 +32,7 @@
     qty.as_fix_mut().set_tag(38)?;
     let mut party_id = DataType::Utf8.nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448)?;
-    let mut parties = DataType::list(DataType::from_fields([party_id])?.required_field("item"))
+    let mut parties = DataType::list(DataType::from_fields([party_id])?.required_field("PartyID"))
         .nullable_field("NoPartyIDs");
     parties.as_fix_mut().set_tag(453)?;
     let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone(), parties.clone()])?);
@@ -91,7 +91,7 @@
     qty.fix.tag = 38
     party_id = Field("PartyID", "utf8")
     party_id.fix.tag = 448
-    item = Field("item", DataType.from_fields([party_id]), nullable=False)
+    item = Field("PartyID", DataType.from_fields([party_id]), nullable=False)
     parties = types.list("NoPartyIDs", item)
     parties.fix.tag = 453
     registry = FixRegistry.from_fields([symbol, qty, parties])
@@ -148,7 +148,7 @@
     qty.fix.tag = 38
     const partyId = Field.from('PartyID: utf8')
     partyId.fix.tag = 448
-    const parties = fields.list('NoPartyIDs', fields.struct('item', [partyId], { nullable: false }))
+    const parties = fields.list('NoPartyIDs', fields.struct('PartyID', [partyId], { nullable: false }))
     parties.fix.tag = 453
     const registry = fix.FixRegistry.fromFields([symbol, qty, parties])
 

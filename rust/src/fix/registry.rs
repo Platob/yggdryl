@@ -483,14 +483,13 @@ impl FixRegistry {
 
     /// Returns the branch one digest names, or `None`.
     ///
-    /// The reverse of the digest an entry stores: a capture's `bid` column
+    /// The reverse of the digest an entry stores: a capture's `branch` column
     /// joins to a whole dialect declaration through this, which is what makes
-    /// the capture self-describing rather than merely legible. A value no
-    /// `u32` can hold names no branch, because the digest is one.
-    pub fn get_branch_by_bid(&self, bid: i64) -> Option<&FixBranch> {
-        u32::try_from(bid)
-            .ok()
-            .and_then(|digest| self.branches.get(&digest))
+    /// the capture self-describing rather than merely legible. The argument is
+    /// the entry's own signed reading of the XXH32, so a digest above
+    /// `i32::MAX` arrives negative and resolves exactly as it stored.
+    pub fn get_branch_by_digest(&self, digest: i32) -> Option<&FixBranch> {
+        self.branches.get(&super::entry::unsigned(digest))
     }
 
     /// Returns the branch one digest names, raising absence.
@@ -498,9 +497,13 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns absence naming the digest when no branch carries it.
-    pub fn branch_by_bid(&self, bid: i64) -> Result<&FixBranch> {
-        self.get_branch_by_bid(bid)
-            .ok_or_else(|| absent(format_args!("branch #{bid:08x}")))
+    pub fn branch_by_digest(&self, digest: i32) -> Result<&FixBranch> {
+        self.get_branch_by_digest(digest).ok_or_else(|| {
+            absent(format_args!(
+                "branch #{:08x}",
+                super::entry::unsigned(digest)
+            ))
+        })
     }
 
     /// Returns the branch `name` reaches, canonically or by an alias.

@@ -461,6 +461,7 @@ const knownMimeNames = Object.freeze([
   'PUFFIN',
   'PLAIN_TEXT',
   'ULLINK',
+  'ULCONFIG',
   'FIX',
   'FIXUL',
   'KEYVALUE',

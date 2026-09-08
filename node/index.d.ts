@@ -1102,15 +1102,24 @@ export declare class FixCodec {
   /** The dictionary this reader resolves against, sharing it. */
   get registry(): FixRegistry
   /** One captured line, whatever it is wrapped in. */
-  readLine(row: Buffer): FixMsg
+  transformLine(row: Buffer, enrich?: boolean | undefined | null): FixMsg
   /** One numeric frame, split on the separator stated or inferred. */
-  readFixLine(body: Buffer, separator?: number | undefined | null): FixMsg
+  transformFixLine(body: Buffer, separator?: number | undefined | null, enrich?: boolean | undefined | null): FixMsg
   /** One bridge frame, whose keys are names rather than tags. */
-  readUllinkLine(body: Buffer): FixMsg
+  transformUllinkLine(body: Buffer, enrich?: boolean | undefined | null): FixMsg
   /** One FIXML row, whose fields are XML attributes. */
-  readFixmlLine(body: Buffer): FixMsg
+  transformFixmlLine(body: Buffer, enrich?: boolean | undefined | null): FixMsg
   /** Pairs a caller already holds, in the order they arrived. */
-  readPairs(pairs: Array<[string, string]>): FixMsg
+  transformPairs(pairs: Array<[string, string]>): FixMsg
+  /**
+   * Fills what one message implies but did not carry.
+   *
+   * An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
+   * Only the row is filled: the arrival record is what the wire carried and
+   * is left alone, so `toBytes` re-emits the received line either way, and
+   * a stated value is never replaced.
+   */
+  enrichFixmsg(message: FixMsg): FixMsg
   /**
    * A cheap clone, with a projection cache of its own.
    *
@@ -1264,8 +1273,14 @@ export declare class FixMsg {
    * who never asks pays nothing.
    */
   anomalies(): Array<string>
-  /** What arrived, in arrival order, untranslated. */
-  arrivals(): Array<[number, string | null, string, string]>
+  /**
+   * What arrived, in arrival order, untranslated.
+   *
+   * Flattened pre-order: a group's members follow the counter pair that
+   * heads them, so a caller reading the array reads the wire. The dialect
+   * crosses as its digest, which `FixRegistry.branchByDigest` resolves.
+   */
+  arrivals(): Array<[number, number, string, string]>
   /** This message as the fixed row a table holds. */
   toRow(projection: JsFixProjection): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
@@ -1461,6 +1476,25 @@ export declare class FixRegistry {
    * exactly as every other identifier argument is.
    */
   removeById(id: string): JsField | null
+  /**
+   * The branch one digest names, or `null`.
+   *
+   * An arrival entry carries its dialect as the digest `branch`, so this is
+   * the table that turns a capture's column back into the branch it was
+   * read under. The digest is one way, which is why the registry publishes
+   * the resolution rather than leaving a reader to reproduce the hash. A
+   * branch crosses as its name here, as it does everywhere else in this
+   * binding.
+   */
+  getBranchByDigest(digest: number): string | null
+  /**
+   * The branch one digest names.
+   *
+   * # Errors
+   *
+   * Throws naming the digest when no branch carries it.
+   */
+  branchByDigest(digest: number): string
   /**
    * The fields in ascending canonical-identifier order, lazily.
    *
@@ -2568,6 +2602,16 @@ export declare class ProtocolField {
   get aliases(): Array<string>
   /** Record the aliases; an empty array removes the property. */
   set aliases(values: Array<string>)
+  /**
+   * The spellings that mean "nothing was sent" for this field.
+   *
+   * A value the list names types as null in a row while the arrival record
+   * keeps it exactly as it arrived. Assigning an empty array removes the
+   * property.
+   */
+  get nulls(): Array<string>
+  /** Record the spellings; an empty array removes the property. */
+  set nulls(values: Array<string>)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */

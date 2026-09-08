@@ -38,7 +38,7 @@
     "metadata": {
       "description": "Allows trading rules to be expressed by trading session",
       "display": "NoTradingSessionRules",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notradingsessionrules\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notradingsessionrules\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1309"
     }
   },
@@ -81,7 +81,7 @@
     "metadata": {
       "description": "Number of Market Segments on which a security may trade.",
       "display": "NoMarketSegments",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomarketsegments\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nomarketsegments\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1310"
     }
   },
@@ -124,7 +124,7 @@
     "metadata": {
       "description": "Number of instrument attributes.",
       "display": "NoDerivativeInstrAttrib",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrattrib\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noderivativeinstrattrib\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1311"
     }
   },
@@ -166,7 +166,7 @@
     "nullable": true,
     "metadata": {
       "display": "NoNestedInstrAttrib",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonestedinstrattrib\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonestedinstrattrib\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1312"
     }
   },
@@ -209,7 +209,7 @@
     "metadata": {
       "description": "Refer to definition for NoSecurityAltID(454)",
       "display": "NoUnderlyingLegSecurityAltID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nounderlyinglegsecurityaltid\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nounderlyinglegsecurityaltid\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1334"
     }
   },
@@ -302,7 +302,7 @@
     "metadata": {
       "description": "Specifies number of application id occurrences",
       "display": "NoApplIDs",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noapplids\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"noapplids\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1351"
     }
   },
@@ -404,7 +404,7 @@
     "nullable": true,
     "metadata": {
       "display": "NoFills",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nofills\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nofills\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1362"
     }
   },
@@ -467,7 +467,7 @@
     "metadata": {
       "description": "Number of not affected orders in the repeating group of order ids.",
       "display": "NoNotAffectedOrders",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonotaffectedorders\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nonotaffectedorders\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1370"
     }
   },
@@ -510,7 +510,7 @@
     "metadata": {
       "description": "Number of trade reporting indicators",
       "display": "NoTrdRepIndicators",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notrdrepindicators\",\"type\":\"NumInGroup\"}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"notrdrepindicators\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "1387"
     }
   }

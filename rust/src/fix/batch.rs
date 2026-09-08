@@ -126,7 +126,30 @@ pub struct FixOptions {
     /// source by position and cannot be joined back to it. What went is
     /// counted rather than silent.
     pub dedup: bool,
+    /// Whether each message is filled with what it implies.
+    ///
+    /// Off by default: a derived value is indistinguishable from a stated one
+    /// once it is in the row, so filling has to be asked for. See
+    /// [`FixCodec::enrich_fixmsg`](super::FixCodec::enrich_fixmsg).
+    pub enrich: bool,
 }
+
+/// The batch size a FIX read targets when the caller states none.
+///
+/// A capture is tens of millions of lines and the row shape varies by three
+/// orders of magnitude between a heartbeat and a market-data snapshot, so a
+/// row bound alone makes memory unpredictable: the same bound is a few
+/// megabytes of one and gigabytes of the other. Targeting bytes instead keeps
+/// a batch about the same size whatever arrived, and 128 MiB is large enough
+/// that the per-batch cost - building the arrays, crossing a reader boundary,
+/// writing a row group - is amortized to nothing, while still leaving several
+/// batches in flight on an ordinary machine.
+///
+/// It is a target rather than a ceiling. The estimate accumulates per row
+/// from what was appended, because an in-progress builder cannot be measured
+/// the way a finished batch can, and a non-zero bound always yields at least
+/// one row - so one enormous message can never produce an empty batch.
+pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;
 
 impl Default for FixOptions {
     fn default() -> Self {
@@ -135,7 +158,7 @@ impl Default for FixOptions {
             dtype: None,
             metadata: Metadata::default(),
             safe: true,
-            batch_byte_size: None,
+            batch_byte_size: Some(DEFAULT_BATCH_BYTE_SIZE),
             batch_row_size: None,
             max_row_size: None,
             max_byte_size: None,
@@ -154,6 +177,7 @@ impl Default for FixOptions {
                 .collect(),
             direction: Some(MsgDirection::SENT),
             dedup: false,
+            enrich: false,
         }
     }
 }
@@ -284,12 +308,15 @@ impl FixBatchReader {
         let field = options.source_field(&registry)?;
         let reader = options.reader(Arc::clone(&registry));
         let default = options.direction;
+        let enrich = options.enrich;
         let messages = rows.into_iter().map(move |row| {
             let row = row?;
             // A row in is a row out: a line the reader refuses is not a line
             // lost, it is a message with nothing in it, and the count still
             // matches the capture's.
-            let message = reader.read_line(&row).unwrap_or_else(|_| empty(&reader));
+            let message = reader
+                .transform_line(&row, enrich)
+                .unwrap_or_else(|_| empty(&reader));
             let direction = direction_of(&row, default);
             Ok((message, direction, Vec::new()))
         });
@@ -322,10 +349,10 @@ impl FixBatchReader {
         options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .read_arrow_reader(source, &options)
+            .transform_arrow_reader(source, &options, options.enrich)
     }
 
-    /// The body [`FixCodec::read_arrow_reader`] is, with the codec in hand.
+    /// The body [`FixCodec::transform_arrow_reader`] is, with the codec in hand.
     pub(super) fn from_codec(
         reader: &FixCodec,
         source: BatchReader,
@@ -352,6 +379,7 @@ impl FixBatchReader {
         let reader = options.reader(Arc::clone(&registry));
         let payload = options.payload_column.clone();
         let default = options.direction;
+        let enrich = options.enrich;
 
         let records = source
             .flat_map(move |batch| match batch {
@@ -370,7 +398,7 @@ impl FixBatchReader {
             .map(move |row| {
                 let record = named(&names, &row?);
                 let bytes = column_bytes(&record, &payload).unwrap_or_default();
-                let message = read_record(&reader, &record, &bytes)?;
+                let message = transform_record(&reader, &record, &bytes, enrich)?;
                 let direction = stated(&record).or_else(|| direction_of(&bytes, default));
                 // By position: the columns kept were decided from the schema,
                 // and a row of that schema arrives in that order.
@@ -458,7 +486,7 @@ fn row_of(
 /// A row nobody could read, which is still a row.
 fn empty(reader: &FixCodec) -> FixMsg {
     reader
-        .read_pairs(std::iter::empty::<(&[u8], &[u8])>())
+        .transform_pairs(std::iter::empty::<(&[u8], &[u8])>(), false)
         .expect("an empty message builds")
 }
 
@@ -548,8 +576,7 @@ fn payload_lines(column: &ArrayRef) -> Result<Vec<&[u8]>> {
 
 /// The direction a whole captured line moved.
 fn direction_of(line: &[u8], default: Option<&'static str>) -> Option<&'static str> {
-    let at = crate::mime_type::line::payload_at(line).unwrap_or(line.len());
-    MsgDirection::at_payload(line, at, default)
+    MsgDirection::infer_bytes(line).or(default)
 }
 
 /// One row's values beside the names its schema gave them.
@@ -639,12 +666,13 @@ fn stated(record: &[(SmolStr, Scalar)]) -> Option<&'static str> {
 
 /// One record read against one codec, the payload taken from `payload`.
 ///
-/// [`FixCodec::read_record`] is the door; this is where the row's own columns
+/// [`FixCodec::transform_record`] is the door; this is where the row's own columns
 /// are applied, beside the option-driven path the batch reader takes.
-pub(super) fn read_record_with(
+pub(super) fn transform_record_with(
     reader: &FixCodec,
     record: &Scalar,
     payload: &str,
+    enrich: bool,
 ) -> Result<FixMsg> {
     let Some(held) = record.as_record() else {
         return Err(Error::Parse {
@@ -658,11 +686,16 @@ pub(super) fn read_record_with(
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
     let bytes = column_bytes(&row, payload).unwrap_or_default();
-    read_record(reader, &row, &bytes)
+    transform_record(reader, &row, &bytes, enrich)
 }
 
 /// Reads one record through the byte readers, per-row columns applied.
-fn read_record(reader: &FixCodec, record: &[(SmolStr, Scalar)], bytes: &[u8]) -> Result<FixMsg> {
+fn transform_record(
+    reader: &FixCodec,
+    record: &[(SmolStr, Scalar)],
+    bytes: &[u8],
+    enrich: bool,
+) -> Result<FixMsg> {
     // A column is the caller speaking per row and an option is the caller
     // speaking per stream, so both outrank the inference the readers fall back
     // on - and the column outranks the option, because it is the more specific
@@ -691,8 +724,8 @@ fn read_record(reader: &FixCodec, record: &[(SmolStr, Scalar)], bytes: &[u8]) ->
         Some(separator) => reader
             .clone()
             .with_separator(separator)
-            .read_fix_line(bytes),
-        None => reader.read_line(bytes),
+            .transform_fix_line(bytes, enrich),
+        None => reader.transform_line(bytes, enrich),
     };
     Ok(built.unwrap_or_else(|_| empty(&reader)))
 }
@@ -729,7 +762,7 @@ impl FixMsg {
         options
             .reader(registry)
             .with_payload_column(options.payload_column.clone())
-            .read_record(record)
+            .transform_record(record, options.enrich)
     }
 }
 
