@@ -18,7 +18,8 @@ results and exact skipped checks.
    names in `.api-inventory.txt` (Rust) / `.api-bindings.txt` (Python, JS).
 2. **Design against §1**: one owner per fact, one spelling per verb, no second
    schema, no second dispatcher - and the [Patterns](#patterns) the core already
-   has for equivalences, the handle stack, row accessors, and what is zero copy.
+   has for equivalences, the handle stack, row accessors, how outside data
+   becomes a resolved type, and what is zero copy.
 3. **Implement in Rust**: behavior, edges, errors, `rust/tests/`,
    `rust/benchmarks/`, rustdoc examples, both directions of any exchange format.
    Delete what it replaces in the same commit.
@@ -60,6 +61,18 @@ an invariant; a value's behavior is a method on it, not a helper. Delete dead
 branches and redundant wrappers you touch. No speculative generality, no
 binding-side core logic. Comments carry non-obvious constraints, ownership,
 bounds, safety - never prose translation.
+
+**Wide in, typed through.** Data from outside - a user argument, a wire byte, a
+host runtime object - meets one boundary that accepts every documented spelling
+of the thing it is, resolves it exactly once into `DataType`, `Field`, `Scalar`,
+or the owning enum, and hands the interior a value whose type is already proven.
+Flexibility belongs to intake, never to meaning: accept more spellings, never
+pick between two readings - ambiguous, disagreeing, or unrepresentable input
+fails with expected, actual, and location rather than widening to fit. Past that
+boundary nothing re-infers, re-parses, re-validates, or branches on a string:
+work is planned once against the resolved type, and the per-item path moves
+bytes under it. The interior is fast because the edge was exact, never because
+it skipped a check.
 
 **Compressed output.** Only what changes a decision, proves a result, names a
 blocker, or enables the next action; each fact once; outcome first (state,
@@ -209,6 +222,37 @@ never to a wrapper's own buffer.
   `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
 - Add no row type, schema accessor, or per-row map/JSON bridge; a binding's row
   helper closes over one Struct `Field`.
+
+### Intake: accept, resolve, exploit
+
+| Step | Surface | Contract |
+| --- | --- | --- |
+| accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
+| resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
+| carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`/`TypedScalar<K>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
+| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `scalar_array`/`scalar_value`, cached Arrow projections, `as_integer`/`as_float`/`as_decimal`/`as_temporal`, `default_value` | schema-dependent work leaves the per-item path |
+
+- Precedence, where the caller did not say: an explicit argument, then a declared
+  `Field`, `MediaType`, or path suffix, then one bounded content read - never a
+  second read to break a tie, never a host runtime's guess. An input that answers
+  none of them names every step that failed.
+- Inference reads what a value already is, not what a column could hold:
+  `Scalar::dtype` names the variant's own datatype with its width, unit, zone and
+  scale intact; children that disagree are an error rather than a widened common
+  type, and a null child only makes its field nullable. Rows carrying no schema
+  get one from `inferred_scalar_field`/`inferred_array_field`/
+  `inferred_struct_field`; rows under a `Field` get that field's answer and never
+  an inferred one.
+- Resolution is a boundary event, never a per-item one: parse, lookup, layout
+  choice, and plan compilation hoist into options, a typed marker, or the
+  compiled plan, leaving masks, offsets and buffers to vary per row or batch.
+  `TextOptions::autotype` is the shape to copy - capture datatypes settle from
+  the pattern before a byte is read. A per-row `from_str`, dictionary rebuild,
+  metadata lookup, or format branch is a defect, and the benchmark plus the
+  `IOBase` call counts are where it shows.
+- Nothing re-enters the boundary from inside: no round trip through text, JSON,
+  or a host runtime's casting to recover a type the value already carries, and no
+  second inference over values a `Field` types.
 
 ### Zero copy
 
