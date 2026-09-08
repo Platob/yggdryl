@@ -212,9 +212,10 @@ impl PyFixRegistry {
 
     /// A registry holding nothing but this crate's own fields.
     ///
-    /// Every registry starts here: the eleven fields `fix_crate_fields`
-    /// lists are what a row is typed by, so a dictionary loaded from a store,
-    /// built from fields or left alone holds them alike.
+    /// Every registry starts here: the sixteen standard fields from tag 65000
+    /// that `fix_crate_fields` lists are what a row is typed by, so a
+    /// dictionary loaded from a store, built from fields or left alone holds
+    /// them alike - and declares no branch for them.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -1397,6 +1398,8 @@ pub(crate) fn fix_schema_carrying(
 /// takes per call, so a stream parses exactly as a line does. A row's own
 /// columns speak for that row: `timestamp` stamps its message, `branch`,
 /// `beginstring`, `sep` and `direction` are the parameters of the same name,
+/// `plugin` names the plugin session the row moved from or to - the sender's
+/// for a row its direction says was sent, the target's for one it received -
 /// and any other column named after a field fills it where the frame did not
 /// state it - never as an entry. A column whose folded name a fixed column
 /// takes lands there rather than being carried in front.
@@ -1510,12 +1513,15 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The fields this crate defines on its own branch, in tag order.
+/// The fields this crate defines, in tag order: sixteen standard fields from
+/// tag 65000, above every tag FIX or a venue publishes.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
 /// partition it falls in, the two parent order identifiers no standard tag
-/// names, and the four facts a bridge's own log states about a line: its
-/// session, its message context, and the plugins it moved between. Every
+/// names, what a bridge's own log states about a line - the session the
+/// message itself names, its message context, the plugins and the plugin
+/// sessions it moved between - and the three facts a row derives from what
+/// the message said: its ISIN, its market and the order's state. Every
 /// registry holds them from construction; this is the listing.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]

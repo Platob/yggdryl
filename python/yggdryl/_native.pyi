@@ -4143,10 +4143,10 @@ class FixRegistry:
     ``ValueError``. The registry is mutable, so it is unhashable, and a mutation
     raises ``ValueError`` while a message or the process default shares it.
 
-    Every registry holds this crate's own fields from construction, on the
-    ``yggdryl`` branch - ``FixRegistry()`` is those eleven fields, which
-    ``fix_crate_fields`` lists - so ``len`` counts them beside whatever was
-    inserted or loaded, and a store never writes them.
+    Every registry holds this crate's own fields from construction - the
+    sixteen standard fields from tag 65000 that ``fix_crate_fields`` lists, so
+    ``FixRegistry()`` is those and declares no branch - and ``len`` counts them
+    beside whatever was inserted or loaded; a store never writes them.
     """
 
     def __init__(self) -> None: ...

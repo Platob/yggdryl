@@ -48,8 +48,11 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # What every registry holds before anything is inserted: the crate's own
-# fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists.
-CRATED = 11
+# fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists -
+# sixteen standard fields, one tag block from 65000.
+CRATE_TAG_MIN = 65000
+CRATED = 16
+CRATE_TAGS = list(range(CRATE_TAG_MIN, CRATE_TAG_MIN + CRATED))
 
 # One Ullink CBlock in the shape a production file has: a vocabulary of a
 # specification tag and a venue one, and a grammar binding whose root the
@@ -327,6 +330,13 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     assert seed.field_by_id("55:").name == "symbol"
     assert seed.get_field_by_id("55:") == seed.field_by_tag(55)
     assert seed.field_by_tag(150).name == "exectype"
+    # The order's state is declared twice, as `OrdStatus` and as `ExecType`,
+    # and both take the crate's `state`: one lifecycle vocabulary, ranked so
+    # the stored bytes sort from first state to terminal. Every other code
+    # set keeps its base type.
+    assert seed.field_by_tag(39).dtype == DataType("state")
+    assert seed.field_by_tag(150).dtype == DataType("state")
+    assert seed.field_by_tag(40).dtype == DataType("utf8")
     # The published dictionary states no alternate tags, so the alternate
     # tier is exercised where one is actually declared.
     alternate = _field("exectype", "utf8", 150)
@@ -552,9 +562,9 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
         ]
     )
     # Tag-major, then by branch digest - the identifier's own order. The
-    # crate's own fields close every walk: their tags are above any a test
-    # claims.
-    crated = [f"{tag}:yggdryl" for tag in range(30001, 30001 + CRATED)]
+    # crate's own fields close every walk: standard fields from 65000, above
+    # any tag a test claims.
+    crated = [f"{tag}:" for tag in CRATE_TAGS]
     assert [field.fix.id for field in registry] == [
         "1:",
         "44:",
@@ -591,16 +601,14 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # Every stored field is a specification field, so none states a branch;
-    # the crate's own eleven, which every registry holds, are the only ones
-    # on a branch at all.
+    # The crate's own sixteen close the walk, above every tag the
+    # specification publishes.
+    assert tags[-CRATED:] == CRATE_TAGS
+    # Every stored field is a specification field and the crate's own are
+    # standard fields too, so nothing here states a branch.
     branches = [field.fix.branch for field in seed]
-    assert branches.count("yggdryl") == CRATED
-    assert branches.count("") == len(seed) - CRATED
-    assert all(
-        ("fix:branch" in field.metadata) == (field.fix.branch == "yggdryl")
-        for field in seed
-    )
+    assert branches.count(STANDARD_BRANCH) == len(seed)
+    assert all("fix:branch" not in field.metadata for field in seed)
 
 
 def test_registry_takes_every_storage_location(
@@ -646,9 +654,11 @@ def test_registry_round_trips_through_the_two_written_trees(
     nested = sorted(path.name for path in (root / "nested").iterdir())
     assert "0.json" in primitive and "0.json" in nested
     assert len(primitive) + len(nested) == 128
-    # The crate's own branch is never written: those fields are the crate's
-    # rather than the store's, and the reload holds them all the same.
-    assert "yggdryl" not in primitive and "yggdryl" not in nested
+    # The crate's own fields are never written: they are the crate's rather
+    # than the store's, so the shard their tag block would take is in
+    # neither tree, and the reload holds them all the same.
+    assert f"{CRATE_TAG_MIN // 100}.json" not in primitive
+    assert f"{CRATE_TAG_MIN // 100}.json" not in nested
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
@@ -1487,9 +1497,24 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
-    # spelling kept as the display.
+    # spelling kept as the display: sixteen of them after the trailer, then
+    # FIX's own `msgdirection`, read from the line rather than the wire, then
+    # the two lists.
+    assert fix_schema_tags()[-(CRATED + 1) :] == [*CRATE_TAGS, 385]
+    assert [child.fix.tag for child in schema][-(CRATED + 3) :] == [
+        *CRATE_TAGS,
+        385,
+        None,
+        None,
+    ]
+    assert columns[-(CRATED + 3) : -3] == [field.name for field in fix_crate_fields()]
     assert schema[schema.index_of("timestamp")].display == "Timestamp"
     assert schema[schema.index_of("sessionid")].display == "SessionId"
+    # The three columns a row derives from what the message said are typed
+    # as the thing they hold, never as the text a venue spelled it in.
+    assert schema[schema.index_of("isincode")].dtype == DataType("utf8")
+    assert schema[schema.index_of("miccode")].dtype == DataType("mic")
+    assert schema[schema.index_of("state")].dtype == DataType("state")
     # Four columns every message fills are declared so; every other one is
     # nullable, because a message that carried nothing there answers null
     # rather than shifting its neighbours.
@@ -1515,6 +1540,8 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     )
     assert row[schema.index_of("unixpartition")] == 0
     assert row[schema.index_of("sessionid")] is None
+    # A derived column a message gives nothing for is null, never a shift.
+    assert row[schema.index_of("state")] is None
     # A tag no dictionary explains is still there, in its own column.
     assert len(row[-1]) == 1
 
@@ -1570,7 +1597,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """The digest says how it was taken, the partition what it derives from."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, on the crate's own branch.
+    # In tag order, one block from 65000, every one a standard field: above
+    # every tag FIX or a venue publishes, so none needs a branch of its own.
     assert list(fields) == [
         "msghash",
         "version",
@@ -1581,8 +1609,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "parentorderid",
         "sessionid",
         "msgctxid",
-        "pluginid",
-        "prevpluginid",
+        "senderpluginid",
+        "targetpluginid",
+        "senderpluginsession",
+        "targetpluginsession",
+        "isincode",
+        "miccode",
+        "state",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -1594,39 +1627,75 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ParentOrderID",
         "SessionId",
         "MsgCtxId",
-        "PluginId",
-        "PrevPluginId",
+        "SenderPluginId",
+        "TargetPluginId",
+        "SenderPluginSession",
+        "TargetPluginSession",
+        "ISINCode",
+        "MICCode",
+        "State",
     ]
-    assert [field.fix.tag for field in fields.values()] == list(
-        range(30001, 30001 + CRATED)
-    )
-    assert all(field.fix.branch == "yggdryl" for field in fields.values())
+    assert [field.fix.tag for field in fields.values()] == CRATE_TAGS
+    assert all(field.fix.branch == STANDARD_BRANCH for field in fields.values())
+    assert [field.fix.id for field in fields.values()] == [f"{tag}:" for tag in CRATE_TAGS]
+    # Every one is nullable as a field - the fixed row is what declares the
+    # four every message fills - and every one says what it holds.
+    assert all(field.nullable for field in fields.values())
+    assert all(field.description is not None for field in fields.values())
 
     held = fields["msghash"]
+    assert held.dtype == DataType("fixed_size_binary(16)")
     assert held.metadata["digest:role"] == "holder"
     assert held.metadata["digest:algorithm"] == "xxh3-128"
     assert held.metadata["digest:sources"] == '["nofixentries"]'
-    assert held.description is not None
 
-    # The partition names the column it reads by that column's name.
+    # The clock is an instant in UTC, and the partition names the column it
+    # reads by that column's name.
+    assert fields["timestamp"].dtype == DataType('datetime64(ns,"UTC")')
     held = fields["unixpartition"]
+    assert held.dtype == DataType("int64")
     assert held.metadata["partition:sources"] == '["timestamp"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
-    # What a bridge's own log states about a line: its session, its message
-    # context, and the plugins it moved between - text, all four.
-    for name in ("sessionid", "msgctxid", "pluginid", "prevpluginid"):
+    # What a bridge's own log states about a line - the session the message
+    # itself names, its message context, the plugins and the plugin sessions
+    # it moved between - is text, like the identifiers, and the two plugin
+    # sessions answer to the spellings a bridge row writes them under.
+    for name in (
+        "version",
+        "symbolticker",
+        "parentclordid",
+        "parentorderid",
+        "sessionid",
+        "msgctxid",
+        "senderpluginid",
+        "targetpluginid",
+        "senderpluginsession",
+        "targetpluginsession",
+        "isincode",
+    ):
         assert fields[name].dtype == DataType("utf8"), name
-        assert fields[name].nullable, name
-        assert fields[name].description is not None, name
+    assert fields["senderpluginsession"].fix.aliases == ["ULFromSessionName"]
+    assert fields["targetpluginsession"].fix.aliases == ["ULToSessionName"]
+    # The market and the order's state are typed as the thing they hold.
+    assert fields["miccode"].dtype == DataType("mic")
+    assert fields["state"].dtype == DataType("state")
 
-    # Every registry holds them from construction, and the listing is the
-    # very definition a registry answers.
+    # Every registry holds them from construction, on the branch every
+    # dictionary resolves through, so a new registry declares no branch and
+    # a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches them
+    # by name. The listing is the very definition a registry answers.
     registry = FixRegistry()
+    assert len(registry) == CRATED
+    assert registry.branches() == []
     for name, field in fields.items():
-        assert registry.field_by_name(name, "yggdryl") == field
-        assert registry.field_by_id(f"{field.fix.tag}:yggdryl") == field
-    assert registry.field_by_tag(30008).name == "sessionid"
+        assert registry.field_by_name(name, STANDARD_BRANCH) == field
+        assert registry.field_by_name(name) == field
+        assert registry.field_by_id(f"{field.fix.tag}:") == field
+        assert registry.field_by_tag(field.fix.tag) == field
+    assert registry.field_by_tag(65007).name == "sessionid"
+    assert registry.field_by_name("SessionId").name == "sessionid"
+    assert registry.field_by_name("ULFROMSESSIONNAME").name == "senderpluginsession"
 
 
 def _root_names(message: FixMsg) -> list[str]:
@@ -1657,7 +1726,8 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert pairs[-1][0] == "timestamp"
     assert len(message) == 6
     assert message.by_tag(8).as_py() == "FIX.4.4"
-    assert message.by_id("30004:yggdryl") == message.by_name("timestamp")
+    assert message.by_id("65003:") == message.by_name("timestamp")
+    assert message.by_tag(65003) == message.by_name("timestamp")
 
     # A message with no clock is stamped with the epoch rather than left
     # undated, and its partition follows.
@@ -1742,8 +1812,9 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert parsed.column("timestamp").to_pylist() == [clock, instant]
     assert parsed.column("unixpartition").to_pylist() == [1767348000, 1767344400]
 
-    # The bracket's session lands in the crate's own column; the sequence
-    # fills `MsgSeqNum` where the frame stated none and never where it did.
+    # A column spelled `sessionId` is the crate's `sessionid` under the fold,
+    # so it fills that column; the sequence fills `MsgSeqNum` where the frame
+    # stated none and never where it did.
     assert parsed.column("sessionid").to_pylist() == ["e7254b22", None]
     assert parsed.column("msgseqnum").to_pylist() == [4507, 696]
 
@@ -1752,6 +1823,76 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     entries = parsed.column("nofixentries").to_pylist()
     assert {entry["tag"] for entry in entries[0]} == {8, 35, 55, 10}
     assert {entry["tag"] for entry in entries[1]} == {8, 35, 34, 52, 10}
+
+
+def test_the_plugin_that_logged_a_row_fills_the_session_its_direction_names(
+    seed: FixRegistry,
+) -> None:
+    """A row's `plugin` is a parameter: with the row's direction it names one plugin session."""
+    source = pa.table(
+        {
+            "direction": pa.array(["SENT", "RECV", None, None, "SENT"], pa.utf8()),
+            "plugin": pa.array(
+                [
+                    "OMS_X1_TradeCapture",
+                    "Spot_FX_TradeCapture",
+                    "Broker_DarkPool_TradeCapture",
+                    "Spot_FX_TradeCapture",
+                    "ULMSG_BROKER_BDG_DMZ_CLI",
+                ],
+                pa.utf8(),
+            ),
+            "body": pa.array(
+                [
+                    b"8=FIX.4.4|35=0|34=696|10=0|",
+                    b"8=FIX.4.4|35=8|17=EXEC-1|10=0|",
+                    b"8=FIX.4.4|35=D|55=AAPL|10=0|",
+                    b"received << 8=FIX.4.4|35=8|17=EXEC-2|10=0|",
+                    b"|#SYMBOL=TTF|#ULFROMSESSIONNAME=OMS_X1_OrderOut"
+                    b"|#ULTOSESSIONNAME=ULMSG_BROKER_BDG_DMZ_CLI|",
+                ],
+                pa.binary(),
+            ),
+        }
+    )
+    parsed = parse_arrow_reader(source, seed, "body").read_all()
+    names = parsed.schema.names
+
+    # `plugin` and `direction` are parameters of the row, and neither is a
+    # fixed column's name, so both are carried in front beside the payload;
+    # the text reader's `direction` and FIX's own `msgdirection` are two
+    # names, so both are here.
+    assert names[:3] == ["direction", "plugin", "body"]
+    assert names[3:6] == ["beginstring", "bodylength", "msgtype"]
+    assert names.count("direction") == 1 and names.count("msgdirection") == 1
+
+    # The plugin that logged a line is the plugin session the line moved from
+    # or to, by the direction the row states: a sent line's sender, a
+    # received line's target. A row stating no direction takes its line's
+    # verb, and a line with no verb was sent - the reading every unmarked
+    # line of a session's own log takes.
+    sender = parsed.column("senderpluginsession").to_pylist()
+    target = parsed.column("targetpluginsession").to_pylist()
+    assert sender[:4] == [
+        "OMS_X1_TradeCapture",
+        None,
+        "Broker_DarkPool_TradeCapture",
+        None,
+    ]
+    assert target[:4] == [None, "Spot_FX_TradeCapture", None, "Spot_FX_TradeCapture"]
+
+    # A message that states its plugin sessions itself - a bridge row spells
+    # `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, which the two fields answer
+    # to by alias - keeps its own statement over the plugin that logged it.
+    assert sender[4] == "OMS_X1_OrderOut"
+    assert target[4] == "ULMSG_BROKER_BDG_DMZ_CLI"
+
+    # The message's own session is only what the message itself states, and
+    # the plugin session a row filled is never an entry.
+    assert parsed.column("sessionid").to_pylist() == [None] * 5
+    entries = parsed.column("nofixentries").to_pylist()
+    assert {entry["tag"] for entry in entries[0]} == {8, 35, 34, 10}
+    assert {entry["tag"] for entry in entries[2]} == {8, 35, 55, 10}
 
 
 def test_a_branch_declaration_carries_its_dialect() -> None:
@@ -1793,16 +1934,18 @@ def test_a_branch_declaration_carries_its_dialect() -> None:
 def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     from yggdryl.fix import FixBranch
 
-    # A new registry already holds the crate's own fields, so it declares
-    # the crate's own branch and nothing else.
+    # A new registry already holds the crate's own fields, and they are
+    # standard fields: the standard branch is the absence of a declaration,
+    # so a new registry declares no branch at all.
     registry = FixRegistry()
-    assert [held.name for held in registry.branches()] == ["yggdryl"]
+    assert [held.name for held in registry.branches()] == []
 
+    registry.set_branch(FixBranch("morgan"))
     branch = FixBranch("cme", version="4.4")
     registry.set_branch(branch)
 
-    # Branches list in name order.
-    assert [held.name for held in registry.branches()] == ["cme", "yggdryl"]
+    # Branches list in name order, whatever order they were declared in.
+    assert [held.name for held in registry.branches()] == ["cme", "morgan"]
     assert registry.branch_named("cme") == branch
     assert registry.branch_named("CME").version == "4.4"
     assert registry.branch_named("absent") is None
