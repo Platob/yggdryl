@@ -87,6 +87,13 @@ impl<'key> Key<'key> {
 struct Slot {
     field: Field,
     tag: i32,
+    /// Whether the field is the dictionary's own, and so carries the tag it
+    /// resolved to.
+    ///
+    /// A key no dictionary explains keeps its spelling and no `fix:tag`, so
+    /// the message's tag index leaves it out - which is what a reader of the
+    /// finished field would find, read once here instead of once per child.
+    known: bool,
     values: Vec<Scalar>,
     /// Whether this slot is a repeating group, whatever it has been given.
     ///
@@ -108,6 +115,12 @@ pub(super) struct Builder<'registry> {
     branch: FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
+    /// Each slot's name digested, beside the slot.
+    ///
+    /// A key finds its slot by one integer compare per slot and one string
+    /// compare on the hit, where comparing the names outright made a wide
+    /// bridge row quadratic in its keys.
+    hashes: Vec<u64>,
     entries: Vec<FixEntry>,
 }
 
@@ -124,6 +137,7 @@ impl<'registry> Builder<'registry> {
             branch,
             version,
             slots: Vec::with_capacity(capacity),
+            hashes: Vec::with_capacity(capacity),
             entries: Vec::with_capacity(capacity),
         }
     }
@@ -209,13 +223,13 @@ impl<'registry> Builder<'registry> {
     /// readable through the field's [lineage](super::lineage). One the
     /// dictionary does not know is kept under the key's own folded spelling
     /// as nullable text, because a venue sends fields no dictionary has.
-    fn field_for(&self, key: &str) -> (Field, i32) {
+    fn field_for(&self, key: &str) -> (Field, i32, bool) {
         match self.resolve(key) {
-            Some((known, tag)) => (stated(known), tag),
+            Some((known, tag)) => (stated(known), tag, true),
             None => {
                 let name = folded_name(key);
                 let tag = super::field::parse_tag(key).unwrap_or(0);
-                (DataType::Utf8.nullable_field(name), tag)
+                (DataType::Utf8.nullable_field(name), tag, false)
             }
         }
     }
@@ -258,9 +272,14 @@ impl<'registry> Builder<'registry> {
         // neither a separator-free instant nor a bare `Y`.
         let candidate =
             wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
-        let value =
-            crate::text::prepare_text(candidate, field).unwrap_or_else(|_| Scalar::from(spelling));
-        field.scalar(value).unwrap_or(Scalar::Null)
+        // The text contract reads the spelling and hands the value through
+        // the field's own contract, so what it answers is already the stored
+        // form and is not checked a second time. A spelling it refuses is
+        // offered to the field as it stands, which is where a raw payload
+        // that is not a spelling of anything still lands.
+        crate::text::prepare_text(candidate, field)
+            .or_else(|_| field.scalar(Scalar::from(spelling)))
+            .unwrap_or(Scalar::Null)
     }
 
     /// One flat child, appended in arrival order.
@@ -272,14 +291,14 @@ impl<'registry> Builder<'registry> {
         // would put two facts about one thing at one tag.
         if let Some((field, tag)) = self.counter(key) {
             self.record(key, text, tag);
-            let slot = self.slot_for(field, tag);
+            let slot = self.slot_for(field, tag, true);
             slot.group = true;
             return;
         }
-        let (field, tag) = self.field_for(key);
+        let (field, tag, known) = self.field_for(key);
         let value = self.typed(&field, raw, text);
         self.record(key, text, tag);
-        self.slot_for(field, tag).values.push(value);
+        self.slot_for(field, tag, known).values.push(value);
     }
 
     /// The repeating group a flat key names, when it names one.
@@ -299,10 +318,10 @@ impl<'registry> Builder<'registry> {
 
     /// One occurrence of a repeated flat field, placed by index.
     fn push_repeated(&mut self, name: &str, occurrence: usize, key: &str, text: &str, raw: &[u8]) {
-        let (field, tag) = self.field_for(name);
+        let (field, tag, known) = self.field_for(name);
         let value = self.typed(&field, raw, text);
         self.record(key, text, tag);
-        let slot = self.slot_for(field, tag);
+        let slot = self.slot_for(field, tag, known);
         // Indices may be partial or out of order, so occurrences are built by
         // index and a gap is null.
         while slot.values.len() <= occurrence {
@@ -321,7 +340,7 @@ impl<'registry> Builder<'registry> {
         text: &str,
         raw: &[u8],
     ) {
-        let (member_field, member_tag) = self.field_for(member);
+        let (member_field, member_tag, _) = self.field_for(member);
         let value = self.typed(&member_field, raw, text);
 
         // The same resolution the flat counter uses, so a group addressed by
@@ -329,23 +348,24 @@ impl<'registry> Builder<'registry> {
         // every string as a name, so a numeric key resolves only tag-first,
         // and the dictionary's own field answers for both - two spellings of
         // one group would otherwise build two columns carrying one tag.
-        let (group_field, group_tag) = match self.counter(group) {
-            Some(held) => held,
+        let (group_field, group_tag, known) = match self.counter(group) {
+            Some((field, tag)) => (field, tag, true),
             None => match self.by_group(group) {
                 Some(known) => {
                     let tag = known.as_fix().tag().ok().flatten().unwrap_or(0);
-                    (stated(known), tag)
+                    (stated(known), tag, true)
                 }
                 None => (
                     DataType::Utf8.nullable_field(folded_name(group)),
                     super::field::parse_tag(group).unwrap_or(0),
+                    false,
                 ),
             },
         };
         // Recorded after the group resolves, so the entry can ride under the
         // counter pair that heads it - when that pair actually arrived.
         self.record_under(group_tag, key, text, member_tag);
-        let slot = self.slot_for(group_field, group_tag);
+        let slot = self.slot_for(group_field, group_tag, known);
         slot.group = true;
         while slot.occurrences.len() <= occurrence {
             slot.occurrences.push(Vec::new());
@@ -354,17 +374,28 @@ impl<'registry> Builder<'registry> {
     }
 
     /// The slot one field builds into, created on first use.
-    fn slot_for(&mut self, field: Field, tag: i32) -> &mut Slot {
+    ///
+    /// Found by name, because the name is what a child is: two keys the
+    /// dictionary resolves to one field build one column, and two unknown
+    /// keys folding to one spelling do too. The digest is compared first
+    /// and the name only where it agrees, so a hit costs one string compare
+    /// and a miss costs none.
+    fn slot_for(&mut self, field: Field, tag: i32, known: bool) -> &mut Slot {
+        let hash = crate::xxhash::xxh64(field.name().as_bytes());
         let held = self
-            .slots
+            .hashes
             .iter()
-            .position(|slot| slot.field.name() == field.name());
+            .enumerate()
+            .find(|(index, held)| **held == hash && self.slots[*index].field.name() == field.name())
+            .map(|(index, _)| index);
         match held {
             Some(index) => &mut self.slots[index],
             None => {
+                self.hashes.push(hash);
                 self.slots.push(Slot {
                     field,
                     tag,
+                    known,
                     values: Vec::new(),
                     group: false,
                     occurrences: Vec::new(),
@@ -420,45 +451,70 @@ impl<'registry> Builder<'registry> {
     /// standard trailer - flat, with no `StandardHeader` Struct, because a
     /// message is laid flat and the header is an ordering rather than a
     /// nesting.
-    pub(super) fn finish(self, name: &str) -> Result<(Field, Scalar, Vec<FixEntry>)> {
+    ///
+    /// Beside the row comes the tag index a message reads it by - each
+    /// dictionary child's tag and its position, tag-major - because the
+    /// builder resolved every tag once already and the message would only
+    /// read them back out of the fields it just wrote.
+    pub(super) fn finish(self, name: &str) -> Result<Built> {
         let Self { slots, entries, .. } = self;
-        let mut ordered: Vec<Slot> = Vec::with_capacity(slots.len());
+        // Each slot's place is read once, as a rank, rather than once per
+        // comparison inside the sort.
+        let mut ordered: Vec<(usize, Slot)> = Vec::with_capacity(slots.len());
         let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
-        let mut trailing: Vec<Slot> = Vec::new();
+        let mut trailing: Vec<(usize, Slot)> = Vec::new();
         for slot in slots {
-            if STANDARD_HEADER_TAGS.contains(&slot.tag) {
-                ordered.push(slot);
-            } else if STANDARD_TRAILER_TAGS.contains(&slot.tag) {
-                trailing.push(slot);
+            if let Some(rank) = rank_in(&STANDARD_HEADER_TAGS, slot.tag) {
+                ordered.push((rank, slot));
+            } else if let Some(rank) = rank_in(&STANDARD_TRAILER_TAGS, slot.tag) {
+                trailing.push((rank, slot));
             } else {
                 rest.push(slot);
             }
         }
-        ordered.sort_by_key(|slot| {
-            STANDARD_HEADER_TAGS
-                .iter()
-                .position(|tag| *tag == slot.tag)
-                .unwrap_or(usize::MAX)
-        });
-        trailing.sort_by_key(|slot| {
-            STANDARD_TRAILER_TAGS
-                .iter()
-                .position(|tag| *tag == slot.tag)
-                .unwrap_or(usize::MAX)
-        });
-        ordered.extend(rest);
-        ordered.extend(trailing);
+        ordered.sort_by_key(|(rank, _)| *rank);
+        trailing.sort_by_key(|(rank, _)| *rank);
+        let count = ordered.len() + rest.len() + trailing.len();
+        let ordered = ordered
+            .into_iter()
+            .map(|(_, slot)| slot)
+            .chain(rest)
+            .chain(trailing.into_iter().map(|(_, slot)| slot));
 
-        let mut fields = Vec::with_capacity(ordered.len());
-        let mut values = Vec::with_capacity(ordered.len());
-        for slot in ordered {
+        let mut fields = Vec::with_capacity(count);
+        let mut values = Vec::with_capacity(count);
+        let mut tags = Vec::with_capacity(count);
+        for (index, slot) in ordered.enumerate() {
+            if slot.known {
+                tags.push((slot.tag, index));
+            }
             let (field, value) = slot.into_child()?;
             fields.push(field);
             values.push(value);
         }
+        tags.sort_unstable();
         let root = DataType::from_fields(fields)?.required_field(name);
-        Ok((root, Scalar::from_sequence(values), entries))
+        Ok(Built {
+            field: root,
+            value: Scalar::from_sequence(values),
+            entries,
+            tags,
+        })
     }
+}
+
+/// What one build finishes as: the row's schema and value, what arrived,
+/// and where each dictionary tag sits.
+pub(super) struct Built {
+    pub(super) field: Field,
+    pub(super) value: Scalar,
+    pub(super) entries: Vec<FixEntry>,
+    pub(super) tags: Vec<(i32, usize)>,
+}
+
+/// Where one tag sits in a component's declared order, if it is in it.
+fn rank_in(component: &[i32], tag: i32) -> Option<usize> {
+    component.iter().position(|held| *held == tag)
 }
 
 impl Slot {

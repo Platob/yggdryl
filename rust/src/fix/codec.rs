@@ -251,7 +251,7 @@ impl FixCodec {
     }
 
     /// One numeric frame split on one byte.
-    fn split_fix(&self, body: &[u8], separator: u8, enrich: bool) -> Result<FixMsg> {
+    pub(super) fn split_fix(&self, body: &[u8], separator: u8, enrich: bool) -> Result<FixMsg> {
         let mut pairs: Vec<(&[u8], &[u8])> = Vec::new();
         for segment in split(body, separator) {
             let Some((key, value)) = split_pair(segment) else {
@@ -633,8 +633,8 @@ impl FixCodec {
             }
             builder.push(key, value);
         }
-        let (field, value, entries) = builder.finish(root_name(msgtype.as_deref()).as_str())?;
-        let built = FixMsg::from_parts(Arc::clone(&self.registry), field, value, entries)?;
+        let built = builder.finish(root_name(msgtype.as_deref()).as_str())?;
+        let built = FixMsg::from_built(Arc::clone(&self.registry), built)?;
         if enrich {
             return self.enrich_fixmsg(built);
         }

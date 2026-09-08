@@ -169,6 +169,20 @@ impl FixEntry {
         self.value.as_str()
     }
 
+    /// The key as the shared text this entry holds.
+    ///
+    /// A row materializing the arrival record puts every key into a value of
+    /// its own, and sharing the text this entry already owns costs a count
+    /// where a fresh copy costs an allocation per entry per row.
+    pub(super) fn key_shared(&self) -> SmolStr {
+        self.key.clone()
+    }
+
+    /// The value as the shared text this entry holds.
+    pub(super) fn value_shared(&self) -> SmolStr {
+        self.value.clone()
+    }
+
     /// Builds the identity this entry names, absent when its key named none.
     ///
     /// The two columns are the two halves of the identifier, in the same

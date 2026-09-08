@@ -52,13 +52,15 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
     let field = options.source_field()?;
-    let base_count = 2
-        + usize::from(options.with_rownum.is_some())
-        + usize::from(options.max_record_byte_size().is_some());
+    // The captures close the root, after every fixed column the options
+    // switched on, so they are read off its end: counting the fixed columns
+    // instead has to know every one of them, and a count that missed the
+    // classification columns typed the first capture as the message type.
+    let captures = options.capture_names().len();
     let capture_dtypes = field
         .fields()
         .iter()
-        .skip(base_count)
+        .skip(field.fields().len() - captures)
         .map(|capture| capture.dtype().clone())
         .collect();
     let codings = handle.media_type().encodings().to_vec();
@@ -926,7 +928,10 @@ impl<R: Read> Records<R> {
         }
         // Classification is one shallow scan over bytes the reader already
         // holds, and every column it fills is a fact about the line rather
-        // than about the protocol inside it.
+        // than about the protocol inside it. One scan answers both readings,
+        // so a capture asking for both pays for one.
+        let classified = (self.raw.options.with_mimetype || self.raw.options.with_msgtype)
+            .then(|| crate::mime_type::line::classify(&row.body));
         if self.raw.options.with_direction {
             entries.push((
                 SmolStr::new_static("direction"),
@@ -940,13 +945,19 @@ impl<R: Read> Records<R> {
         if self.raw.options.with_mimetype {
             entries.push((
                 SmolStr::new_static("mimetype"),
-                Scalar::from(crate::MimeType::infer_bytes(&row.body).as_str()),
+                Scalar::from(
+                    classified
+                        .as_ref()
+                        .map_or(crate::MimeType::OCTET_STREAM, |held| held.0.clone())
+                        .as_str(),
+                ),
             ));
         }
         if self.raw.options.with_msgtype {
             entries.push((
                 SmolStr::new_static("msgtype"),
-                crate::types::MsgType::infer_bytes(&row.body)
+                classified
+                    .and_then(|held| held.1)
                     .and_then(|value| std::str::from_utf8(value).ok())
                     // Coerced, because the column is the type and a reading
                     // wider than it - a bridge's `ConfigurationPlugin`, a

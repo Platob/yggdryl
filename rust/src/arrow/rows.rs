@@ -173,17 +173,9 @@ where
             };
             // Validation owns shape, arity, nullability, and the error path.
             // Canonicalization then narrows values into their declared native
-            // representation without repeating that validation walk.
-            if let Err(error) = self.field.validate_value(&value) {
-                let error = external(error);
-                if values.is_empty() {
-                    self.done = true;
-                    return Some(Err(error));
-                }
-                self.pending_error = Some(error);
-                break;
-            }
-            match self.field.canonicalize_value(value) {
+            // representation, and runs that validation walk once on the way:
+            // the root itself was proven a Struct when the schema was built.
+            match self.field.canonicalize_row_value(value) {
                 Ok(value) => {
                     if self.batch_byte_size.is_some() {
                         appended += appended_bytes(&value);

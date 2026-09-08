@@ -21,9 +21,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
-use yggdryl::{
-    FixBatchReader, FixBranch, FixCodec, FixOptions, FixRegistry, IOMedia, Timezone, Url,
-};
+use yggdryl::{FixBatchReader, FixBranch, FixCodec, FixOptions, IOMedia, Timezone, Url};
 
 use super::seed;
 

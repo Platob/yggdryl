@@ -332,11 +332,14 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
         let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
         crate::Scalar::from(rendered.as_bytes())
     };
+    // The key and the value are the entry's own text, shared rather than
+    // copied: a row is materialized once per message and an entry's text is
+    // what it is wherever it is read.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
         crate::Scalar::from(entry.branch()),
-        crate::Scalar::from(entry.key()),
-        crate::Scalar::from(entry.value()),
+        crate::Scalar::from(entry.key_shared()),
+        crate::Scalar::from(entry.value_shared()),
         tail,
     ]))
 }
@@ -352,8 +355,8 @@ fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
         crate::Scalar::from(entry.branch()),
-        crate::Scalar::from(entry.key()),
-        crate::Scalar::from(entry.value()),
+        crate::Scalar::from(entry.key_shared()),
+        crate::Scalar::from(entry.value_shared()),
         crate::Scalar::from_sequence(
             entry
                 .children()
@@ -435,6 +438,16 @@ impl super::FixMsg {
     /// the arrival column's leaf - the one fallible step, because every other
     /// member is already a value.
     pub fn to_row(&self, schema: &Field) -> Result<crate::Scalar> {
+        self.row_values(schema).map(crate::Scalar::from_sequence)
+    }
+
+    /// The fixed row as the values it is made of, before they are wrapped.
+    ///
+    /// What [`Self::to_row`] answers, still open: a reader carrying its own
+    /// columns in front of the tags writes them into the slots the schema
+    /// left for them and wraps the row once, rather than unwrapping a row to
+    /// wrap it again.
+    pub(super) fn row_values(&self, schema: &Field) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
         // The arrival record answers both closing columns and is walked once,
         // because the second is a view over the first rather than a second
@@ -448,6 +461,8 @@ impl super::FixMsg {
             known = Some(record);
             unknown = Some(unexplained);
         }
+        // The market clock answers two columns, so it is read once for both.
+        let mut clock: Option<crate::Scalar> = None;
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         for column in columns {
             values.push(match column.name() {
@@ -457,12 +472,12 @@ impl super::FixMsg {
                 // so a name that is not a tag is a capture's own column and
                 // nothing in the message answers for it.
                 name => match super::field::parse_tag(name) {
-                    Some(tag) => self.regrouped(tag, column, self.column_value(tag)),
+                    Some(tag) => self.regrouped(tag, column, self.column_value(tag, &mut clock)),
                     None => crate::Scalar::Null,
                 },
             });
         }
-        Ok(crate::Scalar::from_sequence(values))
+        Ok(values)
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -522,7 +537,11 @@ impl super::FixMsg {
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
-    fn column_value(&self, tag: i32) -> crate::Scalar {
+    ///
+    /// `clock` is the market clock once it has been read: two columns derive
+    /// from it, and the row reads it for the first and keeps it for the
+    /// second.
+    fn column_value(&self, tag: i32, clock: &mut Option<crate::Scalar>) -> crate::Scalar {
         if let Some(held) = self.get_by_tag(tag) {
             return held.clone();
         }
@@ -540,8 +559,11 @@ impl super::FixMsg {
                 crate::Scalar::from(held.to_string())
             }),
             super::SYMBOLTICKER_TAG => self.symbol_ticker(),
-            super::TIMESTAMP_TAG => self.market_timestamp(),
-            super::UNIXPARTITION_TAG => self.unix_partition(super::DEFAULT_PARTITION_SECONDS),
+            super::TIMESTAMP_TAG => clock.get_or_insert_with(|| self.market_timestamp()).clone(),
+            super::UNIXPARTITION_TAG => partition_of(
+                clock.get_or_insert_with(|| self.market_timestamp()),
+                super::DEFAULT_PARTITION_SECONDS,
+            ),
             _ => crate::Scalar::Null,
         }
     }
@@ -585,8 +607,8 @@ impl super::FixMsg {
                 out.push(crate::Scalar::from_sequence([
                     crate::Scalar::from(entry.tag()),
                     crate::Scalar::from(entry.branch()),
-                    crate::Scalar::from(entry.key()),
-                    crate::Scalar::from(entry.value()),
+                    crate::Scalar::from(entry.key_shared()),
+                    crate::Scalar::from(entry.value_shared()),
                     crate::Scalar::from_sequence(Vec::new()),
                 ]));
             }
@@ -712,16 +734,23 @@ impl super::FixMsg {
     /// lands in the partition that contains it rather than the one after.
     #[must_use]
     pub fn unix_partition(&self, seconds: i64) -> crate::Scalar {
-        if seconds <= 0 {
-            return crate::Scalar::Null;
-        }
-        let held = self.market_timestamp();
-        // Read as whole seconds through the crate's own restatement, which
-        // answers only where the conversion is exact - so a partition is
-        // never a rounded guess at where a row belongs.
-        let Some(epoch) = held.temporal_count_at(crate::TimeUnit::Second) else {
-            return crate::Scalar::Null;
-        };
-        crate::Scalar::from(epoch.div_euclid(seconds) * seconds)
+        partition_of(&self.market_timestamp(), seconds)
     }
+}
+
+/// The partition one market clock falls in, in whole seconds.
+///
+/// Floor division rather than truncation, so a timestamp before the epoch
+/// lands in the partition that contains it rather than the one after.
+fn partition_of(clock: &crate::Scalar, seconds: i64) -> crate::Scalar {
+    if seconds <= 0 {
+        return crate::Scalar::Null;
+    }
+    // Read as whole seconds through the crate's own restatement, which
+    // answers only where the conversion is exact - so a partition is never a
+    // rounded guess at where a row belongs.
+    let Some(epoch) = clock.temporal_count_at(crate::TimeUnit::Second) else {
+        return crate::Scalar::Null;
+    };
+    crate::Scalar::from(epoch.div_euclid(seconds) * seconds)
 }

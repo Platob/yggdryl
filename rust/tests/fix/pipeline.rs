@@ -152,9 +152,9 @@ fn text_column(batch: &RecordBatch, name: &str) -> Vec<Option<String>> {
 #[test]
 fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_data() {
     let registry = registry();
-    let read = read(&CAPTURE);
-    let names: Vec<&str> = read
-        .schema()
+    let held = read(&CAPTURE);
+    let schema = held.schema();
+    let names: Vec<&str> = schema
         .fields()
         .iter()
         .map(|held| held.name().as_str())
@@ -187,9 +187,12 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
 
     // The timestamp capture was typed from its pattern before a byte was
     // read, and took the zone the options declared.
-    let ts = read.schema().field_with_name("ts").expect("the timestamp");
+    let ts = schema.field_with_name("ts").expect("the timestamp");
     assert!(
-        matches!(ts.data_type(), arrow_schema::DataType::Timestamp(_, Some(_))),
+        matches!(
+            ts.data_type(),
+            arrow_schema::DataType::Timestamp(_, Some(_))
+        ),
         "{ts:?}"
     );
 
@@ -197,7 +200,7 @@ fn the_schema_is_the_captures_columns_then_the_tags_and_never_depends_on_the_dat
     // capture of two lines and one of eleven answer the same schema, and it
     // is exactly the composition the two halves publish.
     let two = read(&CAPTURE[..2]);
-    assert_eq!(two.schema(), read.schema());
+    assert_eq!(two.schema(), held.schema());
     let composed = fix_schema_carrying(
         &TextOptions::new()
             .try_with_rowheader(ROWHEADER)
@@ -229,14 +232,20 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let rownum = read
         .column(read.schema().index_of("rownum").expect("rownum"))
         .as_primitive::<arrow_array::types::Int64Type>();
-    assert_eq!(rownum.values().iter().copied().collect::<Vec<_>>(), (1..=11).collect::<Vec<i64>>());
+    assert_eq!(
+        rownum.values().iter().copied().collect::<Vec<_>>(),
+        (1..=11).collect::<Vec<i64>>()
+    );
 
     // The row header's captures survive the codec untouched.
     assert_eq!(
         text_column(&read, "plugin")[HEARTBEAT_ROW].as_deref(),
         Some("Fidessa_X1_TradeCapture")
     );
-    assert_eq!(text_column(&read, "level")[FILL_ROW].as_deref(), Some("INFO"));
+    assert_eq!(
+        text_column(&read, "level")[FILL_ROW].as_deref(),
+        Some("INFO")
+    );
     assert_eq!(
         text_column(&read, "thread")[ROUTED_ROW].as_deref(),
         Some("15333-e7254b22:9f015ee861:4507")
@@ -275,7 +284,11 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     let msgtype = text_column(&read, "35");
     assert_eq!(msgtype[HEARTBEAT_ROW].as_deref(), Some("0"));
     assert_eq!(msgtype[FILL_ROW].as_deref(), Some("8"));
-    assert_eq!(msgtype[ROUTED_ROW].as_deref(), Some("8"), "a bridge row names its type");
+    assert_eq!(
+        msgtype[ROUTED_ROW].as_deref(),
+        Some("8"),
+        "a bridge row names its type"
+    );
     assert_eq!(msgtype[0], None, "prose states no type");
 
     // Header facts, by tag.
@@ -296,30 +309,55 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert!(sent[2].is_null(), "prose states no time");
 
     // The fill's body: symbol, side, quantities and prices, typed.
-    assert_eq!(text_column(&read, "55")[FILL_ROW].as_deref(), Some("JKLAKSHMI"));
+    assert_eq!(
+        text_column(&read, "55")[FILL_ROW].as_deref(),
+        Some("JKLAKSHMI")
+    );
     assert_eq!(text_column(&read, "54")[FILL_ROW].as_deref(), Some("1"));
     assert_eq!(column(&read, "38")[FILL_ROW].as_f64(), Some(982.0));
-    assert_eq!(column(&read, "44")[FILL_ROW].as_f64(), Some(547.771791547861));
+    assert_eq!(
+        column(&read, "44")[FILL_ROW].as_f64(),
+        Some(547.771791547861)
+    );
     assert_eq!(column(&read, "151")[FILL_ROW].as_f64(), Some(0.0));
     assert_eq!(text_column(&read, "150")[FILL_ROW].as_deref(), Some("2"));
 
     // The routed row states the same trade under names, and lands on the
     // same tags.
-    assert_eq!(text_column(&read, "55")[ROUTED_ROW].as_deref(), Some("JKLAKSHMI"));
-    assert_eq!(text_column(&read, "11")[ROUTED_ROW].as_deref(), Some("20260814_TP1_PICTET_1003"));
+    assert_eq!(
+        text_column(&read, "55")[ROUTED_ROW].as_deref(),
+        Some("JKLAKSHMI")
+    );
+    assert_eq!(
+        text_column(&read, "11")[ROUTED_ROW].as_deref(),
+        Some("20260814_TP1_PICTET_1003")
+    );
     assert_eq!(column(&read, "38")[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(column(&read, "31")[ROUTED_ROW].as_f64(), Some(547.77));
 
-    // The crate's own columns: a digest for every row that carried anything,
-    // and the market clock read from the fill's transaction time.
+    // The crate's own columns: a digest for every row that carried anything -
+    // the framed fill and the routed row state different tag sets, so they
+    // digest apart - and the market clock read from each transaction time.
     let digest = column(&read, "30001");
-    assert!(digest[FILL_ROW].as_bytes().is_some_and(|held| held.len() == 16));
-    assert_eq!(
-        digest[FILL_ROW], digest[ROUTED_ROW],
-        "the framed fill and the routed row are one message: same body, two spellings",
+    assert!(
+        digest[FILL_ROW]
+            .as_bytes()
+            .is_some_and(|held| held.len() == 16)
     );
-    assert!(matches!(column(&read, "30004")[FILL_ROW], Scalar::Temporal(_)));
-    assert!(matches!(column(&read, "30004")[ROUTED_ROW], Scalar::Temporal(_)));
+    assert!(
+        digest[ROUTED_ROW]
+            .as_bytes()
+            .is_some_and(|held| held.len() == 16)
+    );
+    assert_ne!(digest[FILL_ROW], digest[ROUTED_ROW]);
+    assert!(matches!(
+        column(&read, "30004")[FILL_ROW],
+        Scalar::Temporal(_)
+    ));
+    assert!(matches!(
+        column(&read, "30004")[ROUTED_ROW],
+        Scalar::Temporal(_)
+    ));
 }
 
 #[test]
@@ -349,22 +387,35 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // names keep FIX's own tags inside it, and the bridge's attributes land
     // on the bridge's tags as the values they are.
     for (path, expected) in [
-        ("SessionInterfaces.0.SenderCompID", Scalar::from("PICTETFIS")),
+        (
+            "SessionInterfaces.0.SenderCompID",
+            Scalar::from("PICTETFIS"),
+        ),
         ("SessionInterfaces.0.TargetCompID", Scalar::from("ITGADC")),
         ("SessionInterfaces.0.BeginString", Scalar::from("FIX.4.2")),
         ("SessionInterfaces.0.MBeanType", Scalar::from("Plugin")),
         ("SessionInterfaces.0.PluginType", Scalar::from("FIX")),
-        ("SessionInterfaces.0.Name", Scalar::from("SmartTrade_TradeCapture")),
+        (
+            "SessionInterfaces.0.Name",
+            Scalar::from("SmartTrade_TradeCapture"),
+        ),
         ("SessionInterfaces.0.CurrentPort", Scalar::from(9726_i64)),
         ("SessionInterfaces.0.BackupPort", Scalar::from(-1_i64)),
-        ("SessionInterfaces.0.IncomingMsgSeqNum", Scalar::from(4507_i64)),
+        (
+            "SessionInterfaces.0.IncomingMsgSeqNum",
+            Scalar::from(4507_i64),
+        ),
         ("SessionInterfaces.0.NeedReload", Scalar::from(false)),
         ("SessionInterfaces.0.State", Scalar::from("logged")),
     ] {
         assert_eq!(message.by_path(path).unwrap(), &expected, "{path}");
     }
     // A stated null is an absence, and an array is kept as the JSON it is.
-    assert!(message.get_by_path("SessionInterfaces.0.BackupHost").is_none());
+    assert!(
+        message
+            .get_by_path("SessionInterfaces.0.BackupHost")
+            .is_none()
+    );
     assert!(
         message
             .by_path("SessionInterfaces.0.ExtendedActions")
@@ -461,7 +512,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     emitting.separator = b'|';
     let source = FixBatchReader::from_column(
         Arc::clone(&registry),
-        corpus(&CAPTURE).read_arrow_reader(&text()).expect("a reader"),
+        corpus(&CAPTURE)
+            .read_arrow_reader(&text())
+            .expect("a reader"),
         "body",
         options(),
     )

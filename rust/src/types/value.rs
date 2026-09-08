@@ -126,6 +126,21 @@ impl Field {
         canonicalize_row(self, value)
     }
 
+    /// Rewrites one row value under a root already proven to be a Struct.
+    ///
+    /// [`Self::canonicalize_value`] re-checks the root before every row; a
+    /// reader that checked it once when it published its schema pays that
+    /// per stream, and this is the per-row half - the row's own validation
+    /// and its rewrite, and nothing about the root.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::canonicalize_value`] returns for the row.
+    pub(crate) fn canonicalize_row_value(&self, value: Scalar) -> Result<Scalar> {
+        validate_row(self, &value)?;
+        canonicalize_row(self, value)
+    }
+
     /// Recovers this field's exact value from a natural text value.
     ///
     /// # Errors

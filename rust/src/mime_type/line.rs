@@ -470,6 +470,24 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
     inferred
 }
 
+/// What one line is and the message type it declares, from one scan.
+///
+/// The two readings a text reader fills its classification columns from,
+/// answered by the same inspection rather than by one each: a frame beats a
+/// document, because an `XmlData` payload is part of a frame rather than a
+/// document of its own, and a document beats the bare pair rules, because an
+/// attribute inside a tag is not a field.
+pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
+    let inferred = inspect(line);
+    let shape = inferred.mime_type();
+    let shape = if shape == MimeType::OCTET_STREAM || shape == MimeType::KEYVALUE {
+        document_type(line).unwrap_or(shape)
+    } else {
+        shape
+    };
+    (shape, inferred.msgtype())
+}
+
 /// Whether the line holds any pair at all, marked or not.
 fn has_any_pair(line: &[u8]) -> bool {
     (0..line.len()).any(|start| matches!(pair_at(line, start), Some((LineKey::Name(_), _))))

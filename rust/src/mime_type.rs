@@ -164,17 +164,7 @@ impl MimeType {
     /// ```
     #[must_use]
     pub fn infer_bytes(line: &[u8]) -> Self {
-        let inferred = line::inspect(line);
-        let shape = inferred.mime_type();
-        // A frame beats a document, because an `XmlData` payload is part of a
-        // frame rather than a document of its own; a document beats the bare
-        // pair rules, because an attribute inside a tag is not a field.
-        if shape == Self::OCTET_STREAM || shape == Self::KEYVALUE {
-            if let Some(document) = line::document_type(line) {
-                return document;
-            }
-        }
-        shape
+        line::classify(line).0
     }
 
     /// Infers what one captured text line is.
