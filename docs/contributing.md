@@ -51,6 +51,7 @@ Each shared trait, enum, or value owns one root `rust/src/<name>.rs`; each layer
 - **One concept, one home.** Two modules that need one behaviour share it from the module below them.
 - **A trait says what; an enum says which.** A new backend or encoding implements the trait and adds the variant; no parallel dispatch.
 - **Errors state expected, got, and where.** `expected int64, got utf8` with a path or byte offset.
+- **Wide in, typed through.** A boundary accepts every documented spelling of an input, resolves it once into a `DataType`, `Field`, or `Scalar`, and the interior works on the resolved type - no re-parsing, re-validating, or branching on a string per row.
 - **Refusals are features.** A silent widening cast, a nullable root, or a double-compressed handle is worse than an error; test the refusal.
 - **Laziness is a contract.** Constructing a handle touches nothing, reading something absent yields nothing, writing creates.
 - **Never pre-check.** No `exists` before a read, no `mkdir` before a write; act, branch on the typed absence or conflict, repair once, retry once. A caller's own `exists` or `is_dir` stays public.
