@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, FixCodec, FixProjection, FixRegistry, Scalar};
+use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -18,31 +18,34 @@ fn reader() -> (Arc<FixRegistry>, FixCodec) {
 }
 
 /// One column's value out of a fixed row, by the tag it is named for.
-fn at<'row>(row: &'row Scalar, projection: &FixProjection, tag: i32) -> &'row Scalar {
-    let index = projection
-        .position_of(tag)
+///
+/// The column is found by the name the tag spells, because that is all a
+/// fixed schema is: the tag never moves, so neither does the column.
+fn at<'row>(row: &'row Scalar, schema: &Field, tag: i32) -> &'row Scalar {
+    let index = schema
+        .index_of(&tag.to_string())
         .unwrap_or_else(|| panic!("a column for tag {tag}"));
     &row.as_sequence().expect("a row")[index]
+}
+
+/// Where one tag's column sits in a fixed schema.
+fn column_of(schema: &Field, tag: i32) -> usize {
+    schema
+        .index_of(&tag.to_string())
+        .unwrap_or_else(|| panic!("a column for tag {tag}"))
 }
 
 #[test]
 fn the_columns_are_the_tags_and_they_do_not_move() {
     let (registry, _) = reader();
-    let projection = FixProjection::new(&registry, "fix").unwrap();
-    let names: Vec<&str> = projection
-        .field()
-        .dtype()
-        .as_fields()
-        .expect("a struct root")
-        .iter()
-        .map(yggdryl::Field::name)
-        .collect();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
 
     // A tag is the one name a field has in every version and dialect: 32 is
     // `LastShares` in 4.2 and `LastQty` in a newest one, and the column is
     // `32` in both.
     assert_eq!(&names[..3], ["8", "9", "35"]);
-    assert_eq!(projection.position_of(35), Some(2));
+    assert_eq!(schema.index_of("35"), Some(2));
     assert_eq!(
         &names[names.len() - 2..],
         ["nofixentries", "nounmappedfixentries"],
@@ -50,8 +53,8 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
 
     // The dictionary's own typing reaches the column, so a currency column is
     // the packed currency and a side is the packed side.
-    let fields = projection.field().dtype().as_fields().unwrap();
-    let typed = |tag: i32| fields[projection.position_of(tag).unwrap()].dtype().clone();
+    let fields = schema.fields();
+    let typed = |tag: i32| fields[column_of(&schema, tag)].dtype().clone();
     assert_eq!(typed(15), DataType::Currency, "Currency(15)");
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
@@ -64,7 +67,7 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
-    // spelling after the projection replaces that identity with its tag.
+    // spelling the schema keeps once the column takes the tag's name.
     for (tag, display) in [
         (yggdryl::MSGHASH_TAG, "MsgHash"),
         (yggdryl::VERSION_TAG, "Version"),
@@ -74,79 +77,76 @@ fn the_columns_are_the_tags_and_they_do_not_move() {
         (yggdryl::PARENTCLORDID_TAG, "ParentClOrdID"),
         (yggdryl::PARENTORDERID_TAG, "ParentOrderID"),
     ] {
-        let field = &fields[projection.position_of(tag).expect("a crate column")];
+        let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
     // Every column is nullable, because a message that carried nothing there
     // must answer null rather than shift its neighbours.
-    assert!(fields.iter().all(yggdryl::Field::is_nullable));
+    assert!(fields.iter().all(Field::is_nullable));
 }
 
 #[test]
 fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let (registry, reader) = reader();
-    let projection = FixProjection::new(&registry, "fix").unwrap();
+    let schema = fix_schema(&registry, "fix").unwrap();
 
     let order = reader
         .transform_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|", false)
         .unwrap();
-    let row = order.to_row(&projection).unwrap();
-    assert_eq!(at(&row, &projection, 35).as_str(), Some("D"));
-    assert_eq!(at(&row, &projection, 11).as_str(), Some("ORDER-1"));
-    assert_eq!(at(&row, &projection, 55).as_str(), Some("AAPL"));
-    assert_eq!(at(&row, &projection, 15).as_str(), Some("USD"));
-    assert_eq!(at(&row, &projection, 44), &Scalar::from(12.5_f64));
+    let row = order.to_row(&schema).unwrap();
+    assert_eq!(at(&row, &schema, 35).as_str(), Some("D"));
+    assert_eq!(at(&row, &schema, 11).as_str(), Some("ORDER-1"));
+    assert_eq!(at(&row, &schema, 55).as_str(), Some("AAPL"));
+    assert_eq!(at(&row, &schema, 15).as_str(), Some("USD"));
+    assert_eq!(at(&row, &schema, 44), &Scalar::from(12.5_f64));
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.
     let bare = reader
         .transform_line(b"8=FIX.4.4|35=0|10=0|", false)
         .unwrap();
-    let thin = bare.to_row(&projection).unwrap();
+    let thin = bare.to_row(&schema).unwrap();
     assert_eq!(
         thin.as_sequence().map(<[Scalar]>::len),
         row.as_sequence().map(<[Scalar]>::len),
     );
-    assert_eq!(at(&thin, &projection, 35).as_str(), Some("0"));
-    assert!(
-        at(&thin, &projection, 55).is_null(),
-        "no symbol, not a shift"
-    );
+    assert_eq!(at(&thin, &schema, 35).as_str(), Some("0"));
+    assert!(at(&thin, &schema, 55).is_null(), "no symbol, not a shift");
 }
 
 #[test]
 fn the_derived_columns_are_computed_and_never_stored() {
     let (registry, reader) = reader();
-    let projection = FixProjection::new(&registry, "fix").unwrap();
+    let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
         .transform_line(
             b"8=FIX.4.4|35=D|11=A|55=AAPL|207=XNAS|60=20240102-10:15:30.000|10=0|",
             false,
         )
         .unwrap();
-    let row = order.to_row(&projection).unwrap();
+    let row = order.to_row(&schema).unwrap();
 
     // The digest is sixteen bytes of value, not a rendered string.
-    let digest = at(&row, &projection, yggdryl::MSGHASH_TAG);
+    let digest = at(&row, &schema, yggdryl::MSGHASH_TAG);
     assert_eq!(digest.as_bytes().map(<[u8]>::len), Some(16));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
-        at(&row, &projection, yggdryl::SYMBOLTICKER_TAG).as_str(),
+        at(&row, &schema, yggdryl::SYMBOLTICKER_TAG).as_str(),
         Some("AAPL@XNAS"),
     );
 
     // The clock, and the partition it falls in - an hour, floored, so a row
     // lands in the partition that contains it.
-    assert!(!at(&row, &projection, yggdryl::TIMESTAMP_TAG).is_null());
-    let partition = at(&row, &projection, yggdryl::UNIXPARTITION_TAG);
+    assert!(!at(&row, &schema, yggdryl::TIMESTAMP_TAG).is_null());
+    let partition = at(&row, &schema, yggdryl::UNIXPARTITION_TAG);
     let seconds = 1_704_190_530_i64; // 2024-01-02T10:15:30Z
     assert_eq!(partition, &Scalar::from(seconds - seconds % 3_600));
 
     // The version it was read at, which is not always what the frame claimed.
     assert_eq!(
-        at(&row, &projection, yggdryl::VERSION_TAG).as_str(),
+        at(&row, &schema, yggdryl::VERSION_TAG).as_str(),
         Some("4.4")
     );
 
@@ -182,41 +182,41 @@ fn an_identifier_carries_its_scheme_and_a_ticker_does_not() {
 #[test]
 fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     let (registry, reader) = reader();
-    let projection = FixProjection::new(&registry, "fix").unwrap();
+    let schema = fix_schema(&registry, "fix").unwrap();
 
     // A buy order at a price is a party willing to pay it, so the bid lane it
     // never wrote is filled and the ask lane is not.
     let buy = reader
         .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|", false)
         .unwrap();
-    let row = buy.to_row(&projection).unwrap();
-    assert_eq!(at(&row, &projection, 132), &Scalar::from(12.5_f64));
-    assert_eq!(at(&row, &projection, 134), &Scalar::from(100.0_f64));
-    assert!(at(&row, &projection, 133).is_null(), "no ask lane on a buy");
+    let row = buy.to_row(&schema).unwrap();
+    assert_eq!(at(&row, &schema, 132), &Scalar::from(12.5_f64));
+    assert_eq!(at(&row, &schema, 134), &Scalar::from(100.0_f64));
+    assert!(at(&row, &schema, 133).is_null(), "no ask lane on a buy");
 
     // A one-sided quote implies the side it never wrote.
     let quote = reader
         .transform_line(b"8=FIX.4.4|35=S|117=Q|132=12.4|10=0|", false)
         .unwrap();
-    let row = quote.to_row(&projection).unwrap();
-    assert_eq!(at(&row, &projection, 54).as_str(), Some("1"));
+    let row = quote.to_row(&schema).unwrap();
+    assert_eq!(at(&row, &schema, 54).as_str(), Some("1"));
 
     // And a stated column is never overwritten by a derivation.
     let stated = reader
         .transform_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|", false)
         .unwrap();
-    let row = stated.to_row(&projection).unwrap();
-    assert_eq!(at(&row, &projection, 132), &Scalar::from(99.0_f64));
+    let row = stated.to_row(&schema).unwrap();
+    assert_eq!(at(&row, &schema, 132), &Scalar::from(99.0_f64));
 }
 
 #[test]
 fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let (registry, reader) = reader();
-    let projection = FixProjection::new(&registry, "fix").unwrap();
+    let schema = fix_schema(&registry, "fix").unwrap();
     let row = reader
         .transform_line(b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|", false)
         .unwrap()
-        .to_row(&projection)
+        .to_row(&schema)
         .unwrap();
     let held = row.as_sequence().expect("a row");
     let entries = held[held.len() - 2].as_sequence().expect("the record");

@@ -128014,7 +128014,7 @@
       ]
     }
   ],
-  "projection": {
+  "row": {
     "columns": [
       {
         "c": "8",
@@ -128640,8 +128640,7 @@
         "x": "The pairs no dictionary explained, a view over the arrival record."
       }
     ],
-    "carried": 0,
-    "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()\nnew fix.FixProjection(registry, 'FixMessage')"
+    "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nregistry.withCrateFields()\nfix.schema(registry, 'FixMessage')"
   },
   "frames": [
     {

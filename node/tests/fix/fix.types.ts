@@ -6,7 +6,6 @@ import {
   Url,
   fix,
   type FixMsg,
-  type FixProjection,
   type FixCodec,
   type FixRegistry,
   type FixValueInput,
@@ -229,22 +228,11 @@ const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF')
 const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
 const readerCopy: FixCodec = reader.clone()
 
-// The projection is the fixed row's index, and the schema is its root.
-const projectionClass: typeof FixProjection = fix.FixProjection
-const projection: FixProjection = new fix.FixProjection(loaded, 'FixMessage')
-const carried: FixProjection = new fix.FixProjection(loaded, 'FixMessage', field)
-const wrapped: FixProjection = fix.FixProjection.fromField(field)
-const columns: number = projection.size
-const tagsOf: number[] = projection.tags
-const carriedCount: number = projection.carried
-const carriedAt: number[] = projection.carriedPositions
-const valueColumns: number = projection.valueColumns
-const column: Field | null = projection.column(0)
-const at: number | null = projection.positionOf(35)
-const fixedRow: Scalar = fromText.toRow(projection)
-
-// The three functions that build a fixed row without one.
+// The fixed row is a schema, and a column is the name its tag spells.
 const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
+const carried: Field = fix.schemaCarrying(field, fixedSchema)
+const at: number | null = fixedSchema.indexOf('35')
+const fixedRow: Scalar = fromText.toRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()
 
@@ -272,15 +260,7 @@ void fromFrame
 void fromBridge
 void fromPairs
 void readerCopy
-void projectionClass
 void carried
-void wrapped
-void columns
-void tagsOf
-void carriedCount
-void carriedAt
-void valueColumns
-void column
 void at
 void fixedRow
 void fixedSchema
@@ -299,5 +279,5 @@ void anomalies
 void arrivals
 void wire
 
-// @ts-expect-error a projection is built from a registry, never from a number
-new fix.FixProjection(55)
+// @ts-expect-error a fixed schema is built from a registry, never from a number
+fix.schema(55)

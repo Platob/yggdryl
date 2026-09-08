@@ -171,7 +171,6 @@ mod global;
 mod lift;
 mod lineage;
 mod msg;
-mod project;
 // Reading one generic record is not the Arrow surface, so it is not gated
 // with it: a schema-only build keeps `FixCodec::read_record`.
 mod record;
@@ -211,8 +210,8 @@ pub use ulbridge::{
 };
 
 pub use schema::{
-    BODY_TAGS, ENTRIES_COLUMN, FixProjection, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS,
-    UNMAPPED_COLUMN, fix_schema, fix_schema_tags,
+    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN, fix_schema,
+    fix_schema_carrying, fix_schema_tags,
 };
 
 /// The absent branch occupies four zero bytes in every standard identifier.
