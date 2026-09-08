@@ -1327,6 +1327,40 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
         FixCodec(seed, branch="not a branch")
 
 
+def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
+    seed: FixRegistry,
+) -> None:
+    """Enrichment is a flag; the rules are the core's."""
+    reader = FixCodec(seed)
+
+    # A `SecurityID` an ISIN's check digit closes has stated its source, and
+    # under that source the crate's `isincode` column and the country its
+    # prefix names.
+    line = b"8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|"
+    filled = reader.transform_line(line, True)
+    assert filled.by_tag(22).as_py() == "4"
+    assert filled.by_tag(65013).as_py() == "US0378331005"
+    assert filled.by_tag(470).as_py() == "US"
+    # An order stating no time in force is a day order.
+    assert filled.by_tag(59).as_py() == "0"
+
+    # Without the flag the line states none of them.
+    bare = reader.transform_line(line)
+    assert bare.get_by_tag(22) is None
+    assert bare.get_by_tag(65013) is None
+    assert bare.get_by_tag(470) is None
+
+    # Only the row was filled: the wire comes back byte for byte, and a second
+    # pass changes nothing.
+    assert filled.to_bytes(ord("|")) == line
+    assert reader.enrich_fixmsg(filled) == filled
+
+    # A value no standard closes answers nothing rather than a guess.
+    opaque = reader.transform_line(b"8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|", True)
+    assert opaque.get_by_tag(22) is None
+    assert opaque.get_by_tag(65013) is None
+
+
 # A Jolokia answer as a log line writes it: a timestamp and a reader in front
 # of the document, the duration the call took behind it. Both are prose.
 LOGGED = (
@@ -1513,7 +1547,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema[schema.index_of("sessionid")].display == "SessionId"
     # The three columns a row derives from what the message said are typed
     # as the thing they hold, never as the text a venue spelled it in.
-    assert schema[schema.index_of("isincode")].dtype == DataType("utf8")
+    assert schema[schema.index_of("isincode")].dtype == DataType("isin")
     assert schema[schema.index_of("miccode")].dtype == DataType("mic")
     assert schema[schema.index_of("state")].dtype == DataType("state")
     # Four columns every message fills are declared so; every other one is

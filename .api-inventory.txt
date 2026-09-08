@@ -172,7 +172,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 55] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
+  pub const ALL: [Self; 62] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8,
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -2085,11 +2085,12 @@ pub fn ascii(width: i32) -> Result<Self>
   pub fn iter(&self) -> impl Iterator<Item = (&str, &str)>
   pub fn member_name(value: &str) -> SmolStr
   pub fn into_members(&self, width: &DataType) -> Result<Vec<(SmolStr, i128)>>
-pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6)];
+pub const CODES: &'static [(&'static str, DataType, i32)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("msgtype", DataType::MsgType, 8), ("msgdirection", DataType::MsgDirection, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
   pub const fn cfi() -> Self
+  pub const fn isin() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn is_code(&self) -> bool
 
@@ -2098,11 +2099,16 @@ pub trait AsciiValue: ScalarValue
   const WIDTH: Option<i32>;
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
-  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Side, MsgType, MsgDirection
-  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width)
+  pub struct Ascii  // and FixedAscii, Country, Currency, Mic, Cfi, Isin, Side, MsgType, MsgDirection
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  // FixedAscii::new(value, width); Isin::new folds case and checks the closing digit
   pub fn as_str(&self) -> &str
   pub fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> i32  // FixedAscii only
+  pub fn prefix(&self) -> &str  // Isin only
+  pub fn nsin(&self) -> &str  // Isin only
+  pub fn check_digit(&self) -> u8  // Isin only
+  pub fn is_valid(text: &str) -> bool  // Isin only
+  pub fn closing_digit(body: &str) -> Option<u8>  // Isin only
   pub const SYNTHETIC_MARK: u8 = b'~';  // MsgType only
   pub fn coerce(spelling: &str) -> Self  // MsgType only
   pub fn is_synthetic(&self) -> bool  // MsgType only
@@ -2268,6 +2274,7 @@ pub type NullField = TypedField<scalar::Null>;
   pub type CurrencyField = TypedField<ascii::Currency>;
   pub type MicField = TypedField<ascii::Mic>;
   pub type CfiField = TypedField<ascii::Cfi>;
+  pub type IsinField = TypedField<ascii::Isin>;
   pub type ListField = TypedField<nested::List>;
   pub type ListViewField = TypedField<nested::ListView>;
   pub type FixedSizeListField = TypedField<nested::FixedSizeList>;
@@ -2897,7 +2904,7 @@ pub struct TypedScalar<K: FieldType = AnyType>
   pub fn try_from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn from_arrow_array( dtype: DataType, array: &dyn arrow_array::Array, ) -> crate::arrow::Result<Self>
   pub fn new(value: Scalar) -> Result<Self>
-  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, UuidScalar, VersionScalar included)
+  pub type NullScalar = TypedScalar<scalar::Null>;  // one alias per datatype, through RunEndEncodedScalar (AsciiScalar, FixedAsciiScalar, CountryScalar, CurrencyScalar, MicScalar, CfiScalar, IsinScalar, UuidScalar, VersionScalar included)
 pub trait Sealed {} } /// A sealed compile-time marker for exactly one [`DataType`] variant. /// /// Marker implementations validate the variant only. Parameters such as a /// decimal precision, datetime unit, or list child remain in the wrapped /// [`Field`], so the typed view never duplicates schema state.
   pub trait FieldType: sealed::Sealed + Copy + Default + fmt::Debug + Send + Sync + 'static
   pub struct TypedField<K: FieldType>

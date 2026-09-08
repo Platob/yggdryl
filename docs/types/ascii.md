@@ -1,6 +1,6 @@
 # ASCII
 
-Variable and fixed-width ASCII text, the four registered codes, packed integers, and the `AsciiEnum` vocabulary a field declares.
+Variable and fixed-width ASCII text, the registered codes, packed integers, and the `AsciiEnum` vocabulary a field declares.
 
 ## Contract
 
@@ -12,6 +12,7 @@ Variable and fixed-width ASCII text, the four registered codes, packed integers,
 | `currency`, ISO 4217 | 3 | `fixed_size_binary(3)`, `yggdryl.currency` |
 | `mic`, ISO 10383 | 4 | `fixed_size_binary(4)`, `yggdryl.mic` |
 | `cfi`, ISO 10962 | 6 | `fixed_size_binary(6)`, `yggdryl.cfi` |
+| `isin`, ISO 6166 | 12 | `fixed_size_binary(12)`, `yggdryl.isin` |
 
 ## Use
 
@@ -56,6 +57,9 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
             // Six bytes: `cfi` stores what it is, not the eight some other
             // width would pad it to.
             ("cfi", DataType::Cfi, 6),
+            // Twelve bytes closed by a check digit, so a value is an
+            // identifier or is refused, never a typo stored as a security.
+            ("isin", DataType::Isin, 12),
             // The FIX-facing codes, each at the width it needs rather than
             // one width for all: a venue's message type is what runs long,
             // and a state carries two digits of rank before its name.
@@ -160,9 +164,14 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert currency != DataType.ascii(3)
     assert currency.kind == "ascii"
     assert [(DataType(name).id, DataType(name).ascii_width) for name in
-            ("country", "currency", "mic", "cfi")] == [
-        ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6)
+            ("country", "currency", "mic", "cfi", "isin")] == [
+        ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12)
     ]
+    # An ISIN is closed by its own check digit, so one digit off is refused
+    # and lower case folds to the number it spells.
+    assert DataType("isin").scalar("us0378331005").as_py() == "US0378331005"
+    with pytest.raises(ValueError, match="check digit"):
+        DataType("isin").scalar("US0378331006")
 
     # A code rides its own Arrow extension, so the identity survives the trip.
     venue = types.mic("venue", nullable=False)
@@ -244,8 +253,8 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
     assert.equal(currency.asciiWidth, 3)
     assert.ok(!currency.equals(DataType.ascii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi'].map((name) => new DataType(name).asciiWidth),
-      [2, 3, 4, 6],
+      ['country', 'currency', 'mic', 'cfi', 'isin'].map((name) => new DataType(name).asciiWidth),
+      [2, 3, 4, 6, 12],
     )
 
     // A code rides its own Arrow extension, so the identity survives the trip.
@@ -580,6 +589,8 @@ the wire value rather than a name for it, exactly as `side` is.
 - Stored under `ascii(n)` -> padded with trailing NUL to `n`; every string rendering trims the padding back.
 - Canonical scalar -> the trimmed string; bytes and text carrying trailing NULs are accepted and canonicalize to it.
 - `fixed_size_binary(3)` under `yggdryl.currency` -> `currency`; under `yggdryl.ascii` -> `ascii(3)`; plain, or carrying a document -> imports as it is.
+- `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`, because a number failing its own checksum is a typo, not a security. Lower case -> the upper case it spells, since the check digit reads a letter by position and cannot tell the two apart. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
+- `isin` names no vocabulary: the space is open, so `from_logical_name("isin")` prebuilds an empty enum and no Python code class declares it.
 - [Merged](field.md) widening: a code beside itself -> kept; a width beside `ascii` -> `ascii`; either beside `utf8` -> `utf8`; a code beside `fixed_size_binary(n)` of its width -> those bytes.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it - `ascii(n)`, `ascii`, `utf8`, `fixed_size_binary(n)` -> the code; beside narrower text -> that text.
 - `currency` beside `country` -> `ascii(3)` widening and `ascii(2)` narrowing, the plain text both fit, never one code holding the other's values.

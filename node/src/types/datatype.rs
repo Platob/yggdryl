@@ -113,6 +113,7 @@ impl JsDataType {
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
+            "isin" => CoreDataType::Isin,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,

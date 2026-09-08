@@ -62,6 +62,7 @@ from yggdryl.types import (
     CfiField,
     CountryField,
     CurrencyField,
+    IsinField,
     MicField,
     DenseUnionField,
     FixedSizeListField,
@@ -382,13 +383,15 @@ typed_mic: MicField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
+typed_isin: IsinField = types.isin("instrument")
+typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
-typed_ascii_isin: FixedAsciiField = types.fixed_ascii("isin", 12)
+typed_ascii_sedol: FixedAsciiField = types.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
-typed_ascii_isin_value: object = typed_ascii_isin.default_scalar().as_py()
+typed_ascii_sedol_value: object = typed_ascii_sedol.default_scalar().as_py()
 ascii_member_name: str = AsciiEnum.member_name("n/a")
 
 

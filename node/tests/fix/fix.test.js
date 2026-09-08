@@ -1034,6 +1034,36 @@ test('a reader takes the pins the core takes', () => {
   assert.throws(() => new fix.FixCodec(registry, { branch: 'not a branch' }))
 })
 
+test('a reader fills what the line implied and leaves the wire alone', () => {
+  const reader = new fix.FixCodec(seed())
+
+  // Enrichment is a flag; the rules are the core's. A `SecurityID` an ISIN's
+  // check digit closes has stated its source, and under that source the
+  // crate's `isincode` column and the country its prefix names.
+  const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
+  const filled = reader.transformLine(Buffer.from(line), true)
+  assert.equal(filled.byTag(22).toJSON(), '4')
+  assert.equal(filled.byTag(65013).toJSON(), 'US0378331005')
+  assert.equal(filled.byTag(470).toJSON(), 'US')
+  assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
+
+  // Without the flag the line states none of them.
+  const bare = reader.transformLine(Buffer.from(line))
+  assert.equal(bare.getByTag(22), null)
+  assert.equal(bare.getByTag(65013), null)
+  assert.equal(bare.getByTag(470), null)
+
+  // Only the row was filled: the wire comes back byte for byte, and a second
+  // pass changes nothing.
+  assert.equal(filled.toBytes('|'.charCodeAt(0)).toString(), line)
+  assert.ok(reader.enrichFixmsg(filled).equals(filled))
+
+  // A value no standard closes answers nothing rather than a guess.
+  const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true)
+  assert.equal(opaque.getByTag(22), null)
+  assert.equal(opaque.getByTag(65013), null)
+})
+
 test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   const registry = seed()
   const schema = fix.schema(registry, 'FixMessage')
@@ -1230,7 +1260,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   assert.deepEqual(
     derived.map((field) => [field.name, field.display, field.fix.id, field.dtype.toString()]),
     [
-      ['isincode', 'ISINCode', '65013:', 'utf8'],
+      ['isincode', 'ISINCode', '65013:', 'isin'],
       ['miccode', 'MICCode', '65014:', 'mic'],
       ['state', 'State', '65015:', 'state'],
     ],

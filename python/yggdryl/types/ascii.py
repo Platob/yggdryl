@@ -1,12 +1,13 @@
 """The ASCII field factories: variable, fixed-width, and by registered code.
 
-The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, and FIX's
-own ``side``, ``msgtype`` and ``msgdirection`` - are
+The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, ``isin``,
+and FIX's own ``side``, ``msgtype`` and ``msgdirection`` - are
 datatypes of their own, each storing the width its standard fixes, so a code
 factory is not a width factory wearing a name: the field it builds carries the
 code's identity across Arrow. The declared vocabularies live in
 :mod:`yggdryl.enums`, whose classes carry their members onto the field they
-build.
+build; ``isin`` is an open identifier space closed by its own check digit, so
+no class declares it.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     CurrencyField: TypeAlias = TypedField[Literal["currency"], str]
     MicField: TypeAlias = TypedField[Literal["mic"], str]
     CfiField: TypeAlias = TypedField[Literal["cfi"], str]
+    IsinField: TypeAlias = TypedField[Literal["isin"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     MsgTypeField: TypeAlias = TypedField[Literal["msgtype"], str]
     MsgDirectionField: TypeAlias = TypedField[Literal["msgdirection"], str]
@@ -32,13 +34,16 @@ if TYPE_CHECKING:
 else:
     AsciiField = FixedAsciiField = CountryField = CurrencyField = MicField = (
         CfiField
-    ) = SideField = MsgTypeField = MsgDirectionField = StateField = TimeInForceField = Field
+    ) = IsinField = SideField = MsgTypeField = MsgDirectionField = StateField = (
+        TimeInForceField
+    ) = Field
 
 _ASCII = simple_dtype("ascii")
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
 _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
+_ISIN = simple_dtype("isin")
 _SIDE = simple_dtype("side")
 _MSGTYPE = simple_dtype("msgtype")
 _DIRECTION = simple_dtype("msgdirection")
@@ -95,6 +100,12 @@ def cfi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> 
     return new_field(CfiField, name, _CFI, nullable, metadata)
 
 
+def isin(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> IsinField:
+    """ISO 6166, the twelve-character securities identifier closed by its check digit."""
+
+    return new_field(IsinField, name, _ISIN, nullable, metadata)
+
+
 def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
     """FIX ``Side(54)``, the wire value rather than a name for it."""
 
@@ -144,6 +155,7 @@ __all__ = [
     "StateField",
     "TimeInForceField",
     "FixedAsciiField",
+    "IsinField",
     "MicField",
     "MsgTypeField",
     "SideField",
@@ -153,6 +165,7 @@ __all__ = [
     "currency",
     "msgdirection",
     "fixed_ascii",
+    "isin",
     "mic",
     "msgtype",
     "side",

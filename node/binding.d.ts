@@ -207,6 +207,7 @@ export type DataTypeId =
   | 'currency'
   | 'mic'
   | 'cfi'
+  | 'isin'
   | 'uuid'
   | 'version'
   | 'url'
@@ -285,6 +286,7 @@ interface DataTypeKindById {
   currency: 'ascii'
   mic: 'ascii'
   cfi: 'ascii'
+  isin: 'ascii'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -603,6 +605,8 @@ export type CurrencyField = FieldOf<'currency', string>
 export type MicField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
 export type CfiField = FieldOf<'cfi', string>
+/** ISO 6166, the twelve-character securities identifier closed by its check digit. */
+export type IsinField = FieldOf<'isin', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
   'list_view',
@@ -851,6 +855,7 @@ export interface FieldsNamespace {
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
+  isin(name: string, options?: FieldOptions): IsinField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -1343,6 +1348,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'cfi', string, N, O>
+  isin<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'isin', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,

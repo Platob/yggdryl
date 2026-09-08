@@ -290,7 +290,7 @@ Sixteen fields carry what a capture states, or what a message implies, that no d
 | `targetpluginid` | `TargetPluginId` | 65010 | the plugin the message went to inside a bridge, as the message states it |
 | `senderpluginsession` | `SenderPluginSession` | 65011 | the plugin session the message came from: a bridge row's `ULFROMSESSIONNAME`, else the plugin that logged a line it sent |
 | `targetpluginsession` | `TargetPluginSession` | 65012 | the plugin session the message went to: a bridge row's `ULTOSESSIONNAME`, else the plugin that logged a line it received |
-| `isincode` | `ISINCode` | 65013 | the instrument's ISIN: `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
+| `isincode` | `ISINCode` | 65013 | the instrument's ISIN, as an [`isin`](../types/ascii.md): `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
 | `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
 | `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
 
@@ -443,6 +443,127 @@ The root's children are the standard header in its declared order, the body as i
     assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
     assert.ok(sent.unixPartition(3600) !== null)
     ```
+
+## What a message implied is filled in
+
+A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. With enrichment on - the flag every `transform_*` entry point takes, `FixOptions.enrich` for a [batch](arrow.md), `enrich_fixmsg` for a message already built - the reader fills them.
+
+Three things hold whatever the rule. Only the row is filled, never the entries, so `into_bytes` re-emits the wire byte for byte either way. A rule answers only where every input is stated and typed: an identifier no check digit closes, a CFI whose category several security types share and a security type outside every group the specification files answer nothing rather than a guess. And a stated value is never overwritten, which is what makes a second pass change nothing - a value derived once is a stated value the second time.
+
+The rules are the specification's own tables read as the implications they are, and each is one row of the table in `fix/enrich.rs` - a tag, the message types it speaks for, the conditions that must hold and the derivation - never code per field.
+
+| Fills | From | The table it reads |
+| --- | --- | --- |
+| `SecurityIDSource(22)` | `SecurityID(48)` | the `SecurityIDSource` code set names the standard each code stands for, and each standard closes its identifiers with a check digit: `4` for a number ISO 6166 closes, `1` for a CUSIP, `2` for a SEDOL |
+| `isincode` | `SecurityID(48)` under source `4`, else the `SecurityAltID(455)` whose `SecurityAltIDSource(456)` is `4` | ISO 6166; a spelling the check digit does not close is refused by the column and answers nothing |
+| `SecurityID(48)` | `isincode` | a bridge row states the crate's column and has thereby stated the primary identifier, whose validation then states the source |
+| `Symbol(55)` | `SecurityID(48)` under source `8` or `A`, else the `SecurityAltID(455)` whose source is `8` | the `SecurityIDSource` codes of an exchange symbol and a Bloomberg symbol |
+| `CountryOfIssue(470)` | `isincode` | ISO 6166 opens a number with the ISO 3166 code of the numbering agency's country, where it is one: `XS` and `EU` answer nothing |
+| `SecurityType(167)` | `CFICode(461)` | Appendix 6-D at its category level - `ES` is `CS`, `F` is `FUT`, an `O?F` is `OOF` and every other `O` is `OPT`, `LR` is `REPO`; a category every kind of bond shares, `DB`, answers nothing |
+| `CFICode(461)` | `SecurityType(167)`, `PutOrCall(201)` | Appendix 6-D the other way: `CS` is `ESXXXX`, `CORP` is `DBXXXX`, `FRN` is `DBVXXX`, an option is `OC` or `OP` by its `PutOrCall` and `OX` without one |
+| `PutOrCall(201)` | `CFICode(461)` | the second character of a listed (`O`) or unlisted (`H`) option: `C` is a call, `P` a put |
+| `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Equity` is `5`, `Corporate` `3`, `Government` `6`, `Money Market` `9`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
+| `miccode` | `SecurityExchange(207)`, `ExDestination(100)`, `LastMkt(30)` | the first stated, as the [column](#the-crates-own-columns) is defined |
+| `TimeInForce(59)` | nothing, on an order, a replace or a report | the field's own definition: absent means `0`, a day order |
+| `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is `2`, one leaving something after doing something is `1` |
+| `state` | `OrdStatus(39)`, `ExecType(150)` | the first stated, as the column is defined |
+| `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D: `OrderQty = CumQty + LeavesQty`, and nothing is left once `OrdStatus(39)` is closed |
+| `GrossTradeAmt(381)` | `LastQty(32)` × `LastPx(31)` | Appendix D's execution reports |
+| `SettlCurrAmt(119)` | `GrossTradeAmt(381)` × `SettlCurrFxRate(155)` | Appendix O |
+| `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once |
+| `AvgPx(6)` | `LastPx(31)` | Appendix D, only where `CumQty(14)` says the whole done quantity is this fill |
+
+The rules run in one order, laid out so every chain ends in one pass: an ISIN found among the alternate identifiers becomes `SecurityID`, whose validation states the source, under which the ISIN column is read and the country after it; a security type read off a CFI places the product; a status read off an execution type decides what is left.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixCodec, FixRegistry, Scalar};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+
+    // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
+    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
+    let held = reader.transform_line(line, true)?;
+    assert_eq!(held.by_tag(22)?.as_str(), Some("4"));
+    assert_eq!(held.by_tag(yggdryl::ISINCODE_TAG)?.as_str(), Some("US0378331005"));
+    assert_eq!(held.by_tag(470)?.as_str(), Some("US"));
+    assert_eq!(held.by_tag(167)?.as_str(), Some("CS"));
+    assert_eq!(held.by_tag(460)?, &Scalar::from(5_i32));
+    assert_eq!(held.by_tag(yggdryl::MICCODE_TAG)?.as_str(), Some("XNAS"));
+    assert_eq!(held.by_tag(39)?.as_str(), Some("2"), "a trade leaving nothing");
+    assert_eq!(held.by_tag(59)?.as_str(), Some("0"), "a day order");
+
+    // Only the row was filled: the wire comes back byte for byte.
+    assert_eq!(held.into_bytes(b'|'), line);
+    // And a second pass changes nothing.
+    assert_eq!(reader.enrich_fixmsg(held.clone())?, held);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+
+    # A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
+    line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|"
+    held = reader.transform_line(line, True)
+    assert held.by_tag(22).as_py() == "4"
+    assert held.by_tag(65013).as_py() == "US0378331005"  # isincode
+    assert held.by_tag(470).as_py() == "US"
+    assert held.by_tag(167).as_py() == "CS"
+    assert held.by_tag(460).as_py() == 5
+    assert held.by_tag(65014).as_py() == "XNAS"  # miccode
+    assert held.by_tag(39).as_py() == "2"  # a trade leaving nothing
+    assert held.by_tag(59).as_py() == "0"  # a day order
+
+    # Only the row was filled: the wire comes back byte for byte.
+    assert held.to_bytes(ord("|")) == line
+    # And a second pass changes nothing.
+    assert reader.enrich_fixmsg(held) == held
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+
+    // A fill naming its instrument by an ISIN it never sourced, a CFI and a market.
+    const line = '8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|'
+    const held = reader.transformLine(Buffer.from(line), true)
+    assert.equal(held.byTag(22).toJSON(), '4')
+    assert.equal(held.byTag(65013).toJSON(), 'US0378331005') // isincode
+    assert.equal(held.byTag(470).toJSON(), 'US')
+    assert.equal(held.byTag(167).toJSON(), 'CS')
+    assert.equal(held.byTag(460).toJSON(), 5)
+    assert.equal(held.byTag(65014).toJSON(), 'XNAS') // miccode
+    assert.equal(held.byTag(39).toJSON(), '2') // a trade leaving nothing
+    assert.equal(held.byTag(59).toJSON(), '0') // a day order
+
+    // Only the row was filled: the wire comes back byte for byte.
+    assert.equal(held.toBytes('|'.charCodeAt(0)).toString(), line)
+    // And a second pass changes nothing.
+    assert.ok(reader.enrichFixmsg(held).equals(held))
+    ```
+
+### Edges
+
+- A value the column refuses is silence, not a failure: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, leaves `isincode` null, and nothing downstream reads a country off it.
+- A value that would not type - `201=abc` in the `PutOrCall` column - is a null the row holds while the entry keeps the text; a rule fills the null in place, the row has one column for the tag, and the anomaly still reports the text.
+- The rules read codes, so a bridge row spelling `SECURITYIDSOURCE=isin` and `SECURITYTYPE=equity` is read exactly as a frame spelling `22=4` and `167=CS`: the dictionary translated both before any rule ran.
+- A trade stating no quantities states no status: `150=F` alone leaves `OrdStatus` absent, and `state` then holds `F`, what the report said happened.
+- An option stating no `PutOrCall` gets a CFI whose exercise is `X`, and `PutOrCall` is not then read back off it: `X` is the code for an exercise left open.
 
 ## A bridge configuration is a dictionary of its own
 

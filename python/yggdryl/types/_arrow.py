@@ -41,6 +41,7 @@ _STRING_KINDS = frozenset(
         "currency",
         "mic",
         "cfi",
+        "isin",
         "uuid",
     )
 )
