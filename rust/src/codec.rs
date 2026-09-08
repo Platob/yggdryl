@@ -198,7 +198,7 @@ impl Codec {
     /// encoder.finish()?;
     ///
     /// let mut offsets = Vec::new();
-    /// Codec::Deflate.restarts().push(&encoded, &mut offsets);
+    /// Codec::Deflate.restart_scan().push(&encoded, &mut offsets);
     /// assert_eq!(offsets.len(), 1);
     ///
     /// // The second half decodes on its own from the offset the scan found.
@@ -207,8 +207,74 @@ impl Codec {
     /// # Ok(())
     /// # }
     /// ```
-    pub const fn restarts(self) -> Restarts {
-        Restarts::new(self)
+    pub const fn restart_scan(self) -> RestartScan {
+        RestartScan::new(self)
+    }
+
+    /// Encode a whole buffer, restarting every `stride` decoded bytes.
+    ///
+    /// The answer is the encoded payload and the map of where its units
+    /// begin, which is what turns a positional read of that payload into a
+    /// decode of one stride rather than of everything before the offset. A
+    /// stride of zero, an identity coding, and a coding with no restart point
+    /// all encode as [`dump_with_level`] does and answer an empty map.
+    ///
+    /// [`dump_with_level`]: Self::dump_with_level
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's encoding failure.
+    ///
+    /// ```
+    /// use yggdryl::{Codec, Level};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let payload = b"symbol,price\nAAPL,187.23\n".repeat(512);
+    /// let (encoded, restarts) =
+    ///     Codec::Deflate.dump_with_restarts(&payload, Level::DEFAULT, 4_096)?;
+    ///
+    /// // The whole payload still decodes as one stream.
+    /// assert_eq!(Codec::Deflate.load(&encoded)?, payload);
+    ///
+    /// // And a position inside it decodes from the point before it.
+    /// let (decoded, at) = restarts.before(10_000);
+    /// assert_eq!(decoded, 8_192);
+    /// let start = usize::try_from(at).expect("an in-memory offset");
+    /// assert_eq!(Codec::Deflate.load(&encoded[start..])?, payload[8_192..]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn dump_with_restarts(
+        self,
+        input: &[u8],
+        level: Level,
+        stride: u64,
+    ) -> Result<(Vec<u8>, Restarts)> {
+        let step = usize::try_from(stride).unwrap_or(usize::MAX);
+        if step == 0 || self.is_identity() || !self.has_restarts() {
+            return Ok((self.dump_with_level(input, level)?, Restarts::default()));
+        }
+        let mut encoded = Vec::new();
+        let mut points = Vec::new();
+        {
+            let written = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let mut encoder = self.writer_with_level(
+                Meter {
+                    target: &mut encoded,
+                    written: std::sync::Arc::clone(&written),
+                },
+                level,
+            );
+            for (index, chunk) in input.chunks(step).enumerate() {
+                if index > 0 {
+                    encoder.restart()?;
+                    points.push(written.load(std::sync::atomic::Ordering::Relaxed));
+                }
+                encoder.write_all(chunk)?;
+            }
+            encoder.finish()?;
+        }
+        Ok((encoded, Restarts::new(stride, points)))
     }
 
     /// The pattern this coding's restart points are found by.
@@ -410,7 +476,7 @@ const MARKER_LEN: usize = 4;
 
 /// A scan for the offsets a decoder may begin an encoded stream at.
 ///
-/// Built by [`Codec::restarts`] and fed the encoded bytes in whatever chunks a
+/// Built by [`Codec::restart_scan`] and fed the encoded bytes in whatever chunks a
 /// caller already has them in: the scan holds only the marker-sized tail a
 /// chunk boundary can split a pattern across, so scanning a gigabyte costs one
 /// pass and three retained bytes.
@@ -418,7 +484,7 @@ const MARKER_LEN: usize = 4;
 /// ```
 /// use yggdryl::Codec;
 ///
-/// let mut scan = Codec::Zstd.restarts();
+/// let mut scan = Codec::Zstd.restart_scan();
 /// let mut offsets = Vec::new();
 /// // The frame magic, split across two chunks.
 /// scan.push(&[0x00, 0x28, 0xb5], &mut offsets);
@@ -426,7 +492,7 @@ const MARKER_LEN: usize = 4;
 /// assert_eq!(offsets, vec![1]);
 /// ```
 #[derive(Clone, Debug)]
-pub struct Restarts {
+pub struct RestartScan {
     codec: Codec,
     /// Bytes already scanned, which every reported offset is measured from.
     consumed: u64,
@@ -436,7 +502,7 @@ pub struct Restarts {
     carried: usize,
 }
 
-impl Restarts {
+impl RestartScan {
     /// Begin a scan over a stream encoded with `codec`.
     const fn new(codec: Codec) -> Self {
         Self {
@@ -515,6 +581,93 @@ impl Marker {
         if restart > 0 {
             into.push(restart);
         }
+    }
+}
+
+/// Where a decoder may begin inside one encoded payload.
+///
+/// A map of restart points is what makes a compressed payload addressable:
+/// the units are a fixed decoded stride apart, so the point at or before a
+/// position is arithmetic, and reading at that position decodes at most one
+/// stride rather than everything that precedes it.
+///
+/// An empty map is the honest answer for a payload written without restart
+/// points - every read of one decodes from its first byte.
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Restarts {
+    /// Decoded bytes between one point and the next; zero when there are none.
+    stride: u64,
+    /// The encoded offset each unit after the first begins at, ascending.
+    points: std::sync::Arc<[u64]>,
+}
+
+impl Restarts {
+    /// Map the points `stride` decoded bytes apart onto their encoded offsets.
+    ///
+    /// Point `k` begins the unit at decoded offset `(k + 1) * stride`, so the
+    /// map holds no entry for the payload's own start.
+    pub fn new(stride: u64, points: impl Into<std::sync::Arc<[u64]>>) -> Self {
+        let points = points.into();
+        if stride == 0 || points.is_empty() {
+            return Self::default();
+        }
+        Self { stride, points }
+    }
+
+    /// Decoded bytes between one point and the next; zero when there are none.
+    pub const fn stride(&self) -> u64 {
+        self.stride
+    }
+
+    /// The encoded offset each unit after the first begins at.
+    pub fn points(&self) -> &[u64] {
+        &self.points
+    }
+
+    /// Whether the payload has no restart point but its own start.
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    /// The decoded and encoded offsets of the point at or before `position`.
+    ///
+    /// The payload's start answers `(0, 0)`, which is what an empty map, a
+    /// position inside the first unit, and a coding with no restart points all
+    /// resolve to.
+    pub fn before(&self, position: u64) -> (u64, u64) {
+        if self.stride == 0 {
+            return (0, 0);
+        }
+        let index = usize::try_from(position / self.stride).unwrap_or(usize::MAX);
+        let Some(point) = index.checked_sub(1).map(|last| last.min(self.points.len() - 1)) else {
+            return (0, 0);
+        };
+        (
+            (point as u64 + 1) * self.stride,
+            self.points.get(point).copied().unwrap_or(0),
+        )
+    }
+}
+
+/// A writer that reports how many bytes have reached the target.
+///
+/// An encoder owns its target, so the only way to learn where a restart point
+/// landed is to count the bytes on their way through.
+struct Meter<'target> {
+    target: &'target mut Vec<u8>,
+    written: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Write for Meter<'_> {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        let written = self.target.write(buffer)?;
+        self.written
+            .fetch_add(written as u64, std::sync::atomic::Ordering::Relaxed);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.target.flush()
     }
 }
 

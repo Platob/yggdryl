@@ -815,7 +815,7 @@ mod restarts {
             assert_eq!(codec.load(&encoded).expect("the whole stream"), whole);
 
             let mut offsets = Vec::new();
-            codec.restarts().push(&encoded, &mut offsets);
+            codec.restart_scan().push(&encoded, &mut offsets);
             assert_eq!(offsets.len(), 2, "{codec}");
 
             // Each restart begins the segment that follows it, and everything
@@ -837,10 +837,10 @@ mod restarts {
         for codec in [Codec::Deflate, Codec::Zstd] {
             let (encoded, _) = segmented(codec);
             let mut whole = Vec::new();
-            codec.restarts().push(&encoded, &mut whole);
+            codec.restart_scan().push(&encoded, &mut whole);
 
             for step in [1_usize, 2, 3, 4, 5, 7] {
-                let mut scan = codec.restarts();
+                let mut scan = codec.restart_scan();
                 let mut split = Vec::new();
                 for chunk in encoded.chunks(step) {
                     scan.push(chunk, &mut split);
@@ -868,7 +868,7 @@ mod restarts {
 
             // A refused restart leaves nothing to find.
             let mut offsets = Vec::new();
-            codec.restarts().push(&encoded, &mut offsets);
+            codec.restart_scan().push(&encoded, &mut offsets);
             assert!(offsets.is_empty());
         }
     }
@@ -885,7 +885,7 @@ mod restarts {
         assert_eq!(encoded, b"symbol,price");
 
         let mut offsets = Vec::new();
-        Codec::Identity.restarts().push(&encoded, &mut offsets);
+        Codec::Identity.restart_scan().push(&encoded, &mut offsets);
         assert!(offsets.is_empty());
     }
 

@@ -53,7 +53,7 @@ pub mod xxhash;
 #[cfg(feature = "arrow")]
 pub use arrow::{ArrowShape, ArrowValue};
 pub use bytestream::ByteStream;
-pub use codec::{Codec, Encoder, Level};
+pub use codec::{Codec, Encoder, RestartScan, Restarts, Level};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
 pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};

@@ -12,6 +12,13 @@ use crate::{Codec, Error, IOBase, Level, Result, Url};
 
 use super::{Entry, Node, format, name};
 
+/// The bytes of evidence a restart point is proven by, on either side of it.
+///
+/// Both spellings are four bytes - the empty stored block a DEFLATE full flush
+/// ends with, and the magic a Zstandard frame begins with - so a window of
+/// four on each side of a point holds whichever one applies.
+const RESTART_EVIDENCE: u64 = 4;
+
 /// The most bytes an end-of-central-directory record can be from the end.
 ///
 /// The record is fixed at 22 bytes plus a comment the format bounds at 65535,
@@ -20,6 +27,18 @@ const END_SEARCH_LEN: u64 = format::END_LEN as u64 + u16::MAX as u64;
 
 /// Bytes moved per step while compacting, matching the shared stream batch.
 const COMPACT_CHUNK: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
+
+/// Decoded bytes between the restart points a compressed member is written
+/// with.
+///
+/// One stream batch, which is also the page a [`Buffered`] handle fetches, so
+/// a page of a member begins exactly on a point and its fill decodes nothing
+/// it does not return. Restarting costs size - measured at about 3% on text
+/// that deflates well - which is the price of a member that can be read at an
+/// offset rather than only from its first byte.
+///
+/// [`Buffered`]: crate::holder::buffered::Buffered
+pub const DEFAULT_RESTART_STRIDE: u64 = crate::DEFAULT_STREAM_BATCH_SIZE as u64;
 
 /// A ZIP archive mounted over one byte handle.
 ///
@@ -79,6 +98,8 @@ pub struct Archive {
     codec: Codec,
     /// The compression level that coding runs at.
     level: Level,
+    /// Decoded bytes between the restart points a compressed write states.
+    restart_stride: u64,
 }
 
 /// The archive's mutable state, held under one lock.
@@ -161,6 +182,11 @@ struct Index {
     /// resolution of a location naming it, answers from here instead of
     /// reading the header again.
     data: BTreeMap<SmolStr, u64>,
+    /// Members whose restart map has been proven against the member's bytes.
+    ///
+    /// One name per member that a positional read has actually seeked in, so
+    /// the eight-byte proof is read once rather than once a seek.
+    proven: BTreeSet<SmolStr>,
     /// The byte length the stored archive had when this index last matched it.
     ///
     /// A publish only has to shorten the archive when the trailer it writes
@@ -186,6 +212,7 @@ impl Archive {
             }),
             codec: Codec::Deflate,
             level: Level::DEFAULT,
+            restart_stride: DEFAULT_RESTART_STRIDE,
         }
     }
 
@@ -227,6 +254,54 @@ impl Archive {
     /// The compression level member writes run at.
     pub const fn level(&self) -> Level {
         self.level
+    }
+
+    /// Return this archive with a different restart stride for its writes.
+    ///
+    /// A compressed member is written as units this far apart in decoded
+    /// bytes, and its record states where each begins, so a positional read
+    /// decodes one unit rather than everything before the offset. Zero writes
+    /// solid members, which are smaller and readable only from their first
+    /// byte.
+    ///
+    /// ```
+    /// use yggdryl::holder::{Buffer, Holder, zip::Archive};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let root = Archive::new(Holder::buffer(Buffer::new()))
+    ///     .with_restart_stride(4_096)
+    ///     .mount();
+    /// root.archive()
+    ///     .write_member("trades.csv", &b"symbol,price\nAAPL,187.23\n".repeat(512))?;
+    ///
+    /// let entry = root.archive().get_entry("trades.csv")?.expect("the member");
+    /// assert_eq!(entry.restarts().stride(), 4_096);
+    /// assert!(!entry.restarts().is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn with_restart_stride(mut self, stride: u64) -> Self {
+        self.restart_stride = stride;
+        self
+    }
+
+    /// Decoded bytes between the restart points a compressed write states.
+    pub const fn restart_stride(&self) -> u64 {
+        self.restart_stride
+    }
+
+    /// The stride a member of `size` is actually written at.
+    ///
+    /// A member's map rides the central directory, so its length is a cost
+    /// every operation pays. The stride widens rather than the map growing:
+    /// a member of any size states at most [`format::MAX_RESTARTS`] points.
+    fn stride_for(&self, size: u64) -> u64 {
+        if self.restart_stride == 0 {
+            return 0;
+        }
+        let needed = size.div_ceil(format::MAX_RESTARTS as u64);
+        self.restart_stride.max(needed.next_power_of_two())
     }
 
     /// The archive's own location, which every member URL is built under.
@@ -376,7 +451,11 @@ impl Archive {
             )));
         }
         let method = format::method_of(codec)?;
-        let encoded = codec.dump_with_level(bytes, self.level)?;
+        let (encoded, restarts) = codec.dump_with_restarts(
+            bytes,
+            self.level,
+            self.stride_for(bytes.len() as u64),
+        )?;
         let mut crc = flate2::Crc::new();
         crc.update(bytes);
         let mut guard = self.locked()?;
@@ -384,6 +463,7 @@ impl Archive {
         let offset = Self::index_of(inner)?.directory_offset;
         let entry = Entry::new(name, method, now_nanos())
             .with_content(crc.sum(), encoded.len() as u64, bytes.len() as u64)
+            .with_restarts(restarts)
             .with_header_offset(offset);
         Self::append_record(inner, &entry, &encoded)?;
         Ok(entry)
@@ -867,9 +947,15 @@ impl Archive {
     ///
     /// A stored member decodes to itself, so the reader is the archive's own
     /// bytes over the member's range: `position` is applied to the range and
-    /// nothing before it is touched. A compressed member has no decoded seek,
-    /// so the same range runs through the coding its record names and the
-    /// decoded prefix is discarded through one bounded scratch buffer.
+    /// nothing before it is touched.
+    ///
+    /// A compressed member has no decoded seek, so the decode begins at the
+    /// restart point its record maps at or before `position` and the rest of
+    /// that unit is discarded through one bounded scratch buffer. What a read
+    /// decodes is therefore bounded by the member's stride rather than by the
+    /// offset - and for a member whose record maps nothing, which is what
+    /// another writer's compressed member is, the point is the member's first
+    /// byte and the whole prefix is discarded as it always was.
     ///
     /// # Errors
     ///
@@ -896,23 +982,90 @@ impl Archive {
                 remaining: entry.compressed_size() - skipped,
             }));
         }
+
+        let (decoded_at, encoded_at) = self.restart_before(entry, codec, position)?;
         let range = RangeReader {
             archive: Arc::clone(self),
-            position: start,
-            remaining: entry.compressed_size(),
+            position: start + encoded_at,
+            remaining: entry.compressed_size() - encoded_at,
         };
         let decoded = codec.reader_send(std::io::BufReader::with_capacity(
             crate::DEFAULT_STREAM_BATCH_SIZE,
             range,
         ));
-        if position == 0 {
+        if position == decoded_at {
             return Ok(decoded);
         }
         Ok(Box::new(Skip {
             reader: decoded,
-            remaining: position,
+            remaining: position - decoded_at,
         }))
     }
+
+    /// The restart point a read at `position` decodes from.
+    ///
+    /// A record states its map, and a map states bytes: another tool that
+    /// rewrote the member while keeping the record's extra fields would leave
+    /// one describing bytes that are gone. So a point is proven against the
+    /// coding's own evidence before it is trusted - the marker a full flush
+    /// ends with, the magic a frame begins with - and a map that fails is
+    /// dropped from the index rather than believed. That costs one read of
+    /// eight bytes, once per member however many seeks follow, because what
+    /// it proves is the map rather than the point.
+    fn restart_before(
+        self: &Arc<Self>,
+        entry: &Entry,
+        codec: Codec,
+        position: u64,
+    ) -> Result<(u64, u64)> {
+        let (decoded_at, encoded_at) = entry.restarts().before(position);
+        if encoded_at == 0 {
+            return Ok((0, 0));
+        }
+        {
+            let mut guard = self.locked()?;
+            if Self::index_of(&mut guard)?.proven.contains(entry.name()) {
+                return Ok((decoded_at, encoded_at));
+            }
+        }
+        if self.restart_proven(entry, codec, encoded_at)? {
+            let mut guard = self.locked()?;
+            Self::index_of(&mut guard)?
+                .proven
+                .insert(SmolStr::new(entry.name()));
+            return Ok((decoded_at, encoded_at));
+        }
+        // The map does not describe these bytes, so nothing may use it again.
+        let mut guard = self.locked()?;
+        let index = Self::index_of(&mut guard)?;
+        if let Some(held) = index.entries.get_mut(entry.name()) {
+            *held = held.clone().with_restarts(crate::Restarts::default());
+        }
+        index.proven.insert(SmolStr::new(entry.name()));
+        Ok((0, 0))
+    }
+
+    /// Whether the coding's own evidence of a restart sits at `encoded_at`.
+    ///
+    /// The window spans both spellings a restart has - the four bytes a full
+    /// flush ends with, and the four a frame begins with - so the scan the
+    /// coding owns answers for either without this knowing which.
+    fn restart_proven(&self, entry: &Entry, codec: Codec, encoded_at: u64) -> Result<bool> {
+        let start = self.data_offset(entry)?;
+        let Some(before) = encoded_at.checked_sub(RESTART_EVIDENCE) else {
+            return Ok(false);
+        };
+        if encoded_at + RESTART_EVIDENCE > entry.compressed_size() {
+            return Ok(false);
+        }
+        let window = self
+            .locked()?
+            .read_range(start + before, 2 * RESTART_EVIDENCE as usize)?;
+        let mut found = Vec::new();
+        codec.restart_scan().push(&window, &mut found);
+        Ok(found.contains(&RESTART_EVIDENCE))
+    }
+
 
     /// Lock the archive, naming a poisoned lock rather than panicking on it.
     fn locked(&self) -> Result<MutexGuard<'_, Inner>> {
@@ -1107,6 +1260,11 @@ impl Read for RangeReader {
 }
 
 /// Discard a decoded prefix before serving the position a caller asked for.
+///
+/// What it discards is the distance from a restart point to the position, so
+/// its bound is the member's stride rather than the position itself. A member
+/// whose record maps no restart point is the one case where the two are the
+/// same.
 struct Skip {
     reader: Box<dyn Read + Send>,
     remaining: u64,
@@ -1294,6 +1452,7 @@ fn parse(inner: &mut Inner) -> Result<Index> {
         dirty: false,
         compact: false,
         data: BTreeMap::new(),
+        proven: BTreeSet::new(),
         stored_end: size,
     })
 }

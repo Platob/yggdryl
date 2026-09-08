@@ -493,6 +493,231 @@ fn a_compressed_member_reads_positionally_without_being_held() {
     assert_eq!(member.read_all_bytes().expect("the member"), payload);
 }
 
+/// A payload big enough to hold several restart strides, and compressible.
+fn strided_payload(len: usize) -> Vec<u8> {
+    b"symbol,price,venue\nAAPL,187.23,XNAS\n"
+        .iter()
+        .copied()
+        .cycle()
+        .take(len)
+        .collect()
+}
+
+#[test]
+fn a_compressed_member_reads_at_an_offset_from_the_point_before_it() {
+    let payload = strided_payload(64 * 1024);
+    for codec in [Codec::Deflate, Codec::Zstd] {
+        let root = Archive::new(Holder::buffer(Buffer::new()))
+            .with_restart_stride(4 * 1024)
+            .mount();
+        root.archive()
+            .write_member_with("blob.bin", &payload, codec)
+            .expect("writes");
+        root.archive().flush().expect("publishes");
+
+        let entry = root
+            .archive()
+            .get_entry("blob.bin")
+            .expect("the index")
+            .expect("the member");
+        assert_eq!(entry.restarts().stride(), 4 * 1024, "{codec}");
+        assert_eq!(entry.restarts().points().len(), 15, "{codec}");
+
+        // Every offset reads what the payload holds there, whether it lands
+        // on a point, inside a unit, or past the last one.
+        let member = root.as_leaf("blob.bin").expect("a member");
+        for offset in [0_usize, 1, 4 * 1024, 4 * 1024 + 7, 30_000, 63 * 1024, 65_535] {
+            assert_eq!(
+                member.read_range_bytes(offset as u64, 24).expect("a range"),
+                payload[offset..(offset + 24).min(payload.len())],
+                "{codec} at {offset}"
+            );
+        }
+        assert_eq!(member.read_all_bytes().expect("the member"), payload);
+    }
+}
+
+/// A payload nothing compresses, so encoded distance is decoded distance.
+fn dense_payload(len: usize) -> Vec<u8> {
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    (0..len)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 24) as u8
+        })
+        .collect()
+}
+
+#[test]
+fn a_read_past_a_restart_point_decodes_the_unit_and_not_the_prefix() {
+    let payload = dense_payload(1024 * 1024);
+    let strided = Archive::new(Holder::buffer(Buffer::new()))
+        .with_restart_stride(8 * 1024)
+        .mount();
+    let solid = Archive::new(Holder::buffer(Buffer::new()))
+        .with_restart_stride(0)
+        .mount();
+    for root in [&strided, &solid] {
+        root.archive()
+            .write_member_with("blob.bin", &payload, Codec::Deflate)
+            .expect("writes");
+        root.archive().flush().expect("publishes");
+    }
+    let solid_entry = solid
+        .archive()
+        .get_entry("blob.bin")
+        .expect("the index")
+        .expect("the member");
+    assert!(solid_entry.restarts().is_empty());
+    // Nothing compressed, so what a decode walks is what the handle reads.
+    assert!(solid_entry.compressed_size() > payload.len() as u64 / 2);
+
+    // The encoded bytes a read touches are what the handle counts, so a
+    // member with restart points reads far fewer of them than a solid one.
+    let cost = |root: &Node| {
+        let member = root.as_leaf("blob.bin").expect("a member");
+        // The proof of the map is read once per member, not once per seek.
+        let _ = member.read_range_bytes(0, 1).expect("a range");
+        let before = root.archive().handle_reads();
+        assert_eq!(
+            member.read_range_bytes(1_000 * 1024, 16).expect("a range"),
+            payload[1_000 * 1024..1_000 * 1024 + 16]
+        );
+        root.archive().handle_reads() - before
+    };
+    let strided_reads = cost(&strided);
+    let solid_reads = cost(&solid);
+    assert!(
+        strided_reads * 4 < solid_reads,
+        "a mapped member read {strided_reads} times, a solid one {solid_reads}"
+    );
+}
+
+#[test]
+fn a_restart_map_that_does_not_describe_the_member_is_dropped() {
+    let payload = strided_payload(32 * 1024);
+    let encoded = Codec::Deflate.dump(&payload).expect("a solid stream");
+    let mut crc = flate2::Crc::new();
+    crc.update(&payload);
+    // A record whose map points into the middle of a solid stream, which is
+    // what a member another tool rewrote under its own record would leave.
+    let entry = Entry::new(SmolStr::new("blob.bin"), 8, 0)
+        .with_content(crc.sum(), encoded.len() as u64, payload.len() as u64)
+        .with_restarts(crate::Restarts::new(4 * 1024, vec![64_u64, 128, 192]));
+    let root = mounted(image(&[(entry, encoded)], b""));
+
+    let member = root.as_leaf("blob.bin").expect("a member");
+    assert_eq!(
+        member.read_range_bytes(20_000, 16).expect("a range"),
+        payload[20_000..20_016]
+    );
+    // Proven false once, the map is gone rather than tried again.
+    assert!(
+        root.archive()
+            .get_entry("blob.bin")
+            .expect("the index")
+            .expect("the member")
+            .restarts()
+            .is_empty()
+    );
+    assert_eq!(member.read_all_bytes().expect("the member"), payload);
+}
+
+#[test]
+fn a_member_another_writer_compressed_maps_nothing_and_still_reads() {
+    let payload = strided_payload(16 * 1024);
+    let encoded = Codec::Deflate.dump(&payload).expect("a solid stream");
+    let mut crc = flate2::Crc::new();
+    crc.update(&payload);
+    let entry = Entry::new(SmolStr::new("blob.bin"), 8, 0).with_content(
+        crc.sum(),
+        encoded.len() as u64,
+        payload.len() as u64,
+    );
+    let root = mounted(image(&[(entry, encoded)], b""));
+
+    let entry = root
+        .archive()
+        .get_entry("blob.bin")
+        .expect("the index")
+        .expect("the member");
+    assert!(entry.restarts().is_empty());
+    assert_eq!(entry.restarts().stride(), 0);
+    assert_eq!(
+        root.as_leaf("blob.bin")
+            .expect("a member")
+            .read_range_bytes(12_000, 16)
+            .expect("a range"),
+        payload[12_000..12_016]
+    );
+}
+
+#[test]
+fn a_restart_map_survives_a_remount_and_a_compaction() {
+    let payload = strided_payload(64 * 1024);
+    let root = Archive::new(Holder::buffer(Buffer::new()))
+        .with_restart_stride(4 * 1024)
+        .mount();
+    root.archive()
+        .write_member_with("blob.bin", &payload, Codec::Deflate)
+        .expect("writes");
+    root.archive()
+        .write_member_with("gone.bin", b"dead space", Codec::Identity)
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    // Removal compacts, which moves the record without touching what it says,
+    // because the map's offsets are relative to the member's own bytes.
+    root.archive().remove_member("gone.bin").expect("removes");
+    root.archive().flush().expect("publishes");
+
+    let remounted = mounted(bytes(root.archive()));
+    let entry = remounted
+        .archive()
+        .get_entry("blob.bin")
+        .expect("the index")
+        .expect("the member");
+    assert_eq!(entry.restarts().stride(), 4 * 1024);
+    assert_eq!(entry.restarts().points().len(), 15);
+    assert_eq!(
+        remounted
+            .as_leaf("blob.bin")
+            .expect("a member")
+            .read_range_bytes(60_000, 16)
+            .expect("a range"),
+        payload[60_000..60_016]
+    );
+}
+
+#[test]
+fn a_large_member_widens_its_stride_rather_than_growing_its_map() {
+    let payload = strided_payload(4 * 1024 * 1024);
+    let root = Archive::new(Holder::buffer(Buffer::new()))
+        .with_restart_stride(64)
+        .mount();
+    root.archive()
+        .write_member_with("blob.bin", &payload, Codec::Deflate)
+        .expect("writes");
+    root.archive().flush().expect("publishes");
+
+    let entry = root
+        .archive()
+        .get_entry("blob.bin")
+        .expect("the index")
+        .expect("the member");
+    assert!(entry.restarts().points().len() <= format::MAX_RESTARTS);
+    assert_eq!(entry.restarts().stride(), 2_048);
+    assert_eq!(
+        root.as_leaf("blob.bin")
+            .expect("a member")
+            .read_range_bytes(3_000_000, 16)
+            .expect("a range"),
+        payload[3_000_000..3_000_016]
+    );
+}
+
 #[test]
 fn opening_a_member_answers_from_the_value_it_holds() {
     let root = root();

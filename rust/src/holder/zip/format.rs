@@ -10,7 +10,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Codec, Error, Result};
+use crate::{Codec, Error, Restarts, Result};
 
 use super::Entry;
 
@@ -45,6 +45,15 @@ pub(super) const ZIP64_MARK_16: u16 = u16::MAX;
 const ZIP64_EXTRA_ID: u16 = 0x0001;
 /// Header id of the Info-ZIP extended timestamp extra field.
 const TIMESTAMP_EXTRA_ID: u16 = 0x5455;
+/// Header id of this crate's restart map, unclaimed by APPNOTE's registry.
+///
+/// The map says where a compressed member's decode may begin, which is what
+/// makes a position inside one addressable without decoding everything before
+/// it. It is metadata beside the member rather than part of it: a reader that
+/// does not know the id skips the field by its declared length, exactly as
+/// this one skips every field it does not know, and reads the member whole as
+/// it always would.
+const RESTART_EXTRA_ID: u16 = 0x5967;
 /// The extended timestamp bit that says a modification time is present.
 const TIMESTAMP_MODIFIED: u8 = 0x01;
 
@@ -68,6 +77,15 @@ const VERSION_ZIP64: u16 = 45;
 const VERSION_BASE: u16 = 20;
 /// Version 6.3, the first that specifies Zstandard.
 const VERSION_ZSTD: u16 = 63;
+
+/// The most restart points one member's map states.
+///
+/// A map rides the central directory, which the mount reads whole, so its size
+/// is a cost every operation pays rather than one only a seek does. The writer
+/// widens the stride instead of passing this, so a large member stays as
+/// addressable as a small one at a bounded price: 8 bytes a point, 16 KiB at
+/// the ceiling.
+pub(super) const MAX_RESTARTS: usize = 2_048;
 
 /// The Unix permissions a written member and directory carry.
 const UNIX_FILE_MODE: u32 = 0o100_644;
@@ -306,6 +324,7 @@ fn read_extras(
     base: usize,
     fields: &mut Zip64Fields,
     modified: &mut Option<i64>,
+    restarts: &mut Restarts,
 ) -> Result<()> {
     let mut scan = Scan::new(extra, base);
     while scan.remaining() >= 4 {
@@ -334,10 +353,37 @@ fn read_extras(
                     }
                 }
             }
+            RESTART_EXTRA_ID => {
+                let mut body = Scan::new(body, base);
+                if body.remaining() >= 8 {
+                    let stride = body.u64()?;
+                    let mut points = Vec::with_capacity(body.remaining() / 8);
+                    while body.remaining() >= 8 {
+                        points.push(body.u64()?);
+                    }
+                    *restarts = Restarts::new(stride, points);
+                }
+            }
             _ => {}
         }
     }
     Ok(())
+}
+
+/// Build the restart map extra field, or nothing when the member has none.
+fn restart_extra(entry: &Entry) -> Vec<u8> {
+    let restarts = entry.restarts();
+    if restarts.is_empty() {
+        return Vec::new();
+    }
+    let mut extra = Vec::with_capacity(8 * restarts.points().len() + 12);
+    put_u16(&mut extra, RESTART_EXTRA_ID);
+    put_u16(&mut extra, (8 * restarts.points().len() + 8) as u16);
+    put_u64(&mut extra, restarts.stride());
+    for point in restarts.points() {
+        put_u64(&mut extra, *point);
+    }
+    extra
 }
 
 /// Build the ZIP64 extra field a record needs, or nothing when it needs none.
@@ -426,7 +472,8 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         header_offset,
     };
     let mut modified = None;
-    read_extras(extra, offset, &mut fields, &mut modified)?;
+    let mut restarts = Restarts::default();
+    read_extras(extra, offset, &mut fields, &mut modified, &mut restarts)?;
 
     let name = decode_text(name, offset, "name")?;
     let comment = decode_text(comment, offset, "comment")?;
@@ -441,7 +488,8 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         fields.header_offset,
         external_attributes,
         comment,
-    ))
+    )
+    .with_restarts(restarts))
 }
 
 /// Decode one record's text field, which the format states is UTF-8.
@@ -464,7 +512,10 @@ fn decode_text(bytes: &[u8], offset: usize, field: &str) -> Result<smol_str::Smo
 pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     let zip64 = zip64_extra(entry, false);
     let timestamp = timestamp_extra(entry);
-    let extra_len = zip64.len() + timestamp.len();
+    // The map rides the central record alone: the index is what reads it, and
+    // a local header that never carries it is one compaction copies verbatim.
+    let restarts = restart_extra(entry);
+    let extra_len = zip64.len() + timestamp.len() + restarts.len();
     let (date, time) = dos_datetime(entry.modified());
     put_u32(target, CENTRAL_SIGNATURE);
     put_u16(target, MADE_BY_UNIX | VERSION_ZIP64);
@@ -487,6 +538,7 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     target.extend_from_slice(entry.name().as_bytes());
     target.extend_from_slice(&zip64);
     target.extend_from_slice(&timestamp);
+    target.extend_from_slice(&restarts);
     target.extend_from_slice(entry.comment().as_bytes());
 }
 

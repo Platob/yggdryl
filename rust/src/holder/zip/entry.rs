@@ -2,7 +2,7 @@
 
 use smol_str::SmolStr;
 
-use crate::{Codec, Result};
+use crate::{Codec, Restarts, Result};
 
 use super::format;
 
@@ -40,12 +40,13 @@ pub struct Entry {
     header_offset: u64,
     external_attributes: u32,
     comment: SmolStr,
+    restarts: Restarts,
 }
 
 impl Entry {
     /// Assemble an entry from the exact fields a record carries.
     #[allow(clippy::too_many_arguments)]
-    pub(super) const fn from_parts(
+    pub(super) fn from_parts(
         name: SmolStr,
         flags: u16,
         method: u16,
@@ -68,6 +69,7 @@ impl Entry {
             header_offset,
             external_attributes,
             comment,
+            restarts: Restarts::default(),
         }
     }
 
@@ -84,6 +86,7 @@ impl Entry {
             header_offset: 0,
             external_attributes: format::external_attributes(directory),
             comment: SmolStr::default(),
+            restarts: Restarts::default(),
             name,
         }
     }
@@ -139,6 +142,20 @@ impl Entry {
         &self.comment
     }
 
+    /// Where the member's decode may begin, when its record maps that.
+    ///
+    /// A member this crate compressed carries the map beside its record, so a
+    /// positional read decodes one stride rather than everything before the
+    /// offset. A stored member needs none - every offset is addressable - and
+    /// a member another writer compressed states none, which reads honestly
+    /// as an empty map.
+    ///
+    /// Offsets are relative to the member's first data byte, so compaction
+    /// moves a record without touching what it says.
+    pub const fn restarts(&self) -> &Restarts {
+        &self.restarts
+    }
+
     /// Whether the record names a directory rather than a byte member.
     pub fn is_directory(&self) -> bool {
         self.name.ends_with('/')
@@ -173,15 +190,19 @@ impl Entry {
     }
 
     /// Restate this entry with the sizes and digest a published member has.
-    pub(super) const fn with_content(
-        mut self,
-        crc32: u32,
-        compressed_size: u64,
-        size: u64,
-    ) -> Self {
+    pub(super) fn with_content(mut self, crc32: u32, compressed_size: u64, size: u64) -> Self {
         self.crc32 = crc32;
         self.compressed_size = compressed_size;
         self.size = size;
+        // The map describes bytes that are being replaced, so it goes with
+        // them; the writer states the new one beside the new content.
+        self.restarts = Restarts::default();
+        self
+    }
+
+    /// Restate this entry with the restart map its record carries.
+    pub(super) fn with_restarts(mut self, restarts: Restarts) -> Self {
+        self.restarts = restarts;
         self
     }
 
