@@ -41,9 +41,10 @@ pub use expression::{
     BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
 };
 pub use fix::{
-    FixCodecOptions, JsFixCodec, JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixProjection,
-    JsFixRegistry, fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
-    fix_schema_tags, fix_standard_branch_native, fix_user_tag_max_native, fix_user_tag_min_native,
+    FixCodecOptions, JsFixCodec, JsFixFieldIterator, JsFixMsg, JsFixMsgEntries, JsFixRegistry,
+    fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
+    fix_schema_carrying, fix_schema_tags, fix_standard_branch_native, fix_user_tag_max_native,
+    fix_user_tag_min_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};

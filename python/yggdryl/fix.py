@@ -24,8 +24,9 @@ the capture's own columns first, the dictionary's fixed columns after, one
 input row per output row -- and
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns named
 by tag, because a tag is the one name a field has in every version and every
-dialect. :class:`FixProjection` resolves those columns once so a row is an
-indexed read rather than a dictionary lookup per column, and
+dialect, so a column is found with ``schema.index_of("35")`` and nothing has to
+be resolved per row. :func:`fix_schema_carrying` puts a capture's own columns in
+front of them, and
 :func:`fix_crate_fields` is what this crate itself adds beside the
 specification: the digest, the version read, the cross-venue symbol, the market
 clock, the partition it falls in, and the two parent order identifiers.
@@ -47,7 +48,6 @@ from ._native import (
     USER_TAG_MIN,
     FixBranch,
     FixMsg,
-    FixProjection,
     FixCodec,
     FixRegistry,
     fix_cfb_fields,
@@ -55,6 +55,7 @@ from ._native import (
     fix_crate_fields,
     fix_parse_arrow_reader as parse_arrow_reader,
     fix_schema,
+    fix_schema_carrying,
     fix_schema_tags,
     global_registry,
     install_global_registry,
@@ -66,13 +67,13 @@ __all__ = [
     "USER_TAG_MIN",
     "FixBranch",
     "FixMsg",
-    "FixProjection",
     "FixCodec",
     "FixRegistry",
     "classify_arrow_array",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
+    "fix_schema_carrying",
     "fix_schema_tags",
     "global_registry",
     "install_global_registry",

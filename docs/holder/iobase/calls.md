@@ -99,6 +99,7 @@ here.
 - The tally is shared behind an `Arc`, so a reading handle survives moving the wrapper several layers down; `reset` is what a benchmark uses between the setup it does not want to count and the operation it does.
 - Counting is a relaxed atomic add per call: it is not free, and it is not a thing to leave in a production stack.
 - `Counted` counts calls, not bytes. A layer that makes one call and transfers a gigabyte through it reads as one - which is right for the question this answers, and is why the transfer volume of a whole-value read is stated on the page that owns it.
+- A [ZIP archive](../backends/zip.md) counts itself instead: it holds a `Holder`, and the enum has no variant a counted handle could arrive as, so `Archive::handle_reads` and `handle_writes` tally the same crossings one layer in. The pins live beside the others in `rust/tests/iobase_calls.rs`.
 
 ## Performance
 

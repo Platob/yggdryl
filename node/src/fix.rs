@@ -21,8 +21,7 @@ use napi::bindgen_prelude::{Buffer, ClassInstance, Env, Generator, Result, Unkno
 use napi_derive::napi;
 use yggdryl::{
     Field as CoreField, FixBranch as CoreFixBranch, FixCodec as CoreFixCodec, FixId as CoreFixId,
-    FixKey, FixMsg as CoreFixMsg, FixProjection as CoreFixProjection,
-    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
+    FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -53,7 +52,7 @@ pub(crate) fn id_from_js(text: &str) -> Result<CoreFixId> {
     CoreFixId::from_str(text).map_err(napi_error)
 }
 
-/// Retain branch text beside a packed identifier for a field write.
+/// Retain branch text beside the identifier for a field write.
 ///
 /// The identifier parses first, exactly as `id_parts_from_py` does it. Reading
 /// the colon first would answer a malformed identifier with a message of this
@@ -908,10 +907,14 @@ impl JsFixMsg {
     }
 
     /// This message as the fixed row a table holds.
+    ///
+    /// `schema` is the fixed root `fixSchema` builds: every column is filled by
+    /// the tag its name spells, and a column no tag names answers null because
+    /// it is the capture's rather than the message's.
     #[napi]
-    pub fn to_row(&self, projection: &JsFixProjection) -> Result<JsScalar> {
+    pub fn to_row(&self, schema: &JsField) -> Result<JsScalar> {
         self.inner
-            .to_row(&projection.inner)
+            .to_row(&schema.inner)
             .map(JsScalar::from_core)
             .map_err(napi_error)
     }
@@ -1020,10 +1023,6 @@ fn answered(value: &Scalar) -> Option<JsScalar> {
 /// name/value text, or pairs a caller already has. Each redirects to the core
 /// method of the same name, so nothing here decides a dialect, a version or a
 /// separator - it only carries what JavaScript said across.
-///
-/// A reader caches the projection of whichever version it was last asked for,
-/// so a capture read at one version pays the resolution once rather than once
-/// per row. Cloning one gives it a cache of its own, exactly as the core does.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
     inner: CoreFixCodec,
@@ -1141,10 +1140,7 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// A cheap clone, with a projection cache of its own.
-    ///
-    /// Two readers differing in version would otherwise clear each other's
-    /// cache every row, which is exactly when a reader is usually cloned.
+    /// A cheap clone: the dictionary is shared and the pins are copied.
     #[napi(js_name = "clone")]
     pub fn clone_js(&self) -> Self {
         Self {
@@ -1178,127 +1174,6 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
     spelling.parse::<CoreVersion>().map_err(napi_error)
 }
 
-/// Where each fixed column sits, resolved once against one dictionary.
-///
-/// A row projection asks for the same tags in the same order for every message
-/// in a capture, and each ask through the ordinary tiers is a hash, a
-/// verification and a branch walk. Building one turns the per-row cost into an
-/// indexed read, which is the whole reason a fixed schema is worth having.
-#[napi(js_name = "FixProjection")]
-pub struct JsFixProjection {
-    inner: CoreFixProjection,
-}
-
-#[napi]
-impl JsFixProjection {
-    /// Resolve every fixed column against one dictionary.
-    ///
-    /// `carrier` is a capture's own root - where a line was read from, which
-    /// line it was, what stamped it - whose columns lead the row where one is
-    /// given, because that is what a monitor orders and joins on.
-    #[napi(constructor)]
-    pub fn new(
-        registry: Option<ClassInstance<'_, JsFixRegistry>>,
-        name: Option<String>,
-        carrier: Option<&JsField>,
-    ) -> Result<Self> {
-        let registry = match registry {
-            Some(held) => Arc::clone(&held.inner),
-            None => Arc::clone(CoreFixRegistry::global().map_err(napi_error)?),
-        };
-        let name = name.unwrap_or_else(|| "fix".to_owned());
-        let read = yggdryl::fix_schema(&registry, name).map_err(napi_error)?;
-        let inner = match carrier {
-            None => CoreFixProjection::from_field(read),
-            Some(held) => CoreFixProjection::carrying(&held.inner, read).map_err(napi_error)?,
-        };
-        Ok(Self { inner })
-    }
-
-    /// Wrap a root that is already the fixed schema.
-    #[napi(factory, ts_return_type = "FixProjection")]
-    pub fn from_field(field: &JsField) -> Self {
-        Self {
-            inner: CoreFixProjection::from_field(field.inner.clone()),
-        }
-    }
-
-    /// The root this projection fills.
-    #[napi(getter)]
-    pub fn field(&self) -> JsField {
-        JsField::from_core(self.inner.field().clone())
-    }
-
-    /// The tag each column carries, in column order; 0 where it carries none.
-    #[allow(clippy::cast_lossless)]
-    #[napi(getter)]
-    pub fn tags(&self) -> Vec<f64> {
-        self.inner
-            .tags()
-            .iter()
-            .map(|held| f64::from(*held))
-            .collect()
-    }
-
-    /// How many leading columns are the capture's rather than FIX's.
-    #[allow(clippy::cast_precision_loss)]
-    #[napi(getter)]
-    pub fn carried(&self) -> f64 {
-        self.inner.carried() as f64
-    }
-
-    /// Where each carried column sat in the capture it came from.
-    #[allow(clippy::cast_precision_loss)]
-    #[napi(getter)]
-    pub fn carried_positions(&self) -> Vec<f64> {
-        self.inner
-            .carried_positions()
-            .iter()
-            .map(|held| *held as f64)
-            .collect()
-    }
-
-    /// How many columns carry a value rather than the arrival record.
-    #[allow(clippy::cast_precision_loss)]
-    #[napi(getter)]
-    pub fn value_columns(&self) -> f64 {
-        self.inner.value_columns() as f64
-    }
-
-    /// How many columns there are in all.
-    #[allow(clippy::cast_precision_loss)]
-    #[napi(getter)]
-    pub fn size(&self) -> f64 {
-        self.inner.tags().len() as f64
-    }
-
-    /// The field behind one column, by position.
-    #[napi]
-    pub fn column(&self, at: f64) -> Result<Option<JsField>> {
-        let at = usize::try_from(exact_i64(at, "at")?)
-            .map_err(|_| napi_error("a column position is not negative"))?;
-        Ok(self.inner.column(at).cloned().map(JsField::from_core))
-    }
-
-    /// Where one tag's column sits, without a dictionary lookup.
-    #[allow(clippy::cast_precision_loss)]
-    #[napi]
-    pub fn position_of(&self, tag: f64) -> Result<Option<f64>> {
-        let tag = exact_i32(tag, "tag")?;
-        Ok(self.inner.position_of(tag).map(|held| held as f64))
-    }
-
-    /// How this projection renders: its root and how wide a row is.
-    #[napi(js_name = "toString")]
-    pub fn js_string(&self) -> String {
-        format!(
-            "FixProjection({:?}, {} columns)",
-            self.inner.field().name(),
-            self.inner.tags().len()
-        )
-    }
-}
-
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
@@ -1316,6 +1191,20 @@ pub fn fix_schema(
     };
     let name = name.unwrap_or_else(|| "fix".to_owned());
     yggdryl::fix_schema(&registry, name)
+        .map(JsField::from_core)
+        .map_err(napi_error)
+}
+
+/// The fixed root behind a capture's own columns.
+///
+/// `carrier` is a capture's own root - where a line was read from, which line
+/// it was, what stamped it - and its columns lead the row, because that is what
+/// a monitor orders and joins on. A carried column whose name a FIX column
+/// already takes is dropped rather than renamed: the FIX column is the one a
+/// reader spelling it means.
+#[napi(js_name = "fixSchemaCarrying")]
+pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
+    yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
         .map(JsField::from_core)
         .map_err(napi_error)
 }

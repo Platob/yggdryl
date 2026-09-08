@@ -88,8 +88,8 @@ impl FixEntry {
 
     /// Returns the digest of the dialect this pair resolved in.
     ///
-    /// The same value [`FixId`] packs into its low 32 bits, so an entry and a
-    /// field identity say branch identity the same way. `0` is the standard
+    /// The same value [`FixId::branch`] answers, so an entry and a field
+    /// identity say branch identity the same way. `0` is the standard
     /// branch and is never absent: the column carries no validity bitmap and
     /// a reader never branches on a null.
     ///
@@ -142,10 +142,9 @@ impl FixEntry {
     /// that never arrived is never invented: the caller keeps the child flat.
     pub(crate) fn adopt(&mut self, tag: i32, mut child: FixEntry) -> Option<FixEntry> {
         for held in self.children.iter_mut().rev() {
-            match held.adopt(tag, child) {
-                None => return None,
-                Some(back) => child = back,
-            }
+            // A child that was adopted answers `None`, which is this
+            // function's own answer for the same thing.
+            child = held.adopt(tag, child)?;
         }
         if self.tag == tag {
             self.children.push(child);
@@ -172,15 +171,16 @@ impl FixEntry {
 
     /// Builds the identity this entry names, absent when its key named none.
     ///
-    /// Packed directly from the stored digest, which is the same half of the
-    /// identifier `FixId` holds. Admissibility was decided when the pair
-    /// resolved - only an admitted branch ever reaches an entry - so there is
-    /// nothing left to check and nothing to re-derive.
+    /// The two columns are the two halves of the identifier, in the same
+    /// signed reading, so this copies them rather than converting them.
+    /// Admissibility was decided when the pair resolved - only an admitted
+    /// branch ever reaches an entry - so there is nothing left to check and
+    /// nothing to re-derive.
     #[must_use]
     pub fn id(&self) -> Option<FixId> {
         if self.tag == 0 {
             return None;
         }
-        Some(FixId::pack(unsigned(self.branch), self.tag))
+        Some(FixId::new(self.tag, self.branch))
     }
 }

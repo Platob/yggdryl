@@ -424,7 +424,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixMsg>()?;
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
-    module.add_class::<fix::PyFixProjection>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -486,6 +485,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_parse_arrow_reader, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_classify_arrow_array, module)?)?;

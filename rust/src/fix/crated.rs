@@ -12,9 +12,9 @@
 //! Their tags are in FIX's user-defined range - high in it, from 30001 up,
 //! rather than down in the 5000s where venues actually crowd. That is not
 //! enough on its own: a venue is free to define its own 30001. They are
-//! therefore carried on this crate's own branch, so the packed
-//! [identifier](super::FixId) differs even where the tag does not - same tag,
-//! different branch, different identity.
+//! therefore carried on this crate's own branch, so the
+//! [identifier](super::FixId) differs even where the tag does not - same
+//! tag, different branch, different identity.
 //!
 //! # And why one of them is not here
 //!

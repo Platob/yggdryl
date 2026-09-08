@@ -55,8 +55,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     }
 
-    // A row read as an older version pays the lineage projection per field,
-    // which is the reason a version is resolved once and cached per field.
+    // A row read at an older version pays one dated code lookup per value and
+    // nothing else: the column it lands in is the dictionary's at every
+    // version, so a dated read is a read.
     let dated = reader
         .clone()
         .with_version("4.2".parse::<Version>().expect("a version"));

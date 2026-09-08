@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Url};
 
-use super::{Archive, Entry, Folder, archive, name};
+use super::{Archive, Entry, Node, name};
 
 /// One archive member's bytes, addressed positionally.
 ///
@@ -58,7 +58,7 @@ use super::{Archive, Entry, Folder, archive, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct File {
+pub struct Leaf {
     archive: Arc<Archive>,
     /// The member's canonical path inside the archive.
     name: SmolStr,
@@ -74,9 +74,33 @@ pub struct File {
     plain: Option<Vec<u8>>,
     /// Whether `plain` holds changes the archive has not seen.
     dirty: bool,
+    /// What the archive said about the member when this handle decoded it.
+    ///
+    /// A staged value describes the bytes it was decoded from, so publishing
+    /// it over a member another handle has since replaced would drop that
+    /// write silently. The two are compared instead, and the conflict named.
+    decoded_from: Decoded,
 }
 
-impl File {
+/// What the archive said about a member when a handle decoded it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Decoded {
+    /// Nothing was decoded, so nothing constrains what a publish replaces.
+    Nothing,
+    /// The archive held no such member.
+    Absent,
+    /// The member's record began at this offset.
+    Record(u64),
+}
+
+impl Decoded {
+    /// What the archive says about the member now.
+    fn of(entry: Option<&Entry>) -> Self {
+        entry.map_or(Self::Absent, |entry| Self::Record(entry.header_offset()))
+    }
+}
+
+impl Leaf {
     /// Address one member of `archive` without touching it.
     pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self {
         Self {
@@ -88,6 +112,7 @@ impl File {
             codec: None,
             plain: None,
             dirty: false,
+            decoded_from: Decoded::Nothing,
         }
     }
 
@@ -139,6 +164,7 @@ impl File {
     /// Materialize the decoded member, decoding the archive's bytes once.
     fn decoded(&mut self) -> Result<&mut Vec<u8>> {
         if self.plain.is_none() {
+            self.decoded_from = Decoded::of(self.get_entry()?.as_ref());
             self.plain = Some(self.read_whole()?);
         }
         self.plain
@@ -151,9 +177,7 @@ impl File {
         let Some(entry) = self.get_entry()? else {
             return Ok(Vec::new());
         };
-        let bytes = self.archive.read_entry(&entry)?;
-        archive::verify_crc(&entry, &bytes)?;
-        Ok(bytes)
+        self.archive.read_entry(&entry)
     }
 
     /// The coding a write stores this member under.
@@ -166,14 +190,14 @@ impl File {
                 return Ok(codec);
             }
         }
-        // A representation that already carries a content coding is stored as
-        // it is: compressing a `.csv.gz` member again costs time and grows it.
-        let declared = Codec::from_media_type(self.media_type());
-        if declared.is_identity() {
-            Ok(self.archive.codec())
-        } else {
-            Ok(Codec::Identity)
+        // A representation that is already compressed is stored as it is:
+        // recoding a `.csv.gz` member costs time and grows it, and an archive
+        // member stored whole is one whose own members stay addressable.
+        let media_type = self.media_type();
+        if !Codec::from_media_type(media_type).is_identity() || media_type.base().is_archive() {
+            return Ok(Codec::Identity);
         }
+        Ok(self.archive.codec())
     }
 
     /// Write the decoded member back into the archive.
@@ -181,9 +205,21 @@ impl File {
         if !self.dirty {
             return Ok(());
         }
+        if self.decoded_from != Decoded::Nothing
+            && Decoded::of(self.get_entry()?.as_ref()) != self.decoded_from
+        {
+            return Err(Error::conflict(
+                "the member this value was decoded from",
+                "a member another handle has since written",
+                &self.url,
+            ));
+        }
         let codec = self.write_codec()?;
         let plain = self.plain.take().unwrap_or_default();
-        self.archive.write_member_with(&self.name, &plain, codec)?;
+        let entry = self
+            .archive
+            .write_member_from(&self.name, &plain[..], codec)?;
+        self.decoded_from = Decoded::Record(entry.header_offset());
         self.plain = Some(plain);
         self.dirty = false;
         self.archive.flush()
@@ -203,7 +239,7 @@ impl File {
     }
 }
 
-impl IOFile for File {
+impl IOFile for Leaf {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -216,11 +252,13 @@ impl IOFile for File {
     fn clear_file(&mut self) -> Result<()> {
         self.plain = None;
         self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
         if !self.file_exists() {
             return Ok(());
         }
         let codec = self.write_codec()?;
-        self.archive.write_member_with(&self.name, &[], codec)?;
+        self.archive
+            .write_member_from(&self.name, std::io::empty(), codec)?;
         self.archive.flush()
     }
 
@@ -228,6 +266,7 @@ impl IOFile for File {
     fn delete_file(&mut self) -> Result<()> {
         self.plain = None;
         self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
         if self.archive.remove_member(&self.name)? {
             return self.archive.flush();
         }
@@ -235,11 +274,11 @@ impl IOFile for File {
     }
 }
 
-impl crate::IOMedia for File {
+impl crate::IOMedia for Leaf {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for File {
+impl IOBase for Leaf {
     /// Read the range out of the decoded member.
     ///
     /// A stored member reads straight out of the archive at its data offset;
@@ -261,10 +300,19 @@ impl IOBase for File {
         let Some(entry) = self.get_entry()? else {
             return Ok(0);
         };
-        Ok(std::io::Read::read(
-            &mut self.archive.entry_reader(&entry, offset)?,
-            buffer,
-        )?)
+        // A decode step answers whatever one step produced, which is short of
+        // the buffer far more often than the member is short of the offset,
+        // and `pread` is short only at the end of a value.
+        let mut reader = self.archive.entry_reader(&entry, offset)?;
+        let mut filled = 0;
+        while filled < buffer.len() {
+            let read = std::io::Read::read(&mut reader, &mut buffer[filled..])?;
+            if read == 0 {
+                break;
+            }
+            filled += read;
+        }
+        Ok(filled)
     }
 
     /// Stream the decoded member without materializing it.
@@ -280,6 +328,20 @@ impl IOBase for File {
             return ByteStream::from_reader(std::io::empty(), batch_size);
         };
         ByteStream::from_reader(self.archive.entry_reader(&entry, position)?, batch_size)
+    }
+
+    /// Replace the member, streaming the value into the archive.
+    ///
+    /// The member that was there is not decoded to be discarded, and the
+    /// value is not staged: it goes through the coding into the archive as it
+    /// is read, and the directory publishes it.
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
+        let codec = self.write_codec()?;
+        self.archive.write_member_from(&self.name, bytes, codec)?;
+        self.plain = None;
+        self.dirty = false;
+        self.decoded_from = Decoded::Nothing;
+        self.archive.flush()
     }
 
     /// Read the member whole, verifying the digest its record states.
@@ -337,6 +399,13 @@ impl IOBase for File {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         let size = usize::try_from(size).unwrap_or(usize::MAX);
+        if size == 0 {
+            // Emptying a member keeps nothing of it, so nothing is decoded to
+            // find that out.
+            self.plain = Some(Vec::new());
+            self.dirty = true;
+            return Ok(());
+        }
         let plain = self.decoded()?;
         if size < plain.len() {
             plain.truncate(size);
@@ -385,6 +454,7 @@ impl IOBase for File {
     fn close(&mut self) -> Result<()> {
         self.publish()?;
         self.plain = None;
+        self.decoded_from = Decoded::Nothing;
         Ok(())
     }
 
@@ -395,7 +465,7 @@ impl IOBase for File {
     /// out and belongs to the archive, not to its members.
     fn parent(&self) -> Option<Holder> {
         let base = name::parent(&self.name).unwrap_or_default();
-        Some(Holder::ZipFolder(Folder::new(
+        Some(Holder::ZipNode(Node::new(
             Arc::clone(&self.archive),
             SmolStr::new(base),
         )))

@@ -14,7 +14,7 @@ use std::path::Path;
 
 use yggdryl::media::text::TextOptions;
 use yggdryl::text::Formatting;
-use yggdryl::{Field, FixProjection, FixRegistry, Result};
+use yggdryl::{Field, FixRegistry, Result};
 
 use crate::style;
 
@@ -45,7 +45,7 @@ pub fn build(registry: &FixRegistry, rowheader: Option<&str>, name: &str) -> Res
     options.with_rownum = Some(1);
     options.set_rowheader(Some(header))?;
     let carrier = options.source_field()?;
-    Ok(FixProjection::carrying(&carrier, read)?.field().clone())
+    yggdryl::fix_schema_carrying(&carrier, &read)
 }
 
 /// Prints the row, or writes it where it was asked for.

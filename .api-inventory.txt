@@ -72,6 +72,21 @@ pub struct Level(u8);
   pub const fn get(self) -> u8
   pub enum Codec
   pub const ALL: [Self; 5] = [ Self::Identity, Self::Gzip, Self::Zlib, Self::Deflate, Self::Zstd, ];
+  pub const fn has_restarts(self) -> bool
+  pub const fn restart_scan(self) -> RestartScan
+pub struct RestartScan
+  pub const fn consumed(&self) -> u64
+  pub fn push(&mut self, chunk: &[u8], into: &mut Vec<u64>)
+pub struct Restarts
+  pub fn new(stride: u64, points: impl Into<std::sync::Arc<[u64]>>) -> Self
+  pub const fn stride(&self) -> u64
+  pub fn points(&self) -> &[u64]
+  pub fn is_empty(&self) -> bool
+  pub fn before(&self, position: u64) -> (u64, u64)
+pub struct Encoder
+  pub const fn codec(&self) -> Codec
+  pub fn restart(&mut self) -> Result<()>
+  pub fn finish(self) -> Result<()>
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn extension(self) -> Option<&'static str>
@@ -455,7 +470,7 @@ impl<'field> FixField<'field>
   pub fn description(&self) -> Option<&'field str>
   impl FixFieldMut<'_>
   pub fn set_branch(&mut self, branch: &FixBranch) -> Result<()>
-  pub fn set_id(&mut self, id: &FixId) -> Result<()>
+  pub fn set_id(&mut self, branch: &FixBranch, tag: i32) -> Result<()>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
@@ -479,20 +494,22 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   impl FromStr for FixBranch  (Err = Error)
   impl AsRef<str> for FixBranch
   impl fmt::Display for FixBranch
-  pub struct FixId
-  pub const STANDARD_TAG_LIMIT: i32
-  pub fn standard(tag: i32) -> Self
-  pub fn from_parts(branch: FixBranch, tag: i32) -> Result<Self>
+  pub struct FixId  (a tag i32 beside a branch digest i32, eight bytes)
+  pub const USER_TAG_MIN: i32
+  pub const USER_TAG_MAX: i32
+  pub const fn standard(tag: i32) -> Self
+  pub fn from_parts(branch: &FixBranch, tag: i32) -> Result<Self>
   pub fn from_str(text: &str) -> Result<Self>
-  pub const fn branch(&self) -> &FixBranch
-  pub const fn tag(&self) -> i32
-  pub fn is_standard(&self) -> bool
-  impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is branch-major)
+  pub const fn tag(self) -> i32
+  pub const fn branch(self) -> i32  (the digest signed, as an entry stores it)
+  pub const fn branch_digest(self) -> u32
+  pub const fn is_standard(self) -> bool
+  impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId  (Ord is tag-major, then the signed branch digest)
   impl FromStr for FixId  (Err = Error)
-  impl fmt::Display for FixId  (always "<branch>:<tag>")
-  pub enum FixKey<'a>  (Tag(i32) | Id(&'a FixId) | Name(&'a str))
+  impl fmt::Display for FixId  ("<tag>:" in the standard branch, else "<tag>:#<digest hex>")
+  pub enum FixKey<'a>  (Tag(i32) | Id(FixId) | Name(&'a str))
   impl From<i32> for FixKey<'_>
-  impl<'a> From<&'a FixId> for FixKey<'a>
+  impl From<FixId> for FixKey<'_>
   impl<'a> From<&'a str> for FixKey<'a>
   impl<'a> From<&'a String> for FixKey<'a>
   impl fmt::Display for FixKey<'_>
@@ -505,8 +522,8 @@ pub struct FixMsg
   pub const fn branch(&self) -> &FixBranch
   pub const fn as_field(&self) -> &Field
   pub const fn as_value(&self) -> &Scalar
-  pub fn get_by_id(&self, id: &FixId) -> Option<&Scalar>
-  pub fn by_id(&self, id: &FixId) -> Result<&Scalar>
+  pub fn get_by_id(&self, id: FixId) -> Option<&Scalar>
+  pub fn by_id(&self, id: FixId) -> Result<&Scalar>
   pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar>
   pub fn by_tag(&self, tag: i32) -> Result<&Scalar>
   pub fn get_by_name(&self, name: &str) -> Option<&Scalar>
@@ -521,8 +538,8 @@ pub struct FixMsg
 pub struct FixRegistry
   pub fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,
-  pub fn get_field_by_id(&self, id: &FixId) -> Option<&Field>
-  pub fn field_by_id(&self, id: &FixId) -> Result<&Field>
+  pub fn get_field_by_id(&self, id: FixId) -> Option<&Field>
+  pub fn field_by_id(&self, id: FixId) -> Result<&Field>
   pub fn get_field_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn field_by_tag(&self, tag: i32) -> Result<&Field>
   pub fn get_field_by_name(&self, branch: &FixBranch, name: &str) -> Option<&Field>
@@ -541,7 +558,7 @@ pub struct FixRegistry
   pub fn branch_named(&self, name: &str) -> Option<&FixBranch>
   pub fn branches(&self) -> impl Iterator<Item = &FixBranch>
   pub fn set_branch(&mut self, branch: FixBranch) -> Result<()>
-  pub fn next_field_after(&self, after: Option<&FixId>) -> Option<&Field>
+  pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>
   pub fn iter(&self) -> FixFieldIter<'_>
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -549,6 +566,22 @@ pub struct FixRegistry
   impl<'registry> IntoIterator for &'registry FixRegistry  (IntoIter = FixFieldIter<'registry>)
   pub struct FixFieldIter<'registry>
   impl<'registry> Iterator for FixFieldIter<'registry>  (Item = &'registry Field; also DoubleEndedIterator, ExactSizeIterator and FusedIterator)
+
+### yggdryl::fix::schema  [rust\src\fix\schema.rs]
+pub const HEADER_TAGS: [i32; 24]
+pub const TRAILER_TAGS: [i32; 3]
+pub const BODY_TAGS: [i32; 49]
+pub const GROUP_TAGS: [i32; 3]
+pub const ENTRIES_COLUMN: &str = "nofixentries";
+pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
+pub fn fix_schema_tags() -> Vec<i32>
+pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
+pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
+impl FixMsg
+  pub fn to_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits)
+  pub fn symbol_ticker(&self) -> Scalar
+  pub fn market_timestamp(&self) -> Scalar
+  pub fn unix_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry
@@ -607,6 +640,89 @@ pub struct Path
   pub fn exists(&self) -> bool
   pub fn as_directory(&self) -> Result<Folder>
   pub fn as_file(&self) -> Result<File>
+
+### yggdryl::holder::zip::archive  [rust\src\holder\zip\archive.rs]
+pub struct Archive
+  pub fn new(handle: Holder) -> Self
+  pub fn from_path(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
+  pub const fn with_level(mut self, level: Level) -> Self
+  pub const fn with_restart_stride(mut self, stride: u64) -> Self
+  pub const fn codec(&self) -> Codec
+  pub const fn level(&self) -> Level
+  pub const fn restart_stride(&self) -> u64
+  pub const fn url(&self) -> &Url
+  pub fn mount(self) -> Node
+  pub fn into_handle(self) -> Result<Holder>
+  pub fn entries(&self) -> Result<Vec<Entry>>
+  pub fn get_entry(&self, path: &str) -> Result<Option<Entry>>
+  pub fn comment(&self) -> Result<Vec<u8>>
+  pub fn set_comment(&self, comment: &[u8]) -> Result<()>
+  pub fn read_member(self: &Arc<Self>, path: &str) -> Result<Vec<u8>>
+  pub fn write_member(&self, path: &str, bytes: &[u8]) -> Result<Entry>
+  pub fn write_member_with(&self, path: &str, bytes: &[u8], codec: Codec) -> Result<Entry>
+  pub fn write_member_from(&self, path: &str, source: impl Read, codec: Codec) -> Result<Entry>
+  pub fn create_directory(&self, path: &str) -> Result<()>
+  pub fn remove_member(&self, path: &str) -> Result<bool>
+  pub fn remove_under(&self, path: &str) -> Result<usize>
+  pub fn clear_members(&self) -> Result<()>
+  pub fn remove(&self) -> Result<()>
+  pub fn flush(&self) -> Result<()>
+  pub fn open(&self) -> Result<()>
+  pub fn close(&self) -> Result<()>
+  pub fn is_indexed(&self) -> bool
+  pub fn is_pending(&self) -> bool
+  pub fn size(&self) -> u64
+  pub fn handle_reads(&self) -> u64
+  pub fn handle_writes(&self) -> u64
+  pub const DEFAULT_RESTART_STRIDE: u64
+
+### yggdryl::holder::zip::entry  [rust\src\holder\zip\entry.rs]
+pub struct Entry
+  pub fn name(&self) -> &str
+  pub fn codec(&self) -> Result<Codec>
+  pub const fn size(&self) -> u64
+  pub const fn compressed_size(&self) -> u64
+  pub const fn crc32(&self) -> u32
+  pub const fn modified(&self) -> i64
+  pub const fn header_offset(&self) -> u64
+  pub fn comment(&self) -> &str
+  pub const fn restarts(&self) -> &Restarts
+  pub fn is_directory(&self) -> bool
+  pub const fn is_encrypted(&self) -> bool
+  pub const fn has_data_descriptor(&self) -> bool
+
+### yggdryl::holder::zip::leaf  [rust\src\holder\zip\leaf.rs]
+pub struct Leaf
+  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
+  pub fn try_with_codec(mut self, codec: Codec) -> Result<Self>
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn get_entry(&self) -> Result<Option<Entry>>
+
+### yggdryl::holder::zip::node  [rust\src\holder\zip\node.rs]
+pub struct Node
+  pub fn new(archive: Arc<Archive>, base: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn is_root(&self) -> bool
+  pub fn as_leaf(&self, path: &str) -> Result<Leaf>
+  pub fn as_node(&self, path: &str) -> Result<Self>
+
+### yggdryl::holder::zip::path  [rust\src\holder\zip\path.rs]
+pub struct Path
+  pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self
+  pub const fn archive(&self) -> &Arc<Archive>
+  pub fn name(&self) -> &str
+  pub const fn url(&self) -> &Url
+  pub fn as_node(&self) -> Node
+  pub fn as_leaf(&self) -> &Leaf
+
+### yggdryl::holder::zip  [rust\src\holder\zip\mod.rs]
+  pub fn mount(handle: Holder) -> Holder
+  pub fn from_url(url: &crate::Url) -> crate::Result<Holder>
 
 ### yggdryl::holder  [rust\src\holder\mod.rs]
 pub enum Holder

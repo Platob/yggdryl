@@ -476,7 +476,7 @@ test('the registry iterates lazily in ascending identifier order', () => {
     fixField('Tail', 'utf8', 9001),
   ])
 
-  // Tag-major, then by branch digest - the packed identifier's order. The
+  // Tag-major, then by branch digest - the identifier's own order. The
   // vendor fields therefore precede the later standard tag.
   assert.deepEqual(
     [...registry].map((field) => field.fix.id),
@@ -868,7 +868,6 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     [
       'FixCodec',
       'FixMsg',
-      'FixProjection',
       'FixRegistry',
       'STANDARD_BRANCH',
       'USER_TAG_MAX',
@@ -877,6 +876,7 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'globalRegistry',
       'installGlobalRegistry',
       'schema',
+      'schemaCarrying',
       'schemaTags',
     ],
   )
@@ -887,15 +887,14 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
     'FixFieldIterator',
     'FixMsg',
     'FixMsgEntries',
-    'FixProjection',
     'FixCodec',
     'FixRegistry',
     'JsFixMsg',
-    'JsFixProjection',
     'JsFixCodec',
     'JsFixRegistry',
     'fixCrateFields',
     'fixSchema',
+    'fixSchemaCarrying',
     'fixSchemaTags',
     '_fixStandardBranchNative',
     '_fixStandardTagLimitNative',
@@ -974,14 +973,15 @@ test('a reader parses every frame shape the core reads', () => {
 test('a reader takes the pins the core takes', () => {
   const registry = seed()
 
-  // Tag 32 is `lastshares` at 4.2 and `lastqty` at a newer version, so the
-  // pinned version is what decides which name the row answers to.
+  // Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
+  // a value is read, never what a field is called: the column is the
+  // dictionary's own whatever version read the row, and the 4.2 spelling still
+  // reaches it as an alias.
   const dated = new fix.FixCodec(registry, { version: '4.2' })
   const named = dated.transformLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|'))
+  assert.ok(named.field.indexOf('lastqty') !== null)
   assert.ok(named.getByName('lastshares') !== null)
-  // Unpinned, tag 32 answers to both spellings, so the name it keeps proves
-  // nothing on its own - the name it loses is what says the pin was read.
-  assert.equal(named.getByName('lastqty'), null)
+  assert.ok(named.getByName('lastqty') !== null)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
@@ -999,18 +999,16 @@ test('the fixed row is named by tag and never shifts', () => {
   assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'nounmappedfixentries')
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
 
-  const projection = new fix.FixProjection(registry, 'FixMessage')
-  assert.equal(projection.size, schema.fieldLen)
-  assert.equal(projection.positionOf(35), 2)
-  assert.equal(projection.positionOf(999999), null)
-  assert.equal(projection.carried, 0)
-  assert.equal(projection.field.name, 'FixMessage')
+  // A column is found by the name its tag spells, and nothing else is needed.
+  assert.equal(schema.indexOf('35'), 2)
+  assert.equal(schema.indexOf('999999'), null)
+  assert.equal(schema.name, 'FixMessage')
 
   const reader = new fix.FixCodec(registry)
-  const row = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).toRow(projection).toJSON()
+  const row = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|')).toRow(schema).toJSON()
   assert.equal(row.length, schema.fieldLen)
-  assert.equal(row[projection.positionOf(35)], 'D')
-  assert.equal(row[projection.positionOf(55)], 'AAPL')
+  assert.equal(row[schema.indexOf('35')], 'D')
+  assert.equal(row[schema.indexOf('55')], 'AAPL')
   // A tag no dictionary explains is still there, in its own column.
   assert.equal(row[row.length - 1].length, 1)
 })
@@ -1022,20 +1020,19 @@ test("a capture's own columns lead the row", () => {
     [fields.utf8('url', { nullable: false }), fields.binary('body', { nullable: false })],
     { nullable: false },
   )
-  const plain = new fix.FixProjection(registry, 'FixMessage')
-  const carried = new fix.FixProjection(registry, 'FixMessage', carrier)
+  const plain = fix.schema(registry, 'FixMessage')
+  const carried = fix.schemaCarrying(carrier, plain)
 
-  assert.equal(carried.carried, 2)
-  assert.deepEqual(carried.carriedPositions, [0, 1])
-  assert.equal(carried.column(0).name, 'url')
-  assert.equal(carried.size, plain.size + 2)
-  assert.equal(carried.positionOf(35), plain.positionOf(35) + 2)
+  assert.equal(carried.fieldAt(0).name, 'url')
+  assert.equal(carried.fieldAt(1).name, 'body')
+  assert.equal(carried.fieldLen, plain.fieldLen + 2)
+  assert.equal(carried.indexOf('35'), plain.indexOf('35') + 2)
 
-  // A carried column carries no tag, so a row answers null there: the capture
-  // fills it, and nothing in the message says what it held.
+  // A column no tag names is the capture's, so a row answers null there: the
+  // capture fills it, and nothing in the message says what it held.
   const row = new fix.FixCodec(registry).transformLine(Buffer.from('8=FIX.4.4|35=D|10=0|')).toRow(carried).toJSON()
   assert.equal(row[0], null)
-  assert.equal(row[carried.positionOf(35)], 'D')
+  assert.equal(row[carried.indexOf('35')], 'D')
 })
 
 test('the crate fields declare their own protocols', () => {

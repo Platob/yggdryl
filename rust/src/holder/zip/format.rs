@@ -10,7 +10,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Codec, Error, Result};
+use crate::{Codec, Error, Restarts, Result};
 
 use super::Entry;
 
@@ -45,6 +45,17 @@ pub(super) const ZIP64_MARK_16: u16 = u16::MAX;
 const ZIP64_EXTRA_ID: u16 = 0x0001;
 /// Header id of the Info-ZIP extended timestamp extra field.
 const TIMESTAMP_EXTRA_ID: u16 = 0x5455;
+/// Header id of the Info-ZIP Unicode Path extra field.
+const UNICODE_PATH_EXTRA_ID: u16 = 0x7075;
+/// Header id of this crate's restart map, unclaimed by APPNOTE's registry.
+///
+/// The map says where a compressed member's decode may begin, which is what
+/// makes a position inside one addressable without decoding everything before
+/// it. It is metadata beside the member rather than part of it: a reader that
+/// does not know the id skips the field by its declared length, exactly as
+/// this one skips every field it does not know, and reads the member whole as
+/// it always would.
+const RESTART_EXTRA_ID: u16 = 0x5967;
 /// The extended timestamp bit that says a modification time is present.
 const TIMESTAMP_MODIFIED: u8 = 0x01;
 
@@ -69,6 +80,15 @@ const VERSION_BASE: u16 = 20;
 /// Version 6.3, the first that specifies Zstandard.
 const VERSION_ZSTD: u16 = 63;
 
+/// The most restart points one member's map states.
+///
+/// A map rides the central directory, which the mount reads whole, so its size
+/// is a cost every operation pays rather than one only a seek does. The writer
+/// widens the stride instead of passing this, so a large member stays as
+/// addressable as a small one at a bounded price: 8 bytes a point, 16 KiB at
+/// the ceiling.
+pub(super) const MAX_RESTARTS: usize = 2_048;
+
 /// The Unix permissions a written member and directory carry.
 const UNIX_FILE_MODE: u32 = 0o100_644;
 /// The Unix permissions a written directory entry carries.
@@ -77,6 +97,8 @@ const UNIX_DIRECTORY_MODE: u32 = 0o040_755;
 const DOS_DIRECTORY: u32 = 0x10;
 /// "Made by" byte 2 (Unix), so the external attributes are read as a mode.
 const MADE_BY_UNIX: u16 = 3 << 8;
+/// What a record this crate writes states it was made by.
+pub(super) const MADE_BY_THIS: u16 = MADE_BY_UNIX | VERSION_ZIP64;
 
 /// Nanoseconds in one second, the unit every modification time is stated in.
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
@@ -306,6 +328,8 @@ fn read_extras(
     base: usize,
     fields: &mut Zip64Fields,
     modified: &mut Option<i64>,
+    restarts: &mut Restarts,
+    unicode_name: &mut Option<(u32, Vec<u8>)>,
 ) -> Result<()> {
     let mut scan = Scan::new(extra, base);
     while scan.remaining() >= 4 {
@@ -334,19 +358,78 @@ fn read_extras(
                     }
                 }
             }
+            UNICODE_PATH_EXTRA_ID => {
+                let mut body = Scan::new(body, base);
+                // Version 1 is the only one the field defines; the digest is
+                // of the name field this extra restates, so a record whose
+                // name was rewritten without it is caught.
+                if body.remaining() >= 5 && body.take(1)?[0] == 1 {
+                    let checksum = body.u32()?;
+                    let remaining = body.remaining();
+                    *unicode_name = Some((checksum, body.take(remaining)?.to_vec()));
+                }
+            }
+            RESTART_EXTRA_ID => {
+                let mut body = Scan::new(body, base);
+                if body.remaining() >= 8 {
+                    let stride = body.u64()?;
+                    let mut points = Vec::with_capacity(body.remaining() / 8);
+                    while body.remaining() >= 8 {
+                        points.push(body.u64()?);
+                    }
+                    *restarts = Restarts::new(stride, points);
+                }
+            }
             _ => {}
         }
     }
     Ok(())
 }
 
+/// The name the Unicode Path extra states, when it describes this record.
+///
+/// The field carries the digest of the name field it restates, so a record
+/// whose name another tool rewrote without updating the extra is refused the
+/// extra rather than given the wrong name.
+fn unicode_path(name: &[u8], stated: Option<&(u32, Vec<u8>)>) -> Option<smol_str::SmolStr> {
+    let (checksum, utf8) = stated?;
+    let mut crc = flate2::Crc::new();
+    crc.update(name);
+    if crc.sum() != *checksum {
+        return None;
+    }
+    std::str::from_utf8(utf8).ok().map(smol_str::SmolStr::new)
+}
+
+/// Build the restart map extra field, or nothing when the member has none.
+fn restart_extra(entry: &Entry) -> Vec<u8> {
+    let restarts = entry.restarts();
+    if restarts.is_empty() {
+        return Vec::new();
+    }
+    let mut extra = Vec::with_capacity(8 * restarts.points().len() + 12);
+    put_u16(&mut extra, RESTART_EXTRA_ID);
+    put_u16(&mut extra, (8 * restarts.points().len() + 8) as u16);
+    put_u64(&mut extra, restarts.stride());
+    for point in restarts.points() {
+        put_u64(&mut extra, *point);
+    }
+    extra
+}
+
 /// Build the ZIP64 extra field a record needs, or nothing when it needs none.
+///
+/// A local header that states either size in the extra states *both*, which
+/// APPNOTE 6.3.10 requires of it: a reader that takes the pair as one unit
+/// would otherwise read the field behind it as the second half. A central
+/// record has no such rule and carries only the fields its own slots marked.
 fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
     let mut body = Vec::new();
-    if entry.size() >= u64::from(ZIP64_MARK_32) {
+    let both = local && settles_extra(entry);
+    if both || entry.size() >= u64::from(ZIP64_MARK_32) {
         put_u64(&mut body, entry.size());
     }
-    if entry.compressed_size() >= u64::from(ZIP64_MARK_32) {
+    if both || entry.compressed_size() >= u64::from(ZIP64_MARK_32) {
         put_u64(&mut body, entry.compressed_size());
     }
     // A local header states no offset of its own, so the field never travels
@@ -361,6 +444,21 @@ fn zip64_extra(entry: &Entry, local: bool) -> Vec<u8> {
     put_u16(&mut extra, ZIP64_EXTRA_ID);
     put_u16(&mut extra, body.len() as u16);
     extra.extend_from_slice(&body);
+    extra
+}
+
+/// Build the ZIP64 extra a header reserves before it knows the sizes.
+///
+/// A streamed member's sizes are only known once its last byte is encoded,
+/// and a header that grew to state them would move the bytes it introduces.
+/// So the room is taken up front and filled in afterwards, at the one length
+/// both spellings share.
+fn reserved_zip64_extra(entry: &Entry) -> Vec<u8> {
+    let mut extra = Vec::with_capacity(20);
+    put_u16(&mut extra, ZIP64_EXTRA_ID);
+    put_u16(&mut extra, 16);
+    put_u64(&mut extra, entry.size());
+    put_u64(&mut extra, entry.compressed_size());
     extra
 }
 
@@ -400,7 +498,7 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
             format_smolstr!("expected a central directory record, got {signature:#010x}"),
         ));
     }
-    let _version_made_by = scan.u16()?;
+    let made_by = scan.u16()?;
     let _version_needed = scan.u16()?;
     let flags = scan.u16()?;
     let method = scan.u16()?;
@@ -426,12 +524,24 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         header_offset,
     };
     let mut modified = None;
-    read_extras(extra, offset, &mut fields, &mut modified)?;
+    let mut restarts = Restarts::default();
+    let mut unicode_name = None;
+    read_extras(
+        extra,
+        offset,
+        &mut fields,
+        &mut modified,
+        &mut restarts,
+        &mut unicode_name,
+    )?;
 
-    let name = decode_text(name, offset, "name")?;
-    let comment = decode_text(comment, offset, "comment")?;
+    let spelled = name;
+    let name = unicode_path(name, unicode_name.as_ref())
+        .unwrap_or_else(|| decode_text(name, offset, "name"));
+    let comment = decode_text(comment, offset, "comment");
     Ok(Entry::from_parts(
         name,
+        made_by,
         flags,
         method,
         modified.unwrap_or_else(|| dos_nanos(date, time)),
@@ -441,33 +551,59 @@ pub(super) fn read_central(scan: &mut Scan<'_>) -> Result<Entry> {
         fields.header_offset,
         external_attributes,
         comment,
-    ))
+    )
+    .with_spelling(spelled)
+    .with_restarts(restarts))
 }
 
-/// Decode one record's text field, which the format states is UTF-8.
+/// Decode one record's text field.
 ///
-/// General purpose bit 11 says so explicitly; an archive that predates the bit
-/// spells names in a code page nothing identifies, so the one interpretation
-/// that can be checked is the one that is used.
-fn decode_text(bytes: &[u8], offset: usize, field: &str) -> Result<smol_str::SmolStr> {
-    std::str::from_utf8(bytes)
-        .map(smol_str::SmolStr::new)
-        .map_err(|error| {
-            malformed(
-                offset,
-                format_smolstr!("expected a UTF-8 member {field}, {error}"),
-            )
-        })
+/// General purpose bit 11 says a field is UTF-8, and plenty of writers spell
+/// UTF-8 without setting it, so text that parses as UTF-8 is read as UTF-8
+/// whatever the bit says - the two agree on everything ASCII, which is most
+/// of what a member is named. Text that does not parse is the code page the
+/// format defaults to, IBM 437, which every byte has a character for. So a
+/// name is always readable, and one member named in a code page never costs
+/// the archive around it.
+fn decode_text(bytes: &[u8], _offset: usize, _field: &str) -> smol_str::SmolStr {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => smol_str::SmolStr::new(text),
+        Err(_) => bytes.iter().map(|byte| cp437(*byte)).collect(),
+    }
+}
+
+/// The character IBM code page 437 gives one byte.
+///
+/// The lower half is ASCII; the upper half is the page's own, which is what
+/// an archive written before general purpose bit 11 existed spells names in.
+fn cp437(byte: u8) -> char {
+    const UPPER: [char; 128] = [
+        'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', 'É', 'æ',
+        'Æ', 'ô', 'ö', 'ò', 'û', 'ù', 'ÿ', 'Ö', 'Ü', '¢', '£', '¥', '₧', 'ƒ', 'á', 'í', 'ó', 'ú',
+        'ñ', 'Ñ', 'ª', 'º', '¿', '⌐', '¬', '½', '¼', '¡', '«', '»', '░', '▒', '▓', '│', '┤', '╡',
+        '╢', '╖', '╕', '╣', '║', '╗', '╝', '╜', '╛', '┐', '└', '┴', '┬', '├', '─', '┼', '╞', '╟',
+        '╚', '╔', '╩', '╦', '╠', '═', '╬', '╧', '╨', '╤', '╥', '╙', '╘', '╒', '╓', '╫', '╪', '┘',
+        '┌', '█', '▄', '▌', '▐', '▀', 'α', 'ß', 'Γ', 'π', 'Σ', 'σ', 'µ', 'τ', 'Φ', 'Θ', 'Ω', 'δ',
+        '∞', 'φ', 'ε', '∩', '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²',
+        '■', '\u{a0}',
+    ];
+    if byte.is_ascii() {
+        return char::from(byte);
+    }
+    UPPER[usize::from(byte) - 128]
 }
 
 /// Encode one central directory record.
 pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     let zip64 = zip64_extra(entry, false);
     let timestamp = timestamp_extra(entry);
-    let extra_len = zip64.len() + timestamp.len();
+    // The map rides the central record alone: the index is what reads it, and
+    // a local header that never carries it is one compaction copies verbatim.
+    let restarts = restart_extra(entry);
+    let extra_len = zip64.len() + timestamp.len() + restarts.len();
     let (date, time) = dos_datetime(entry.modified());
     put_u32(target, CENTRAL_SIGNATURE);
-    put_u16(target, MADE_BY_UNIX | VERSION_ZIP64);
+    put_u16(target, entry.made_by());
     put_u16(target, version_needed(entry.method(), !zip64.is_empty()));
     put_u16(target, entry.flags());
     put_u16(target, entry.method());
@@ -476,7 +612,7 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     put_u32(target, entry.crc32());
     put_u32(target, marked(entry.compressed_size()));
     put_u32(target, marked(entry.size()));
-    put_u16(target, entry.name().len() as u16);
+    put_u16(target, entry.spelling().len() as u16);
     put_u16(target, extra_len as u16);
     put_u16(target, entry.comment().len() as u16);
     // One disk, and no internal attributes: a member is opaque bytes here.
@@ -484,15 +620,25 @@ pub(super) fn write_central(entry: &Entry, target: &mut Vec<u8>) {
     put_u16(target, 0);
     put_u32(target, entry.external_attributes());
     put_u32(target, marked(entry.header_offset()));
-    target.extend_from_slice(entry.name().as_bytes());
+    target.extend_from_slice(entry.spelling());
     target.extend_from_slice(&zip64);
     target.extend_from_slice(&timestamp);
+    target.extend_from_slice(&restarts);
     target.extend_from_slice(entry.comment().as_bytes());
 }
 
 /// Encode the local file header a member's bytes follow.
-pub(super) fn write_local(entry: &Entry, target: &mut Vec<u8>) {
-    let zip64 = zip64_extra(entry, true);
+///
+/// A write that does not yet know how long the member will be reserves the
+/// room, writes the bytes, and states the sizes into the header it already
+/// placed - which is only possible because the reserved shape has the length
+/// the settled one will have.
+pub(super) fn write_local_with(entry: &Entry, reserve: bool, target: &mut Vec<u8>) {
+    let zip64 = if reserve {
+        reserved_zip64_extra(entry)
+    } else {
+        zip64_extra(entry, true)
+    };
     let timestamp = timestamp_extra(entry);
     let extra_len = zip64.len() + timestamp.len();
     let (date, time) = dos_datetime(entry.modified());
@@ -505,9 +651,9 @@ pub(super) fn write_local(entry: &Entry, target: &mut Vec<u8>) {
     put_u32(target, entry.crc32());
     put_u32(target, marked(entry.compressed_size()));
     put_u32(target, marked(entry.size()));
-    put_u16(target, entry.name().len() as u16);
+    put_u16(target, entry.spelling().len() as u16);
     put_u16(target, extra_len as u16);
-    target.extend_from_slice(entry.name().as_bytes());
+    target.extend_from_slice(entry.spelling());
     target.extend_from_slice(&zip64);
     target.extend_from_slice(&timestamp);
 }
@@ -565,10 +711,19 @@ pub(super) fn read_end(bytes: &[u8], base: usize) -> Result<(End, Vec<u8>)> {
             format_smolstr!("expected an end of central directory record, got {signature:#010x}"),
         ));
     }
-    let _disk = scan.u16()?;
-    let _directory_disk = scan.u16()?;
-    let _disk_entries = scan.u16()?;
+    let disk = scan.u16()?;
+    let directory_disk = scan.u16()?;
+    let disk_entries = scan.u16()?;
     let entries = u64::from(scan.u16()?);
+    // Every offset a split archive records is into a volume this handle is
+    // not, so reading one as if it were whole answers the wrong bytes.
+    split_refused(u64::from(disk), u64::from(directory_disk))?;
+    if u64::from(disk_entries) != entries && entries != u64::from(ZIP64_MARK_16) {
+        return Err(Error::unsupported(
+            "reading a zip archive whose directory is split across volumes",
+            format_smolstr!("{disk_entries} of {entries} records on this volume"),
+        ));
+    }
     let directory_size = u64::from(scan.u32()?);
     let directory_offset = u64::from(scan.u32()?);
     let comment_len = usize::from(scan.u16()?);
@@ -593,9 +748,27 @@ pub(super) fn read_zip64_locator(bytes: &[u8], base: usize) -> Result<Option<u64
     if scan.u32()? != ZIP64_LOCATOR_SIGNATURE {
         return Ok(None);
     }
-    let _disk = scan.u32()?;
+    let disk = scan.u32()?;
     let offset = scan.u64()?;
+    let volumes = scan.u32()?;
+    split_refused(u64::from(disk), u64::from(volumes.saturating_sub(1)))?;
     Ok(Some(offset))
+}
+
+/// Refuse an archive whose records live on a volume this handle is not.
+///
+/// # Errors
+///
+/// Returns [`Error::Unsupported`] naming the volume when either number says
+/// the archive was split.
+fn split_refused(disk: u64, directory_disk: u64) -> Result<()> {
+    if disk == 0 && directory_disk == 0 {
+        return Ok(());
+    }
+    Err(Error::unsupported(
+        "reading a zip archive split across volumes",
+        format_smolstr!("volume {disk} of a directory on volume {directory_disk}"),
+    ))
 }
 
 /// Read the ZIP64 end-of-central-directory record `bytes` starts with.
@@ -617,10 +790,11 @@ pub(super) fn read_zip64_end(bytes: &[u8], base: usize) -> Result<End> {
     let _record_size = scan.u64()?;
     let _version_made_by = scan.u16()?;
     let _version_needed = scan.u16()?;
-    let _disk = scan.u32()?;
-    let _directory_disk = scan.u32()?;
+    let disk = scan.u32()?;
+    let directory_disk = scan.u32()?;
     let _disk_entries = scan.u64()?;
     let entries = scan.u64()?;
+    split_refused(u64::from(disk), u64::from(directory_disk))?;
     let directory_size = scan.u64()?;
     let directory_offset = scan.u64()?;
     Ok(End {

@@ -1,9 +1,9 @@
 //! The FIX registry: one field vector, four compact indexes, and one branch
 //! table.
 //!
-//! Canonical and alternate identifiers are keyed directly by packed
-//! [`FixId`] values. Canonical names and aliases are keyed by independent
-//! seeded XXH64 digests; every hit is rechecked against the field, so a digest
+//! Canonical and alternate identifiers are keyed directly by [`FixId`]
+//! values, both halves reaching the hasher. Canonical names and aliases are
+//! keyed by independent seeded XXH64 digests; every hit is rechecked against the field, so a digest
 //! collision is a miss on read and a typed conflict on mutation. Ordered
 //! iteration is kept separately as sorted field positions. The registry is
 //! built rarely and resolved constantly, so that `O(n)` insertion trade is
@@ -33,6 +33,18 @@ impl Mix {
         value = value.wrapping_mul(0xff51_afd7_ed55_8ccd);
         value ^= value >> 33;
         value
+    }
+
+    /// Folds one integer write into the state instead of replacing it.
+    ///
+    /// A key written in parts keeps every part: a [`FixId`] hashes its tag
+    /// and then its branch, and the rotation lands them in the two halves of
+    /// the state, so two tags in one dictionary are two keys rather than one
+    /// bucket. A key written once is unchanged by the fold, the state being
+    /// zero until then. Two 32-bit halves is exactly what it separates: a
+    /// third such write folds back over the first.
+    fn fold(&mut self, value: u64) {
+        self.0 = self.0.rotate_left(32) ^ value;
     }
 }
 
@@ -89,8 +101,10 @@ fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Fiel
 }
 
 #[cfg(test)]
-pub(super) const fn control_byte(id: FixId) -> u8 {
-    (Mix::finalise(id.0 as u64) >> 57) as u8
+pub(super) fn control_byte(id: FixId) -> u8 {
+    let mut state = Mix::default();
+    std::hash::Hash::hash(&id, &mut state);
+    (state.finish() >> 57) as u8
 }
 
 impl Hasher for Mix {
@@ -109,19 +123,19 @@ impl Hasher for Mix {
     }
 
     fn write_u32(&mut self, value: u32) {
-        self.0 = u64::from(value);
+        self.fold(u64::from(value));
     }
 
     fn write_i32(&mut self, value: i32) {
-        self.0 = value as u32 as u64;
+        self.fold(value as u32 as u64);
     }
 
     fn write_u64(&mut self, value: u64) {
-        self.0 = value;
+        self.fold(value);
     }
 
     fn write_i64(&mut self, value: i64) {
-        self.0 = value as u64;
+        self.fold(value as u64);
     }
 }
 
@@ -230,7 +244,7 @@ pub(super) fn is_nested(field: &Field) -> bool {
     field.dtype().is_nested()
 }
 
-/// FIX field definitions resolved by packed identity or folded name.
+/// FIX field definitions resolved by identity or folded name.
 #[derive(Clone, Default)]
 pub struct FixRegistry {
     fields: Vec<Field>,
@@ -263,7 +277,7 @@ impl FixRegistry {
         Ok(registry)
     }
 
-    /// Returns the field a canonical or alternate packed identifier names.
+    /// Returns the field a canonical or alternate identifier names.
     pub fn get_field_by_id(&self, id: FixId) -> Option<&Field> {
         self.position_by_id(id)
             .and_then(|position| self.fields.get(position))
