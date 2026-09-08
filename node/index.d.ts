@@ -1098,6 +1098,12 @@ export type JsField = Field
  * name/value text, or pairs a caller already has. Each redirects to the core
  * method of the same name, so nothing here decides a dialect, a version or a
  * separator - it only carries what JavaScript said across.
+ *
+ * Every message it builds opens with `beginstring` - the wire's own, else
+ * the version the message was read at - and closes with the crate's
+ * `timestamp`: the first clock the message carries, else the epoch. Neither
+ * is an entry unless the line carried it, so `toBytes` re-emits the line
+ * byte for byte.
  */
 export declare class FixCodec {
   /** Open a reader over one dictionary, or over the process default. */
@@ -1250,7 +1256,14 @@ export declare class FixMsg {
   digest(): Buffer
   /** One instrument symbol that is the same across venues, or `null`. */
   symbolTicker(): JsScalar | null
-  /** The timestamp a capture is ordered by, or `null`. */
+  /**
+   * The timestamp a capture is ordered by, or `null`.
+   *
+   * The crate's `timestamp` child every built message closes with: the
+   * first clock the message carries, else the epoch - so a message the
+   * reader built always answers, and only a message built by hand without
+   * that child does not.
+   */
   marketTimestamp(): JsScalar | null
   /** The partition that timestamp falls in, in whole seconds. */
   unixPartition(seconds: number): JsScalar | null
@@ -1283,8 +1296,10 @@ export declare class FixMsg {
    * This message as the fixed row a table holds.
    *
    * `schema` is the fixed root `fixSchema` builds: every column is filled by
-   * the tag its name spells, and a column no tag names answers null because
-   * it is the capture's rather than the message's.
+   * the tag its field carries - never by its spelling - so a message that
+   * carried nothing at a column answers null there rather than shifting its
+   * neighbours, and a column no tag names answers null because it is the
+   * capture's rather than the message's.
    */
   toRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
@@ -1326,7 +1341,13 @@ export type JsFixMsgEntries = FixMsgEntries
  * changing a dictionary underneath a message that already used it.
  */
 export declare class FixRegistry {
-  /** The empty registry. */
+  /**
+   * A registry holding nothing but this crate's own fields.
+   *
+   * Every registry starts here: the eleven fields `fixCrateFields` lists
+   * are what a row is typed by, so a dictionary loaded from a store, built
+   * from fields or left alone holds them alike.
+   */
   constructor()
   /**
    * Build a registry by inserting `fields` in order.
@@ -1339,9 +1360,11 @@ export declare class FixRegistry {
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
-   * is not there loads as the empty registry and is not created; a shard
-   * that does not parse, and a root still holding the retired `records/`
-   * layout, throw with the URL named.
+   * is not there loads as a new registry - the crate's own fields and
+   * nothing else - and is not created; a stored copy of the crate's branch
+   * is read past, because the crate's own definition is the one that types
+   * a row. A shard that does not parse, and a root still holding the
+   * retired `records/` layout, throw with the URL named.
    */
   static fromHandle(location: LocationInput): FixRegistry
   /**
@@ -1371,10 +1394,12 @@ export declare class FixRegistry {
   registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): string
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
-   * the shards, branch folders and trees no field populates any more.
+   * the shards, branch folders and trees no field populates any more. The
+   * crate's own branch is never written: its fields are the crate's rather
+   * than the store's, and every registry holds them already.
    */
   writeInto(location: LocationInput): void
-  /** How many fields are registered. */
+  /** How many fields are held, the crate's own eleven among them. */
   get size(): number
   /**
    * The field a canonical or alternate identifier names, or `null`.
@@ -4241,7 +4266,12 @@ export interface FixCodecOptions {
   nullValues?: Array<string>
 }
 
-/** The fields this crate defines on its own branch, in tag order. */
+/**
+ * The fields this crate defines on its own branch, in tag order.
+ *
+ * Every registry already holds them, so this is the listing a schema or a
+ * document walks rather than something a caller registers.
+ */
 export declare function fixCrateFields(): Array<JsField>
 
 /**
@@ -4249,8 +4279,9 @@ export declare function fixCrateFields(): Array<JsField>
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the
  * trailer, this crate's own derived facts, and the two lists that close every
- * row. Columns are named by tag, because a tag is the one name a field has in
- * every version and every dialect.
+ * row. Columns are spelled by the dictionary's folded canonical names -
+ * `msgtype`, never `35` - so a row reads the way a message reads; the tag
+ * stays each column's identity, on its `fix:tag`, and is what fills it.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
@@ -4259,9 +4290,9 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  *
  * `carrier` is a capture's own root - where a line was read from, which line
  * it was, what stamped it - and its columns lead the row, because that is what
- * a monitor orders and joins on. A carried column whose name a FIX column
- * already takes is dropped rather than renamed: the FIX column is the one a
- * reader spelling it means.
+ * a monitor orders and joins on. A carried column whose folded name a FIX
+ * column already takes - `sessionId` and `sessionid` are one name - is dropped
+ * rather than renamed: the FIX column is the one a reader spelling it means.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 

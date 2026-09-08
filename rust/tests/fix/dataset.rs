@@ -1,0 +1,750 @@
+//! A bridge's own log as one dataset, read three ways and required to agree.
+//!
+//! `ulbridge.log` is a second of a ULBridge's own capture, anonymized, and
+//! then every shape a bridge writes that the second happened not to hold: a
+//! Jolokia exchange whose answer is a configuration document, a wildcard
+//! document and an error, FIXML behind a verb, frames spelled with `^A` and
+//! `<SOH>`, a FIXT logon, a `35=UL` frame with exact lengths and real
+//! control-byte separators, a bridge row with null spellings, a marked frame,
+//! a statistics line, an empty body and a warning. The text reader frames
+//! every line under the bridge's own row header; each row is then read on
+//! its own as a record and as a batch of one shape, with enrichment on, and
+//! the two readings are required to agree line for line.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use arrow_array::RecordBatch;
+use yggdryl::holder::Buffer;
+use yggdryl::holder::local::Folder;
+use yggdryl::media::RecordOptions;
+use yggdryl::media::text::TextOptions;
+use yggdryl::{
+    FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, MimeType,
+    Scalar, Timezone, Url,
+};
+
+/// The capture, exactly as the bridge wrote it.
+const LOG: &[u8] = include_bytes!("ulbridge.log");
+
+/// How many lines the capture holds.
+const LINES: usize = 111;
+
+/// The committed dictionary beside the bridge's own vocabulary.
+fn registry() -> Arc<FixRegistry> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    let folder = Folder::new(root).expect("the seed folder is a local path");
+    let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    Arc::new(
+        held.with_ulbridge_fields()
+            .expect("the bridge's own fields"),
+    )
+}
+
+/// The log as the `.log` handle a reader opens.
+fn source() -> Buffer {
+    Buffer::from_bytes(LOG.to_vec()).with_media_type(
+        Url::from_str("file:///ulbridge.log")
+            .expect("a URL")
+            .media_type(),
+    )
+}
+
+/// The text options a bridge log is read under: its own row header, each
+/// line numbered, classified and read for its direction.
+fn reading() -> RecordOptions {
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the bridge's row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.with_rownum = Some(1);
+    options.with_direction = true;
+    options.with_mimetype = true;
+    options.with_msgtype = true;
+    options.into()
+}
+
+/// The bridge's own dialect, pinned for the whole run, with enrichment on.
+fn options(rows: Option<usize>) -> FixOptions {
+    let mut options =
+        FixOptions::new().with_branch(FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap());
+    options.enrich = true;
+    options.batch_row_size = rows;
+    options
+}
+
+/// The codec the row-by-row read uses, over the same dictionary and dialect.
+fn codec() -> FixCodec {
+    FixCodec::new(registry()).with_branch(&FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).unwrap())
+}
+
+/// Every batch the FIX read yields, `rows` at a time.
+fn batches(rows: Option<usize>) -> Vec<RecordBatch> {
+    FixBatchReader::from_column(
+        registry(),
+        source().read_arrow_reader(&reading()).expect("a reader"),
+        "body",
+        options(rows),
+    )
+    .expect("the batch reader opens")
+    .map(|batch| batch.expect("a batch"))
+    .collect()
+}
+
+/// One read's rows, as the values each holds, with the column names.
+fn rows_of(batches: &[RecordBatch]) -> (Vec<String>, Vec<Vec<Scalar>>) {
+    let names: Vec<String> = batches[0]
+        .schema()
+        .fields()
+        .iter()
+        .map(|held| held.name().to_owned())
+        .collect();
+    let mut rows = Vec::new();
+    for batch in batches {
+        let held = yggdryl::arrow::batch_to_value(batch).expect("the batch reads");
+        for row in held.as_sequence().expect("rows") {
+            rows.push(row.as_sequence().expect("a row").to_vec());
+        }
+    }
+    (names, rows)
+}
+
+/// The text reader's own rows: the capture framed, classified and numbered,
+/// before any message is built.
+fn text_rows() -> (Vec<String>, Vec<Vec<Scalar>>) {
+    let batches: Vec<RecordBatch> = source()
+        .read_arrow_reader(&reading())
+        .expect("a reader")
+        .map(|batch| batch.expect("a batch"))
+        .collect();
+    rows_of(&batches)
+}
+
+/// One text row as the record the codec reads it from.
+fn record(names: &[String], row: &[Scalar]) -> Scalar {
+    Scalar::from_record(names.iter().cloned().zip(row.iter().cloned())).expect("a record")
+}
+
+/// Where one column sits, by name.
+fn at(names: &[String], name: &str) -> usize {
+    names
+        .iter()
+        .position(|held| held == name)
+        .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
+}
+
+/// One row's body as text.
+fn body(names: &[String], row: &[Scalar]) -> String {
+    let held = &row[at(names, "body")];
+    held.as_bytes()
+        .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
+        .or_else(|| held.as_str().map(ToOwned::to_owned))
+        .unwrap_or_default()
+}
+
+/// A value rendered for comparison across the two reads.
+fn rendered(value: &Scalar) -> Option<String> {
+    match value {
+        Scalar::Null => None,
+        held => Some(
+            held.as_str()
+                .map_or_else(|| format!("{held:?}"), ToString::to_string),
+        ),
+    }
+}
+
+#[test]
+fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema() {
+    let whole = batches(None);
+    assert_eq!(whole.len(), 1, "one batch under the byte target");
+    assert_eq!(whole[0].num_rows(), LINES);
+
+    let small = batches(Some(16));
+    assert_eq!(small.len(), LINES.div_ceil(16), "sixteen rows a batch");
+    assert_eq!(
+        small.iter().map(RecordBatch::num_rows).sum::<usize>(),
+        LINES
+    );
+    for batch in &small {
+        assert_eq!(
+            batch.schema(),
+            whole[0].schema(),
+            "one schema for every batch"
+        );
+    }
+    // The rows are the same rows, whichever way the capture was cut - past
+    // the URL, which names the buffer each read opened.
+    let (names, whole_rows) = rows_of(&whole);
+    let (_, small_rows) = rows_of(&small);
+    let url = at(&names, "url");
+    for (row, (left, right)) in whole_rows.iter().zip(&small_rows).enumerate() {
+        assert_eq!(left[..url], right[..url], "row {row}");
+        assert_eq!(left[url + 1..], right[url + 1..], "row {row}");
+    }
+
+    // The text reader framed every line: the line number is the capture's,
+    // and the schema is the capture's own columns then the fixed row.
+    let (names, rows) = text_rows();
+    assert_eq!(rows.len(), LINES);
+    assert_eq!(
+        rows.last().unwrap()[at(&names, "rownum")].as_i64(),
+        Some(LINES as i64)
+    );
+}
+
+#[test]
+fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let batch = batches(None);
+    let (names, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    // Every fixed column the dictionary explains, header, body, groups and
+    // the crate's own alike.
+    let fixed: Vec<(usize, i32)> = names
+        .iter()
+        .enumerate()
+        .filter_map(|(index, _)| {
+            let tag = schema.fields()[index].as_fix().tag().ok().flatten()?;
+            Some((index, tag))
+        })
+        .collect();
+    assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
+    let direction =
+        yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG).expect("the direction");
+    for (row, held) in text.iter().enumerate() {
+        // The record is the text reader's row, whole: the body is what the
+        // codec parses and every other column is what the row states.
+        let message = codec
+            .transform_record(&record(&text_names, held), true)
+            .unwrap_or_else(|error| panic!("row {row}: {error}"));
+        for &(index, tag) in &fixed {
+            if index == direction {
+                // The batch reads the direction column; a record does not.
+                continue;
+            }
+            let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
+            let alone = if alone.is_null() {
+                message
+                    .to_row(&schema)
+                    .expect("a row")
+                    .as_sequence()
+                    .expect("cells")[index]
+                    .clone()
+            } else {
+                alone
+            };
+            assert_eq!(
+                rendered(&alone).is_some(),
+                rendered(&rows[row][index]).is_some(),
+                "tag {tag} on row {row}: record read {alone:?}, batch read {:?}",
+                rows[row][index]
+            );
+        }
+    }
+}
+
+#[test]
+fn enrichment_fills_what_the_line_implied_and_only_that() {
+    let (text_names, text) = text_rows();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+
+    // The first fill the bridge received: 21 shares at 83.08.
+    let fill = text
+        .iter()
+        .position(|held| {
+            let body = body(&text_names, held);
+            body.contains("|35=8|") && body.contains("|32=21|")
+        })
+        .expect("the fill");
+    // `GrossTradeAmt` is no fixed column, so the message answers for it;
+    // `SettlCurrency` is one, so the row does.
+    let enriched = codec()
+        .transform_record(&record(&text_names, &text[fill]), true)
+        .expect("the fill reads");
+    let gross = enriched
+        .by_tag(381)
+        .unwrap()
+        .as_f64()
+        .expect("GrossTradeAmt derived");
+    assert!((gross - 21.0 * 83.08).abs() < 1e-6, "{gross}");
+    assert_eq!(
+        rows[fill][column(120)].as_str(),
+        Some("CHF"),
+        "SettlCurrency from Currency"
+    );
+    // Stated values are never overwritten: the line said 260 shares remain.
+    assert_eq!(rows[fill][column(151)].as_f64(), Some(260.0));
+
+    // Read without enrichment, the same line states neither.
+    let plain = codec()
+        .transform_line(body(&text_names, &text[fill]).as_bytes(), false)
+        .expect("the fill reads");
+    assert!(plain.get_by_tag(381).is_none());
+    assert!(plain.get_by_tag(120).is_none());
+    // And the row is dated by the row header, not by the wire's clock.
+    let clock = &text[fill][at(&text_names, "timestamp")];
+    assert_eq!(&rows[fill][column(yggdryl::TIMESTAMP_TAG)], clock);
+}
+
+#[test]
+fn every_row_is_dated_versioned_and_named_by_its_bracket() {
+    let (text_names, text) = text_rows();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    for (row, held) in rows.iter().enumerate() {
+        let clock = &text[row][at(&text_names, "timestamp")];
+        assert_eq!(
+            &held[column(yggdryl::TIMESTAMP_TAG)],
+            clock,
+            "row {row} is dated by its header"
+        );
+        assert!(
+            !held[column(yggdryl::UNIXPARTITION_TAG)].is_null(),
+            "row {row} has a partition"
+        );
+        assert!(
+            held[column(8)]
+                .as_str()
+                .is_some_and(|held| held.starts_with("FIX")),
+            "row {row} says which FIX it was read as: {:?}",
+            held[column(8)]
+        );
+        assert!(
+            !held[column(yggdryl::MSGHASH_TAG)].is_null(),
+            "row {row} digests"
+        );
+        // The bracket names the session and the context - unless the row
+        // itself spells `SESSIONID`, which a bridge row does for its own
+        // session name, and a stated value is never overridden.
+        let session = &text[row][at(&text_names, "sessionId")];
+        if body(&text_names, &text[row]).contains("|SESSIONID=") {
+            assert!(
+                held[column(yggdryl::SESSIONID_TAG)].as_str().is_some(),
+                "row {row} states its session"
+            );
+        } else {
+            assert_eq!(
+                &held[column(yggdryl::SESSIONID_TAG)],
+                session,
+                "row {row} session"
+            );
+        }
+        let context = &text[row][at(&text_names, "msgCtxId")];
+        assert_eq!(
+            &held[column(yggdryl::MSGCTXID_TAG)],
+            context,
+            "row {row} context"
+        );
+    }
+    // A thread bracket with no session leaves both null - the Jolokia lines.
+    let jolokia = text
+        .iter()
+        .position(|held| body(&text_names, held).starts_with("URI: /jolokia"))
+        .expect("the Jolokia read");
+    assert!(rows[jolokia][column(yggdryl::SESSIONID_TAG)].is_null());
+    assert!(rows[jolokia][column(yggdryl::MSGCTXID_TAG)].is_null());
+    // And the sequence number the bracket states fills a row that carries
+    // no frame, while a frame keeps its own.
+    let routed = text
+        .iter()
+        .position(|held| body(&text_names, held).starts_with("RouteMessage : ACTION=EXECUTION|"))
+        .expect("a routed row");
+    assert_eq!(
+        &rows[routed][column(34)],
+        &text[routed][at(&text_names, "seqNum")]
+    );
+    let fill = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("|35=8|34=40218|"))
+        .expect("the fill");
+    assert_eq!(rows[fill][column(34)].as_i64(), Some(40218));
+}
+
+#[test]
+fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let batch = batches(None);
+    let (names, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    let frames: Vec<usize> = text
+        .iter()
+        .enumerate()
+        .filter(|(_, held)| body(&text_names, held).contains("|35=UL|"))
+        .map(|(row, _)| row)
+        .collect();
+    assert_eq!(
+        frames.len(),
+        3,
+        "two of the bridge's frames and the exact one"
+    );
+    for &row in &frames {
+        let held = &rows[row];
+        // The frame's own statements stay the frame's.
+        assert_eq!(held[column(35)].as_str(), Some("UL"), "row {row}");
+        assert_eq!(held[column(49)].as_str(), Some("ULB_DMZ_BROKER_BDG"));
+        // The row inside XmlData fills what the frame never stated.
+        assert!(
+            held[column(55)].as_str().is_some(),
+            "row {row} symbol from the nested row"
+        );
+        assert!(
+            held[column(11)].as_str().is_some(),
+            "row {row} ClOrdID from the nested row"
+        );
+        assert!(
+            held[column(31)].as_f64().is_some(),
+            "row {row} LastPx typed from the nested row"
+        );
+        assert!(held[column(60)].is_null() || matches!(held[column(60)], Scalar::Temporal(_)));
+        // XmlData itself is the bytes it is, whole.
+        let xml = held[column(213)].as_bytes().expect("XmlData bytes");
+        assert!(
+            xml.starts_with(b"#"),
+            "row {row}: {}",
+            String::from_utf8_lossy(&xml[..40])
+        );
+        assert!(
+            memchr::memmem::find(xml, b"ULTOSESSIONNAME=").is_some(),
+            "row {row} carries the whole row"
+        );
+        // The arrival record is the frame's ten pairs and nothing the row
+        // inside one of them said: the nested row fills, and records nothing.
+        let entries = held[at(&names, "nofixentries")]
+            .as_sequence()
+            .expect("entries");
+        assert_eq!(entries.len(), 10, "row {row}: {entries:?}");
+        let message = codec
+            .transform_record(&record(&text_names, &text[row]), true)
+            .expect("the frame reads");
+        let data = message
+            .entries()
+            .iter()
+            .find(|entry| entry.tag() == 213)
+            .expect("the XmlData entry");
+        assert!(data.children().is_empty());
+        assert_eq!(
+            data.value().len(),
+            xml.len(),
+            "row {row} keeps the whole value"
+        );
+    }
+    // The bridge counted the control bytes its log printed as glyphs, so its
+    // stated length is short and the value runs to the trailer instead.
+    let printed = frames[0];
+    let stated = rows[printed][column(212)].as_i64().expect("XmlDataLen");
+    let actual = rows[printed][column(213)]
+        .as_bytes()
+        .expect("XmlData")
+        .len() as i64;
+    assert!(stated < actual, "{stated} stated, {actual} carried");
+    assert_eq!(rows[printed][column(55)].as_str(), Some("HOLN"));
+    // The exact frame states its length in bytes and is read to it.
+    let exact = frames[2];
+    assert_eq!(
+        rows[exact][column(212)].as_i64().map(|held| held as usize),
+        rows[exact][column(213)].as_bytes().map(<[u8]>::len)
+    );
+    assert_eq!(rows[exact][column(55)].as_str(), Some("EXAMPLECO.S"));
+    assert_eq!(rows[exact][column(1)].as_str(), Some("ACCT1"));
+}
+
+#[test]
+fn a_group_packed_inside_an_occurrence_nests_under_it_and_a_republication_is_dropped() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    // The same enrichment result, printed twice by the bridge: once with the
+    // viewer's bullets for the two control bytes and the party's
+    // sub-identifiers flattened to the row, once with `<x>` and the
+    // sub-identifiers packed inside the party they belong to.
+    let rows: Vec<usize> = text
+        .iter()
+        .enumerate()
+        .filter(|(_, held)| {
+            let body = body(&text_names, held);
+            body.contains(
+                "After Enrichment -> ACTION=EXECUTION|AGGRESSORINDICATOR=Y|ALTEVENTTEXT=Order Fill",
+            ) && body.contains("EXECID=00011377089XEEA0|")
+                && body.contains("NOPARTYSUBIDS[0]")
+        })
+        .map(|(row, _)| row)
+        .collect();
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    let flat = codec
+        .transform_record(&record(&text_names, &text[rows[0]]), true)
+        .expect("the flattened row reads");
+    let nested = codec
+        .transform_record(&record(&text_names, &text[rows[1]]), true)
+        .expect("the packed row reads");
+    for message in [&flat, &nested] {
+        // Six parties either way, the first the executing firm.
+        let parties = message.by_tag(453).unwrap().as_sequence().expect("parties");
+        assert_eq!(parties.len(), 6);
+        assert_eq!(
+            message.by_path("NoPartyIDs.0.PartyID").unwrap(),
+            &Scalar::from("HIGH_TOUCH")
+        );
+        assert_eq!(
+            message.by_path("NoPartyIDs.1.PartyID").unwrap(),
+            &Scalar::from("SWXCCP")
+        );
+    }
+    // Flattened, the sub-identifier group is a group of the row.
+    assert_eq!(
+        flat.by_path("NoPartySubIDs.0.PartySubID").unwrap(),
+        &Scalar::from("trader1")
+    );
+    // Packed inside the party, it is the party's own: reached through it,
+    // typed through its own field - `contactname` is the code set's
+    // spelling of 9 - and absent from a party that packed none.
+    assert_eq!(
+        nested
+            .by_path("NoPartyIDs.0.NoPartySubIDs.0.PartySubID")
+            .unwrap(),
+        &Scalar::from("trader1")
+    );
+    assert_eq!(
+        nested
+            .by_path("NoPartyIDs.0.NoPartySubIDs.0.PartySubIDType")
+            .unwrap()
+            .as_i64(),
+        Some(9)
+    );
+    assert!(
+        nested
+            .get_by_path("NoPartyIDs.1.NoPartySubIDs")
+            .is_none_or(Scalar::is_null)
+    );
+    assert!(
+        nested.get_by_tag(802).is_none(),
+        "no sub-identifier group at the row level"
+    );
+    // The arrival record nests three deep: the party under its counter, the
+    // sub-identifier under the sub-counter under the party.
+    let parties = nested
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 453)
+        .expect("the party counter");
+    let sub = parties
+        .children()
+        .iter()
+        .find(|entry| entry.tag() == 802)
+        .expect("the sub-counter under the parties");
+    assert!(
+        sub.children().iter().any(|entry| entry.tag() == 523),
+        "{sub:?}"
+    );
+    let tags: Vec<i32> = parties.children().iter().map(FixEntry::tag).collect();
+    assert!(tags.contains(&448) && tags.contains(&452), "{tags:?}");
+
+    // A line the bridge prints twice in a row digests once, so deduplication
+    // drops the republication and keeps the count honest.
+    let line = String::from_utf8(LOG.to_vec()).expect("text");
+    let line = line
+        .lines()
+        .nth(rows[1])
+        .expect("the packed line")
+        .to_owned();
+    let twice = Buffer::from_bytes(format!("{line}\n{line}\n").into_bytes()).with_media_type(
+        Url::from_str("file:///twice.log")
+            .expect("a URL")
+            .media_type(),
+    );
+    let mut deduplicated = options(None);
+    deduplicated.dedup = true;
+    let kept: usize = FixBatchReader::from_column(
+        registry(),
+        twice.read_arrow_reader(&reading()).expect("a reader"),
+        "body",
+        deduplicated,
+    )
+    .expect("the batch reader opens")
+    .map(|batch| batch.expect("a batch").num_rows())
+    .sum();
+    assert_eq!(kept, 1);
+}
+
+#[test]
+fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    let mimetype = |row: usize| {
+        text[row][at(&text_names, "mimetype")]
+            .as_str()
+            .map(ToOwned::to_owned)
+    };
+    let find = |needle: &str| {
+        text.iter()
+            .position(|held| body(&text_names, held).contains(needle))
+            .unwrap_or_else(|| panic!("a line holding {needle:?}"))
+    };
+    let read = |row: usize| {
+        codec
+            .transform_record(&record(&text_names, &text[row]), true)
+            .expect("the row reads")
+    };
+
+    // A configuration document: the exchange on the bridge's tags.
+    let document = find(
+        r#"Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture"#,
+    );
+    assert_eq!(
+        mimetype(document).as_deref(),
+        Some(MimeType::ULCONFIG.as_str())
+    );
+    let message = read(document);
+    assert_eq!(
+        message.by_tag(yggdryl::STATUS_TAG).unwrap(),
+        &Scalar::from(200_i64)
+    );
+    assert_eq!(
+        message.by_path("SessionInterfaces.0.CurrentPort").unwrap(),
+        &Scalar::from(9726_i64)
+    );
+    // A wildcard read answers for every plugin, one occurrence each.
+    let wildcard = find(r#""mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*""#);
+    let message = read(wildcard);
+    assert_eq!(
+        message
+            .by_tag(yggdryl::SESSIONINTERFACES_TAG)
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(2)
+    );
+    // An error answer states its error.
+    let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
+    assert!(read(error).get_by_tag(yggdryl::ERROR_TAG).is_some());
+
+    // FIXML behind a verb reads by its attributes.
+    let out = find("<FIXML xmlns=");
+    assert_eq!(mimetype(out).as_deref(), Some(MimeType::FIXML.as_str()));
+    assert_eq!(rows[out][column(11)].as_str(), Some("00026877711XOEA0.1"));
+    assert_eq!(rows[out][column(32)].as_f64(), Some(21.0));
+    let inbound = find("<FIXML><Order ClOrdID=\"OD9EOEDJ401\"");
+    assert_eq!(rows[inbound][column(55)].as_str(), Some("HOLN"));
+    assert_eq!(
+        rows[inbound][column(35)].is_null(),
+        true,
+        "an element is not a MsgType"
+    );
+
+    // Frames spelled with `^A` and `<SOH>` split on the byte they spell.
+    let heartbeat = find("8=FIX.4.4^A9=61^A35=0");
+    assert_eq!(rows[heartbeat][column(35)].as_str(), Some("0"));
+    assert_eq!(rows[heartbeat][column(34)].as_i64(), Some(3091));
+    let test_request = find("8=FIX.4.4<SOH>9=70<SOH>35=1");
+    assert_eq!(rows[test_request][column(35)].as_str(), Some("1"));
+    assert_eq!(
+        read(test_request).by_tag(112).unwrap().as_str(),
+        Some("PING")
+    );
+
+    // A FIXT session keeps the BeginString it stated.
+    let logon = find("8=FIXT.1.1|");
+    assert_eq!(rows[logon][column(8)].as_str(), Some("FIXT.1.1"));
+    assert_eq!(rows[logon][column(35)].as_str(), Some("A"));
+
+    // A spelled absence is null; a member run with no separator splits at
+    // the names the dictionary declares.
+    let nulls = find("LASTPX=null|LASTSHARES=<null>");
+    assert!(rows[nulls][column(31)].is_null());
+    assert!(rows[nulls][column(32)].is_null());
+    assert_eq!(rows[nulls][column(55)].as_str(), Some("HOLN"));
+    let message = read(nulls);
+    assert_eq!(
+        message.by_path("NoPartyIDs.0.PartyID").unwrap(),
+        &Scalar::from("TRADER2")
+    );
+    // A coded member is the code's value, typed: `11` is an order origination trader.
+    assert_eq!(
+        message.by_path("NoPartyIDs.0.PartyRole").unwrap().as_i64(),
+        Some(11)
+    );
+
+    // A marked frame states its direction in front of it.
+    let marked = find("|11=OD9EOEDJ401|55=HOLN|54=1|38=50|");
+    assert_eq!(rows[marked][column(35)].as_str(), Some("D"));
+    assert_eq!(
+        text[marked][at(&text_names, "direction")].as_str(),
+        Some(yggdryl::types::MsgDirection::SENT)
+    );
+
+    // A line with nothing after its header is still a row: dated, versioned,
+    // and saying nothing else.
+    let empty = text
+        .iter()
+        .position(|held| body(&text_names, held).is_empty())
+        .expect("the empty line");
+    assert!(rows[empty][column(35)].is_null());
+    assert!(!rows[empty][column(8)].is_null());
+    assert_eq!(
+        &rows[empty][column(yggdryl::TIMESTAMP_TAG)],
+        &text[empty][at(&text_names, "timestamp")]
+    );
+    // And a sentence is a sentence.
+    let warning = find("Unable to resolve destination for OD9EOEDJ401");
+    assert_eq!(
+        mimetype(warning).as_deref(),
+        Some(MimeType::OCTET_STREAM.as_str())
+    );
+    assert!(rows[warning][column(35)].is_null());
+}
+
+#[test]
+fn the_wire_re_emits_from_the_arrival_record_frames_included() {
+    let (text_names, text) = text_rows();
+    let mut written: Vec<u8> = Vec::new();
+    let mut emitting = FixOptions::new();
+    emitting.separator = b'|';
+    let source = FixBatchReader::from_column(
+        registry(),
+        source().read_arrow_reader(&reading()).expect("a reader"),
+        "body",
+        options(None),
+    )
+    .expect("the batch reader opens");
+    let rows = yggdryl::write_fix(source, &mut written, &emitting).expect("the capture writes");
+    assert_eq!(rows, LINES as u64);
+    let lines: Vec<&str> = std::str::from_utf8(&written)
+        .expect("text")
+        .lines()
+        .collect();
+    assert_eq!(lines.len(), LINES);
+    // Every frame the bridge wrote with `|` comes back byte for byte, the
+    // XmlData rows included, because the entries are the frame and nothing
+    // read inside one of its values was recorded as an arrival.
+    let mut checked = 0;
+    for (row, held) in text.iter().enumerate() {
+        let body = body(&text_names, held);
+        let Some(start) = body.find("8=FIX") else {
+            continue;
+        };
+        if !body.contains("|10=") {
+            continue;
+        }
+        let frame = body[start..].trim_end_matches(" << queued");
+        assert_eq!(lines[row], frame, "row {row} re-emits its frame");
+        checked += 1;
+    }
+    assert!(checked >= 9, "{checked} frames checked");
+}

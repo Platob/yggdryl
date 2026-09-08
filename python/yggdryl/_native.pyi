@@ -4142,6 +4142,11 @@ class FixRegistry:
     best match. Absence is a ``KeyError`` carrying the native message, a refusal a
     ``ValueError``. The registry is mutable, so it is unhashable, and a mutation
     raises ``ValueError`` while a message or the process default shares it.
+
+    Every registry holds this crate's own fields from construction, on the
+    ``yggdryl`` branch - ``FixRegistry()`` is those eleven fields, which
+    ``fix_crate_fields`` lists - so ``len`` counts them beside whatever was
+    inserted or loaded, and a store never writes them.
     """
 
     def __init__(self) -> None: ...
@@ -4164,7 +4169,6 @@ class FixRegistry:
         branch: str | None = None,
         aliases: Sequence[str] | None = None,
     ) -> tuple[int, int]: ...
-    def with_crate_fields(self) -> None: ...
     def with_ulbridge_fields(self) -> None: ...
     def register_msgtype(
         self,
@@ -4231,6 +4235,12 @@ class FixMsg:
     the root's own order - and ``registry`` defaults to the process one. The
     message is immutable: it hashes, pickles, copies and compares by the
     schema and the value it carries, against that registry.
+
+    A message ``FixCodec`` built opens with ``beginstring`` - the wire's own,
+    else the version it was read at - and closes with the crate's
+    ``timestamp``, so ``market_timestamp`` answers for it and ``to_row`` fills
+    both columns. Neither is an entry unless the wire sent it, so ``to_bytes``
+    re-emits the line byte for byte.
     """
 
     def __init__(
@@ -4288,11 +4298,15 @@ class FixCodec:
 
     """One dictionary, reading captured lines into messages.
 
-    Every entry point redirects to the core reader of the same name: ``text``
-    and ``bytes`` take a captured line whatever it is wrapped in, ``fixtext`` a
-    numeric frame with the separator stated, ``ultext`` a bridge frame whose
-    keys are names, and ``pairs`` what a caller already split. A branch and a
-    version cross as ``str`` and are parsed once at the boundary.
+    Every entry point redirects to the core reader of the same name:
+    ``transform_line`` takes a captured line whatever it is wrapped in,
+    ``transform_fix_line`` a numeric frame with the separator stated,
+    ``transform_ullink_line`` a bridge frame whose keys are names,
+    ``transform_fixml_line`` a FIXML row, ``transform_ulconfig_line`` a bridge
+    configuration document, and ``transform_pairs`` what a caller already
+    split. Each builds a message that opens with ``beginstring`` and closes
+    with the crate's ``timestamp``. A branch and a version cross as ``str``
+    and are parsed once at the boundary.
     """
 
     def __init__(

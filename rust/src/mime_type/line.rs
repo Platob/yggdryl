@@ -478,11 +478,39 @@ pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
     let inferred = inspect(line);
     let shape = inferred.mime_type();
     let shape = if shape == MimeType::OCTET_STREAM || shape == MimeType::KEYVALUE {
-        document_type(line).unwrap_or(shape)
+        document_type(line)
+            .or_else(|| document_behind_prefix(line).map(|(shape, _)| shape))
+            .unwrap_or(shape)
     } else {
         shape
     };
     (shape, inferred.msgtype())
+}
+
+/// An XML document a transport wrote prose in front of, and where it opens.
+///
+/// `Sending : <FIXML ...>...</FIXML>` states attributes rather than pairs,
+/// so it is not read by the pair rules. The document must open before any
+/// `=` - a pair arriving first makes the `<` a value - and the line must
+/// close on the document's own last byte, so a sentence mentioning `<trade>`
+/// stays a sentence. A JSON document is not read this way: one naming the
+/// bridge's namespace is answered by the configuration rules, and prose
+/// closing on braces is prose.
+pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
+    let trimmed = trim_ascii(line);
+    let open = memchr::memchr(b'<', trimmed)?;
+    if memchr::memchr(b'=', &trimmed[..open]).is_some()
+        || trimmed.last() != Some(&b'>')
+        || !trimmed.get(open + 1).is_some_and(u8::is_ascii_alphabetic)
+    {
+        return None;
+    }
+    let shape = if trimmed[open..].starts_with(b"<FIXML") {
+        MimeType::FIXML
+    } else {
+        MimeType::XML
+    };
+    Some((shape, line.len() - trimmed.len() + open))
 }
 
 /// Whether the line holds any pair at all, marked or not.

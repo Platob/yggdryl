@@ -858,6 +858,16 @@ impl FixRegistry {
         let mut added = 0_usize;
         let mut merged = 0_usize;
         for field in fields {
+            // The crate's own fields are every dictionary's, so folding
+            // them is folding a field onto itself: neither added nor merged,
+            // and never a source's to redefine.
+            if field
+                .as_fix()
+                .branch()
+                .is_ok_and(|branch| branch.name() == super::CRATE_BRANCH)
+            {
+                continue;
+            }
             if self
                 .canonical_position_by_id(canonical_id(&field)?)
                 .is_some()

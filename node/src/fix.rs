@@ -159,7 +159,11 @@ impl JsFixRegistry {
 #[allow(clippy::cast_possible_truncation)]
 #[napi]
 impl JsFixRegistry {
-    /// The empty registry.
+    /// A registry holding nothing but this crate's own fields.
+    ///
+    /// Every registry starts here: the eleven fields `fixCrateFields` lists
+    /// are what a row is typed by, so a dictionary loaded from a store, built
+    /// from fields or left alone holds them alike.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -179,9 +183,11 @@ impl JsFixRegistry {
     ///
     /// `location` is an `IOBase` handle, a `Url`, or the string naming one, run
     /// through the coercion every folder-shaped entry point uses. A folder that
-    /// is not there loads as the empty registry and is not created; a shard
-    /// that does not parse, and a root still holding the retired `records/`
-    /// layout, throw with the URL named.
+    /// is not there loads as a new registry - the crate's own fields and
+    /// nothing else - and is not created; a stored copy of the crate's branch
+    /// is read past, because the crate's own definition is the one that types
+    /// a row. A shard that does not parse, and a root still holding the
+    /// retired `records/` layout, throw with the URL named.
     #[napi(factory)]
     pub fn from_handle(location: LocationInput<'_>) -> Result<Self> {
         let holder = folder_from_input(location)?;
@@ -241,14 +247,16 @@ impl JsFixRegistry {
     }
 
     /// Write every populated shard under `<location>/<tree>/<branch>`, removing
-    /// the shards, branch folders and trees no field populates any more.
+    /// the shards, branch folders and trees no field populates any more. The
+    /// crate's own branch is never written: its fields are the crate's rather
+    /// than the store's, and every registry holds them already.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
         let mut holder = folder_from_input(location)?;
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many fields are registered.
+    /// How many fields are held, the crate's own eleven among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -811,6 +819,11 @@ impl JsFixMsg {
     }
 
     /// The timestamp a capture is ordered by, or `null`.
+    ///
+    /// The crate's `timestamp` child every built message closes with: the
+    /// first clock the message carries, else the epoch - so a message the
+    /// reader built always answers, and only a message built by hand without
+    /// that child does not.
     #[napi]
     pub fn market_timestamp(&self) -> Option<JsScalar> {
         answered(&self.inner.market_timestamp())
@@ -892,8 +905,10 @@ impl JsFixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// `schema` is the fixed root `fixSchema` builds: every column is filled by
-    /// the tag its name spells, and a column no tag names answers null because
-    /// it is the capture's rather than the message's.
+    /// the tag its field carries - never by its spelling - so a message that
+    /// carried nothing at a column answers null there rather than shifting its
+    /// neighbours, and a column no tag names answers null because it is the
+    /// capture's rather than the message's.
     #[napi]
     pub fn to_row(&self, schema: &JsField) -> Result<JsScalar> {
         self.inner
@@ -1006,6 +1021,12 @@ fn answered(value: &Scalar) -> Option<JsScalar> {
 /// name/value text, or pairs a caller already has. Each redirects to the core
 /// method of the same name, so nothing here decides a dialect, a version or a
 /// separator - it only carries what JavaScript said across.
+///
+/// Every message it builds opens with `beginstring` - the wire's own, else
+/// the version the message was read at - and closes with the crate's
+/// `timestamp`: the first clock the message carries, else the epoch. Neither
+/// is an entry unless the line carried it, so `toBytes` re-emits the line
+/// byte for byte.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
     inner: CoreFixCodec,
@@ -1161,8 +1182,9 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own derived facts, and the two lists that close every
-/// row. Columns are named by tag, because a tag is the one name a field has in
-/// every version and every dialect.
+/// row. Columns are spelled by the dictionary's folded canonical names -
+/// `msgtype`, never `35` - so a row reads the way a message reads; the tag
+/// stays each column's identity, on its `fix:tag`, and is what fills it.
 #[napi(js_name = "fixSchema")]
 pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -1182,9 +1204,9 @@ pub fn fix_schema(
 ///
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
-/// a monitor orders and joins on. A carried column whose name a FIX column
-/// already takes is dropped rather than renamed: the FIX column is the one a
-/// reader spelling it means.
+/// a monitor orders and joins on. A carried column whose folded name a FIX
+/// column already takes - `sessionId` and `sessionid` are one name - is dropped
+/// rather than renamed: the FIX column is the one a reader spelling it means.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)
@@ -1203,6 +1225,9 @@ pub fn fix_schema_tags() -> Vec<f64> {
 }
 
 /// The fields this crate defines on its own branch, in tag order.
+///
+/// Every registry already holds them, so this is the listing a schema or a
+/// document walks rather than something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()
@@ -1214,9 +1239,10 @@ pub fn fix_crate_fields() -> Result<Vec<JsField>> {
 ///
 /// The order is the core's: a registry installed by
 /// [`fix_install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY`
-/// names, then `~/.config/fix` when it exists, then the empty registry. Only
-/// the third step treats absence as empty; every other failure throws with the
-/// native message and the default stays unresolved, so the next call retries.
+/// names, then `~/.config/fix` when it exists, then a new registry holding the
+/// crate's own fields alone. Only the third step treats absence as that
+/// default; every other failure throws with the native message and the default
+/// stays unresolved, so the next call retries.
 #[napi(js_name = "fixGlobalRegistryNative", skip_typescript)]
 pub fn fix_global_registry() -> Result<JsFixRegistry> {
     CoreFixRegistry::global()

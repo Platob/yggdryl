@@ -10,6 +10,7 @@ boundary, so there is no class for either and every refusal is the native one.
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import decimal
 import json
 import pathlib
@@ -45,6 +46,10 @@ from yggdryl.fix import (
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
+
+# What every registry holds before anything is inserted: the crate's own
+# fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists.
+CRATED = 11
 
 # One Ullink CBlock in the shape a production file has: a vocabulary of a
 # specification tag and a venue one, and a grammar binding whose root the
@@ -283,12 +288,12 @@ def test_a_specification_tag_forces_the_standard_branch() -> None:
     assert vendor.fix.id == "5001:cme"
 
     # A branch change is refused against the tags the field already holds.
-    msg_type = Field("MsgType", "utf8")
-    msg_type.fix.tag = 35
+    msgtype = Field("MsgType", "utf8")
+    msgtype.fix.tag = 35
     with pytest.raises(ValueError, match="fix:branch"):
-        msg_type.fix.branch = "cme"
-    assert msg_type.fix.branch == ""
-    assert msg_type.fix.id == "35:"
+        msgtype.fix.branch = "cme"
+    assert msgtype.fix.branch == ""
+    assert msgtype.fix.id == "35:"
 
     alternates = Field("Wide", "utf8")
     alternates.fix.tag = 9001
@@ -312,7 +317,9 @@ def test_a_specification_tag_forces_the_standard_branch() -> None:
 
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
-    assert len(seed) == 6203
+    # The store's fields, and the crate's own beside them: a store never
+    # writes those, so a loaded dictionary holds the crate's definition.
+    assert len(seed) == 6203 + CRATED
     assert bool(seed)
 
     assert seed.field_by_tag(55).name == "symbol"
@@ -438,14 +445,14 @@ def test_explicit_branch_pins_lookup_and_omission_infers_the_best_match() -> Non
     assert "5055:cme" not in registry
     assert registry.get("5001:cme", "fallback") == "fallback"
     assert registry.remove("5055:cme") is None
-    assert len(registry) == 3
+    assert len(registry) == 3 + CRATED
 
     # A vendor field leaves by its identifier, which is the only spelling that
     # names one: the generic remove reaches the standard branch only.
     assert registry.remove_by_id("9999:cme") is None
     removed = registry.remove_by_id("5055:cme")
     assert removed is not None and removed.fix.id == "5055:cme"
-    assert len(registry) == 2
+    assert len(registry) == 2 + CRATED
     assert registry.get_field_by_id("5055:cme") is None
     assert registry.get_field_by_tag(55).fix.id == "55:"
 
@@ -544,7 +551,10 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
             _field("Tail", "utf8", 9001),
         ]
     )
-    # Tag-major, then by branch digest - the identifier's own order.
+    # Tag-major, then by branch digest - the identifier's own order. The
+    # crate's own fields close every walk: their tags are above any a test
+    # claims.
+    crated = [f"{tag}:yggdryl" for tag in range(30001, 30001 + CRATED)]
     assert [field.fix.id for field in registry] == [
         "1:",
         "44:",
@@ -552,6 +562,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
         "5001:cme",
         "5002:cme",
         "9001:",
+        *crated,
     ]
 
     walk = iter(registry)
@@ -569,6 +580,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
         "5001:cme",
         "5002:cme",
         "9001:",
+        *crated,
     ]
 
 
@@ -579,9 +591,16 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # Every seed field is a specification field, so none states a branch.
-    assert all(field.fix.branch == "" for field in seed)
-    assert all("fix:branch" not in field.metadata for field in seed)
+    # Every stored field is a specification field, so none states a branch;
+    # the crate's own eleven, which every registry holds, are the only ones
+    # on a branch at all.
+    branches = [field.fix.branch for field in seed]
+    assert branches.count("yggdryl") == CRATED
+    assert branches.count("") == len(seed) - CRATED
+    assert all(
+        ("fix:branch" in field.metadata) == (field.fix.branch == "yggdryl")
+        for field in seed
+    )
 
 
 def test_registry_takes_every_storage_location(
@@ -597,9 +616,11 @@ def test_registry_takes_every_storage_location(
     ):
         assert FixRegistry.from_handle(location) == seed
 
-    # A folder that is not there loads as empty and is not created.
+    # A folder that is not there loads as a new registry - the crate's own
+    # fields and nothing else - and is not created.
     missing = tmp_path / "missing"
-    assert not FixRegistry.from_handle(missing)
+    assert FixRegistry.from_handle(missing) == FixRegistry()
+    assert len(FixRegistry.from_handle(missing)) == CRATED
     assert not missing.exists()
 
 
@@ -625,6 +646,9 @@ def test_registry_round_trips_through_the_two_written_trees(
     nested = sorted(path.name for path in (root / "nested").iterdir())
     assert "0.json" in primitive and "0.json" in nested
     assert len(primitive) + len(nested) == 128
+    # The crate's own branch is never written: those fields are the crate's
+    # rather than the store's, and the reload holds them all the same.
+    assert "yggdryl" not in primitive and "yggdryl" not in nested
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
@@ -667,7 +691,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
             _field("Price", "decimal128(20, 8)", 44, aliases=["Px"]),
         ]
     )
-    assert len(registry) == 2
+    assert len(registry) == 2 + CRATED
     assert registry.insert(_field("Side", "utf8", 54)) is None
     assert registry.field_by_tag(54).name == "Side"
 
@@ -676,7 +700,7 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
     with pytest.raises(ValueError, match="held by symbol") as conflict:
         registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
     assert 'branch \\"\\"' in str(conflict.value)
-    assert len(registry) == 3
+    assert len(registry) == 3 + CRATED
 
     # The same alias in another branch is not a conflict at all.
     assert registry.insert(_field("VenueSym", "utf8", 5055, branch="cme", aliases=["ticker"])) is None
@@ -721,7 +745,7 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
         ]
     )
     assert (added, merged) == (2, 1)
-    assert len(registry) == 4
+    assert len(registry) == 4 + CRATED
 
     # The fold kept what only the stored field declared and added the rest.
     folded = registry.field_by_tag(65)
@@ -738,14 +762,14 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
                 _field("Account", "utf8", 1),
             ]
         )
-    assert len(registry) == 4
+    assert len(registry) == 4 + CRATED
     assert registry.get_field_by_tag(54) is None
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
     # No ``fix:tag`` is no identity, so there is nothing to add or fold under.
     with pytest.raises(ValueError, match="fix:tag"):
         registry.add_fields([Field("Untagged", "utf8")])
-    assert len(registry) == 4
+    assert len(registry) == 4 + CRATED
 
 
 def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
@@ -761,8 +785,10 @@ def test_merge_with_folds_the_fields_and_the_dialects_beside_them() -> None:
     )
     other.set_branch(incoming)
 
-    assert dictionary.merge_with(other) == (1, 1)
-    assert len(dictionary) == 3
+    # The other dictionary holds the crate's own fields as every registry
+    # does, and each folds onto this one's identical copy: a merge apiece.
+    assert dictionary.merge_with(other) == (1, 1 + CRATED)
+    assert len(dictionary) == 3 + CRATED
     assert dictionary.field_by_tag(55).name == "SYMBOL"
 
     # The dialect arrives beside the fields, and every spelling either side
@@ -784,7 +810,7 @@ def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
 
     registry = FixRegistry()
     assert registry.add_cfb_file(path, "morgan", ["mstanley"]) == (2, 0)
-    assert len(registry) == 2
+    assert len(registry) == 2 + CRATED
 
     # The dialect the root element declared, which reading the fields alone
     # would have lost: a field carries its branch's name and nothing else.
@@ -803,7 +829,7 @@ def test_a_cblock_reads_in_whole_with_its_dialect_and_its_file_name(
     retyped.write_text(CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="integer"'), encoding="utf-8")
     with pytest.raises(ValueError):
         registry.add_cfb_file(retyped, "morgan")
-    assert len(registry) == 2
+    assert len(registry) == 2 + CRATED
     assert registry.branch_named("retyped") is None
 
 
@@ -835,7 +861,7 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     # The registry form is the same file read whole: the same vocabulary, plus
     # the message roots its grammar bindings describe.
     registry, roots = FixRegistry.from_cfb_file(path, "bloomberg")
-    assert len(registry) == len(fields)
+    assert len(registry) == len(fields) + CRATED
     assert [root.name for root in roots] == ["7"]
 
     # The vocabulary folds into a dictionary that already exists.
@@ -1153,8 +1179,9 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored.by_path("nopartyids.0.partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
-    assert repr(seed) == "FixRegistry(6203 fields)"
-    assert repr(FixRegistry()) == "FixRegistry(0 fields)"
+    assert repr(seed) == f"FixRegistry({6203 + CRATED} fields)"
+    # A new registry is never empty: it holds the crate's own fields.
+    assert repr(FixRegistry()) == f"FixRegistry({CRATED} fields)"
 
 
 INSTALL_SCRIPT = """
@@ -1254,7 +1281,8 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
     parsed = parse_arrow_reader(
         pa.table({"body": pa.array([bridge], pa.binary())}), seed, "body"
     ).read_all()
-    assert parsed.column("453").to_pylist() == [
+    # The group's column is spelled by the dictionary's folded name.
+    assert parsed.column("nopartyids").to_pylist() == [
         [
             {
                 "partyid": "BUYSIDE",
@@ -1436,27 +1464,57 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
         UlPlugin.from_json_bytes(b"no document here at all")
 
 
-def test_the_fixed_row_is_named_by_tag_and_never_shifts(seed: FixRegistry) -> None:
+def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:
     """The one shape a whole capture lands in."""
     schema = fix_schema(seed, "FixMessage")
     columns = [child.name for child in schema]
-    assert columns[:3] == ["8", "9", "35"], "named by tag, in message order"
+    assert columns[:3] == [
+        "beginstring",
+        "bodylength",
+        "msgtype",
+    ], "named by the dictionary's folded names, in message order"
     assert columns[-2:] == [
         "nofixentries",
         "nounmappedfixentries",
     ], "and the two lists close it"
+    # The tag stays the identity: each column carries its field's, in order.
     assert fix_schema_tags()[:3] == [8, 9, 35]
+    assert [child.fix.tag for child in schema][:3] == [8, 9, 35]
 
-    # A column is found by the name its tag spells, and nothing else is needed.
-    assert schema.index_of("35") == 2
+    # A column is found by the name the dictionary spells, never by digits.
+    assert schema.index_of("msgtype") == 2
+    assert schema.index_of("35") is None
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
+    # The crate's own columns are spelled the same way, with the FIX-style
+    # spelling kept as the display.
+    assert schema[schema.index_of("timestamp")].display == "Timestamp"
+    assert schema[schema.index_of("sessionid")].display == "SessionId"
+    # Four columns every message fills are declared so; every other one is
+    # nullable, because a message that carried nothing there answers null
+    # rather than shifting its neighbours.
+    assert [child.name for child in schema if not child.nullable] == [
+        "beginstring",
+        "msghash",
+        "timestamp",
+        "unixpartition",
+    ]
 
     reader = FixCodec(seed)
-    row = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|").to_row(schema).as_py()
+    message = reader.transform_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|")
+    row = message.to_row(schema).as_py()
     assert len(row) == len(columns)
-    assert row[schema.index_of("35")] == "D"
-    assert row[schema.index_of("55")] == "AAPL"
+    assert row[schema.index_of("beginstring")] == "FIX.4.4"
+    assert row[schema.index_of("msgtype")] == "D"
+    assert row[schema.index_of("symbol")] == "AAPL"
+    assert row[schema.index_of("version")] == "4.4"
+    # A message with no clock is stamped with the epoch, and the partition
+    # follows it: never null, and sorting first and visibly.
+    assert row[schema.index_of("timestamp")] == dt.datetime(
+        1970, 1, 1, tzinfo=dt.timezone.utc
+    )
+    assert row[schema.index_of("unixpartition")] == 0
+    assert row[schema.index_of("sessionid")] is None
     # A tag no dictionary explains is still there, in its own column.
     assert len(row[-1]) == 1
 
@@ -1478,18 +1536,41 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     assert [child.name for child in carried][:2] == ["url", "body"]
     assert len(carried) == len(plain) + 2
-    assert carried.index_of("35") == plain.index_of("35") + 2
+    assert carried.index_of("msgtype") == plain.index_of("msgtype") + 2
 
     # A column no tag names is the capture's, so a row answers null there: the
     # capture fills it, and nothing in the message says what it held.
     row = FixCodec(seed).transform_line(b"8=FIX.4.4|35=D|10=0|").to_row(carried).as_py()
     assert row[0] is None
-    assert row[carried.index_of("35")] == "D"
+    assert row[carried.index_of("msgtype")] == "D"
+
+    # A capture column whose folded name a FIX column takes is not carried in
+    # front: `sessionId` and `sessionid` are one name, and the FIX column is
+    # the one a reader spelling it means.
+    named = Field(
+        "line",
+        DataType.from_fields(
+            [
+                Field("url", DataType("utf8"), nullable=False),
+                Field("sessionId", DataType("utf8")),
+                Field("body", DataType("binary"), nullable=False),
+            ]
+        ),
+        nullable=False,
+    )
+    folded = fix_schema_carrying(named, plain)
+    names = [child.name for child in folded]
+    assert names[:2] == ["url", "body"]
+    assert "sessionId" not in names
+    assert names.count("sessionid") == 1
+    assert len(folded) == len(plain) + 2
 
 
 def test_the_crate_fields_declare_their_own_protocols() -> None:
     """The digest says how it was taken, the partition what it derives from."""
     fields = {field.name: field for field in fix_crate_fields()}
+    assert len(fields) == CRATED
+    # In tag order, on the crate's own branch.
     assert list(fields) == [
         "msghash",
         "version",
@@ -1498,6 +1579,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "unixpartition",
         "parentclordid",
         "parentorderid",
+        "sessionid",
+        "msgctxid",
+        "senderpluginid",
+        "targetpluginid",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -1507,7 +1592,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "UnixPartition",
         "ParentClOrdID",
         "ParentOrderID",
+        "SessionId",
+        "MsgCtxId",
+        "SenderPluginId",
+        "TargetPluginId",
     ]
+    assert [field.fix.tag for field in fields.values()] == list(
+        range(30001, 30001 + CRATED)
+    )
+    assert all(field.fix.branch == "yggdryl" for field in fields.values())
 
     held = fields["msghash"]
     assert held.metadata["digest:role"] == "holder"
@@ -1515,9 +1608,151 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert held.metadata["digest:sources"] == '["nofixentries"]'
     assert held.description is not None
 
+    # The partition names the column it reads by that column's name.
     held = fields["unixpartition"]
-    assert held.metadata["partition:sources"] == '["30004"]'
+    assert held.metadata["partition:sources"] == '["timestamp"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
+
+    # What a bridge's own log states about a line: its session, its message
+    # context, and the plugins it moved between - text, all four.
+    for name in ("sessionid", "msgctxid", "senderpluginid", "targetpluginid"):
+        assert fields[name].dtype == DataType("utf8"), name
+        assert fields[name].nullable, name
+        assert fields[name].description is not None, name
+
+    # Every registry holds them from construction, and the listing is the
+    # very definition a registry answers.
+    registry = FixRegistry()
+    for name, field in fields.items():
+        assert registry.field_by_name(name, "yggdryl") == field
+        assert registry.field_by_id(f"{field.fix.tag}:yggdryl") == field
+    assert registry.field_by_tag(30008).name == "sessionid"
+
+
+def _root_names(message: FixMsg) -> list[str]:
+    """The names of a message's root children, in the order it declares."""
+    return [child.name for child in message.field]
+
+
+def test_every_built_message_carries_its_version_and_its_clock(
+    seed: FixRegistry,
+) -> None:
+    """A message the codec built opens with its version and closes with its clock."""
+    reader = FixCodec(seed)
+
+    # The header in rank order whatever the input order, the body, the
+    # trailer, and the crate's own `timestamp` closing the message.
+    message = reader.transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|")
+    assert _root_names(message) == [
+        "beginstring",
+        "bodylength",
+        "msgtype",
+        "symbol",
+        "checksum",
+        "timestamp",
+    ]
+    pairs = [(name, value.as_py()) for name, value in message]
+    assert [name for name, _ in pairs] == _root_names(message)
+    assert pairs[0] == ("beginstring", "FIX.4.4")
+    assert pairs[-1][0] == "timestamp"
+    assert len(message) == 6
+    assert message.by_tag(8).as_py() == "FIX.4.4"
+    assert message.by_id("30004:yggdryl") == message.by_name("timestamp")
+
+    # A message with no clock is stamped with the epoch rather than left
+    # undated, and its partition follows.
+    epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+    stamped = message.market_timestamp()
+    assert stamped is not None and stamped.as_py() == epoch
+    assert message.by_name("timestamp").as_py() == epoch
+    partition = message.unix_partition()
+    assert partition is not None and partition.as_py() == 0
+
+    # The stamp is a child and never an entry: the wire re-emits byte for
+    # byte, and nothing the row added is in the arrival record.
+    wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
+    order = reader.transform_line(wire)
+    assert order.to_bytes(ord("|")) == wire
+    assert {tag for tag, _, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
+
+    # The message's own clocks, in decreasing exactness: TransactTime(60)
+    # outranks SendingTime(52), and a sub-second clock still has a partition.
+    clocked = reader.transform_line(
+        b"8=FIX.4.4|35=8|52=20260102-09:30:00.500|60=20260102-09:29:59.250|10=0|"
+    )
+    instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
+    stamped = clocked.market_timestamp()
+    assert stamped is not None and stamped.as_py() == instant
+    partition = clocked.unix_partition()
+    assert partition is not None and partition.as_py() == 1767344400  # 09:00Z
+    partition = clocked.unix_partition(60)
+    assert partition is not None and partition.as_py() == 1767346140  # 09:29Z
+
+    # A message that stated no version is read at one all the same, and the
+    # version it was read at is not sent: it is not an entry either.
+    stated = reader.transform_pairs([("55", "AAPL")])
+    assert _root_names(stated)[0] == "beginstring"
+    assert _root_names(stated)[-1] == "timestamp"
+    assert stated.by_tag(8).as_py().startswith("FIX.")
+    assert {tag for tag, _, _, _ in stated.entries()} == {55}
+    assert not stated.to_bytes(ord("|")).startswith(b"8=")
+
+    # A bridge frame and a FIXML row are built the same way.
+    bridge = reader.transform_ullink_line(b"|#SYMBOL=TTF|#SIDE=1|")
+    assert _root_names(bridge)[0] == "beginstring"
+    assert _root_names(bridge)[-1] == "timestamp"
+    assert bridge.market_timestamp() is not None
+
+
+def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
+    """A capture's clock stamps the row; its other columns fill the fields their names reach."""
+    clock = dt.datetime(2026, 1, 2, 10, 15, 30, 500000, tzinfo=dt.timezone.utc)
+    source = pa.table(
+        {
+            "timestamp": pa.array([clock, None], pa.timestamp("us", tz="UTC")),
+            "sessionId": pa.array(["e7254b22", None], pa.utf8()),
+            "seqNum": pa.array([4507, None], pa.int64()),
+            "body": pa.array(
+                [
+                    b"8=FIX.4.4|35=D|55=AAPL|10=0|",
+                    b"8=FIX.4.4|35=0|34=696|52=20260102-09:29:59.250|10=0|",
+                ],
+                pa.binary(),
+            ),
+        }
+    )
+    parsed = parse_arrow_reader(source, seed, "body").read_all()
+    names = parsed.schema.names
+
+    # The capture's own columns lead the row and the fixed columns follow. A
+    # capture whose folded name a fixed column takes is not carried in front,
+    # it fills that column: `timestamp` and `sessionId`. `seqNum` is carried,
+    # since no fixed column is spelled so, and fills `msgseqnum` besides.
+    assert names[:2] == ["seqNum", "body"]
+    assert names[2:5] == ["beginstring", "bodylength", "msgtype"]
+    assert "sessionId" not in names
+    for once in ("timestamp", "sessionid", "msgseqnum"):
+        assert names.count(once) == 1, once
+    assert names[-2:] == ["nofixentries", "nounmappedfixentries"]
+    assert parsed.column("seqNum").to_pylist() == [4507, None]
+
+    # The row's clock outranks the message's own; a row stating none falls
+    # back to the message's clock. Neither row is undated.
+    instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
+    assert parsed.column("timestamp").to_pylist() == [clock, instant]
+    assert parsed.column("unixpartition").to_pylist() == [1767348000, 1767344400]
+
+    # The bracket's session lands in the crate's own column; the sequence
+    # fills `MsgSeqNum` where the frame stated none and never where it did.
+    assert parsed.column("sessionid").to_pylist() == ["e7254b22", None]
+    assert parsed.column("msgseqnum").to_pylist() == [4507, 696]
+
+    # Row-only: what the row filled is never an entry, so the arrival record
+    # is exactly what the frame carried.
+    entries = parsed.column("nofixentries").to_pylist()
+    assert {entry["tag"] for entry in entries[0]} == {8, 35, 55, 10}
+    assert {entry["tag"] for entry in entries[1]} == {8, 35, 34, 52, 10}
+
 
 def test_a_branch_declaration_carries_its_dialect() -> None:
     import copy
@@ -1558,13 +1793,16 @@ def test_a_branch_declaration_carries_its_dialect() -> None:
 def test_a_registry_declares_the_branches_it_resolves_against() -> None:
     from yggdryl.fix import FixBranch
 
+    # A new registry already holds the crate's own fields, so it declares
+    # the crate's own branch and nothing else.
     registry = FixRegistry()
-    assert registry.branches() == []
+    assert [held.name for held in registry.branches()] == ["yggdryl"]
 
     branch = FixBranch("cme", version="4.4")
     registry.set_branch(branch)
 
-    assert [held.name for held in registry.branches()] == ["cme"]
+    # Branches list in name order.
+    assert [held.name for held in registry.branches()] == ["cme", "yggdryl"]
     assert registry.branch_named("cme") == branch
     assert registry.branch_named("CME").version == "4.4"
     assert registry.branch_named("absent") is None

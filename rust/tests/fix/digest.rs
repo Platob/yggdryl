@@ -271,8 +271,8 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             "parentorderid",
             "sessionid",
             "msgctxid",
-            "senderpluginid",
-            "targetpluginid",
+            "pluginid",
+            "prevpluginid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -288,8 +288,8 @@ fn the_crate_carries_fields_of_its_own_on_a_branch_of_its_own() {
             Some("ParentOrderID"),
             Some("SessionId"),
             Some("MsgCtxId"),
-            Some("SenderPluginId"),
-            Some("TargetPluginId"),
+            Some("PluginId"),
+            Some("PrevPluginId"),
         ],
     );
 

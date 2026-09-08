@@ -22,7 +22,7 @@ const standardBranch: string = fix.STANDARD_BRANCH
 const userTagMin: number = fix.USER_TAG_MIN
 const userTagMax: number = fix.USER_TAG_MAX
 const registryClass: typeof FixRegistry = fix.FixRegistry
-const empty: FixRegistry = new fix.FixRegistry()
+const seeded: FixRegistry = new fix.FixRegistry()
 const built: FixRegistry = fix.FixRegistry.fromFields([field, field])
 const location: LocationInput = url
 const loaded: FixRegistry = fix.FixRegistry.fromHandle(location)
@@ -31,7 +31,7 @@ const fromHandle: FixRegistry = fix.FixRegistry.fromHandle(handle)
 loaded.writeInto(handle)
 
 void registryClass
-void empty
+void seeded
 void built
 void fromString
 void fromHandle
@@ -228,10 +228,10 @@ const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF')
 const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
 const readerCopy: FixCodec = reader.clone()
 
-// The fixed row is a schema, and a column is the name its tag spells.
+// The fixed row is a schema, and a column is the folded name of its field.
 const fixedSchema: Field = fix.schema(loaded, 'FixMessage')
 const carried: Field = fix.schemaCarrying(field, fixedSchema)
-const at: number | null = fixedSchema.indexOf('35')
+const at: number | null = fixedSchema.indexOf('msgtype')
 const fixedRow: Scalar = fromText.toRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()

@@ -210,7 +210,11 @@ impl PyFixRegistry {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// The empty registry.
+    /// A registry holding nothing but this crate's own fields.
+    ///
+    /// Every registry starts here: the eleven fields `fix_crate_fields`
+    /// lists are what a row is typed by, so a dictionary loaded from a store,
+    /// built from fields or left alone holds them alike.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -235,10 +239,12 @@ impl PyFixRegistry {
     /// Load every shard under `<location>/primitive` and `<location>/nested`.
     ///
     /// `location` is an `IOBase` handle or anything that names a folder: a
-    /// string, a path-like, a `Url`. A folder that is not there loads as the
-    /// empty registry and is not created; a shard that does not parse, and a
-    /// root still holding the retired `records/` layout, are a `ValueError`
-    /// naming the URL.
+    /// string, a path-like, a `Url`. A folder that is not there loads as a new
+    /// registry - the crate's own fields and nothing else - and is not
+    /// created; a stored copy of the crate's branch is read past, because the
+    /// crate's own definition is the one that types a row. A shard that does
+    /// not parse, and a root still holding the retired `records/` layout, are
+    /// a `ValueError` naming the URL.
     #[staticmethod]
     fn from_handle(location: &Bound<'_, PyAny>) -> PyResult<Self> {
         let holder = folder_holder_from_value(location)?;
@@ -1040,6 +1046,11 @@ impl PyFixMsg {
     }
 
     /// The timestamp a capture is ordered and partitioned by.
+    ///
+    /// The crate's `timestamp` child every built message closes with: the
+    /// row's own clock where the capture stated one, else the first clock the
+    /// message carries, else the epoch - so a message the codec built always
+    /// answers, and only a message built by hand without that child does not.
     fn market_timestamp(&self) -> Option<PyScalar> {
         Self::answered(Some(&self.inner.market_timestamp()))
     }
@@ -1110,11 +1121,11 @@ impl PyFixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// `schema` is the fixed root :func:`fix_schema` builds. Every column is
-    /// filled by the tag its name spells, so a message that carried nothing at
-    /// a column answers null there rather than shifting its neighbours - which
-    /// is what makes two rows of one capture comparable at all. A column no tag
-    /// names answers null: it is the capture's, and nothing in the message says
-    /// what it held.
+    /// filled by the tag its field carries - never by its spelling - so a
+    /// message that carried nothing at a column answers null there rather than
+    /// shifting its neighbours, which is what makes two rows of one capture
+    /// comparable at all. A column no tag names answers null: it is the
+    /// capture's, and nothing in the message says what it held.
     fn to_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
             .to_row(&core_field_from_value(schema)?)
@@ -1336,8 +1347,9 @@ fn version_from_py(text: &str) -> PyResult<CoreVersion> {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own derived facts, and the two lists that close every
-/// row. Columns are named by tag, because a tag is the one name a field has in
-/// every version and every dialect.
+/// row. Columns are spelled by the dictionary's folded canonical names -
+/// `msgtype`, never `35` - so a row reads the way a message reads; the tag
+/// stays each column's identity, on its `fix:tag`, and is what fills it.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -1357,9 +1369,10 @@ pub(crate) fn fix_schema(
 ///
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
-/// a monitor orders and joins on. A carried column whose name a FIX column
-/// already takes is dropped rather than renamed: the FIX column is the one a
-/// reader spelling it means.
+/// a monitor orders and joins on. A carried column whose folded name a FIX
+/// column already takes - `sessionId` and `sessionid` are one name - is dropped
+/// rather than renamed: the FIX column is the one a reader spelling it means,
+/// and the row fills it from what the capture stated.
 #[pyfunction]
 #[pyo3(name = "fix_schema_carrying", signature = (carrier, read))]
 pub(crate) fn fix_schema_carrying(
@@ -1381,7 +1394,12 @@ pub(crate) fn fix_schema_carrying(
 /// lazy across the boundary -- `PyArrow` pulls one batch at a time.
 ///
 /// Every keyword is the per-stream form of an argument `FixCodec` already
-/// takes per call, so a stream parses exactly as a line does.
+/// takes per call, so a stream parses exactly as a line does. A row's own
+/// columns speak for that row: `timestamp` stamps its message, `branch`,
+/// `beginstring`, `sep` and `direction` are the parameters of the same name,
+/// and any other column named after a field fills it where the frame did not
+/// state it - never as an entry. A column whose folded name a fixed column
+/// takes lands there rather than being carried in front.
 #[pyfunction]
 #[pyo3(
     name = "fix_parse_arrow_reader",
@@ -1858,10 +1876,10 @@ impl PyFixMsgIterator {
 ///
 /// The order is the core's: a registry installed by
 /// [`install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY` names,
-/// then `~/.config/fix` when it exists, then the empty registry. Only the
-/// third step treats absence as empty; every other failure is a `ValueError`
-/// carrying the native message, and the default stays unresolved so the next
-/// call retries.
+/// then `~/.config/fix` when it exists, then a new registry holding the
+/// crate's own fields alone. Only the third step treats absence as that
+/// default; every other failure is a `ValueError` carrying the native
+/// message, and the default stays unresolved so the next call retries.
 #[pyfunction]
 #[pyo3(name = "global_registry")]
 pub(crate) fn fix_global_registry() -> PyResult<PyFixRegistry> {

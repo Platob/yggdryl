@@ -1243,7 +1243,7 @@ fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg", ["blp"]
 )
 fix_carried_schema: Field = fix.fix_schema_carrying(fix_root, fix_fixed_schema)
-fix_column_at: int | None = fix_fixed_schema.index_of("35")
+fix_column_at: int | None = fix_fixed_schema.index_of("msgtype")
 fix_fixed_row: Scalar = fix_read_text.to_row(fix_fixed_schema)
 
 fix_global: fix.FixRegistry = fix.global_registry()

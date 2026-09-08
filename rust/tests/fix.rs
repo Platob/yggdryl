@@ -8,6 +8,8 @@ mod capture;
 mod cfb;
 #[path = "fix/codec.rs"]
 mod codec;
+#[path = "fix/dataset.rs"]
+mod dataset;
 #[path = "fix/dictionary.rs"]
 mod dictionary;
 #[path = "fix/digest.rs"]

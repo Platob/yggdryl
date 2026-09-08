@@ -2720,21 +2720,25 @@ export interface Fix {
   /**
    * The fixed root every message answers as, built from one dictionary.
    *
-   * Columns are named by tag, because a tag is the one name a field has in
-   * every version and every dialect, so `schema.indexOf('35')` is where the
-   * message type sits.
+   * Columns are spelled by the dictionary's folded canonical names, so
+   * `schema.indexOf('msgtype')` is where the message type sits; the tag stays
+   * each column's identity, on its `fix:tag`, and is what fills it.
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
   /**
    * The fixed root behind a capture's own columns, which lead the row.
    *
-   * A carried column whose name a FIX column already takes is dropped rather
-   * than renamed: the FIX column is the one a reader spelling it means.
+   * A carried column whose folded name a FIX column already takes -
+   * `sessionId` and `sessionid` are one name - is dropped rather than
+   * renamed: the FIX column is the one a reader spelling it means.
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
-  /** The fields this crate defines on its own branch, in tag order. */
+  /**
+   * The fields this crate defines on its own branch, in tag order; every
+   * registry holds them from construction.
+   */
   crateFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry

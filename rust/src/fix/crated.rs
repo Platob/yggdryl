@@ -74,10 +74,10 @@ pub const SESSIONID_TAG: i32 = 30008;
 pub const MSGCTXID_TAG: i32 = 30009;
 
 /// The tag carrying the plugin a message came from, as a bridge names it.
-pub const SENDERPLUGINID_TAG: i32 = 30010;
+pub const PLUGINID_TAG: i32 = 30010;
 
 /// The tag carrying the plugin a message went to, as a bridge names it.
-pub const TARGETPLUGINID_TAG: i32 = 30011;
+pub const PREVPLUGINID_TAG: i32 = 30011;
 
 /// The column the timestamp takes, which is also what its partition names.
 pub const TIMESTAMP_NAME: &str = "timestamp";
@@ -280,17 +280,17 @@ fn build() -> Result<Vec<Field>> {
         // the plugin that carried a message inside a bridge is a fact about
         // the bridge, and one FIX never states.
         crated(
-            "senderpluginid",
-            "SenderPluginId",
-            SENDERPLUGINID_TAG,
+            "pluginid",
+            "PluginId",
+            PLUGINID_TAG,
             DataType::Utf8,
             "The plugin a message came from inside a bridge, as the bridge \
              names it.",
         )?,
         crated(
-            "targetpluginid",
-            "TargetPluginId",
-            TARGETPLUGINID_TAG,
+            "prevpluginid",
+            "PrevPluginId",
+            PREVPLUGINID_TAG,
             DataType::Utf8,
             "The plugin a message went to inside a bridge, as the bridge \
              names it.",
