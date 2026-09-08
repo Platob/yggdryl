@@ -830,7 +830,7 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
 
     # The registry form is the same file read whole: the same vocabulary, plus
     # the message roots its grammar bindings describe.
-    registry, roots = FixRegistry.from_cfb(path, "bloomberg")
+    registry, roots = FixRegistry.from_cfb_file(path, "bloomberg")
     assert len(registry) == len(fields)
     assert [root.name for root in roots] == ["7"]
 
@@ -845,6 +845,47 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     unnamed.write_text(CBLOCK, encoding="utf-8")
     with pytest.raises(ValueError, match="ASCII letter"):
         fix_cfb_fields(unnamed)
+
+
+def test_a_cblock_refusal_quotes_the_declaration_it_read(
+    tmp_path: pathlib.Path,
+) -> None:
+    # The native sentence crosses whole: a `ValueError` naming the byte, what
+    # was expected, what arrived, and the element the file spells it in.
+    broken = tmp_path / "bloomberg.cfb"
+    broken.write_text(
+        CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="decimal"'),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError) as refused:
+        FixRegistry.from_cfb_file(broken, "bloomberg")
+    rendered = str(refused.value)
+    assert "invalid cfb expression at byte" in rendered
+    assert '"decimal"' in rendered
+    assert 'vocabulary-tag name=\\"55\\"' in rendered
+
+    # Both doors refuse it with the same sentence.
+    with pytest.raises(ValueError) as also:
+        fix_cfb_fields(broken)
+    assert str(also.value) == rendered
+
+
+def test_a_cblock_description_keeps_its_words_and_loses_its_layout(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bloomberg.cfb"
+    path.write_text(
+        CBLOCK.replace(
+            "<description>Ticker symbol.</description>",
+            "<description>Ticker symbol.\n\t\t\tOne per instrument, and never a &lt;SOH&gt;.</description>",
+        ),
+        encoding="utf-8",
+    )
+    fields = fix_cfb_fields(path)
+    assert (
+        fields[0].description
+        == "Ticker symbol. One per instrument, and never a <SOH>."
+    )
 
 
 def test_registry_mutation_refuses_while_something_shares_it(

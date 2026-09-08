@@ -254,15 +254,19 @@ impl PyFixRegistry {
     /// user-range tags belong to; the standard tags always land in the
     /// standard branch, because a dialect redefines its own tags and never
     /// FIX's.
+    ///
+    /// A file this cannot be read from is a `ValueError` carrying the native
+    /// sentence whole: the byte the reader stopped at, what was expected, what
+    /// arrived, and the element the file spells it in.
     #[staticmethod]
     #[pyo3(signature = (location, branch=None))]
-    fn from_cfb(
+    fn from_cfb_file(
         location: &Bound<'_, PyAny>,
         branch: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
         let dialect = branch.map(branch_from_py).transpose()?;
         let (registry, roots) = read_cfb(location, |handle| {
-            CoreFixRegistry::from_cfb(handle, dialect.as_ref())
+            CoreFixRegistry::from_cfb_file(handle, dialect.as_ref())
         })?;
         Ok((
             Self::from_arc(Arc::new(registry)),
@@ -1554,7 +1558,7 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
 
 /// The vocabulary one Ullink `CBlock` declares, in declaration order.
 ///
-/// The dictionary half of `FixRegistry.from_cfb`, answered on its own: every
+/// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
 /// field carries the `fix:tag` and `fix:branch` that key it and whatever code
 /// set the file's maps decode for it, which is what `FixRegistry.add_fields`
 /// needs to fold one counterparty's file into a dictionary that exists. The

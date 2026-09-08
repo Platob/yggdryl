@@ -25,7 +25,7 @@ use yggdryl::{
     FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
 };
 
-use crate::iobase::{LocationInput, folder_from_input};
+use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 use crate::{exact_i32, exact_i64, napi_error, napi_type_error};
@@ -191,21 +191,27 @@ impl JsFixRegistry {
             .map_err(napi_error)
     }
 
-    /// Write every populated shard under `<location>/<tree>/<branch>`, removing
     /// Read an Ullink `CBlock` into a dictionary, with what it declared.
     ///
     /// Answers the dictionary and the message roots the file spelled out, in
     /// the order it spelled them. `branch` is the dialect its user-range tags
     /// belong to; with none named they stay on the standard branch.
+    ///
+    /// A file this cannot be read from throws the native sentence whole: the
+    /// byte the reader stopped at, what was expected, what arrived, and the
+    /// element the file spells it in.
     #[napi(ts_return_type = "[FixRegistry, Array<Field>]")]
-    pub fn from_cfb(
+    pub fn from_cfb_file(
         location: LocationInput<'_>,
         branch: Option<String>,
     ) -> Result<(Self, Vec<JsField>)> {
-        let handle = folder_from_input(location)?;
+        // A CBlock is a file, so the location is held as whichever role it
+        // actually is: a container handle reads no bytes, and a reader handed
+        // one answers an empty vocabulary instead of a refusal.
+        let handle = located_from_input(location)?;
         let branch = branch.map(|held| branch_from_js(&held)).transpose()?;
         let (registry, roots) =
-            CoreFixRegistry::from_cfb(&handle, branch.as_ref()).map_err(napi_error)?;
+            CoreFixRegistry::from_cfb_file(handle.as_io(), branch.as_ref()).map_err(napi_error)?;
         Ok((
             Self::from_arc(Arc::new(registry)),
             roots.into_iter().map(JsField::from_core).collect(),

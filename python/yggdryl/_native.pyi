@@ -4152,7 +4152,7 @@ class FixRegistry:
         location: IOBase | Url | str | PathLike[str],
     ) -> FixRegistry: ...
     @staticmethod
-    def from_cfb(
+    def from_cfb_file(
         location: IOBase | Url | str | PathLike[str],
         branch: str | None = None,
     ) -> tuple[FixRegistry, list[Field]]: ...

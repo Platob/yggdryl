@@ -15,7 +15,7 @@ native; this module only names them.
 declares, in declaration order and keyed, which is what
 :meth:`FixRegistry.add_fields` folds into a dictionary that already exists -
 adding what is absent, merging what is stored, and writing nothing at all when
-it refuses. :meth:`FixRegistry.from_cfb` is the same file read whole, answering
+it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
 :class:`FixCodec` turns a captured line into one of those messages,

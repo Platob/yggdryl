@@ -439,6 +439,12 @@ pub fn from_json(input: &str) -> Result<Self>
 pub fn field(&self, schema: &Field) -> Result<Field>
   pub fn is_predicate(&self, schema: &Field) -> Result<bool>
 
+### yggdryl::fix::cfb  [rust\src\fix\cfb.rs]
+impl FixRegistry
+  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&FixBranch>) -> Result<(Self, Vec<Field>)>
+impl FixField<'_>
+  pub fn from_cfb_file(handle: &dyn IOBase, branch: Option<&str>) -> Result<Vec<Field>>
+
 ### yggdryl::fix::field  [rust\src\fix\field.rs]
 impl<'field> FixField<'field>
   pub fn branch(&self) -> Result<FixBranch>
