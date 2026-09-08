@@ -308,7 +308,9 @@ The [playground](playground.md) renders every width, code, refusal, and vocabula
 
 `MsgType::coerce` is the one way a reading becomes a value: what fits is itself, unchanged; what does not is hashed into eight bytes that open with `~`, a byte outside the alphabet and outside every type FIX publishes. The mapping is stable across processes and versions, and one-way — the spelling it came from is kept by whoever registers it, never recovered from the value. `is_synthetic` says which kind a value is.
 
-This is what [`FixRegistry::register_msgtype`](../fix/registry.md) adds to a dictionary's code set, and what a [`msgtype` capture column](../media/text.md#classifying-each-record) takes, so a type the capture carried lands rather than falling to null.
+This is the column's own value rule and not a reader's courtesy: `msgtype` states the ASCII rule and not the width, so a value wider than eight bytes takes the same mapping wherever a value becomes a stored one — `DataType::scalar`, `Field::scalar`, a row, a [capture column](../media/text.md#classifying-each-record) — rather than refusing the row it arrived on. Every other ASCII rule still holds: a non-ASCII byte is refused as it is for every code.
+
+It is also what [`FixRegistry::register_msgtype`](../fix/registry.md#registering-a-message-type) adds to a dictionary's code set, under the name and the description the source gave it.
 
 === "Rust"
 

@@ -20,7 +20,7 @@
 | Versions | `fix:lineage` dates a field; `field_at` / `get_field_at` filter one read by it, `versions` and `newest` are derived from every lineage the dictionary holds |
 | Merge | `FixFieldMut::merge_with` folds two definitions of one tag with a rule per key, in one write; `update` calls it |
 | Fold | `merge_with` is the one place two dictionaries combine - fields add-or-update, dialects fold beside them, aliases accumulate. `add_fields` is the same fold over a bare field list, `add_cfb_file` a parse in front of it. All three are one mutation: a refusal writes nothing, and all answer the counts added and merged |
-| CBlock | `FixRegistry::from_cfb_file` answers one Ullink CBlock's vocabulary and its message roots; `FixField::from_cfb_file` answers the vocabulary alone; `add_cfb_file` reads one into this dictionary whole - the fold, plus the dialect the root element declares, plus the file's own stem as an alias |
+| CBlock | `FixRegistry::from_cfb_file` answers one Ullink CBlock's vocabulary, the message types it declares as tag 35's code set, and its message roots; `FixField::from_cfb_file` answers the vocabulary alone; `add_cfb_file` reads one into this dictionary whole - the fold, plus the dialect the root element declares, plus the file's own stem as an alias |
 | Codes | `fix:codes` carries a field's vocabulary; any spelling of a member reaches its wire value through three tiers, and an unresolved one falls through |
 | Inference | Classifying a line is transport, not FIX: `MimeType`, `MsgType` and `Direction` each answer for themselves, with no dictionary |
 | Default | `global()` resolves once, on the first call, reading the environment once; every later call answers the same `Arc` |
@@ -605,7 +605,7 @@ A dialect folds beside the fields. One the dictionary does not hold arrives whol
 
 `FixRegistry::add_cfb_file` is the whole ingest in one call: it folds the vocabulary exactly as `add_fields` does, and records the dialect the root element declares - the FIX version - which reading the fields alone loses, because a field carries its branch's *name* and nothing else of it. The location's own stem also becomes a branch alias whenever it is not already the name, so a dictionary read from `MSFIX44.cfb` under the branch `morgan` still answers to `msfix44`; a branch the dictionary already holds keeps the spellings it already answered to, because reading a second file is not a statement that the first one's names were wrong.
 
-`FixField::from_cfb_file` is the source that made the fold worth having. It answers one Ullink CBlock's vocabulary alone - keyed, in declaration order, code sets attached - where `FixRegistry::from_cfb_file` answers a whole registry plus the message roots its grammar bindings describe. Both build the dictionary, so both refuse the same files; the vocabulary door just drops the one it built. A CBlock never names itself, so with no branch supplied the handle's own stem does: `bloomberg.cfb` reads into the branch `bloomberg`. Rust and Python only.
+`FixField::from_cfb_file` is the source that made the fold worth having. It answers one Ullink CBlock's vocabulary alone - keyed, in declaration order, code sets attached - where `FixRegistry::from_cfb_file` answers a whole registry plus the message roots its grammar bindings describe. Both build the dictionary, so both refuse the same files; the vocabulary door just drops the one it built. A CBlock never names itself, so with no branch supplied the handle's own stem does: `bloomberg.cfb` reads into the branch `bloomberg`. The vocabulary door is Rust and Python only; `FixRegistry::from_cfb_file` is in all three, as `fix.FixRegistry.fromCfbFile` in JavaScript.
 
 A refusal quotes the file rather than describing it. One `Error::Parse` with `cfb` as its target and the byte the reader reached as its position, and a reason carrying what was expected, what arrived, and the element the file spells it in. This document:
 
@@ -753,6 +753,22 @@ A description keeps its words and loses its layout: a CBlock wraps a long one ov
     assert registry.field_by_tag(55).dtype.id == "utf8"
     assert len(registry) == 3
     ```
+
+## Registering a message type
+
+A dictionary is never complete. Venues invent message types, bridges write composite keys like `P Report Ack`, and a reader that refused what it had not been told about would drop exactly the traffic someone is trying to understand. `FixRegistry::register_msgtype(spelling, name, description)` is what adds one, and the vocabulary it adds to is the dictionary's own code set on tag 35 — nothing is hard-coded.
+
+| argument | what it is |
+| --- | --- |
+| `spelling` | what the wire, the bridge or the configuration calls the type |
+| `name` | the symbolic name the set files it under; the spelling stays a spelling of it, so both reach the value. With none named, the spelling is the name |
+| `description` | the source's own wording for it |
+
+The value is [`MsgType::coerce`](../types/ascii.md#a-reading-wider-than-the-type)'s: itself where it fits the eight-byte column, and this crate's stable digest of it where it does not.
+
+It is idempotent and enriching. A type the dictionary already spells answers its existing value, gains a spelling the set did not answer to and a description it did not have, and keeps every name and wording a source already gave it — so a reader may call it per row without growing the code set per row, and a second source describing a type the first only named adds what it knows. Two things are refused rather than resolved by picking one: a spelling whose synthesized value another type already holds, and a name or spelling another code already answers to, because a spelling two codes reach resolves to neither.
+
+An Ullink CBlock declares its message types three ways — the `message-types` listing, the two mapping tables that spell them the way UlMessage does, and the `grammar-binding` that binds one — and [reading the file](#folding-a-second-source-in) turns all three into that same code set on its own tag 35, so folding one dictionary into another carries them the way it carries every other code.
 
 ## One default registry per process
 
@@ -1012,7 +1028,9 @@ This is also what keeps the reading right: these documents spell `send-test-requ
 - A CBlock root element with no `fix-version` -> the caller's branch version stands, because the file said nothing; one carrying a version the grammar cannot read, `FIX.4.4` included -> refused quoting it, never replaced by a default that would then be recorded as the dialect. Whitespace around it is what an editor left behind and is read past.
 - A CBlock description wrapped over several lines, or carrying the separator byte it describes -> one line of its words, not a refusal; a description of nothing but layout contributes no key at all.
 - A CBlock declaring one tag twice under two spellings -> refused at the byte of the *second* declaration, naming the tag and the name it clashed under.
-- A CBlock cut short - a partial download, a half-written file - -> refused naming the element it left open, never read as the smaller dictionary it looks like; the XML reader itself reports nothing for an element left open.
+- A CBlock's `message-types`, its two mapping tables and its `grammar-binding` types -> one code set on its own tag 35, valued by `MsgType::coerce`; a file declaring no tag 35 keeps them out of the dictionary rather than inventing the field, because a message type is a code and never a field.
+- A CBlock `message-type` marked `supported="false"` -> still a type the dialect names, and still a code; the `rejection` wording it carries is not read.
+- A CBlock cut short inside an element - a partial download, a half-written file - -> refused naming the element it left open, never read as the smaller dictionary it looks like; the XML reader itself reports nothing for an element left open. One cut *between* top-level children has nothing open but the root, and reads as what it holds: a document ending after `</vocabulary>` is a dictionary of that vocabulary.
 - A dictionary written before `TZTimeOnly` became `datetime64(ns,"UTC")` still holds tags 1079, 1212, 1213, 1253, 1405 and 1550 as `ascii(16)`; folding it against a current one meets the datatype refusal. Regenerate it rather than merging around it.
 - A CBlock `map` becomes the code set of the tag it is named for, and that name alone orients its entries: named byte-exact as the field's display spelling - the `alt` its `vocabulary-tag` declared, or the tag itself where it declared none - `key` is the wire value and `value` the symbolic name; any other spelling, `ADVSIDE` against `AdvSide` included, is read the other way round. A map naming no tag is skipped rather than refused.
 - A CBlock `map` entry stating nothing on a side, with an empty attribute or with none -> dropped, never a refusal. A second name for a wire value the map already gave one -> kept as an alias on that code, because a name a source declared is a spelling the set has to answer to. Two maps naming one tag -> the last one read is the field's code set, replacing rather than merging.

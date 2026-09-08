@@ -556,6 +556,21 @@ fn a_refusal_quotes_the_element_and_the_content_it_read() {
         let also = FixField::from_cfb_file(&handle(body), Some("bloomberg")).unwrap_err();
         assert_eq!(also.to_string(), rendered);
     }
+
+    // An element longer than the budget is quoted up to it and elided, so a
+    // vocabulary tag carrying a paragraph of attributes still names itself.
+    let wide = format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="decimal" note="{}" /></vocabulary>
+</cplugin-configuration>"#,
+        "n".repeat(200)
+    );
+    let refused = FixRegistry::from_cfb_file(&handle(&wide), None).unwrap_err();
+    let rendered = refused.to_string();
+    assert!(rendered.contains("<vocabulary-tag name="), "{rendered}");
+    assert!(rendered.contains('\u{2026}'), "{rendered}");
+    assert!(rendered.len() < 400, "{rendered}");
 }
 
 #[test]
@@ -647,12 +662,14 @@ fn a_fix_version_the_grammar_cannot_read_is_refused_rather_than_defaulted() {
 <cplugin-configuration>
 	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
 </cplugin-configuration>"#;
-    let (registry, _) = FixRegistry::from_cfb_file(&handle(silent), Some(&branch())).unwrap();
+    let named = FixBranch::from_parts("bloomberg", "4.2".parse::<Version>().unwrap()).unwrap();
+    let (registry, _) = FixRegistry::from_cfb_file(&handle(silent), Some(&named)).unwrap();
     assert_eq!(
         registry
             .branch_named("bloomberg")
-            .map(|held| held.version()),
-        Some(branch().version()),
+            .map(|held| held.version().to_string()),
+        Some("4.2".to_owned()),
+        "the file said nothing, so the caller's dialect stands",
     );
 }
 
@@ -762,6 +779,14 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
         );
         assert!(rendered.contains("end of the document"), "{rendered}");
     }
+
+    // A cut between two of the root's children left nothing open but the
+    // root, so it reads as what it holds. Only the top-level loop's end of
+    // document is an ending, and this is the shape that says so.
+    let at = whole.find("\t<grammar-binding").expect("the binding");
+    let (registry, roots) =
+        FixRegistry::from_cfb_file(&handle(&whole[..at]), None).expect("a readable prefix");
+    assert_eq!((registry.len(), roots.len()), (2, 0));
 }
 
 #[test]
@@ -782,7 +807,59 @@ fn nesting_past_the_guard_is_refused_rather_than_overflowing() {
     body.push_str("</grammar></grammar-binding></cplugin-configuration>");
 
     let refused = FixRegistry::from_cfb_file(&handle(&body), None).unwrap_err();
-    assert!(refused.to_string().contains("deep"), "{refused}");
+    let rendered = refused.to_string();
+    assert!(rendered.contains("deep"), "{rendered}");
+    // The message it nested in, because a file binds hundreds of them.
+    assert!(rendered.contains("message \"0\""), "{rendered}");
+}
+
+#[test]
+fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
+    let (registry, _) = parse(CBLOCK);
+    let msgtype = registry.field_by_tag(35).expect("MsgType");
+    let view = msgtype.as_fix();
+
+    // The listing states the type and the wording beside it. `P Report Ack`
+    // is wider than the column, so it takes the stable synthesized value the
+    // type's own mapping gives it.
+    let value = view.code_value("P Report Ack").expect("the listed type");
+    assert!(value.starts_with('~'), "{value}");
+    assert_eq!(view.code_name(value), Some("P Report Ack"));
+    assert_eq!(
+        view.code_by_name("P Report Ack")
+            .and_then(|code| code.parse_doc().ok().flatten()),
+        Some("Allocation Report ACK".to_owned()),
+    );
+
+    // The mapping table spells the same type the way UlMessage does, so both
+    // spellings reach one value rather than declaring two types.
+    assert_eq!(view.code_value("allocationreportack"), Some(value));
+
+    // A bound type the listing never mentioned is still a type this dialect
+    // carries: `7` fits the column and is itself.
+    assert_eq!(view.code_value("7"), Some("7"));
+
+    // The vocabulary door reads the same file the same way.
+    let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
+    let held = fields
+        .iter()
+        .find(|field| field.as_fix().tag().ok() == Some(Some(35)))
+        .expect("MsgType");
+    assert_eq!(held.as_fix().code_value("P Report Ack"), Some(value));
+}
+
+#[test]
+fn a_file_declaring_no_message_type_tag_keeps_its_types_out_of_the_dictionary() {
+    // A message type is a code of tag 35 and never a field of its own, so a
+    // file that declares no tag 35 has nowhere to put one.
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types><message-type value="D" description="Order - Single" /></message-types>
+	<vocabulary><vocabulary-tag name="55" alt="Symbol" type="string" /></vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) = FixRegistry::from_cfb_file(&handle(body), None).expect("a readable CBlock");
+    assert_eq!(registry.len(), 1);
+    assert!(registry.get_field_by_tag(35).is_none());
 }
 
 #[test]

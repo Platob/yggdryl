@@ -65,7 +65,7 @@
   fix: FixBranch, FixMsg, FixRegistry, STANDARD_BRANCH, USER_TAG_MAX, USER_TAG_MIN, fix_cfb_fields, global_registry, install_global_registry
   fix.FixRegistry
     statics: from_cfb_file, from_fields, from_handle
-    instance: add_cfb_file, field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, remove, remove_by_id, update, write_into
+    instance: add_cfb_file, field, field_by_id, field_by_name, field_by_path, field_by_tag, get, get_field, get_field_by_id, get_field_by_name, get_field_by_path, get_field_by_tag, insert, register_msgtype, remove, remove_by_id, update, write_into
     keys: an int tag (never bool, must fit i32) or a str name/dotted path, both meaning the standard branch - a colon-bearing str is a name, never an identifier; a branch and an identifier are str parsed at the boundary, so field_by_name/field_by_path take the branch first and field_by_id takes "branch:tag"; a malformed one is ValueError, a non-str TypeError; locations take IOBase | Url | str | PathLike
     protocol: mutable, so unhashable; equality by fields; __len__/__bool__/__contains__/__getitem__/__iter__ over Field, lazily in ascending identifier order (branch-major, then tag); insert/update/remove refuse while a message or the process default shares it
   fix.FixMsg
@@ -230,7 +230,7 @@
     statics: STANDARD_BRANCH, STANDARD_TAG_LIMIT, FixRegistry, FixMsg, globalRegistry, installGlobalRegistry
   fix.FixRegistry
     statics: fromCfbFile, fromFields, fromHandle
-    instance: clone, equals, field, fieldById, fieldByName, fieldByPath, fieldByTag, get, getField, getFieldById, getFieldByName, getFieldByPath, getFieldByTag, has, insert, keys, remove, removeById, size, stableHash, toJSON, toString, update, writeInto, Symbol.iterator
+    instance: clone, equals, field, fieldById, fieldByName, fieldByPath, fieldByTag, get, getField, getFieldById, getFieldByName, getFieldByPath, getFieldByTag, has, insert, keys, registerMsgtype, remove, removeById, size, stableHash, toJSON, toString, update, writeInto, Symbol.iterator
     keys: a number tag (must be an exact i32) or a string name/dotted path, both meaning the standard branch - a colon-bearing string is a name, never an identifier; a branch and an identifier are strings parsed at the boundary, so fieldByName/fieldByPath take the branch first and fieldById/removeById take "branch:tag"; a malformed one throws the native parse failure, a non-string the Node-API conversion error; locations take IOBase | Url | string
     protocol: mutable; equality by fields; `keys()` is a lazy Generator<Field> and `Symbol.iterator` walks it in ascending identifier order (branch-major, then tag); insert/update/remove/removeById refuse while a message, the process default, or an unfinished walk shares it
   fix.FixMsg

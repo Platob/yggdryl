@@ -368,6 +368,24 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
     assert_ne!(held, MsgType::coerce("Plugin"));
     assert_eq!(MsgType::coerce("Plugin").as_str(), "Plugin");
 
+    // And the column itself says so: a message type states the ASCII rule and
+    // not the width, so a value wider than it takes the same mapping rather
+    // than refusing the row it arrived on.
+    let column = crate::DataType::MsgType;
+    let stored = column
+        .scalar(crate::Scalar::from("ConfigurationPlugin"))
+        .expect("a value wider than the column");
+    assert_eq!(stored.as_str(), Some(held.as_str()));
+    assert_eq!(
+        column
+            .scalar(crate::Scalar::from("D"))
+            .expect("a value that fits")
+            .as_str(),
+        Some("D"),
+    );
+    // Every other ASCII rule still holds.
+    assert!(column.scalar(crate::Scalar::from("é")).is_err());
+
     // A class the bridge spells is not an MBean it names: every `$type`,
     // `className` and init file in these documents carries one, and a record
     // quoting one is an ordinary JSON record.
@@ -1015,6 +1033,72 @@ fn the_branch_round_trips_and_the_standard_one_is_never_stored() {
         Some(FixId::standard(5001)),
         "the identity follows both halves"
     );
+}
+
+#[test]
+fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
+    let mut registry = FixRegistry::from_fields([tagged("msgtype", super::MSGTYPE_TAG)]).unwrap();
+
+    // What fits the column is itself, and the spelling is the name.
+    let value = registry.register_msgtype("D", None, None).unwrap();
+    assert_eq!(value.as_str(), "D");
+
+    // A name beside the spelling files the code under the name and keeps the
+    // spelling as a spelling, so both still reach the value.
+    let held = registry
+        .register_msgtype(
+            "P Report Ack",
+            Some("AllocationReportAck"),
+            Some("Allocation Report ACK"),
+        )
+        .unwrap();
+    assert!(held.is_synthetic());
+    let field = registry.field_by_tag(super::MSGTYPE_TAG).unwrap();
+    let view = field.as_fix();
+    assert_eq!(view.code_name(held.as_str()), Some("AllocationReportAck"));
+    assert_eq!(view.code_value("P Report Ack"), Some(held.as_str()));
+    assert_eq!(
+        view.code_by_name("AllocationReportAck")
+            .and_then(|code| code.parse_doc().ok().flatten()),
+        Some("Allocation Report ACK".to_owned()),
+    );
+
+    // Idempotent, and enriching rather than replacing: a second source states
+    // what the first did not and rewrites nothing it did.
+    assert_eq!(
+        registry
+            .register_msgtype("P Report Ack", Some("allocationreportack"), Some("Other"))
+            .unwrap(),
+        held,
+    );
+    let field = registry.field_by_tag(super::MSGTYPE_TAG).unwrap();
+    let view = field.as_fix();
+    assert_eq!(view.code_name(held.as_str()), Some("AllocationReportAck"));
+    assert_eq!(
+        view.code_by_name("AllocationReportAck")
+            .and_then(|code| code.parse_doc().ok().flatten()),
+        Some("Allocation Report ACK".to_owned()),
+    );
+
+    // A description arrives where a code had none.
+    registry
+        .register_msgtype("D", None, Some("Order - Single"))
+        .unwrap();
+    let field = registry.field_by_tag(super::MSGTYPE_TAG).unwrap();
+    assert_eq!(
+        field
+            .as_fix()
+            .code_by_name("D")
+            .and_then(|code| code.parse_doc().ok().flatten()),
+        Some("Order - Single".to_owned()),
+    );
+
+    // A spelling another code already answers to is refused rather than added:
+    // a spelling two codes reach resolves to neither.
+    let error = registry
+        .register_msgtype("F", Some("AllocationReportAck"), None)
+        .unwrap_err();
+    assert!(error.is_conflict(), "{error}");
 }
 
 #[test]

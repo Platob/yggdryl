@@ -352,10 +352,20 @@ impl PyFixRegistry {
     ///
     /// A type the code set does not have is added rather than refused, and a
     /// spelling too long for the datatype takes a stable synthesized value.
-    /// Idempotent, so a reader may call it per row.
-    fn register_msgtype(&mut self, spelling: &str) -> PyResult<String> {
+    /// `name` is the symbolic name the set files it under, with the spelling
+    /// kept as an alias when the two differ, and `description` is the source's
+    /// own wording. Idempotent and enriching: a type already spelled answers
+    /// its value, gains a spelling the set did not answer to and a description
+    /// it did not have, and keeps everything it already held.
+    #[pyo3(signature = (spelling, name=None, description=None))]
+    fn register_msgtype(
+        &mut self,
+        spelling: &str,
+        name: Option<&str>,
+        description: Option<&str>,
+    ) -> PyResult<String> {
         self.inner_mut()?
-            .register_msgtype(spelling)
+            .register_msgtype(spelling, name, description)
             .map(|held| held.as_str().to_owned())
             .map_err(value_error)
     }

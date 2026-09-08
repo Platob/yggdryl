@@ -847,6 +847,45 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
         fix_cfb_fields(unnamed)
 
 
+def test_registering_a_message_type_names_it_and_describes_it(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bloomberg.cfb"
+    path.write_text(
+        """<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration version="1.2" fix-version="4.4">
+	<message-types>
+		<message-type value="7" description="Advertisement" supported="false" />
+	</message-types>
+	<vocabulary><vocabulary-tag name="35" alt="MsgType" type="string" /></vocabulary>
+</cplugin-configuration>
+""",
+        encoding="utf-8",
+    )
+    registry, _ = FixRegistry.from_cfb_file(path, "bloomberg")
+
+    # The file's own message types arrived with it, valued the way the column
+    # takes them: `7` fits and is itself, described as the file described it.
+    codes = registry.field_by_tag(35).metadata["fix:codes"]
+    assert '"value":"7"' in codes
+    assert "Advertisement" in codes
+
+    # A type a bridge invents is added under the name and wording it is given,
+    # and the spelling stays a spelling of it.
+    value = registry.register_msgtype(
+        "P Report Ack", "AllocationReportAck", "Allocation Report ACK"
+    )
+    assert value.startswith("~")
+    codes = registry.field_by_tag(35).metadata["fix:codes"]
+    assert f'"value":"{value}"' in codes
+    assert '"name":"AllocationReportAck"' in codes
+    assert '"P Report Ack"' in codes
+    assert '"Allocation Report ACK"' in codes
+
+    # Idempotent: registering it again answers the same value.
+    assert registry.register_msgtype("P Report Ack") == value
+
+
 def test_a_cblock_refusal_quotes_the_declaration_it_read(
     tmp_path: pathlib.Path,
 ) -> None:

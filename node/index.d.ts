@@ -1406,9 +1406,14 @@ export declare class FixRegistry {
    *
    * A type the code set does not have is added to it rather than rejected,
    * and the value it takes is the core's: itself where it fits, a stable
-   * synthesized value where it does not. Idempotent.
+   * synthesized value where it does not. `name` is the symbolic name the
+   * set files it under, with the spelling kept as an alias when the two
+   * differ, and `description` is the source's own wording. Idempotent and
+   * enriching: a type already spelled answers its value, gains a spelling
+   * the set did not answer to and a description it did not have, and keeps
+   * everything it already held.
    */
-  registerMsgtype(spelling: string): string
+  registerMsgtype(spelling: string, name?: string | undefined | null, description?: string | undefined | null): string
   /**
    * Write every populated shard under `<location>/<tree>/<branch>`, removing
    * the shards, branch folders and trees no field populates any more.

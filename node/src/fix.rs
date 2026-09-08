@@ -239,11 +239,21 @@ impl JsFixRegistry {
     ///
     /// A type the code set does not have is added to it rather than rejected,
     /// and the value it takes is the core's: itself where it fits, a stable
-    /// synthesized value where it does not. Idempotent.
+    /// synthesized value where it does not. `name` is the symbolic name the
+    /// set files it under, with the spelling kept as an alias when the two
+    /// differ, and `description` is the source's own wording. Idempotent and
+    /// enriching: a type already spelled answers its value, gains a spelling
+    /// the set did not answer to and a description it did not have, and keeps
+    /// everything it already held.
     #[napi]
-    pub fn register_msgtype(&mut self, spelling: String) -> Result<String> {
+    pub fn register_msgtype(
+        &mut self,
+        spelling: String,
+        name: Option<String>,
+        description: Option<String>,
+    ) -> Result<String> {
         self.inner_mut()?
-            .register_msgtype(&spelling)
+            .register_msgtype(&spelling, name.as_deref(), description.as_deref())
             .map(|held| held.as_str().to_owned())
             .map_err(napi_error)
     }

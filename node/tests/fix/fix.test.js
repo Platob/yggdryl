@@ -1130,6 +1130,28 @@ test('a dialect crosses as its digest and the registry resolves it back', () => 
   assert.throws(() => registry.branchByDigest(-1))
 })
 
+test('a message type registers under the name and wording it is given', () => {
+  const registry = new fix.FixRegistry()
+  registry.insert(fixField('msgtype', 'utf8', 35))
+
+  // What fits the column is itself; a bridge's composite key is hashed into
+  // what fits, under the name and the wording the caller gives it.
+  assert.equal(registry.registerMsgtype('D'), 'D')
+  const value = registry.registerMsgtype(
+    'P Report Ack',
+    'AllocationReportAck',
+    'Allocation Report ACK',
+  )
+  assert.match(value, /^~/)
+  const codes = registry.fieldByTag(35).get('fix:codes')
+  assert.match(codes, /"name":"AllocationReportAck"/)
+  assert.match(codes, /P Report Ack/)
+  assert.match(codes, /Allocation Report ACK/)
+
+  // Idempotent: registering it again answers the same value.
+  assert.equal(registry.registerMsgtype('P Report Ack'), value)
+})
+
 test('a CBlock refusal crosses with the byte, the content and the element', () => {
   const root = scratch()
   const file = path.join(root, 'broken.cfb')
