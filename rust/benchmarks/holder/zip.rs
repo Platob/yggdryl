@@ -10,7 +10,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::holder::zip::{Archive, Folder};
+use yggdryl::holder::zip::{Archive, Node};
 use yggdryl::holder::{Buffer, Holder};
 use yggdryl::{Codec, IOBase};
 
@@ -34,7 +34,7 @@ fn payload(len: usize) -> Vec<u8> {
 }
 
 /// An in-memory archive holding one member under `codec`.
-fn one_member(codec: Codec) -> Folder {
+fn one_member(codec: Codec) -> Node {
     let root = Archive::new(Holder::buffer(Buffer::new())).mount();
     root.archive()
         .write_member_with("blob.bin", &payload(MEMBER_LEN), codec)
@@ -44,7 +44,7 @@ fn one_member(codec: Codec) -> Folder {
 }
 
 /// An in-memory archive of `count` members across ten directories.
-fn many_members(count: usize) -> Folder {
+fn many_members(count: usize) -> Node {
     let root = Archive::new(Holder::buffer(Buffer::new())).mount();
     let payload = payload(64);
     for member in 0..count {
@@ -65,7 +65,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
 
     // A stored member never decodes, so this leg is the archive's own pread.
     let stored = one_member(Codec::Identity);
-    let stored_member = stored.as_file("blob.bin").expect("a member");
+    let stored_member = stored.as_leaf("blob.bin").expect("a member");
     group.bench_function("read/stored", |bencher| {
         bencher.iter(|| {
             black_box(&stored_member)
@@ -76,7 +76,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
 
     // A closed compressed read decodes to the offset and retains nothing.
     let deflated = one_member(Codec::Deflate);
-    let deflated_member = deflated.as_file("blob.bin").expect("a member");
+    let deflated_member = deflated.as_leaf("blob.bin").expect("a member");
     group.bench_function("read/deflate_closed", |bencher| {
         bencher.iter(|| {
             black_box(&deflated_member)
@@ -86,7 +86,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     });
 
     // An opened one decodes once and answers from the member it holds.
-    let mut opened_member = deflated.as_file("blob.bin").expect("a member");
+    let mut opened_member = deflated.as_leaf("blob.bin").expect("a member");
     opened_member.open().expect("the decoded member");
     group.bench_function("read/deflate_opened", |bencher| {
         bencher.iter(|| {
@@ -99,7 +99,7 @@ pub(crate) fn zip_benchmarks(criterion: &mut Criterion) {
     // Whole-member reads, where the digest check is part of the answer.
     group.throughput(Throughput::Bytes(MEMBER_LEN as u64));
     for (name, root) in [("stored", &stored), ("deflate", &deflated)] {
-        let member = root.as_file("blob.bin").expect("a member");
+        let member = root.as_leaf("blob.bin").expect("a member");
         group.bench_function(BenchmarkId::new("read_all", name), |bencher| {
             bencher.iter(|| black_box(&member).read_all_bytes().expect("the member"));
         });

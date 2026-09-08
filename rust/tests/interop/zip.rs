@@ -47,7 +47,7 @@ fn writes_an_archive_for_the_external_reader() {
 
     let root = zip::mount(Holder::file(&path).expect("a local archive"));
     let archive = match &root {
-        Holder::ZipFolder(folder) => folder.archive(),
+        Holder::ZipNode(folder) => folder.archive(),
         other => panic!("expected an archive root, got {other:?}"),
     };
     // One stored member and the rest deflated, so the external reader has to
@@ -118,7 +118,7 @@ fn reads_the_archive_the_external_writer_produced() {
     );
 
     let archive = match &root {
-        Holder::ZipFolder(folder) => folder.archive(),
+        Holder::ZipNode(folder) => folder.archive(),
         other => panic!("expected an archive root, got {other:?}"),
     };
     assert_eq!(

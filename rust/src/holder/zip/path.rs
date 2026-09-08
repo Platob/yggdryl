@@ -7,11 +7,11 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{IOBase, IOKind, IOPath, Listing, MediaType, MimeType, Result, Url};
 
-use super::{Archive, File, Folder, name};
+use super::{Archive, Leaf, Node, name};
 
 /// A member location that resolves to the role it turns out to need.
 ///
-/// [`Folder::child_by_path`](crate::IOBase::child_by_path) answers this,
+/// [`Node::child_by_path`](crate::IOBase::child_by_path) answers this,
 /// because a name inside an archive says nothing about whether it holds bytes
 /// or holds other members until the index is asked. Resolution follows the
 /// laziness contract: construction touches nothing, reading a member that is
@@ -73,13 +73,13 @@ impl Path {
     }
 
     /// Treat this location as a directory, whether or not it is one yet.
-    pub fn as_directory(&self) -> Folder {
-        Folder::new(Arc::clone(&self.archive), self.name.clone())
+    pub fn as_node(&self) -> Node {
+        Node::new(Arc::clone(&self.archive), self.name.clone())
     }
 
     /// Treat this location as a byte member, whether or not it is one yet.
-    pub fn as_file(&self) -> File {
-        let mut file = File::new(Arc::clone(&self.archive), self.name.clone());
+    pub fn as_leaf(&self) -> Leaf {
+        let mut file = Leaf::new(Arc::clone(&self.archive), self.name.clone());
         if let Some(media_type) = &self.declared {
             file.set_media_type(media_type.clone());
         }
@@ -113,7 +113,7 @@ impl crate::IOMedia for Path {
 
 impl IOBase for Path {
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
-        self.as_file().pread(offset, buffer)
+        self.as_leaf().pread(offset, buffer)
     }
 
     /// Stream the member this location resolves to.
@@ -128,11 +128,11 @@ impl IOBase for Path {
     }
 
     fn read_all_bytes(&self) -> Result<Vec<u8>> {
-        self.as_file().read_all_bytes()
+        self.as_leaf().read_all_bytes()
     }
 
     fn read_range_bytes(&self, offset: u64, length: usize) -> Result<Vec<u8>> {
-        self.as_file().read_range_bytes(offset, length)
+        self.as_leaf().read_range_bytes(offset, length)
     }
 
     /// Write through a member handle, publishing what this call staged.
@@ -140,25 +140,25 @@ impl IOBase for Path {
     /// A resolving location owns no staged member of its own, so the write is
     /// published here rather than left for a flush the caller cannot reach.
     fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> Result<usize> {
-        let mut file = self.as_file();
-        let written = file.pwrite(offset, bytes)?;
-        file.flush()?;
+        let mut leaf = self.as_leaf();
+        let written = leaf.pwrite(offset, bytes)?;
+        leaf.flush()?;
         Ok(written)
     }
 
     fn write_all_bytes(&mut self, bytes: &[u8]) -> Result<()> {
-        self.as_file().write_all_bytes(bytes)
+        self.as_leaf().write_all_bytes(bytes)
     }
 
     fn append_bytes(&mut self, bytes: &[u8]) -> Result<u64> {
-        let mut file = self.as_file();
-        let offset = file.append_bytes(bytes)?;
-        file.flush()?;
+        let mut leaf = self.as_leaf();
+        let offset = leaf.append_bytes(bytes)?;
+        leaf.flush()?;
         Ok(offset)
     }
 
     fn size(&self) -> u64 {
-        self.as_file().size()
+        self.as_leaf().size()
     }
 
     fn capacity(&self) -> u64 {
@@ -171,11 +171,11 @@ impl IOBase for Path {
 
     fn truncate(&mut self, size: u64) -> Result<()> {
         if self.is_folder() {
-            return self.as_directory().truncate(size);
+            return self.as_node().truncate(size);
         }
-        let mut file = self.as_file();
-        file.truncate(size)?;
-        file.flush()
+        let mut leaf = self.as_leaf();
+        leaf.truncate(size)?;
+        leaf.flush()
     }
 
     fn url(&self) -> Option<&Url> {
@@ -211,22 +211,22 @@ impl IOBase for Path {
         if self.name.is_empty() {
             return self.archive.archive_parent();
         }
-        Some(Holder::ZipFolder(Folder::new(
+        Some(Holder::ZipNode(Node::new(
             Arc::clone(&self.archive),
             SmolStr::new(name::parent(&self.name).unwrap_or_default()),
         )))
     }
 
     fn child_by_path(&self, path: &str) -> Result<Holder> {
-        self.as_directory().child_by_path(path)
+        self.as_node().child_by_path(path)
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {
-        self.as_directory().ls(recursive, include_private)
+        self.as_node().ls(recursive, include_private)
     }
 
     fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing> {
-        self.as_directory().glob(pattern, include_private)
+        self.as_node().glob(pattern, include_private)
     }
 
     fn partitions(&self) -> Vec<(String, String)> {
@@ -236,16 +236,16 @@ impl IOBase for Path {
     /// Empty whichever role is there, creating neither.
     fn clear(&mut self) -> Result<()> {
         if self.is_folder() {
-            return self.as_directory().clear();
+            return self.as_node().clear();
         }
-        self.as_file().clear()
+        self.as_leaf().clear()
     }
 
     fn remove(&mut self, recursive: bool) -> Result<()> {
         if self.is_folder() {
-            return self.as_directory().remove(recursive);
+            return self.as_node().remove(recursive);
         }
-        self.as_file().remove(recursive)
+        self.as_leaf().remove(recursive)
     }
 
     fn is_atomic(&self) -> bool {

@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::holder::Holder;
 use crate::{Codec, Error, IOBase, Level, Result, Url};
 
-use super::{Entry, Folder, format, name};
+use super::{Entry, Node, format, name};
 
 /// The most bytes an end-of-central-directory record can be from the end.
 ///
@@ -25,7 +25,7 @@ const COMPACT_CHUNK: usize = crate::DEFAULT_STREAM_BATCH_SIZE;
 ///
 /// The archive owns two things and nothing else: the handle its bytes live in,
 /// and the central directory that says where each member is inside it. Every
-/// member view - [`Folder`](super::Folder), [`File`](super::File),
+/// member view - [`Node`](super::Node), [`Leaf`](super::Leaf),
 /// [`Path`](super::Path) - is a name plus a shared reference to this, so
 /// opening a member allocates nothing but its name, and two handles on one
 /// member always agree about what is there.
@@ -256,8 +256,8 @@ impl Archive {
     /// # }
     /// ```
     #[must_use]
-    pub fn mount(self) -> Folder {
-        Folder::new(Arc::new(self), SmolStr::default())
+    pub fn mount(self) -> Node {
+        Node::new(Arc::new(self), SmolStr::default())
     }
 
     /// Consume the archive, publishing the index and answering its handle.

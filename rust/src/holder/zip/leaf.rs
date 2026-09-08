@@ -7,7 +7,7 @@ use smol_str::SmolStr;
 use crate::holder::Holder;
 use crate::{ByteStream, Codec, Error, IOBase, IOFile, IOKind, MediaType, Result, Url};
 
-use super::{Archive, Entry, Folder, archive, name};
+use super::{Archive, Entry, Node, archive, name};
 
 /// One archive member's bytes, addressed positionally.
 ///
@@ -58,7 +58,7 @@ use super::{Archive, Entry, Folder, archive, name};
 /// # }
 /// ```
 #[derive(Debug)]
-pub struct File {
+pub struct Leaf {
     archive: Arc<Archive>,
     /// The member's canonical path inside the archive.
     name: SmolStr,
@@ -76,7 +76,7 @@ pub struct File {
     dirty: bool,
 }
 
-impl File {
+impl Leaf {
     /// Address one member of `archive` without touching it.
     pub fn new(archive: Arc<Archive>, name: SmolStr) -> Self {
         Self {
@@ -203,7 +203,7 @@ impl File {
     }
 }
 
-impl IOFile for File {
+impl IOFile for Leaf {
     fn file_url(&self) -> &Url {
         &self.url
     }
@@ -235,11 +235,11 @@ impl IOFile for File {
     }
 }
 
-impl crate::IOMedia for File {
+impl crate::IOMedia for Leaf {
     crate::impl_default_iomedia!();
 }
 
-impl IOBase for File {
+impl IOBase for Leaf {
     /// Read the range out of the decoded member.
     ///
     /// A stored member reads straight out of the archive at its data offset;
@@ -395,7 +395,7 @@ impl IOBase for File {
     /// out and belongs to the archive, not to its members.
     fn parent(&self) -> Option<Holder> {
         let base = name::parent(&self.name).unwrap_or_default();
-        Some(Holder::ZipFolder(Folder::new(
+        Some(Holder::ZipNode(Node::new(
             Arc::clone(&self.archive),
             SmolStr::new(base),
         )))

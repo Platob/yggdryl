@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use super::{Archive, Entry, Folder, Path, format, name};
+use super::{Archive, Entry, Node, Path, format, name};
 use crate::holder::{Buffer, Holder};
 use crate::{Codec, Error, IOBase, IOFolder, IOKind, IOPath, Level, MimeType, Url};
 
 /// The archive root of a fresh in-memory archive.
-fn root() -> Folder {
+fn root() -> Node {
     Archive::new(Holder::buffer(Buffer::new())).mount()
 }
 
@@ -28,7 +28,7 @@ fn zip_mount(path: &std::path::Path) -> Holder {
 }
 
 /// Mount an archive over an exact byte image.
-fn mounted(image: Vec<u8>) -> Folder {
+fn mounted(image: Vec<u8>) -> Node {
     Archive::new(Holder::buffer(Buffer::from_bytes(image))).mount()
 }
 
@@ -452,7 +452,7 @@ fn a_glob_selects_members_across_levels() {
 fn a_stored_member_reads_positionally_out_of_the_archive() {
     let payload: Vec<u8> = (0..=255_u8).cycle().take(4096).collect();
     let root = root();
-    let member = root.as_file("blob.bin").expect("a member");
+    let member = root.as_leaf("blob.bin").expect("a member");
     root.archive()
         .write_member_with("blob.bin", &payload, Codec::Identity)
         .expect("writes");
@@ -484,7 +484,7 @@ fn a_compressed_member_reads_positionally_without_being_held() {
         .expect("writes");
     root.archive().flush().expect("publishes");
 
-    let member = root.as_file("blob.bin").expect("a member");
+    let member = root.as_leaf("blob.bin").expect("a member");
     assert_eq!(
         member.read_range_bytes(4000, 32).expect("a range"),
         payload[4000..4032]
@@ -501,7 +501,7 @@ fn opening_a_member_answers_from_the_value_it_holds() {
         .expect("writes");
     root.archive().flush().expect("publishes");
 
-    let mut member = root.as_file("blob.bin").expect("a member");
+    let mut member = root.as_leaf("blob.bin").expect("a member");
     assert!(!member.opened());
     member.open().expect("the decoded member");
     assert!(member.opened());
@@ -516,7 +516,7 @@ fn opening_a_member_answers_from_the_value_it_holds() {
 #[test]
 fn a_positional_write_grows_the_member_and_zero_fills_the_gap() {
     let root = root();
-    let mut member = root.as_file("blob.bin").expect("a member");
+    let mut member = root.as_leaf("blob.bin").expect("a member");
     member.pwrite(4, b"tail").expect("a positional write");
     member.flush().expect("publishes");
 
@@ -529,7 +529,7 @@ fn a_positional_write_grows_the_member_and_zero_fills_the_gap() {
 #[test]
 fn a_truncation_shortens_the_member() {
     let root = root();
-    let mut member = root.as_file("notes.txt").expect("a member");
+    let mut member = root.as_leaf("notes.txt").expect("a member");
     member.write_all_bytes(b"symbol,price").expect("writes");
     member.truncate(6).expect("a truncation");
     member.flush().expect("publishes");
@@ -543,11 +543,11 @@ fn a_truncation_shortens_the_member() {
 #[test]
 fn clearing_a_member_empties_it_without_creating_an_absent_one() {
     let root = root();
-    let mut absent = root.as_file("absent.txt").expect("a member");
+    let mut absent = root.as_leaf("absent.txt").expect("a member");
     absent.clear().expect("nothing to empty");
     assert!(root.archive().entries().expect("the index").is_empty());
 
-    let mut member = root.as_file("notes.txt").expect("a member");
+    let mut member = root.as_leaf("notes.txt").expect("a member");
     member.write_all_bytes(b"symbol").expect("writes");
     member.clear().expect("the emptying");
     assert_eq!(member.size(), 0);
@@ -562,7 +562,7 @@ fn clearing_a_member_empties_it_without_creating_an_absent_one() {
 #[test]
 fn removing_a_member_drops_its_pending_write_with_it() {
     let root = root();
-    let mut member = root.as_file("notes.txt").expect("a member");
+    let mut member = root.as_leaf("notes.txt").expect("a member");
     member.write_all_bytes(b"symbol").expect("writes");
     member.pwrite(0, b"TICKER").expect("a staged write");
     member.remove(false).expect("the removal");
@@ -584,7 +584,7 @@ fn a_directory_refuses_removal_while_it_still_holds_members() {
         .write_all_bytes(b"x")
         .expect("writes");
 
-    let mut lake = root.as_directory("lake").expect("a directory");
+    let mut lake = root.as_node("lake").expect("a directory");
     let error = lake.remove(false).expect_err("a non-empty directory");
     assert!(error.to_string().contains("lake"), "{error}");
 
@@ -605,7 +605,7 @@ fn clearing_a_directory_keeps_it_and_removes_what_is_under_it() {
         .write_all_bytes(b"y")
         .expect("writes");
 
-    let mut lake = root.as_directory("lake").expect("a directory");
+    let mut lake = root.as_node("lake").expect("a directory");
     lake.clear().expect("the emptying");
 
     let names: Vec<String> = root
@@ -734,7 +734,7 @@ fn a_member_carries_the_partitions_its_name_and_its_archive_spell() {
 #[test]
 fn a_member_that_already_carries_a_coding_is_stored_rather_than_recompressed() {
     let root = root();
-    let mut member = root.as_file("app.log.gz").expect("a member");
+    let mut member = root.as_leaf("app.log.gz").expect("a member");
     member
         .write_all_bytes(&crate::coding::gzip::dump(b"symbol").expect("gzip bytes"))
         .expect("writes");
@@ -751,7 +751,7 @@ fn a_member_that_already_carries_a_coding_is_stored_rather_than_recompressed() {
 fn an_explicit_member_coding_wins_over_every_default() {
     let root = root();
     let mut member = root
-        .as_file("blob.bin")
+        .as_leaf("blob.bin")
         .expect("a member")
         .try_with_codec(Codec::Zstd)
         .expect("a zip coding");
@@ -800,10 +800,10 @@ fn a_mounted_archive_walks_as_an_ordinary_container() {
 #[test]
 fn two_handles_on_one_member_see_the_same_archive() {
     let root = root();
-    let mut first = root.as_file("a.txt").expect("a member");
+    let mut first = root.as_leaf("a.txt").expect("a member");
     first.write_all_bytes(b"one").expect("writes");
 
-    let second = root.as_file("a.txt").expect("a member");
+    let second = root.as_leaf("a.txt").expect("a member");
     assert_eq!(second.read_all_bytes().expect("bytes"), b"one");
 
     first.write_all_bytes(b"two").expect("rewrites");
@@ -859,7 +859,7 @@ fn a_positional_read_of_a_stored_member_is_one_handle_read() {
         .write_member_with("blob.bin", &vec![4_u8; 4096], Codec::Identity)
         .expect("writes");
     let reopened = mounted(bytes(root.archive()));
-    let member = reopened.as_file("blob.bin").expect("a member");
+    let member = reopened.as_leaf("blob.bin").expect("a member");
 
     // The first read pays for the index and for the member's local header.
     member.read_range_bytes(0, 16).expect("a range");
@@ -871,7 +871,7 @@ fn a_positional_read_of_a_stored_member_is_one_handle_read() {
     assert_eq!(reopened.archive().handle_reads() - warm, 3);
 
     // And a second handle on the same member reads no header of its own.
-    let second = reopened.as_file("blob.bin").expect("a member");
+    let second = reopened.as_leaf("blob.bin").expect("a member");
     let before = reopened.archive().handle_reads();
     second.read_range_bytes(0, 16).expect("a range");
     assert_eq!(reopened.archive().handle_reads() - before, 1);
@@ -888,7 +888,7 @@ fn a_member_this_archive_wrote_needs_no_header_read() {
     // The write knew where it put the bytes, so reading them back is the read
     // of the bytes and nothing else.
     let before = root.archive().handle_reads();
-    root.as_file("blob.bin")
+    root.as_leaf("blob.bin")
         .expect("a member")
         .read_range_bytes(0, 16)
         .expect("a range");
@@ -902,7 +902,7 @@ fn reading_a_stored_member_whole_is_one_handle_read() {
         .write_member_with("blob.bin", &vec![4_u8; 4096], Codec::Identity)
         .expect("writes");
     let reopened = mounted(bytes(root.archive()));
-    let member = reopened.as_file("blob.bin").expect("a member");
+    let member = reopened.as_leaf("blob.bin").expect("a member");
 
     // Warm the index and the member's data offset.
     member.read_all_bytes().expect("the member");
