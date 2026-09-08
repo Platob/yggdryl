@@ -191,3 +191,88 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
+
+/// The batch path split into its stages, so where a row's cost goes is a
+/// number rather than an argument.
+///
+/// Over the same messages: filling the fixed row, canonicalizing it under
+/// the schema, assembling one Arrow batch from every row, the digest each
+/// row pays for its `msghash` column, and the two arrival-record columns on
+/// their own - the one nested shape in the row, and the part of it that the
+/// generic value machinery walks entry by entry.
+pub fn stages(criterion: &mut Criterion) {
+    use yggdryl::{FixMsg, Scalar, fix_schema};
+
+    let bytes = corpus();
+    let source = handle(&bytes);
+    let branch = FixBranch::from_str(yggdryl::ULBRIDGE_BRANCH).expect("a branch");
+    let registry = Arc::new(seed().with_ulbridge_fields().expect("fields"));
+    let codec = FixCodec::new(Arc::clone(&registry)).with_branch(&branch);
+    let held = bodies(&source);
+    let messages: Vec<FixMsg> = held
+        .iter()
+        .map(|body| codec.transform_line(body, false).expect("a row"))
+        .collect();
+    let schema = fix_schema(&registry, "fix").expect("the fixed schema");
+    let mut group = criterion.benchmark_group("fix/pipeline_stages");
+    group.bench_function("to_row", |bencher| {
+        bencher.iter(|| {
+            messages
+                .iter()
+                .map(|message| black_box(message).to_row(&schema).expect("a row"))
+                .count()
+        });
+    });
+    let rows: Vec<Scalar> = messages
+        .iter()
+        .map(|message| message.to_row(&schema).expect("a row"))
+        .collect();
+    group.bench_function("canonicalize", |bencher| {
+        bencher.iter(|| {
+            rows.iter()
+                .map(|row| {
+                    schema
+                        .canonicalize_value(black_box(row).clone())
+                        .expect("canonical")
+                })
+                .count()
+        });
+    });
+    let all = Scalar::from_sequence(rows.clone());
+    group.bench_function("batch_from_value", |bencher| {
+        bencher.iter(|| {
+            yggdryl::arrow::batch_from_value(&schema, black_box(&all))
+                .expect("a batch")
+                .num_rows()
+        });
+    });
+    group.bench_function("digest", |bencher| {
+        bencher.iter(|| {
+            messages
+                .iter()
+                .map(|message| black_box(message).digest())
+                .count()
+        });
+    });
+    group.bench_function("entries_columns", |bencher| {
+        let narrow = yggdryl::DataType::from_fields([
+            schema
+                .get_field_by_path("nofixentries")
+                .expect("entries")
+                .clone(),
+            schema
+                .get_field_by_path("nounmappedfixentries")
+                .expect("unmapped")
+                .clone(),
+        ])
+        .expect("a struct")
+        .required_field("narrow");
+        bencher.iter(|| {
+            messages
+                .iter()
+                .map(|message| black_box(message).to_row(&narrow).expect("a row"))
+                .count()
+        });
+    });
+    group.finish();
+}
