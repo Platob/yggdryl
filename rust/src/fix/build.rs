@@ -240,6 +240,9 @@ fn default_version() -> Version {
 /// Builds a message's field and value from pairs, with the entries beside it.
 pub(super) struct Builder<'registry> {
     registry: &'registry FixRegistry,
+    /// The `BeginString` child a message that stated none is given,
+    /// resolved once per codec rather than once per line.
+    beginstring: &'registry Field,
     branch: FixBranch,
     version: Option<Version>,
     slots: Vec<Slot>,
@@ -271,12 +274,14 @@ impl<'registry> Builder<'registry> {
     /// Opens a build against one dictionary, dialect and version.
     pub(super) fn new(
         registry: &'registry FixRegistry,
+        beginstring: &'registry Field,
         branch: FixBranch,
         version: Option<Version>,
         capacity: usize,
     ) -> Self {
         Self {
             registry,
+            beginstring,
             branch,
             version,
             slots: Vec::with_capacity(capacity),
@@ -804,7 +809,7 @@ impl<'registry> Builder<'registry> {
     /// nobody dated sorts first and visibly.
     pub(super) fn finish(self, name: &str, clock: Option<&Scalar>) -> Result<Built> {
         let Self {
-            registry,
+            beginstring,
             version,
             mut slots,
             entries,
@@ -814,14 +819,7 @@ impl<'registry> Builder<'registry> {
             .iter()
             .any(|slot| slot.tag == 8 || slot.field.name() == "beginstring")
         {
-            let field = registry.get_field_by_tag(8).map_or_else(
-                || {
-                    let mut field = DataType::Utf8.required_field("beginstring");
-                    let _ = field.as_fix_mut().set_tag(8);
-                    field
-                },
-                stated,
-            );
+            let field = beginstring.clone();
             let spelled = format_smolstr!("FIX.{}", version.unwrap_or_else(default_version));
             let value = field
                 .scalar(Scalar::from(spelled.as_str()))
@@ -1280,6 +1278,20 @@ fn stated(known: &Field) -> Field {
     let mut field = known.clone();
     field.set_nullable(false);
     field
+}
+
+/// The `BeginString` child a built message carries when its line stated
+/// none: the dictionary's own field, non-null, or a text field carrying the
+/// tag where the dictionary has none.
+pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
+    registry.get_field_by_tag(8).map_or_else(
+        || {
+            let mut field = DataType::Utf8.required_field("beginstring");
+            let _ = field.as_fix_mut().set_tag(8);
+            field
+        },
+        stated,
+    )
 }
 
 /// Whether a datatype is one the FIX layer reads raw wire bytes into.

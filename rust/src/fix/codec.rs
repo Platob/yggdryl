@@ -170,12 +170,17 @@ pub struct FixCodec {
     separator: Option<u8>,
     payload_column: SmolStr,
     null_values: Vec<String>,
+    /// The `BeginString` child every built message carries, resolved once:
+    /// a bridge row states no version, so every one of them would otherwise
+    /// look the field up per line.
+    beginstring: Field,
 }
 
 impl FixCodec {
     /// Opens a codec over one dictionary.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
+        let beginstring = super::build::beginstring_field(&registry);
         Self {
             registry,
             branch: None,
@@ -186,6 +191,7 @@ impl FixCodec {
                 .iter()
                 .map(|spelling| (*spelling).to_owned())
                 .collect(),
+            beginstring,
         }
     }
 
@@ -881,7 +887,13 @@ impl FixCodec {
         let version = self.version.or_else(|| self.infer_version(pairs, &branch));
         let msgtype = msgtype_of(pairs);
 
-        let mut builder = Builder::new(&self.registry, branch.clone(), version, pairs.len());
+        let mut builder = Builder::new(
+            &self.registry,
+            &self.beginstring,
+            branch.clone(),
+            version,
+            pairs.len(),
+        );
         for (key, value) in pairs {
             // A stated absence produces no field and no entry: the key is read
             // as never having been sent. Filtering happens before typing, so
