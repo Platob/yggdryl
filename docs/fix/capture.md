@@ -462,10 +462,10 @@ The rules are the specification's own tables read as the implications they are, 
 | `SecurityType(167)` | `CFICode(461)` | Appendix 6-D at its category level - `ES` is `CS`, `F` is `FUT`, an `O?F` is `OOF` and every other `O` is `OPT`, `LR` is `REPO`; a category every kind of bond shares, `DB`, answers nothing |
 | `CFICode(461)` | `SecurityType(167)`, `PutOrCall(201)` | Appendix 6-D the other way: `CS` is `ESXXXX`, `CORP` is `DBXXXX`, `FRN` is `DBVXXX`, an option is `OC` or `OP` by its `PutOrCall` and `OX` without one |
 | `PutOrCall(201)` | `CFICode(461)` | the second character of a listed (`O`) or unlisted (`H`) option: `C` is a call, `P` a put |
-| `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Equity` is `5`, `Corporate` `3`, `Government` `6`, `Money Market` `9`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
+| `Product(460)` | `SecurityType(167)`, else `CFICode(461)` | the group the dictionary's `SecurityType` code set files the value under, as the `Product` code set spells it - `Agency` is `1`, `Corporate` `3`, `Currency` `4`, `Equity` `5`, `Government` `6`, `Loan` `8`, `Money Market` `9`, `Mortgage` `10`, `Municipal` `11`, `Financing` `13`; `Derivatives` and `Other` answer nothing. A CFI in category `E` is `5` and in `L` is `13` |
 | `miccode` | `SecurityExchange(207)`, `ExDestination(100)`, `LastMkt(30)` | the first stated, as the [column](#the-crates-own-columns) is defined |
 | `TimeInForce(59)` | nothing, on an order, a replace or a report | the field's own definition: absent means `0`, a day order |
-| `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is `2`, one leaving something after doing something is `1` |
+| `OrdStatus(39)` | `ExecType(150)`; else `LeavesQty(151)` and `CumQty(14)` on a trade | the values the two code sets spell alike - not `D`, Restated in one and AcceptedForBidding in the other; a trade leaving nothing is filled, `2`, and one leaving something after doing something is partially filled, `1` - each landing as the [`state`](../types/ascii.md) column spells it |
 | `state` | `OrdStatus(39)`, `ExecType(150)` | the first stated, as the column is defined |
 | `LeavesQty(151)`, `OrderQty(38)`, `CumQty(14)` | the other two, on a report | Appendix D: `OrderQty = CumQty + LeavesQty`, and nothing is left once `OrdStatus(39)` is closed |
 | `GrossTradeAmt(381)` | `LastQty(32)` × `LastPx(31)` | Appendix D's execution reports |
@@ -473,7 +473,7 @@ The rules are the specification's own tables read as the implications they are, 
 | `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once |
 | `AvgPx(6)` | `LastPx(31)` | Appendix D, only where `CumQty(14)` says the whole done quantity is this fill |
 
-The rules run in one order, laid out so every chain ends in one pass: an ISIN found among the alternate identifiers becomes `SecurityID`, whose validation states the source, under which the ISIN column is read and the country after it; a security type read off a CFI places the product; a status read off an execution type decides what is left.
+The rules run in one order, laid out so every chain ends in one pass: a `SecurityID`'s validation states the source, under which the ISIN column is read; an ISIN found only among the alternate identifiers becomes the `SecurityID`, whose validation states the source in turn; the country is read after either; a security type read off a CFI places the product; a status read off an execution type decides what is left. The primary identifier is read before the alternate ones, as the column is defined, so a message stating an ISIN in both places states it in `SecurityID`.
 
 === "Rust"
 
@@ -494,7 +494,8 @@ The rules run in one order, laid out so every chain ends in one pass: an ISIN fo
     assert_eq!(held.by_tag(167)?.as_str(), Some("CS"));
     assert_eq!(held.by_tag(460)?, &Scalar::from(5_i32));
     assert_eq!(held.by_tag(yggdryl::MICCODE_TAG)?.as_str(), Some("XNAS"));
-    assert_eq!(held.by_tag(39)?.as_str(), Some("2"), "a trade leaving nothing");
+    // A trade leaving nothing is filled, as the `state` column spells it.
+    assert_eq!(held.by_tag(39)?.as_str(), Some("80FILLED"));
     assert_eq!(held.by_tag(59)?.as_str(), Some("0"), "a day order");
 
     // Only the row was filled: the wire comes back byte for byte.
@@ -521,7 +522,8 @@ The rules run in one order, laid out so every chain ends in one pass: an ISIN fo
     assert held.by_tag(167).as_py() == "CS"
     assert held.by_tag(460).as_py() == 5
     assert held.by_tag(65014).as_py() == "XNAS"  # miccode
-    assert held.by_tag(39).as_py() == "2"  # a trade leaving nothing
+    # A trade leaving nothing is filled, as the `state` column spells it.
+    assert held.by_tag(39).as_py() == "80FILLED"
     assert held.by_tag(59).as_py() == "0"  # a day order
 
     # Only the row was filled: the wire comes back byte for byte.
@@ -548,7 +550,8 @@ The rules run in one order, laid out so every chain ends in one pass: an ISIN fo
     assert.equal(held.byTag(167).toJSON(), 'CS')
     assert.equal(held.byTag(460).toJSON(), 5)
     assert.equal(held.byTag(65014).toJSON(), 'XNAS') // miccode
-    assert.equal(held.byTag(39).toJSON(), '2') // a trade leaving nothing
+    // A trade leaving nothing is filled, as the `state` column spells it.
+    assert.equal(held.byTag(39).toJSON(), '80FILLED')
     assert.equal(held.byTag(59).toJSON(), '0') // a day order
 
     // Only the row was filled: the wire comes back byte for byte.
@@ -560,9 +563,9 @@ The rules run in one order, laid out so every chain ends in one pass: an ISIN fo
 ### Edges
 
 - A value the column refuses is silence, not a failure: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, leaves `isincode` null, and nothing downstream reads a country off it.
-- A value that would not type - `201=abc` in the `PutOrCall` column - is a null the row holds while the entry keeps the text; a rule fills the null in place, the row has one column for the tag, and the anomaly still reports the text.
-- The rules read codes, so a bridge row spelling `SECURITYIDSOURCE=isin` and `SECURITYTYPE=equity` is read exactly as a frame spelling `22=4` and `167=CS`: the dictionary translated both before any rule ran.
-- A trade stating no quantities states no status: `150=F` alone leaves `OrdStatus` absent, and `state` then holds `F`, what the report said happened.
+- A value that would not type - `201=abc` in the `PutOrCall` column - is a null the row holds while the entry keeps the text; a rule fills the null in place, so the row has one column for the tag and the entry still says `abc`.
+- The rules read codes, and a venue's own word for one is not the code. A bridge row spelling `SECURITYIDSOURCE=isin` beside a `SECURITYID` the check digit closes has stated a source, which stands, and `isin` is not `4` - the dictionary names that code `ISINNumber`, so nothing translated it - so the ISIN column is left null; the same row spelling `SECURITYTYPE=equity` names no code of the `SecurityType` set, so no group files it and no CFI is read off it. The bridge's own `ISINCODE` states the column directly, and the `CFICODE` it spells beside it states the product.
+- A trade stating no quantities states no status: `150=F` alone leaves `OrdStatus` absent, and `state` then holds what the report said happened, `F` as the column spells it, `40TRADE`.
 - An option stating no `PutOrCall` gets a CFI whose exercise is `X`, and `PutOrCall` is not then read back off it: `X` is the code for an exercise left open.
 
 ## A bridge configuration is a dictionary of its own

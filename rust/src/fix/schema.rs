@@ -696,7 +696,7 @@ impl super::FixMsg {
 
     /// One member of the first occurrence of a group whose other member
     /// states `wanted`: the `455` beside a `456` of `4`, say.
-    fn group_member_where(
+    pub(super) fn group_member_where(
         &self,
         group: i32,
         member: i32,

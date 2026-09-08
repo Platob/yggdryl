@@ -19,6 +19,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::holder::local::Folder;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::TextOptions;
+use yggdryl::types::State;
 use yggdryl::{
     FixBatchReader, FixBranch, FixCodec, FixEntry, FixOptions, FixRegistry, IOMedia, MimeType,
     Scalar, Timezone, Url,
@@ -289,6 +290,61 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .expect("the fill reads");
     assert!(plain.get_by_tag(381).is_none());
     assert!(plain.get_by_tag(120).is_none());
+
+    // The instrument and the lifecycle the line named, read into the columns
+    // a monitor filters on: the ISIN under its stated source, the product the
+    // dictionary files its security type under, the market it names first,
+    // the state it reports - and the country its ISIN opens with, which is
+    // no fixed column, so the message answers for it.
+    assert_eq!(
+        enriched.by_tag(yggdryl::ISINCODE_TAG).unwrap().as_str(),
+        Some("CH0012221716")
+    );
+    assert_eq!(enriched.by_tag(470).unwrap().as_str(), Some("CH"));
+    assert_eq!(
+        rows[fill][column(460)].as_i128(),
+        Some(5),
+        "Product from SecurityType"
+    );
+    assert_eq!(
+        rows[fill][column(yggdryl::MICCODE_TAG)].as_str(),
+        Some("XSWX")
+    );
+    assert_eq!(
+        rows[fill][column(yggdryl::STATE_TAG)]
+            .as_str()
+            .and_then(State::from_spelling),
+        State::from_spelling("1"),
+        "the state the report stated, as the column spells it"
+    );
+    for tag in [
+        yggdryl::ISINCODE_TAG,
+        470,
+        460,
+        yggdryl::MICCODE_TAG,
+        yggdryl::STATE_TAG,
+    ] {
+        assert!(
+            plain.get_by_tag(tag).is_none(),
+            "tag {tag} without enrichment"
+        );
+    }
+
+    // An identifier the check digit does not close is no identifier: the
+    // anonymized line names one, and nothing is read off it.
+    let masked = text
+        .iter()
+        .position(|held| body(&text_names, held).contains("XX0000000001"))
+        .expect("the anonymized line");
+    let masked = codec()
+        .transform_record(&record(&text_names, &text[masked]), true)
+        .expect("the anonymized line reads");
+    for tag in [yggdryl::ISINCODE_TAG, 470] {
+        assert!(
+            masked.get_by_tag(tag).is_none_or(Scalar::is_null),
+            "tag {tag} off a masked ISIN"
+        );
+    }
     // And the row is dated by the row header, not by the wire's clock.
     let clock = &text[fill][at(&text_names, "timestamp")];
     assert_eq!(&rows[fill][column(yggdryl::TIMESTAMP_TAG)], clock);

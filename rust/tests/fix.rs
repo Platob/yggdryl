@@ -14,6 +14,8 @@ mod dataset;
 mod dictionary;
 #[path = "fix/digest.rs"]
 mod digest;
+#[path = "fix/enrich.rs"]
+mod enrich;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]
