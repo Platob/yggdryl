@@ -400,15 +400,18 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         assert!(message.by_name("#orderid").is_err(), "{row}");
     }
 
-    // A `#` occurrence kept beside its bare twin still splits on its
-    // explicit member separators, under its own `#` spelling: nothing
-    // merges and nothing is lost.
+    // A `#` occurrence kept beside its bare twin stays verbatim and whole:
+    // one key, one value, nothing rewritten under a group name no registry
+    // resolves.
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
     let message = reader.transform_line(row, false).unwrap();
     let keys: Vec<&str> = message.entries().iter().map(FixEntry::key).collect();
     assert!(keys.contains(&"NOPARTYIDS[0]"), "{keys:?}");
-    assert!(keys.contains(&"#NOPARTYIDS[0].PARTYID"), "{keys:?}");
-    assert!(keys.contains(&"#NOPARTYIDS[0].PARTYROLE"), "{keys:?}");
+    assert!(keys.contains(&"#NOPARTYIDS[0]"), "{keys:?}");
+    assert!(
+        !keys.iter().any(|key| key.starts_with("#NOPARTYIDS[0].")),
+        "{keys:?}"
+    );
 }
 
 #[test]

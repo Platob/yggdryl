@@ -324,7 +324,15 @@ impl FixCodec {
                     } else {
                         bare_keys.iter().any(|held| folds_twin(held, bare))
                     };
-                    if twinned { key } else { bare }
+                    if twinned {
+                        // Verbatim means whole: the twinned `#` key is its
+                        // own key and the packed value is its value, so no
+                        // group rendering rewrites either - a group name
+                        // opening with `#` resolves in no dictionary anyway.
+                        resolved.push((Cow::Borrowed(key), value));
+                        continue;
+                    }
+                    bare
                 }
                 None => key,
             };
