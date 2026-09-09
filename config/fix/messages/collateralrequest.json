@@ -549,6 +549,7 @@
   "metadata": {
     "description": "MsgType = AX",
     "display": "CollateralRequest",
-    "fix:msgtype": "AX"
+    "fix:msgtype": "AX",
+    "fix:tag": "844452"
   }
 }

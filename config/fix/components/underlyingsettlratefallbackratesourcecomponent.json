@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingSettlRateFallbackRateSource(40904) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "UnderlyingSettlRateFallbackRateSource"
+    "display": "UnderlyingSettlRateFallbackRateSource",
+    "fix:tag": "854954"
   }
 }

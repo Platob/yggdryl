@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRepIndicator"
+    "display": "TrdRepIndicator",
+    "fix:tag": "386016"
   }
 }

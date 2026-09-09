@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionPartySubIDs(40178) > 0.",
     "display": "ProvisionPtysSubGrp",
     "fix:component": "provisionptyssub",
-    "fix:counter": "40178"
+    "fix:counter": "40178",
+    "fix:tag": "551289"
   }
 }

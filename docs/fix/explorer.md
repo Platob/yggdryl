@@ -89,7 +89,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes appear inside their owning field's detail panel. A group has a `fix:counter` reference; it does not take the counter's tag or scalar datatype. Different message contexts remain separate definitions.
+Codes appear inside their owning field's detail panel. A group carries the `fix:tag` derived from its own name, beside a `fix:counter` reference; it does not take the counter's tag or scalar datatype. Different message contexts remain separate definitions.
 
 ## The capture row
 

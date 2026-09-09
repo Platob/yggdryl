@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentSettl"
+    "display": "PaymentSettl",
+    "fix:tag": "403416"
   }
 }

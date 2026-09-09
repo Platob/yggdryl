@@ -151,7 +151,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - A catalog root holding no `fields/`, `components/`, `groups/`, or `messages/` folder loads with only the crate's own fields; a read does not create it.
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
-- Scalar fields require tags; named definitions do not acquire synthetic tags.
+- Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
 - Group count fields remain separate `int32` values and are not replaced by lists.
 - Deleting a referenced field, component, or group fails before saving.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.

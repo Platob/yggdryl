@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingOptionExerciseExpirationDateBusinessCenter"
+    "display": "UnderlyingOptionExerciseExpirationDateBusinessCenter",
+    "fix:tag": "539444"
   }
 }

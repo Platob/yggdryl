@@ -18,6 +18,7 @@
     "description": "Number of order types",
     "display": "OrdTypeRules",
     "fix:component": "ordtyperule",
-    "fix:counter": "1237"
+    "fix:counter": "1237",
+    "fix:tag": "919778"
   }
 }

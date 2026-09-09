@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegRateSource"
+    "display": "LegRateSource",
+    "fix:tag": "893002"
   }
 }

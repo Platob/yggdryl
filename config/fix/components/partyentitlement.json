@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyEntitlement"
+    "display": "PartyEntitlement",
+    "fix:tag": "353210"
   }
 }

@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingReturnRateInformationSource"
+    "display": "UnderlyingReturnRateInformationSource",
+    "fix:tag": "366535"
   }
 }

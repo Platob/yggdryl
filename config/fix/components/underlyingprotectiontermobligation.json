@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermObligation"
+    "display": "UnderlyingProtectionTermObligation",
+    "fix:tag": "533542"
   }
 }

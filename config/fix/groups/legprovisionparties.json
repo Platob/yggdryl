@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionPartyIDs(40533) > 0.",
     "display": "LegProvisionParties",
     "fix:component": "legprovisionparty",
-    "fix:counter": "40533"
+    "fix:counter": "40533",
+    "fix:tag": "675729"
   }
 }

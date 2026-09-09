@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MarketDisruptionFallbackReferencePrice"
+    "display": "MarketDisruptionFallbackReferencePrice",
+    "fix:tag": "785194"
   }
 }

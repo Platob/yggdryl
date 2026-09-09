@@ -18,6 +18,7 @@
     "description": "Number of statistics indicators",
     "display": "StatsIndGrp",
     "fix:component": "statsind",
-    "fix:counter": "1175"
+    "fix:counter": "1175",
+    "fix:tag": "969907"
   }
 }

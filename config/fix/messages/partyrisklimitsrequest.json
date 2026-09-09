@@ -199,6 +199,7 @@
   "metadata": {
     "description": "MsgType = CL",
     "display": "PartyRiskLimitsRequest",
-    "fix:msgtype": "CL"
+    "fix:msgtype": "CL",
+    "fix:tag": "352800"
   }
 }

@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventPeriod"
+    "display": "ComplexEventPeriod",
+    "fix:tag": "998819"
   }
 }

@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradingSessionRule"
+    "display": "TradingSessionRule",
+    "fix:tag": "1018405"
   }
 }

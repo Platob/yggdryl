@@ -18,6 +18,7 @@
     "description": "Indicates number of allocation groups to follow.",
     "display": "AllocAckGrp",
     "fix:component": "allocack",
-    "fix:counter": "78"
+    "fix:counter": "78",
+    "fix:tag": "698590"
   }
 }

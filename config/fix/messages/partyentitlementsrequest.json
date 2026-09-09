@@ -219,6 +219,7 @@
   "metadata": {
     "description": "MsgType = CU",
     "display": "PartyEntitlementsRequest",
-    "fix:msgtype": "CU"
+    "fix:msgtype": "CU",
+    "fix:tag": "1016002"
   }
 }

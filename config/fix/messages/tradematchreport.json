@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = DC",
     "display": "TradeMatchReport",
-    "fix:msgtype": "DC"
+    "fix:msgtype": "DC",
+    "fix:tag": "800305"
   }
 }

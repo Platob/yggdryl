@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStipulation"
+    "display": "UnderlyingStipulation",
+    "fix:tag": "1088992"
   }
 }

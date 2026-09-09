@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStreamPricingBusinessCenters(41909) > 0.",
     "display": "UnderlyingPaymentStreamPricingBusinessCenterGrp",
     "fix:component": "underlyingpaymentstreampricingbusinesscentercomponent",
-    "fix:counter": "41909"
+    "fix:counter": "41909",
+    "fix:tag": "411323"
   }
 }

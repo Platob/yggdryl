@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCommodityDataSources(41993) > 0.",
     "display": "UnderlyingStreamCommodityDataSourceGrp",
     "fix:component": "underlyingstreamcommoditydatasource",
-    "fix:counter": "41993"
+    "fix:counter": "41993",
+    "fix:tag": "1005623"
   }
 }

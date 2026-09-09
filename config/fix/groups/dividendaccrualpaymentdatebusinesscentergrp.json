@@ -18,6 +18,7 @@
     "description": "Required if NoDividendAccrualPaymentDateBusinessCenters(42236) > 0.",
     "display": "DividendAccrualPaymentDateBusinessCenterGrp",
     "fix:component": "dividendaccrualpaymentdatebusinesscentercomponent",
-    "fix:counter": "42236"
+    "fix:counter": "42236",
+    "fix:tag": "680115"
   }
 }

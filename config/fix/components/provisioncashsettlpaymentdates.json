@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the provisional cash settlement payment dates.",
-    "display": "ProvisionCashSettlPaymentDates"
+    "display": "ProvisionCashSettlPaymentDates",
+    "fix:tag": "425929"
   }
 }

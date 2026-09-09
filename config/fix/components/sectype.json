@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SecType"
+    "display": "SecType",
+    "fix:tag": "1001310"
   }
 }

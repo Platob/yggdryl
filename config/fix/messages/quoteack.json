@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = CW",
     "display": "QuoteAck",
-    "fix:msgtype": "CW"
+    "fix:msgtype": "CW",
+    "fix:tag": "898973"
   }
 }

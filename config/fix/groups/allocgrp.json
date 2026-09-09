@@ -18,6 +18,7 @@
     "description": "Required if NoAllocs(78) > 0.",
     "display": "AllocGrp",
     "fix:component": "alloc",
-    "fix:counter": "78"
+    "fix:counter": "78",
+    "fix:tag": "340092"
   }
 }

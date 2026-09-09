@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingProvisionPartyIDs(42173) > 0.",
     "display": "UnderlyingProvisionParties",
     "fix:component": "underlyingprovisionparty",
-    "fix:counter": "42173"
+    "fix:counter": "42173",
+    "fix:tag": "131778"
   }
 }

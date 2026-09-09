@@ -759,6 +759,7 @@
   "metadata": {
     "description": "MsgType = BA",
     "display": "CollateralReport",
-    "fix:msgtype": "BA"
+    "fix:msgtype": "BA",
+    "fix:tag": "482029"
   }
 }

@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = 3",
     "display": "Reject",
-    "fix:msgtype": "3"
+    "fix:msgtype": "3",
+    "fix:tag": "251740"
   }
 }

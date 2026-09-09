@@ -349,6 +349,7 @@
   "metadata": {
     "description": "MsgType = DP",
     "display": "MarketDataStatisticsReport",
-    "fix:msgtype": "DP"
+    "fix:msgtype": "DP",
+    "fix:tag": "480519"
   }
 }

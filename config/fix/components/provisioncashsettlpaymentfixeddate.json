@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionCashSettlPaymentFixedDate"
+    "display": "ProvisionCashSettlPaymentFixedDate",
+    "fix:tag": "773682"
   }
 }

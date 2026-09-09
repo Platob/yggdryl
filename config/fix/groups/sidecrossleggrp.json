@@ -18,6 +18,7 @@
     "description": "Required if NoCrossLegs(1829) > 0.",
     "display": "SideCrossLegGrp",
     "fix:component": "sidecrossleg",
-    "fix:counter": "1829"
+    "fix:counter": "1829",
+    "fix:tag": "403299"
   }
 }

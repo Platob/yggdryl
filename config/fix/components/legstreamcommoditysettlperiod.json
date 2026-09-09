@@ -157,6 +157,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlPeriod"
+    "display": "LegStreamCommoditySettlPeriod",
+    "fix:tag": "512114"
   }
 }

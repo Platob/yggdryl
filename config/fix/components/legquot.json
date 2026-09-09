@@ -207,6 +207,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegQuot"
+    "display": "LegQuot",
+    "fix:tag": "901229"
   }
 }

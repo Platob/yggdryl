@@ -18,6 +18,7 @@
     "description": "Required if NoLegDeliveryScheduleSettlTimes(41425) > 0.",
     "display": "LegDeliveryScheduleSettlTimeGrp",
     "fix:component": "legdeliveryschedulesettltime",
-    "fix:counter": "41425"
+    "fix:counter": "41425",
+    "fix:tag": "194103"
   }
 }

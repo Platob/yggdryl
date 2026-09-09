@@ -289,6 +289,7 @@
   "metadata": {
     "description": "MsgType = P",
     "display": "AllocationInstructionAck",
-    "fix:msgtype": "P"
+    "fix:msgtype": "P",
+    "fix:tag": "550194"
   }
 }

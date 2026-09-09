@@ -147,6 +147,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTerm"
+    "display": "UnderlyingProtectionTerm",
+    "fix:tag": "223112"
   }
 }

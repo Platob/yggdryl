@@ -3099,6 +3099,7 @@
   "metadata": {
     "description": "MsgType = 8",
     "display": "ExecutionReport",
-    "fix:msgtype": "8"
+    "fix:msgtype": "8",
+    "fix:tag": "684272"
   }
 }

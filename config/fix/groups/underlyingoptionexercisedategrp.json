@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingOptionExerciseDates(41841) > 0.",
     "display": "UnderlyingOptionExerciseDateGrp",
     "fix:component": "underlyingoptionexercisedatecomponent",
-    "fix:counter": "41841"
+    "fix:counter": "41841",
+    "fix:tag": "723090"
   }
 }

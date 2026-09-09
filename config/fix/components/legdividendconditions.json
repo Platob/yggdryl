@@ -258,6 +258,7 @@
   "nullable": false,
   "metadata": {
     "description": "The LegDividendConditions component is a subcomponent of LegPaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
-    "display": "LegDividendConditions"
+    "display": "LegDividendConditions",
+    "fix:tag": "596490"
   }
 }

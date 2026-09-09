@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamTerminationDateBusinessCenters(40976) > 0.",
     "display": "UnderlyingStreamTerminationDateBusinessCenterGrp",
     "fix:component": "underlyingstreamterminationdatebusinesscentercomponent",
-    "fix:counter": "40976"
+    "fix:counter": "40976",
+    "fix:tag": "193389"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Number of Market Segments on which a security may trade.",
     "display": "MarketSegmentGrp",
     "fix:component": "marketsegment",
-    "fix:counter": "1310"
+    "fix:counter": "1310",
+    "fix:tag": "769584"
   }
 }

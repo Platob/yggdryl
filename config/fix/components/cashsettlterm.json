@@ -237,6 +237,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "CashSettlTerm"
+    "display": "CashSettlTerm",
+    "fix:tag": "211578"
   }
 }

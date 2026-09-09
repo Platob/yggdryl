@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = DE",
     "display": "PartyRiskLimitsReportAck",
-    "fix:msgtype": "DE"
+    "fix:msgtype": "DE",
+    "fix:tag": "432749"
   }
 }

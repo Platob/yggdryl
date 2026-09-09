@@ -18,6 +18,7 @@
     "description": "The number of quotes for this Symbol (QuoteSet) that follow in this message.",
     "display": "QuotEntryAckGrp",
     "fix:component": "quotentryack",
-    "fix:counter": "295"
+    "fix:counter": "295",
+    "fix:tag": "535994"
   }
 }

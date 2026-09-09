@@ -18,6 +18,7 @@
     "description": "Required if NoTrdRegTimestamps(768) > 0.",
     "display": "TrdRegTimestamps",
     "fix:component": "trdregtimestampcomponent",
-    "fix:counter": "768"
+    "fix:counter": "768",
+    "fix:tag": "763375"
   }
 }

@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MaturityRule"
+    "display": "MaturityRule",
+    "fix:tag": "761022"
   }
 }

@@ -237,6 +237,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdSessLst"
+    "display": "TrdSessLst",
+    "fix:tag": "933597"
   }
 }

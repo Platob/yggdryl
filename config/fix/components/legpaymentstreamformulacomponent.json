@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "LegPaymentStreamFormula is a subcomponent of the LegPaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
-    "display": "LegPaymentStreamFormula"
+    "display": "LegPaymentStreamFormula",
+    "fix:tag": "129493"
   }
 }

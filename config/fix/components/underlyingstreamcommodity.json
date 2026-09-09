@@ -378,6 +378,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingStreamCommoditySecurityIDSource(41967) is specified.",
-    "display": "UnderlyingStreamCommodity"
+    "display": "UnderlyingStreamCommodity",
+    "fix:tag": "671145"
   }
 }

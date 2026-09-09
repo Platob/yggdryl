@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamEffectiveDateBusinessCenters(40975) > 0.",
     "display": "UnderlyingStreamEffectiveDateBusinessCenterGrp",
     "fix:component": "underlyingstreameffectivedatebusinesscentercomponent",
-    "fix:counter": "40975"
+    "fix:counter": "40975",
+    "fix:tag": "904452"
   }
 }

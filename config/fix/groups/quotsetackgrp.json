@@ -18,6 +18,7 @@
     "description": "The number of sets of quotes in the message",
     "display": "QuotSetAckGrp",
     "fix:component": "quotsetack",
-    "fix:counter": "296"
+    "fix:counter": "296",
+    "fix:tag": "948103"
   }
 }

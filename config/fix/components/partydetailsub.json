@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailSub"
+    "display": "PartyDetailSub",
+    "fix:tag": "527537"
   }
 }

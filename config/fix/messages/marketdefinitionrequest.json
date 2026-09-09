@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = BT",
     "display": "MarketDefinitionRequest",
-    "fix:msgtype": "BT"
+    "fix:msgtype": "BT",
+    "fix:tag": "664422"
   }
 }

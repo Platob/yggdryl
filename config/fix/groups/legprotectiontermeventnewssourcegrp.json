@@ -18,6 +18,7 @@
     "description": "Required if NoLegProtectionTermEventNewsSources(41614) > 0.",
     "display": "LegProtectionTermEventNewsSourceGrp",
     "fix:component": "legprotectiontermeventnewssourcecomponent",
-    "fix:counter": "41614"
+    "fix:counter": "41614",
+    "fix:tag": "677540"
   }
 }

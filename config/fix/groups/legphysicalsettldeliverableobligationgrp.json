@@ -18,6 +18,7 @@
     "description": "Required if NoLegPhysicalSettlDeliverableObligations(41604) > 0.",
     "display": "LegPhysicalSettlDeliverableObligationGrp",
     "fix:component": "legphysicalsettldeliverableobligation",
-    "fix:counter": "41604"
+    "fix:counter": "41604",
+    "fix:tag": "201235"
   }
 }

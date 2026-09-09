@@ -2390,6 +2390,67 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
 }
 
 #[test]
+fn a_derived_tag_identifies_one_definition_however_it_arrived() {
+    let mut registry = FixRegistry::from_fields([counter("NoPartyIDs", 453)]).unwrap();
+    registry
+        .insert_definition(FixCategory::Groups, named_group("Parties", 453))
+        .unwrap();
+    let first = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .unwrap()
+        .as_fix()
+        .tag()
+        .unwrap()
+        .expect("a derived tag");
+
+    // A definition cloned under a second name carries the first one's tag. It
+    // is not that definition, so it does not keep that identity.
+    let mut clone = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .unwrap()
+        .clone();
+    clone.set_name("Counterparties");
+    registry
+        .insert_definition(FixCategory::Groups, clone)
+        .unwrap();
+    let second = registry
+        .definition(FixCategory::Groups, "Counterparties", None)
+        .unwrap()
+        .as_fix()
+        .tag()
+        .unwrap()
+        .expect("a derived tag");
+    assert_ne!(first, second);
+    assert!(FixId::is_definition_tag(second), "{second}");
+
+    // Re-stating a definition keeps the identity it already has.
+    let again = registry
+        .definition(FixCategory::Groups, "Parties", None)
+        .unwrap()
+        .clone();
+    registry
+        .insert_definition(FixCategory::Groups, again)
+        .unwrap();
+    assert_eq!(
+        registry
+            .definition(FixCategory::Groups, "Parties", None)
+            .unwrap()
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(first)
+    );
+
+    // A tag outside the block is refused whatever states it.
+    let mut outside = named_group("Brokers", 453);
+    outside.as_fix_mut().set_tag(42).unwrap();
+    let refused = registry
+        .insert_definition(FixCategory::Groups, outside)
+        .unwrap_err();
+    assert!(refused.to_string().contains("100000"), "{refused}");
+}
+
+#[test]
 fn a_named_group_and_its_counter_keep_separate_identities() {
     let mut shadow = tagged("Shadow", 5);
     shadow.as_fix_mut().set_tags(&[453]).unwrap();

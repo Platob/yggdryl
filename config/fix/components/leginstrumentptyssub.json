@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegInstrumentPtysSub"
+    "display": "LegInstrumentPtysSub",
+    "fix:tag": "699091"
   }
 }

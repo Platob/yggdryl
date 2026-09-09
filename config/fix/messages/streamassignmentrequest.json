@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = CC",
     "display": "StreamAssignmentRequest",
-    "fix:msgtype": "CC"
+    "fix:msgtype": "CC",
+    "fix:tag": "1083748"
   }
 }

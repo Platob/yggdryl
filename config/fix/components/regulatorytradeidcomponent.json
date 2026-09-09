@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RegulatoryTradeID"
+    "display": "RegulatoryTradeID",
+    "fix:tag": "950635"
   }
 }

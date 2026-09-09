@@ -128,6 +128,7 @@
   "nullable": false,
   "metadata": {
     "description": "Specifies the order types that are valid for trading. The scope of the rule is determined by the context in which the component is used. In this case, the scope is trading session.",
-    "display": "TradingSessionRules"
+    "display": "TradingSessionRules",
+    "fix:tag": "623055"
   }
 }

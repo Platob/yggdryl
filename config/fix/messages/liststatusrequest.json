@@ -69,6 +69,7 @@
   "metadata": {
     "description": "MsgType = M",
     "display": "ListStatusRequest",
-    "fix:msgtype": "M"
+    "fix:msgtype": "M",
+    "fix:tag": "743358"
   }
 }

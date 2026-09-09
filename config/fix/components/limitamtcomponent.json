@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LimitAmt"
+    "display": "LimitAmt",
+    "fix:tag": "931862"
   }
 }

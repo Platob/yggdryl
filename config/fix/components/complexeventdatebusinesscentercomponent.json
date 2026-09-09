@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventDateBusinessCenter"
+    "display": "ComplexEventDateBusinessCenter",
+    "fix:tag": "593648"
   }
 }

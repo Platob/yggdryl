@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating RefMsgTypes specified",
     "display": "MsgTypeGrp",
     "fix:component": "msgtypecomponent",
-    "fix:counter": "384"
+    "fix:counter": "384",
+    "fix:tag": "801480"
   }
 }

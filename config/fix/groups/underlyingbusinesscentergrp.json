@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingBusinessCenters(40962) > 0.",
     "display": "UnderlyingBusinessCenterGrp",
     "fix:component": "underlyingbusinesscentercomponent",
-    "fix:counter": "40962"
+    "fix:counter": "40962",
+    "fix:tag": "814423"
   }
 }

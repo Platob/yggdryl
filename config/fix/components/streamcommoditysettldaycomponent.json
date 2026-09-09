@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlDay"
+    "display": "StreamCommoditySettlDay",
+    "fix:tag": "231493"
   }
 }

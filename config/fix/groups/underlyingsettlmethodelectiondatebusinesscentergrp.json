@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingSettlMethodElectionDateBusinessCenters(43074) > 0.",
     "display": "UnderlyingSettlMethodElectionDateBusinessCenterGrp",
     "fix:component": "underlyingsettlmethodelectiondatebusinesscentercomponent",
-    "fix:counter": "43074"
+    "fix:counter": "43074",
+    "fix:tag": "562686"
   }
 }

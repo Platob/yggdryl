@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = v (lowercase V)",
     "display": "SecurityTypeRequest",
-    "fix:msgtype": "v"
+    "fix:msgtype": "v",
+    "fix:tag": "929203"
   }
 }

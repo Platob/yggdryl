@@ -18,6 +18,7 @@
     "description": "Required if NoCashSettlDateBusinessCenters(42214) > 0.",
     "display": "CashSettlDateBusinessCenterGrp",
     "fix:component": "cashsettldatebusinesscentercomponent",
-    "fix:counter": "42214"
+    "fix:counter": "42214",
+    "fix:tag": "873981"
   }
 }

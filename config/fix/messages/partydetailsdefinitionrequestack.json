@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = CY",
     "display": "PartyDetailsDefinitionRequestAck",
-    "fix:msgtype": "CY"
+    "fix:msgtype": "CY",
+    "fix:tag": "810627"
   }
 }

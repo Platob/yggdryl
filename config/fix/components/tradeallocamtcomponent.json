@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeAllocAmt"
+    "display": "TradeAllocAmt",
+    "fix:tag": "1093610"
   }
 }

@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ExecutionAggregation"
+    "display": "ExecutionAggregation",
+    "fix:tag": "596879"
   }
 }

@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = EN",
     "display": "TestActionRequest",
-    "fix:msgtype": "EN"
+    "fix:msgtype": "EN",
+    "fix:tag": "137078"
   }
 }

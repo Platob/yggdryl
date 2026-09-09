@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MarketSegmentScope"
+    "display": "MarketSegmentScope",
+    "fix:tag": "754562"
   }
 }

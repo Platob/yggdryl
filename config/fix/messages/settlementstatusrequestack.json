@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = ED",
     "display": "SettlementStatusRequestAck",
-    "fix:msgtype": "ED"
+    "fix:msgtype": "ED",
+    "fix:tag": "490132"
   }
 }

@@ -149,6 +149,7 @@
   "metadata": {
     "description": "MsgType = BE",
     "display": "UserRequest",
-    "fix:msgtype": "BE"
+    "fix:msgtype": "BE",
+    "fix:tag": "291769"
   }
 }

@@ -14,6 +14,7 @@
 | Aspect | Rule |
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata |
+| Definition tags | The specification names components, groups and messages rather than tagging them, so each carries a `fix:tag` derived from its name into `[100000, 1100000)`, clear of every published tag; a reference occurrence never restates it |
 | References | `fix:field`, `fix:component`, and `fix:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, and group layouts are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
@@ -198,7 +199,7 @@ The size and ordinary iteration count scalar fields only. Named iterators hold a
 | Scalar `update` | Merges metadata for the existing identity using the native per-key rules |
 | Scalar `remove` | Returns no field when absent or still referenced |
 
-These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically.
+These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A named definition stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has.
 
 === "Rust"
 
@@ -507,7 +508,8 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
 
 - A scalar without `fix:tag`, a nested tagged field, or a nullable message root is refused.
 - A group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent.
-- A named definition has no synthetic tag. Its category and branch identify it.
+- A named definition carries the tag derived from its name; its category, name and branch identify it, and a stated tag outside `[100000, 1100000)` is refused.
+- A derived tag is admissible on any branch: it names a definition this crate derived rather than a tag anyone published, and the branch digest keeps two derivations of one name apart.
 - Missing, cyclic, contradictory, or over-depth references fail at intake with location; the nesting limit is 64.
 - Removing a referenced definition fails atomically; delete dependents before their sources.
 - A field-reference occurrence may vary name and nullability, but may not introduce independent metadata overrides.

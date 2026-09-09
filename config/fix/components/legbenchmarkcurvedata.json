@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "The LegBenchmarkCurveData is used to convey the benchmark information used for pricing in a multi-legged Fixed Income security.",
-    "display": "LegBenchmarkCurveData"
+    "display": "LegBenchmarkCurveData",
+    "fix:tag": "305085"
   }
 }

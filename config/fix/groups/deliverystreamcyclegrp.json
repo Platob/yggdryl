@@ -18,6 +18,7 @@
     "description": "Required if NoDeliveryStreamCycles(41081) > 0.",
     "display": "DeliveryStreamCycleGrp",
     "fix:component": "deliverystreamcycle",
-    "fix:counter": "41081"
+    "fix:counter": "41081",
+    "fix:tag": "801031"
   }
 }

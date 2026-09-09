@@ -18,6 +18,7 @@
     "description": "Number of trade publication indicators following",
     "display": "TrdRepIndicatorsGrp",
     "fix:component": "trdrepindicatorcomponent",
-    "fix:counter": "1387"
+    "fix:counter": "1387",
+    "fix:tag": "843537"
   }
 }

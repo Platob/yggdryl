@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "NestedParty4"
+    "display": "NestedParty4",
+    "fix:tag": "604742"
   }
 }

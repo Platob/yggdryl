@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegSettlMethodElectionDateBusinessCenter"
+    "display": "LegSettlMethodElectionDateBusinessCenter",
+    "fix:tag": "396452"
   }
 }

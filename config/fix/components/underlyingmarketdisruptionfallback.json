@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingMarketDisruptionFallback"
+    "display": "UnderlyingMarketDisruptionFallback",
+    "fix:tag": "437853"
   }
 }

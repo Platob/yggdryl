@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeQty"
+    "display": "TradeQty",
+    "fix:tag": "934743"
   }
 }

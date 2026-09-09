@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = AU",
     "display": "ConfirmationAck",
-    "fix:msgtype": "AU"
+    "fix:msgtype": "AU",
+    "fix:tag": "241565"
   }
 }

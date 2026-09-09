@@ -18,6 +18,7 @@
     "description": "Required if NoLegProvisionDateBusinessCenters(40939) > 0.",
     "display": "LegProvisionDateBusinessCenterGrp",
     "fix:component": "legprovisiondatebusinesscentercomponent",
-    "fix:counter": "40939"
+    "fix:counter": "40939",
+    "fix:tag": "725207"
   }
 }

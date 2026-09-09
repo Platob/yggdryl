@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventPeriod"
+    "display": "LegComplexEventPeriod",
+    "fix:tag": "959084"
   }
 }

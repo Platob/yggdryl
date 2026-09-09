@@ -729,6 +729,7 @@
   "metadata": {
     "description": "MsgType = AZ",
     "display": "CollateralResponse",
-    "fix:msgtype": "AZ"
+    "fix:msgtype": "AZ",
+    "fix:tag": "480403"
   }
 }

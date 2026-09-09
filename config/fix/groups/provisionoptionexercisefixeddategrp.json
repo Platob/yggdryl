@@ -18,6 +18,7 @@
     "description": "Required if NoProvisionOptionExerciseFixedDates (40142) > 0.",
     "display": "ProvisionOptionExerciseFixedDateGrp",
     "fix:component": "provisionoptionexercisefixeddatecomponent",
-    "fix:counter": "40142"
+    "fix:counter": "40142",
+    "fix:tag": "1073972"
   }
 }

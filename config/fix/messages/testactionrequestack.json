@@ -99,6 +99,7 @@
   "metadata": {
     "description": "MsgType = EO",
     "display": "TestActionRequestAck",
-    "fix:msgtype": "EO"
+    "fix:msgtype": "EO",
+    "fix:tag": "569008"
   }
 }

@@ -449,6 +449,7 @@
   "metadata": {
     "description": "MsgType = BU",
     "display": "MarketDefinition",
-    "fix:msgtype": "BU"
+    "fix:msgtype": "BU",
+    "fix:tag": "1089468"
   }
 }

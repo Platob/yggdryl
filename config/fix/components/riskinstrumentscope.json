@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskInstrumentScope"
+    "display": "RiskInstrumentScope",
+    "fix:tag": "866779"
   }
 }

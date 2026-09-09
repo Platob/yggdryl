@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = EG",
     "display": "SecurityRiskMetricsReport",
-    "fix:msgtype": "EG"
+    "fix:msgtype": "EG",
+    "fix:tag": "201842"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoAffectedOrders(534) > 0.",
     "display": "AffectedOrdGrp",
     "fix:component": "affectedord",
-    "fix:counter": "534"
+    "fix:counter": "534",
+    "fix:tag": "156679"
   }
 }

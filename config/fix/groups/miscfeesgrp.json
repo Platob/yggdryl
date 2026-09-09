@@ -18,6 +18,7 @@
     "description": "Required if any miscellaneous fees are reported. Indicates number of repeating entries.",
     "display": "MiscFeesGrp",
     "fix:component": "miscfee",
-    "fix:counter": "136"
+    "fix:counter": "136",
+    "fix:tag": "1003572"
   }
 }

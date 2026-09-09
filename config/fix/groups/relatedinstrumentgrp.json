@@ -18,6 +18,7 @@
     "description": "Conditionally required when NoRelatedInstruments > 0",
     "display": "RelatedInstrumentGrp",
     "fix:component": "relatedinstrument",
-    "fix:counter": "1647"
+    "fix:counter": "1647",
+    "fix:tag": "259311"
   }
 }

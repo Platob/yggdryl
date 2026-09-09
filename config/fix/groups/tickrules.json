@@ -18,6 +18,7 @@
     "description": "Required if NoTickRules(1205) > 0.",
     "display": "TickRules",
     "fix:component": "tickrule",
-    "fix:counter": "1205"
+    "fix:counter": "1205",
+    "fix:tag": "751296"
   }
 }

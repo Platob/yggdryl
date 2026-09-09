@@ -18,6 +18,7 @@
     "description": "Required if NoPriceMovementValues(1919) > 0.",
     "display": "PriceMovementValueGrp",
     "fix:component": "pricemovementvaluecomponent",
-    "fix:counter": "1920"
+    "fix:counter": "1920",
+    "fix:tag": "983135"
   }
 }

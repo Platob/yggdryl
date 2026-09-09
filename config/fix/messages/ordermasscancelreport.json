@@ -309,6 +309,7 @@
   "metadata": {
     "description": "MsgType = r (lowercase R)",
     "display": "OrderMassCancelReport",
-    "fix:msgtype": "r"
+    "fix:msgtype": "r",
+    "fix:tag": "203677"
   }
 }

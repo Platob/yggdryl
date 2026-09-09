@@ -117,6 +117,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetail"
+    "display": "PartyDetail",
+    "fix:tag": "575364"
   }
 }

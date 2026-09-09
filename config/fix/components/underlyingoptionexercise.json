@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be set if EncodedUnderlyingExerciseDesc(41812) field is specified and must immediately precede it.",
-    "display": "UnderlyingOptionExercise"
+    "display": "UnderlyingOptionExercise",
+    "fix:tag": "463064"
   }
 }

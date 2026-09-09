@@ -199,6 +199,7 @@
   "metadata": {
     "description": "MsgType = CM",
     "display": "PartyRiskLimitsReport",
-    "fix:msgtype": "CM"
+    "fix:msgtype": "CM",
+    "fix:tag": "627070"
   }
 }

@@ -337,6 +337,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotEntryAck"
+    "display": "QuotEntryAck",
+    "fix:tag": "174647"
   }
 }

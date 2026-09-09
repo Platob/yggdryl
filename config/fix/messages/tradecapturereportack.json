@@ -1129,6 +1129,7 @@
   "metadata": {
     "description": "MsgType = AR",
     "display": "TradeCaptureReportAck",
-    "fix:msgtype": "AR"
+    "fix:msgtype": "AR",
+    "fix:tag": "988102"
   }
 }

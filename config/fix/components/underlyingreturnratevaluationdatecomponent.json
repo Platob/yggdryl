@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingReturnRateValuationDate"
+    "display": "UnderlyingReturnRateValuationDate",
+    "fix:tag": "667044"
   }
 }

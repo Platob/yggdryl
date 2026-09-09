@@ -58,6 +58,7 @@
   "nullable": false,
   "metadata": {
     "description": "One of CashOrderQty, OrderQty, or (for CIV only) OrderPercent is required. Note that unless otherwise specified, only one of CashOrderQty, OrderQty, or OrderPercent should be specified.",
-    "display": "OrderQtyData"
+    "display": "OrderQtyData",
+    "fix:tag": "607394"
   }
 }

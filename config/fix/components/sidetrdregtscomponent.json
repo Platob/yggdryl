@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SideTrdRegTS"
+    "display": "SideTrdRegTS",
+    "fix:tag": "910187"
   }
 }

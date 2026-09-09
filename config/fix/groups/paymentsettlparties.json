@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentSettlPartyIDs(40233) > 0.",
     "display": "PaymentSettlParties",
     "fix:component": "paymentsettlparty",
-    "fix:counter": "40233"
+    "fix:counter": "40233",
+    "fix:tag": "456684"
   }
 }

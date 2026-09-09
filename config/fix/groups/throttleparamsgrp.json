@@ -18,6 +18,7 @@
     "description": "Indicates number of throttles to follow.",
     "display": "ThrottleParamsGrp",
     "fix:component": "throttleparam",
-    "fix:counter": "1610"
+    "fix:counter": "1610",
+    "fix:tag": "991980"
   }
 }

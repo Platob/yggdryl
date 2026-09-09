@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be set if EncodedExerciseDesc(41108) field is specified and must immediately precede it.",
-    "display": "OptionExercise"
+    "display": "OptionExercise",
+    "fix:tag": "656091"
   }
 }

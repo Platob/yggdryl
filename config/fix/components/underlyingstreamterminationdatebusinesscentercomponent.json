@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamTerminationDateBusinessCenter"
+    "display": "UnderlyingStreamTerminationDateBusinessCenter",
+    "fix:tag": "339317"
   }
 }

@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegOptionExerciseDate"
+    "display": "LegOptionExerciseDate",
+    "fix:tag": "984641"
   }
 }

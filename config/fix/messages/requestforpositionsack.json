@@ -349,6 +349,7 @@
   "metadata": {
     "description": "MsgType = AO",
     "display": "RequestForPositionsAck",
-    "fix:msgtype": "AO"
+    "fix:msgtype": "AO",
+    "fix:tag": "430229"
   }
 }

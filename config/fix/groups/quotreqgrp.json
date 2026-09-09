@@ -18,6 +18,7 @@
     "description": "Number of related symbols (instruments) in Request",
     "display": "QuotReqGrp",
     "fix:component": "quotreq",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "968903"
   }
 }

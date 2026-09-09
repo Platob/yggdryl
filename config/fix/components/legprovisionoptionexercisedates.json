@@ -228,6 +228,7 @@
   "nullable": false,
   "metadata": {
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg provision option exercise dates.",
-    "display": "LegProvisionOptionExerciseDates"
+    "display": "LegProvisionOptionExerciseDates",
+    "fix:tag": "935663"
   }
 }

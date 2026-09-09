@@ -49,6 +49,7 @@
   "metadata": {
     "description": "MsgType = 4",
     "display": "SequenceReset",
-    "fix:msgtype": "4"
+    "fix:msgtype": "4",
+    "fix:tag": "356569"
   }
 }

@@ -317,6 +317,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStub"
+    "display": "UnderlyingPaymentStub",
+    "fix:tag": "385018"
   }
 }

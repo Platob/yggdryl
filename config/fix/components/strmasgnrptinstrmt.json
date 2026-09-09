@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnRptInstrmt"
+    "display": "StrmAsgnRptInstrmt",
+    "fix:tag": "614292"
   }
 }

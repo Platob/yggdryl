@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = EF",
     "display": "SettlementStatusReportAck",
-    "fix:msgtype": "EF"
+    "fix:msgtype": "EF",
+    "fix:tag": "606492"
   }
 }

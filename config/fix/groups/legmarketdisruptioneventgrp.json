@@ -18,6 +18,7 @@
     "description": "Required if NoLegMarketDisruptionEvents(41467) > 0.",
     "display": "LegMarketDisruptionEventGrp",
     "fix:component": "legmarketdisruptioneventcomponent",
-    "fix:counter": "41467"
+    "fix:counter": "41467",
+    "fix:tag": "270055"
   }
 }

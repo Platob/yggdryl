@@ -1519,6 +1519,7 @@
   "metadata": {
     "description": "MsgType = G",
     "display": "OrderCancelReplaceRequest",
-    "fix:msgtype": "G"
+    "fix:msgtype": "G",
+    "fix:tag": "777699"
   }
 }

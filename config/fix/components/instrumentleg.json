@@ -1858,6 +1858,7 @@
   "nullable": false,
   "metadata": {
     "description": "Common, \"human understood\" representation of the security. SecurityID value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
-    "display": "InstrumentLeg"
+    "display": "InstrumentLeg",
+    "fix:tag": "423401"
   }
 }

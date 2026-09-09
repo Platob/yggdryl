@@ -18,6 +18,7 @@
     "description": "Required if NoLegPaymentScheduleRateSources(40414) > 0.",
     "display": "LegPaymentScheduleRateSourceGrp",
     "fix:component": "legpaymentscheduleratesourcecomponent",
-    "fix:counter": "40414"
+    "fix:counter": "40414",
+    "fix:tag": "508966"
   }
 }

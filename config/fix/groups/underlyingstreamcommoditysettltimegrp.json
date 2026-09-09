@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCommoditySettlTimes(41999) > 0.",
     "display": "UnderlyingStreamCommoditySettlTimeGrp",
     "fix:component": "underlyingstreamcommoditysettltime",
-    "fix:counter": "41999"
+    "fix:counter": "41999",
+    "fix:tag": "252680"
   }
 }

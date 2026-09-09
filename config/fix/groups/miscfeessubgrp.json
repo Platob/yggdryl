@@ -18,6 +18,7 @@
     "description": "Required if NoMiscFeeSubTypes(2633) > 0.",
     "display": "MiscFeesSubGrp",
     "fix:component": "miscfeessub",
-    "fix:counter": "2633"
+    "fix:counter": "2633",
+    "fix:tag": "294849"
   }
 }

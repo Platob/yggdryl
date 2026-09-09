@@ -18,6 +18,7 @@
     "description": "Required if NoPositions > 0.",
     "display": "TradePositionQty",
     "fix:component": "tradepositionqtycomponent",
-    "fix:counter": "702"
+    "fix:counter": "702",
+    "fix:tag": "830688"
   }
 }

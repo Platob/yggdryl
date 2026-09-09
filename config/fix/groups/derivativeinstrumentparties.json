@@ -18,6 +18,7 @@
     "description": "Should contain unique combinations of DerivativeInstrumentPartyID, DerivativeInstrumentPartyIDSource, and DerivativeInstrumentPartyRole",
     "display": "DerivativeInstrumentParties",
     "fix:component": "derivativeinstrumentparty",
-    "fix:counter": "1292"
+    "fix:counter": "1292",
+    "fix:tag": "252246"
   }
 }

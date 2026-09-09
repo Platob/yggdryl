@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "IndividualAllocSubQtyAttribute"
+    "display": "IndividualAllocSubQtyAttribute",
+    "fix:tag": "743167"
   }
 }

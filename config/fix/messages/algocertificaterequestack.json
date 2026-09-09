@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = EI",
     "display": "AlgoCertificateRequestAck",
-    "fix:msgtype": "EI"
+    "fix:msgtype": "EI",
+    "fix:tag": "428962"
   }
 }

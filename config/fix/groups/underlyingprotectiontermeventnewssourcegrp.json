@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingProtectionTermEventNewsSources(42090) > 0.",
     "display": "UnderlyingProtectionTermEventNewsSourceGrp",
     "fix:component": "underlyingprotectiontermeventnewssourcecomponent",
-    "fix:counter": "42090"
+    "fix:counter": "42090",
+    "fix:tag": "297217"
   }
 }

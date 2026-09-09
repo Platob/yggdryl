@@ -18,6 +18,7 @@
     "description": "Number of Lot Types",
     "display": "LotTypeRules",
     "fix:component": "lottyperule",
-    "fix:counter": "1234"
+    "fix:counter": "1234",
+    "fix:tag": "733809"
   }
 }

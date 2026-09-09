@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventRateSource"
+    "display": "UnderlyingComplexEventRateSource",
+    "fix:tag": "943054"
   }
 }

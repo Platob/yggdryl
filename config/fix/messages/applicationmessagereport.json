@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = BY",
     "display": "ApplicationMessageReport",
-    "fix:msgtype": "BY"
+    "fix:msgtype": "BY",
+    "fix:tag": "554038"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoPayCollects > 0.",
     "display": "PayCollectGrp",
     "fix:component": "paycollect",
-    "fix:counter": "1707"
+    "fix:counter": "1707",
+    "fix:tag": "818321"
   }
 }

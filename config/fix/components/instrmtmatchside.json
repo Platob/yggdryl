@@ -187,6 +187,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtMatchSide"
+    "display": "InstrmtMatchSide",
+    "fix:tag": "437393"
   }
 }

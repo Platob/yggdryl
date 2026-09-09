@@ -1019,6 +1019,7 @@
   "metadata": {
     "description": "MsgType = AK",
     "display": "Confirmation",
-    "fix:msgtype": "AK"
+    "fix:msgtype": "AK",
+    "fix:tag": "489272"
   }
 }

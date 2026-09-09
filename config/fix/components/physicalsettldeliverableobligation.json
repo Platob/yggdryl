@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PhysicalSettlDeliverableObligation"
+    "display": "PhysicalSettlDeliverableObligation",
+    "fix:tag": "557023"
   }
 }

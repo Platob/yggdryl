@@ -167,6 +167,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ClearingPriceParameter"
+    "display": "ClearingPriceParameter",
+    "fix:tag": "114182"
   }
 }

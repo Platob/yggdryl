@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEventScedules(41400) > 0.",
     "display": "LegComplexEventScheduleGrp",
     "fix:component": "legcomplexeventschedule",
-    "fix:counter": "41400"
+    "fix:counter": "41400",
+    "fix:tag": "266807"
   }
 }

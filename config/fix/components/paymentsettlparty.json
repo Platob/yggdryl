@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentSettlParty"
+    "display": "PaymentSettlParty",
+    "fix:tag": "383696"
   }
 }

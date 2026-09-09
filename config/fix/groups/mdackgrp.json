@@ -18,6 +18,7 @@
     "description": "Number of entries following.",
     "display": "MDAckGrp",
     "fix:component": "mdack",
-    "fix:counter": "268"
+    "fix:counter": "268",
+    "fix:tag": "682387"
   }
 }

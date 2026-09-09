@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPricingDateBusinessCenter"
+    "display": "LegPricingDateBusinessCenter",
+    "fix:tag": "272932"
   }
 }

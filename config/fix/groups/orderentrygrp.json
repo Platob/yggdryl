@@ -18,6 +18,7 @@
     "description": "Required if NoOrderEntries(2428) > 0.",
     "display": "OrderEntryGrp",
     "fix:component": "orderentry",
-    "fix:counter": "2428"
+    "fix:counter": "2428",
+    "fix:tag": "339018"
   }
 }

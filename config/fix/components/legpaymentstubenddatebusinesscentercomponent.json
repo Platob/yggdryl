@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStubEndDateBusinessCenter"
+    "display": "LegPaymentStubEndDateBusinessCenter",
+    "fix:tag": "816270"
   }
 }

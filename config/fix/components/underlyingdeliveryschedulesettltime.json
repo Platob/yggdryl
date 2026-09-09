@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliveryScheduleSettlTime"
+    "display": "UnderlyingDeliveryScheduleSettlTime",
+    "fix:tag": "596940"
   }
 }

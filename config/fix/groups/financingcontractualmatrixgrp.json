@@ -18,6 +18,7 @@
     "description": "Required if NoContractualMatrices(40042) > 0.",
     "display": "FinancingContractualMatrixGrp",
     "fix:component": "financingcontractualmatrix",
-    "fix:counter": "40042"
+    "fix:counter": "40042",
+    "fix:tag": "935698"
   }
 }

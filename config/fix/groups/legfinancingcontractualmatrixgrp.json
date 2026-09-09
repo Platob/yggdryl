@@ -18,6 +18,7 @@
     "description": "Required if NoLegContractualMatrices(42203) > 0.",
     "display": "LegFinancingContractualMatrixGrp",
     "fix:component": "legfinancingcontractualmatrix",
-    "fix:counter": "42203"
+    "fix:counter": "42203",
+    "fix:tag": "686204"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoTestScenarioParameters(3130) > 0.",
     "display": "TestScenarioParameterGrp",
     "fix:component": "testscenarioparameter",
-    "fix:counter": "3130"
+    "fix:counter": "3130",
+    "fix:tag": "777202"
   }
 }

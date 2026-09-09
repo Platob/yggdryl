@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "CollInqQual"
+    "display": "CollInqQual",
+    "fix:tag": "658118"
   }
 }

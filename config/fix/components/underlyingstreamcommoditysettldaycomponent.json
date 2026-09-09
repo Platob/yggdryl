@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCommoditySettlDay"
+    "display": "UnderlyingStreamCommoditySettlDay",
+    "fix:tag": "1030576"
   }
 }

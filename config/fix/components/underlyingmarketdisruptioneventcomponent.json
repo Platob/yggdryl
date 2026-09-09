@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingMarketDisruptionEvent"
+    "display": "UnderlyingMarketDisruptionEvent",
+    "fix:tag": "915596"
   }
 }

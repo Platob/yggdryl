@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradingService"
+    "display": "TradingService",
+    "fix:tag": "109312"
   }
 }

@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "The CommissionData component block is used to carry commission information such as the type of commission and the rate. Use the CommissionDataGrp component as an alternative if multiple commissions or enhanced attributes are needed.",
-    "display": "CommissionData"
+    "display": "CommissionData",
+    "fix:tag": "400420"
   }
 }

@@ -308,6 +308,7 @@
   "nullable": false,
   "metadata": {
     "description": "The full name of the base standard agreement, annexes and amendments in place between the principals and applicable to this deal",
-    "display": "FinancingDetails"
+    "display": "FinancingDetails",
+    "fix:tag": "553093"
   }
 }

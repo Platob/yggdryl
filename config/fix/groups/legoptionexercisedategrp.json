@@ -18,6 +18,7 @@
     "description": "Required if NoLegOptionExerciseDates(41512) > 0.",
     "display": "LegOptionExerciseDateGrp",
     "fix:component": "legoptionexercisedatecomponent",
-    "fix:counter": "41512"
+    "fix:counter": "41512",
+    "fix:tag": "834299"
   }
 }

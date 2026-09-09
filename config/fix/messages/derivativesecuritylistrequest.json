@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = z (lowercase Z)",
     "display": "DerivativeSecurityListRequest",
-    "fix:msgtype": "z"
+    "fix:msgtype": "z",
+    "fix:tag": "261914"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegCashSettlTerms(41344) > 0.",
     "display": "LegCashSettlTermGrp",
     "fix:component": "legcashsettlterm",
-    "fix:counter": "41344"
+    "fix:counter": "41344",
+    "fix:tag": "514534"
   }
 }

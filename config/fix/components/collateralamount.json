@@ -177,6 +177,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "CollateralAmount"
+    "display": "CollateralAmount",
+    "fix:tag": "159134"
   }
 }

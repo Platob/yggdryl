@@ -187,6 +187,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegAdditionalTermBondRef"
+    "display": "LegAdditionalTermBondRef",
+    "fix:tag": "269960"
   }
 }

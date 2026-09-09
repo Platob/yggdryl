@@ -18,6 +18,7 @@
     "description": "Required if NoOrderAttributes(2593) > 0.",
     "display": "OrderAttributeGrp",
     "fix:component": "orderattribute",
-    "fix:counter": "2593"
+    "fix:counter": "2593",
+    "fix:tag": "973952"
   }
 }

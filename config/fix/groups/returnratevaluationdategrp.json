@@ -18,6 +18,7 @@
     "description": "Required if NoReturnRateValuationDates(42772) > 0.",
     "display": "ReturnRateValuationDateGrp",
     "fix:component": "returnratevaluationdatecomponent",
-    "fix:counter": "42772"
+    "fix:counter": "42772",
+    "fix:tag": "999411"
   }
 }

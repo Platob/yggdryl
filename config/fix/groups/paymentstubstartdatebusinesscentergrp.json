@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStubStartDateBusinessCenters(42705) > 0.",
     "display": "PaymentStubStartDateBusinessCenterGrp",
     "fix:component": "paymentstubstartdatebusinesscentercomponent",
-    "fix:counter": "42705"
+    "fix:counter": "42705",
+    "fix:tag": "1039177"
   }
 }

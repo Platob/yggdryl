@@ -249,6 +249,7 @@
   "metadata": {
     "description": "MsgType = C",
     "display": "Email",
-    "fix:msgtype": "C"
+    "fix:msgtype": "C",
+    "fix:tag": "688909"
   }
 }

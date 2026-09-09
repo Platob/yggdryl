@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "Attachment"
+    "display": "Attachment",
+    "fix:tag": "1008465"
   }
 }

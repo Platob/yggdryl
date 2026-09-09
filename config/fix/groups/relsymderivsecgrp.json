@@ -18,6 +18,7 @@
     "description": "Specifies the number of repeating symbols (instruments) specified",
     "display": "RelSymDerivSecGrp",
     "fix:component": "relsymderivsec",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "209402"
   }
 }

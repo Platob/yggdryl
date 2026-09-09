@@ -18,6 +18,7 @@
     "description": "Required if NoLegDividendPeriods(42366) > 0.",
     "display": "LegDividendPeriodGrp",
     "fix:component": "legdividendperiod",
-    "fix:counter": "42366"
+    "fix:counter": "42366",
+    "fix:tag": "323399"
   }
 }

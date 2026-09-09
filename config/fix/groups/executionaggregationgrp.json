@@ -18,6 +18,7 @@
     "description": "Required if NoExecs(124) > 0",
     "display": "ExecutionAggregationGrp",
     "fix:component": "executionaggregation",
-    "fix:counter": "124"
+    "fix:counter": "124",
+    "fix:tag": "326766"
   }
 }

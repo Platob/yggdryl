@@ -439,6 +439,7 @@
   "metadata": {
     "description": "MsgType = BZ",
     "display": "OrderMassActionReport",
-    "fix:msgtype": "BZ"
+    "fix:msgtype": "BZ",
+    "fix:tag": "182726"
   }
 }

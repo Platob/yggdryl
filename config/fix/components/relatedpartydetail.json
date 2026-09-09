@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedPartyDetail"
+    "display": "RelatedPartyDetail",
+    "fix:tag": "972557"
   }
 }

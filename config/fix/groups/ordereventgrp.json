@@ -18,6 +18,7 @@
     "description": "Required when NoOrderEvents(1795) > 0.",
     "display": "OrderEventGrp",
     "fix:component": "orderevent",
-    "fix:counter": "1795"
+    "fix:counter": "1795",
+    "fix:tag": "725988"
   }
 }

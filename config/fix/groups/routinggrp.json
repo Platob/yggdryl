@@ -18,6 +18,7 @@
     "description": "Indicates type of RoutingID. Required if NoRoutingIDs is > 0.",
     "display": "RoutingGrp",
     "fix:component": "routing",
-    "fix:counter": "215"
+    "fix:counter": "215",
+    "fix:tag": "878515"
   }
 }

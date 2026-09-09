@@ -18,6 +18,7 @@
     "description": "Required if NoStreamCalculationPeriodBusinessCenters(40958) > 0.",
     "display": "StreamCalculationPeriodBusinessCenterGrp",
     "fix:component": "streamcalculationperiodbusinesscentercomponent",
-    "fix:counter": "40958"
+    "fix:counter": "40958",
+    "fix:tag": "267280"
   }
 }

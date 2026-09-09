@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ReferenceDataDate"
+    "display": "ReferenceDataDate",
+    "fix:tag": "269385"
   }
 }

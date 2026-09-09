@@ -18,6 +18,7 @@
     "description": "Required if NoPaymentStreamPaymentDates(41220) > 0.",
     "display": "PaymentStreamPaymentDateGrp",
     "fix:component": "paymentstreampaymentdatecomponent",
-    "fix:counter": "41220"
+    "fix:counter": "41220",
+    "fix:tag": "879761"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required when NoTargetMarketSegments(1789) > 0.",
     "display": "TargetMarketSegmentGrp",
     "fix:component": "targetmarketsegment",
-    "fix:counter": "1789"
+    "fix:counter": "1789",
+    "fix:tag": "777971"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPricingDateBusinessCenters(41947) > 0.",
     "display": "UnderlyingPricingDateBusinessCenterGrp",
     "fix:component": "underlyingpricingdatebusinesscentercomponent",
-    "fix:counter": "41947"
+    "fix:counter": "41947",
+    "fix:tag": "834242"
   }
 }

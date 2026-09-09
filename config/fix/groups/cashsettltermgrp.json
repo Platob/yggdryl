@@ -18,6 +18,7 @@
     "description": "Required if NoCashSettlTerms(40022) > 0.",
     "display": "CashSettlTermGrp",
     "fix:component": "cashsettlterm",
-    "fix:counter": "40022"
+    "fix:counter": "40022",
+    "fix:tag": "696127"
   }
 }

@@ -617,6 +617,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentSchedule"
+    "display": "UnderlyingPaymentSchedule",
+    "fix:tag": "901420"
   }
 }

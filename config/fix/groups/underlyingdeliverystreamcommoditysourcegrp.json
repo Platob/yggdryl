@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDeliveryStreamCommoditySources(41808) > 0.",
     "display": "UnderlyingDeliveryStreamCommoditySourceGrp",
     "fix:component": "underlyingdeliverystreamcommoditysourcecomponent",
-    "fix:counter": "41808"
+    "fix:counter": "41808",
+    "fix:tag": "646903"
   }
 }

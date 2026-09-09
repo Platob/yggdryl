@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingAdditionalTermBondRefs(41340) > 0.",
     "display": "UnderlyingAdditionalTermBondRefGrp",
     "fix:component": "underlyingadditionaltermbondref",
-    "fix:counter": "41340"
+    "fix:counter": "41340",
+    "fix:tag": "806945"
   }
 }

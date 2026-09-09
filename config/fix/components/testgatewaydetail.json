@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TestGatewayDetail"
+    "display": "TestGatewayDetail",
+    "fix:tag": "646928"
   }
 }

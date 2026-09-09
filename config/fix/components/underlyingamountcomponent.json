@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingAmount"
+    "display": "UnderlyingAmount",
+    "fix:tag": "434026"
   }
 }

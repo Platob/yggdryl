@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = w (lowercase W)",
     "display": "SecurityTypes",
-    "fix:msgtype": "w"
+    "fix:msgtype": "w",
+    "fix:tag": "223603"
   }
 }

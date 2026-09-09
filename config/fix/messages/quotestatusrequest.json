@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = a (lowercase A)",
     "display": "QuoteStatusRequest",
-    "fix:msgtype": "a"
+    "fix:msgtype": "a",
+    "fix:tag": "765769"
   }
 }

@@ -8,7 +8,7 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as four
 | --- | --- |
 | Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`, or `fields/<branch>/<tag / 100>.json`; each document is an array of tagged scalar fields |
-| Named definitions | `messages/<name>.json`, `components/<name>.json`, `groups/<name>.json`, with a branch directory when needed; one native `Field` per document |
+| Named definitions | `messages/<name>.json`, `components/<name>.json`, `groups/<name>.json`, with a branch directory when needed; one native `Field` per document, stating the `fix:tag` derived from the definition's name |
 | Enums | Inline `fix:codes` metadata on each scalar field |
 | References | Compact native child fields retain reference metadata and use `Null` as the unresolved datatype; intake resolves them to canonical native fields |
 | Branch manifest | Optional `branches.json`, containing named branch declarations and aliases |
@@ -154,7 +154,7 @@ Tag `55:` belongs in `fields/0.json`; `5001:cme` belongs in `fields/cme/50.json`
 
 ## Compact references
 
-A persisted child refers to one canonical definition using `fix:field`, `fix:component`, or `fix:group`; its `Null` datatype is replaced at intake. The loaded object is a resolved `Field`, so message readers do not perform filesystem access or resolve schema references per row.
+A persisted child refers to one canonical definition using `fix:field`, `fix:component`, or `fix:group`; its `Null` datatype is replaced at intake. A `fix:component` or `fix:group` occurrence states no tag of its own: the derived tag belongs to the canonical definition, and the resolver leaves it there rather than inheriting it, so a catalog compares equal to itself across a round trip. The loaded object is a resolved `Field`, so message readers do not perform filesystem access or resolve schema references per row.
 
 ```json
 {
@@ -165,7 +165,7 @@ A persisted child refers to one canonical definition using `fix:field`, `fix:com
 }
 ```
 
-A group stores a List or LargeList whose non-null item references the occurrence component; its root records the counter tag and component relationship. The writer compacts resolved references again, keeping each canonical definition in one document. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors. Independent occurrence metadata overrides are refused; canonical metadata updates refresh their references atomically.
+A group stores a List or LargeList whose non-null item references the occurrence component; its root records the counter tag and component relationship, beside its own `fix:tag`, which is derived from the group's name and is never the counter's. The writer compacts resolved references again, keeping each canonical definition in one document. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors. Independent occurrence metadata overrides are refused; canonical metadata updates refresh their references atomically.
 
 ## Branch manifest
 
@@ -181,7 +181,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,203 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,370,670 bytes. It contains 27,103 inline code records on 2,016 fields; generated names are canonical lowercase and standard display names remain metadata.
+The committed `config/fix` catalog contains 6,203 scalar fields in 65 shards, 747 components, 580 groups, and 181 messages: 1,573 JSON documents totaling 9,370,670 bytes. It contains 27,103 inline code records on 2,016 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 

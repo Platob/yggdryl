@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "EntitlementType"
+    "display": "EntitlementType",
+    "fix:tag": "197051"
   }
 }

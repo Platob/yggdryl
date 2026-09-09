@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamPricingBusinessCenter"
+    "display": "PaymentStreamPricingBusinessCenter",
+    "fix:tag": "304084"
   }
 }

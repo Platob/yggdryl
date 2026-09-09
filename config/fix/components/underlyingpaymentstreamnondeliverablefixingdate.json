@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamNonDeliverableFixingDate"
+    "display": "UnderlyingPaymentStreamNonDeliverableFixingDate",
+    "fix:tag": "321977"
   }
 }

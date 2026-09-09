@@ -108,6 +108,7 @@
   "nullable": false,
   "metadata": {
     "description": "Mutually exclusive with UnderlyingPaymentStreamFixedAmount(40616).",
-    "display": "UnderlyingPaymentStreamFixedRate"
+    "display": "UnderlyingPaymentStreamFixedRate",
+    "fix:tag": "634693"
   }
 }

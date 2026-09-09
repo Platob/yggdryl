@@ -18,6 +18,7 @@
     "description": "Number of time in force techniques",
     "display": "TimeInForceRules",
     "fix:component": "timeinforcerule",
-    "fix:counter": "1239"
+    "fix:counter": "1239",
+    "fix:tag": "663935"
   }
 }

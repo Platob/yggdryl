@@ -18,6 +18,7 @@
     "description": "Required if NoCommissions(2639) > 0.",
     "display": "CommissionDataGrp",
     "fix:component": "commissiondatacomponent",
-    "fix:counter": "2639"
+    "fix:counter": "2639",
+    "fix:tag": "701924"
   }
 }

@@ -168,6 +168,7 @@
   "nullable": false,
   "metadata": {
     "description": "Required if any other Triggering tags are specified.",
-    "display": "TriggeringInstruction"
+    "display": "TriggeringInstruction",
+    "fix:tag": "400921"
   }
 }

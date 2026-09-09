@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlParty"
+    "display": "SettlParty",
+    "fix:tag": "1085211"
   }
 }

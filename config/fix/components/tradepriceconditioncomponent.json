@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "TradePriceCondition"
+    "display": "TradePriceCondition",
+    "fix:tag": "371435"
   }
 }

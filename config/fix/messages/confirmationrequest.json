@@ -169,6 +169,7 @@
   "metadata": {
     "description": "MsgType = BH",
     "display": "ConfirmationRequest",
-    "fix:msgtype": "BH"
+    "fix:msgtype": "BH",
+    "fix:tag": "162059"
   }
 }

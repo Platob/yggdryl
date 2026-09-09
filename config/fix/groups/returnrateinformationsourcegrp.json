@@ -18,6 +18,7 @@
     "description": "Required if NoReturnRateInformationSources(42761) > 0.",
     "display": "ReturnRateInformationSourceGrp",
     "fix:component": "returnrateinformationsourcecomponent",
-    "fix:counter": "42761"
+    "fix:counter": "42761",
+    "fix:tag": "1018224"
   }
 }

@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingPaymentStreamNonDeliverableSettlRateSource(40661) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "UnderlyingPaymentStreamNonDeliverableSettlRateSource"
+    "display": "UnderlyingPaymentStreamNonDeliverableSettlRateSource",
+    "fix:tag": "871277"
   }
 }

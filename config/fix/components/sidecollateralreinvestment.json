@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SideCollateralReinvestment"
+    "display": "SideCollateralReinvestment",
+    "fix:tag": "966980"
   }
 }

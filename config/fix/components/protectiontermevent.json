@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ProtectionTermEvent"
+    "display": "ProtectionTermEvent",
+    "fix:tag": "805391"
   }
 }

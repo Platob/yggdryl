@@ -18,6 +18,7 @@
     "description": "Number of symbols (instruments) requested.",
     "display": "InstrmtMDReqGrp",
     "fix:component": "instrmtmdreq",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "868941"
   }
 }

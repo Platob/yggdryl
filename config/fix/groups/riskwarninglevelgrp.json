@@ -18,6 +18,7 @@
     "description": "Required if NoRiskWarningLevels(1559) > 0.",
     "display": "RiskWarningLevelGrp",
     "fix:component": "riskwarninglevel",
-    "fix:counter": "1559"
+    "fix:counter": "1559",
+    "fix:tag": "547323"
   }
 }

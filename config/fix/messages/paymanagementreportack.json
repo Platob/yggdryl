@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = EB",
     "display": "PayManagementReportAck",
-    "fix:msgtype": "EB"
+    "fix:msgtype": "EB",
+    "fix:tag": "417537"
   }
 }

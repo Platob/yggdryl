@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPhysicalSettlDeliverableObligations(42065) > 0.",
     "display": "UnderlyingPhysicalSettlDeliverableObligationGrp",
     "fix:component": "underlyingphysicalsettldeliverableobligation",
-    "fix:counter": "42065"
+    "fix:counter": "42065",
+    "fix:tag": "706435"
   }
 }

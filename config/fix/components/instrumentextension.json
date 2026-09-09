@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "description": "Identifies the form of delivery.",
-    "display": "InstrumentExtension"
+    "display": "InstrumentExtension",
+    "fix:tag": "708834"
   }
 }

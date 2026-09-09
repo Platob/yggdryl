@@ -269,6 +269,7 @@
   "metadata": {
     "description": "MsgType = DI",
     "display": "PartyActionReport",
-    "fix:msgtype": "DI"
+    "fix:msgtype": "DI",
+    "fix:tag": "1008757"
   }
 }

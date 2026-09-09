@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCalculationPeriodBusinessCenter"
+    "display": "StreamCalculationPeriodBusinessCenter",
+    "fix:tag": "430445"
   }
 }

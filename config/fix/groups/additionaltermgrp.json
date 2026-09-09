@@ -18,6 +18,7 @@
     "description": "Required if NoAdditionalTerms(40019) > 0.",
     "display": "AdditionalTermGrp",
     "fix:component": "additionalterm",
-    "fix:counter": "40019"
+    "fix:counter": "40019",
+    "fix:tag": "105260"
   }
 }

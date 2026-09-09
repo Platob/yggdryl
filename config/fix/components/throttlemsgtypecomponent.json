@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ThrottleMsgType"
+    "display": "ThrottleMsgType",
+    "fix:tag": "405547"
   }
 }

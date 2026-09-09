@@ -58,6 +58,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when FloatingRateIndexIDSource(2732) is specified.",
-    "display": "FloatingRateIndex"
+    "display": "FloatingRateIndex",
+    "fix:tag": "575584"
   }
 }

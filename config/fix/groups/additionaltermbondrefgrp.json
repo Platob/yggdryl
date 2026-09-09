@@ -18,6 +18,7 @@
     "description": "Required if NoAdditionalTermBondRefs(40000) > 0.",
     "display": "AdditionalTermBondRefGrp",
     "fix:component": "additionaltermbondref",
-    "fix:counter": "40000"
+    "fix:counter": "40000",
+    "fix:tag": "306961"
   }
 }

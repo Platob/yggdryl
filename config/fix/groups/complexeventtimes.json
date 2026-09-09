@@ -18,6 +18,7 @@
     "description": "Required if NoComplexEventTimes(1494) > 0.",
     "display": "ComplexEventTimes",
     "fix:component": "complexeventtime",
-    "fix:counter": "1494"
+    "fix:counter": "1494",
+    "fix:tag": "732453"
   }
 }

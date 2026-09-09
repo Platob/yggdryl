@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentStubStartDateBusinessCenters(43000) > 0.",
     "display": "UnderlyingPaymentStubStartDateBusinessCenterGrp",
     "fix:component": "underlyingpaymentstubstartdatebusinesscentercomponent",
-    "fix:counter": "43000"
+    "fix:counter": "43000",
+    "fix:tag": "604073"
   }
 }

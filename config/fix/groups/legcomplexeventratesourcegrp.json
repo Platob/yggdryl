@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEventRateSources(41382) > 0.",
     "display": "LegComplexEventRateSourceGrp",
     "fix:component": "legcomplexeventratesourcecomponent",
-    "fix:counter": "41382"
+    "fix:counter": "41382",
+    "fix:tag": "130561"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Stream Assignment Reports.",
     "display": "StrmAsgnRptGrp",
     "fix:component": "strmasgnrpt",
-    "fix:counter": "1499"
+    "fix:counter": "1499",
+    "fix:tag": "540532"
   }
 }

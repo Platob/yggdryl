@@ -219,6 +219,7 @@
   "metadata": {
     "description": "MsgType = DY",
     "display": "PayManagementRequest",
-    "fix:msgtype": "DY"
+    "fix:msgtype": "DY",
+    "fix:tag": "275781"
   }
 }

@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlBusinessCenter"
+    "display": "StreamCommoditySettlBusinessCenter",
+    "fix:tag": "280971"
   }
 }

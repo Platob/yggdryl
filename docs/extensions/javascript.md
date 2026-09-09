@@ -739,11 +739,11 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 `fix.ulbridgeFields()`, `fix.globalRegistry()`, `fix.installGlobalRegistry()`,
 `fix.STANDARD_BRANCH` (`''`, what an absent `fix:branch` means), and
 `fix.USER_TAG_MIN` (`5000`) and `fix.USER_TAG_MAX` (`40000`), the half-open tag
-range a non-standard branch may claim, are the whole surface: the registry,
-message definitions, codec, messages and lazy iterators. The `fix:` vocabulary
-is typed accessor pairs on the `field.fix` view, including `branch`, `id`,
-`tag`, `tags`, `aliases`, `description`, `codes`, `counter`, `component` and
-`msgtype`.
+range a non-standard branch may claim for a scalar field, are the whole
+surface: the registry, message definitions, codec, messages and lazy
+iterators. The `fix:` vocabulary is typed accessor pairs on the `field.fix`
+view, including `branch`, `id`, `tag`, `tags`, `aliases`, `description`,
+`codes`, `counter`, `component` and `msgtype`.
 
 | Crossing | Rule |
 | --- | --- |
@@ -760,7 +760,7 @@ is typed accessor pairs on the `field.fix` view, including `branch`, `id`,
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - an array in and out for the reader, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry branch-major then by tag, message in the root's declared order |
-| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata |
+| categories | `fields`, `messages`, `components`, `groups`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
 | `FixCodec` | `transformLine`, `transformRecord`, `transformUlconfigLine` return lazy `FixMessages`; specialized FIX, Ullink and FIXML transforms return one `FixMsg` |

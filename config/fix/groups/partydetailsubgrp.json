@@ -18,6 +18,7 @@
     "description": "Required when NoPartyDetailSubIDs > 0.",
     "display": "PartyDetailSubGrp",
     "fix:component": "partydetailsub",
-    "fix:counter": "1694"
+    "fix:counter": "1694",
+    "fix:tag": "965583"
   }
 }

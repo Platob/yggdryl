@@ -129,6 +129,7 @@
   "metadata": {
     "description": "MsgType = DB",
     "display": "PartyEntitlementsDefinitionRequestAck",
-    "fix:msgtype": "DB"
+    "fix:msgtype": "DB",
+    "fix:tag": "468361"
   }
 }

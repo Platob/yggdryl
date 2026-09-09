@@ -18,6 +18,7 @@
     "description": "Required if NoLegOptionExerciseExpirationDates(41527) > 0.",
     "display": "LegOptionExerciseExpirationDateGrp",
     "fix:component": "legoptionexerciseexpirationdatecomponent",
-    "fix:counter": "41527"
+    "fix:counter": "41527",
+    "fix:tag": "215368"
   }
 }

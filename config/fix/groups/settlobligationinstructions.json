@@ -18,6 +18,7 @@
     "description": "Number of Settlement Obligations",
     "display": "SettlObligationInstructions",
     "fix:component": "settlobligationinstruction",
-    "fix:counter": "1165"
+    "fix:counter": "1165",
+    "fix:tag": "863876"
   }
 }

@@ -509,6 +509,7 @@
   "metadata": {
     "description": "MsgType = AD",
     "display": "TradeCaptureReportRequest",
-    "fix:msgtype": "AD"
+    "fix:msgtype": "AD",
+    "fix:tag": "395821"
   }
 }

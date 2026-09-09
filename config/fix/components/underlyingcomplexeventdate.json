@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventDate"
+    "display": "UnderlyingComplexEventDate",
+    "fix:tag": "1062121"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoEvents(864) > 0.",
     "display": "EvntGrp",
     "fix:component": "evnt",
-    "fix:counter": "864"
+    "fix:counter": "864",
+    "fix:tag": "799205"
   }
 }

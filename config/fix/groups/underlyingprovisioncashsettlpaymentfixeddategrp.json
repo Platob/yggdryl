@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingProvisionCashSettlPaymentDates (42099) > 0.",
     "display": "UnderlyingProvisionCashSettlPaymentFixedDateGrp",
     "fix:component": "underlyingprovisioncashsettlpaymentfixeddate",
-    "fix:counter": "42099"
+    "fix:counter": "42099",
+    "fix:tag": "988090"
   }
 }

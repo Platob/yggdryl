@@ -536,8 +536,16 @@ impl FixRegistry {
                     .ok_or_else(|| Error::absent(category.as_str(), key.2.as_str()))?;
                 let branch = field.as_fix().branch()?;
                 self.check_branch(&branch)?;
-                self.catalog
-                    .insert(category, branch.clone(), field.clone())?;
+                // A document written before named definitions carried a tag
+                // states none, so one is derived here exactly as
+                // `insert_definition` derives it. A document that states one
+                // keeps it: the dictionary owns the identity, not the reader.
+                let mut field = field.clone();
+                if field.as_fix().tag()?.is_none() {
+                    let tag = self.derived_definition_tag(field.name())?;
+                    field.as_fix_mut().set_tag(tag)?;
+                }
+                self.catalog.insert(category, branch.clone(), field)?;
                 self.ensure_branch(branch);
             }
         }

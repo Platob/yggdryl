@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "StrategyParameter"
+    "display": "StrategyParameter",
+    "fix:tag": "329221"
   }
 }

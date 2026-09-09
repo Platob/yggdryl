@@ -18,6 +18,7 @@
     "description": "Required when NoThrottleMsgType > 0.",
     "display": "ThrottleMsgTypeGrp",
     "fix:component": "throttlemsgtypecomponent",
-    "fix:counter": "1618"
+    "fix:counter": "1618",
+    "fix:tag": "881289"
   }
 }

@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "description": "What the discretionary price is related to (e.g. primary price, display price etc)",
-    "display": "DiscretionInstructions"
+    "display": "DiscretionInstructions",
+    "fix:tag": "1018100"
   }
 }

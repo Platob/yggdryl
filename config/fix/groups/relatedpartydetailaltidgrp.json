@@ -18,6 +18,7 @@
     "description": "Required when NoRelatedPartyDetailAltID > 0.",
     "display": "RelatedPartyDetailAltIDGrp",
     "fix:component": "relatedpartydetailaltidcomponent",
-    "fix:counter": "1569"
+    "fix:counter": "1569",
+    "fix:tag": "898397"
   }
 }

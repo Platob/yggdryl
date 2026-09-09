@@ -289,6 +289,7 @@
   "metadata": {
     "description": "MsgType = BN",
     "display": "ExecutionAck",
-    "fix:msgtype": "BN"
+    "fix:msgtype": "BN",
+    "fix:tag": "380966"
   }
 }

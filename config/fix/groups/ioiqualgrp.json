@@ -18,6 +18,7 @@
     "description": "Required if any IOIQualifiers are specified. Indicates the number of repeating IOIQualifiers.",
     "display": "IOIQualGrp",
     "fix:component": "ioiqual",
-    "fix:counter": "199"
+    "fix:counter": "199",
+    "fix:tag": "422312"
   }
 }

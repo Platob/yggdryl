@@ -659,6 +659,7 @@
   "metadata": {
     "description": "MsgType = f (lowercase F)",
     "display": "SecurityStatus",
-    "fix:msgtype": "f"
+    "fix:msgtype": "f",
+    "fix:tag": "856823"
   }
 }

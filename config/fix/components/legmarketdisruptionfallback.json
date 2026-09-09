@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegMarketDisruptionFallback"
+    "display": "LegMarketDisruptionFallback",
+    "fix:tag": "789047"
   }
 }

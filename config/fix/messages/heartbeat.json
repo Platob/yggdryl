@@ -39,6 +39,7 @@
   "metadata": {
     "description": "MsgType = 0",
     "display": "Heartbeat",
-    "fix:msgtype": "0"
+    "fix:msgtype": "0",
+    "fix:tag": "334633"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoLegAdditionalTermBondRefs(41316) > 0.",
     "display": "LegAdditionalTermBondRefGrp",
     "fix:component": "legadditionaltermbondref",
-    "fix:counter": "41316"
+    "fix:counter": "41316",
+    "fix:tag": "284713"
   }
 }

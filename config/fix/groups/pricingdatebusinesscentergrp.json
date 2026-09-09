@@ -18,6 +18,7 @@
     "description": "Required if NoPricingDateBusinessCenters(41230) > 0.",
     "display": "PricingDateBusinessCenterGrp",
     "fix:component": "pricingdatebusinesscentercomponent",
-    "fix:counter": "41230"
+    "fix:counter": "41230",
+    "fix:tag": "229589"
   }
 }

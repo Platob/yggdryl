@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingComplexEventSchedules(41750) > 0.",
     "display": "UnderlyingComplexEventScheduleGrp",
     "fix:component": "underlyingcomplexeventschedule",
-    "fix:counter": "41750"
+    "fix:counter": "41750",
+    "fix:tag": "724118"
   }
 }

@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when PaymentStreamFinalPricePaymentDateOffsetUnit(42657) is specified.",
-    "display": "PaymentStreamFinalPricePaymentDate"
+    "display": "PaymentStreamFinalPricePaymentDate",
+    "fix:tag": "424584"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoQuoteQualifiers > 1",
     "display": "QuotQualGrp",
     "fix:component": "quotqual",
-    "fix:counter": "735"
+    "fix:counter": "735",
+    "fix:tag": "125514"
   }
 }

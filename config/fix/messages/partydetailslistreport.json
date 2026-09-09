@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = CG",
     "display": "PartyDetailsListReport",
-    "fix:msgtype": "CG"
+    "fix:msgtype": "CG",
+    "fix:tag": "812300"
   }
 }

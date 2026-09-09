@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "AllocGroupSubQty"
+    "display": "AllocGroupSubQty",
+    "fix:tag": "399371"
   }
 }

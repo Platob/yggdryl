@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedPosition"
+    "display": "RelatedPosition",
+    "fix:tag": "754302"
   }
 }

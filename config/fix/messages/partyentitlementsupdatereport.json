@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = CZ",
     "display": "PartyEntitlementsUpdateReport",
-    "fix:msgtype": "CZ"
+    "fix:msgtype": "CZ",
+    "fix:tag": "648532"
   }
 }

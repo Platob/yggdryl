@@ -18,6 +18,7 @@
     "description": "Required if NoAllocTrdRegTimestamps(3008) > 0.",
     "display": "AllocTrdRegTimestamps",
     "fix:component": "alloctrdregtimestampcomponent",
-    "fix:counter": "3008"
+    "fix:counter": "3008",
+    "fix:tag": "851853"
   }
 }

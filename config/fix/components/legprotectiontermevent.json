@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermEvent"
+    "display": "LegProtectionTermEvent",
+    "fix:tag": "235995"
   }
 }

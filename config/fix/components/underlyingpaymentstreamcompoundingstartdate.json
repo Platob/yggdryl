@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "description": "Conditionally required when UnderlyingPaymentStreamCompoundingStartDateOffsetUnit(42944) is specified.",
-    "display": "UnderlyingPaymentStreamCompoundingStartDate"
+    "display": "UnderlyingPaymentStreamCompoundingStartDate",
+    "fix:tag": "691761"
   }
 }

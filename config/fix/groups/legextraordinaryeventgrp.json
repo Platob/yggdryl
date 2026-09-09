@@ -18,6 +18,7 @@
     "description": "Required if NoLegExtraordinaryEvents(42388) > 0.",
     "display": "LegExtraordinaryEventGrp",
     "fix:component": "legextraordinaryevent",
-    "fix:counter": "42388"
+    "fix:counter": "42388",
+    "fix:tag": "121643"
   }
 }

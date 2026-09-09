@@ -18,6 +18,7 @@
     "description": "Required if NoPartyEntitlements(1772).",
     "display": "PartyEntitlementAckGrp",
     "fix:component": "partyentitlementack",
-    "fix:counter": "1772"
+    "fix:counter": "1772",
+    "fix:tag": "152799"
   }
 }

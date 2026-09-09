@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventCreditEvent"
+    "display": "UnderlyingComplexEventCreditEvent",
+    "fix:tag": "852828"
   }
 }

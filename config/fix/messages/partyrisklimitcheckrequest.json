@@ -309,6 +309,7 @@
   "metadata": {
     "description": "MsgType = DF",
     "display": "PartyRiskLimitCheckRequest",
-    "fix:msgtype": "DF"
+    "fix:msgtype": "DF",
+    "fix:tag": "516801"
   }
 }

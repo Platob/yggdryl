@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = EE",
     "display": "SettlementStatusReport",
-    "fix:msgtype": "EE"
+    "fix:msgtype": "EE",
+    "fix:tag": "107348"
   }
 }

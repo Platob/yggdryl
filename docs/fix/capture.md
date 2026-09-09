@@ -211,7 +211,7 @@ When neither control spelling is present, the reader scans for the next direct m
 
 The tag is still the identity. Each column carries its field's `fix:tag`, its `display`, its lineage and its code set, and the row is [filled by that tag](#a-column-is-filled-by-the-tag-its-field-carries) rather than by the spelling, so a venue that renames a field between versions changes nothing about where its value lands. `fix_schema_tags` is the same row as tags, in the same order.
 
-A named group column carries `fix:counter` instead: the numeric count keeps its own column, and the group column beside it holds the occurrences as a List.
+A named group column carries `fix:counter` beside the `fix:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences as a List.
 
 === "Rust"
 
@@ -695,7 +695,7 @@ value. Parsing produces three messages; no response is discarded.
 
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [resolution tiers](registry.md#tiers) would be a hash, a verification and a branch walk. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `fix:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
 
-So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A named group column is selected the same way, by the counter its `fix:counter` states, while the numeric count stays in its own column.
+So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A named group column is filled by the counter its `fix:counter` states, which is read ahead of the tag the group derives from its own name, while the numeric count stays in its own column.
 
 ### A group is laid out the way the column declares it
 

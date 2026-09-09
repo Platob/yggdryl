@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ContAmt"
+    "display": "ContAmt",
+    "fix:tag": "868666"
   }
 }

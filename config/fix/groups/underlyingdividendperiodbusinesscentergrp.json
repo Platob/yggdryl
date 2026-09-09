@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingDividendPeriodBusinessCenters(42882) > 0.",
     "display": "UnderlyingDividendPeriodBusinessCenterGrp",
     "fix:component": "underlyingdividendperiodbusinesscentercomponent",
-    "fix:counter": "42882"
+    "fix:counter": "42882",
+    "fix:tag": "959372"
   }
 }

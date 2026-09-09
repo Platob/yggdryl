@@ -89,6 +89,7 @@
   "metadata": {
     "description": "MsgType = DU",
     "display": "AllocationInstructionAlertRequest",
-    "fix:msgtype": "DU"
+    "fix:msgtype": "DU",
+    "fix:tag": "986383"
   }
 }

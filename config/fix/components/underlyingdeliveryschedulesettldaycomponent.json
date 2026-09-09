@@ -47,6 +47,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliveryScheduleSettlDay"
+    "display": "UnderlyingDeliveryScheduleSettlDay",
+    "fix:tag": "805000"
   }
 }

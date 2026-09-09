@@ -18,6 +18,7 @@
     "description": "Number of qualifiers to inquiry",
     "display": "CollInqQualGrp",
     "fix:component": "collinqqual",
-    "fix:counter": "938"
+    "fix:counter": "938",
+    "fix:tag": "1086738"
   }
 }

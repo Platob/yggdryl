@@ -87,6 +87,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "MarginAmount"
+    "display": "MarginAmount",
+    "fix:tag": "265118"
   }
 }

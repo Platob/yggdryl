@@ -189,6 +189,7 @@
   "metadata": {
     "description": "MsgType = Q",
     "display": "DontKnowTrade",
-    "fix:msgtype": "Q"
+    "fix:msgtype": "Q",
+    "fix:tag": "579859"
   }
 }

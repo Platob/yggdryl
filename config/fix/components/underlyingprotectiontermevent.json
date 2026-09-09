@@ -97,6 +97,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermEvent"
+    "display": "UnderlyingProtectionTermEvent",
+    "fix:tag": "995051"
   }
 }

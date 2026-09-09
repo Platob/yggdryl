@@ -227,6 +227,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SideCrossLeg"
+    "display": "SideCrossLeg",
+    "fix:tag": "1067797"
   }
 }

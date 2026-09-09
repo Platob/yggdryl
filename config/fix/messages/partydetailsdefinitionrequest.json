@@ -109,6 +109,7 @@
   "metadata": {
     "description": "MsgType = CX",
     "display": "PartyDetailsDefinitionRequest",
-    "fix:msgtype": "CX"
+    "fix:msgtype": "CX",
+    "fix:tag": "1073655"
   }
 }

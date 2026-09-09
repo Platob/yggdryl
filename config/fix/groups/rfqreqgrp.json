@@ -18,6 +18,7 @@
     "description": "Number of related symbols (instruments) in Request",
     "display": "RFQReqGrp",
     "fix:component": "rfqreq",
-    "fix:counter": "146"
+    "fix:counter": "146",
+    "fix:tag": "189360"
   }
 }

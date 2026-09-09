@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingProvisionOptionExerciseFixedDates(42112) > 0.",
     "display": "UnderlyingProvisionOptionExerciseFixedDateGrp",
     "fix:component": "underlyingprovisionoptionexercisefixeddatecomponent",
-    "fix:counter": "42112"
+    "fix:counter": "42112",
+    "fix:tag": "1090526"
   }
 }

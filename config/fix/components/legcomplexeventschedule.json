@@ -57,6 +57,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventSchedule"
+    "display": "LegComplexEventSchedule",
+    "fix:tag": "928725"
   }
 }

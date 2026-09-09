@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingPaymentScheules(40664) > 0.",
     "display": "UnderlyingPaymentScheduleGrp",
     "fix:component": "underlyingpaymentschedule",
-    "fix:counter": "40664"
+    "fix:counter": "40664",
+    "fix:tag": "725764"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoRateSource(1445) > 0",
     "display": "RateSource",
     "fix:component": "ratesourcecomponent",
-    "fix:counter": "1445"
+    "fix:counter": "1445",
+    "fix:tag": "191602"
   }
 }

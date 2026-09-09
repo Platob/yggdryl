@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlDealer"
+    "display": "LegCashSettlDealer",
+    "fix:tag": "107312"
   }
 }

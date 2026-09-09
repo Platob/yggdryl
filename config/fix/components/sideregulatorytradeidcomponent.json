@@ -67,6 +67,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SideRegulatoryTradeID"
+    "display": "SideRegulatoryTradeID",
+    "fix:tag": "203596"
   }
 }

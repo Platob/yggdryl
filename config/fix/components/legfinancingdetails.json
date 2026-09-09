@@ -298,6 +298,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be set if EncodedLegDocumentationText(2493) field is specified and must immediately precede it.",
-    "display": "LegFinancingDetails"
+    "display": "LegFinancingDetails",
+    "fix:tag": "493991"
   }
 }

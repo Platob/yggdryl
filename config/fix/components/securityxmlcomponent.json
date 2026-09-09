@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "description": "Must be provided if SecurityXML(1185) field is specified and must immediately precede it.",
-    "display": "SecurityXML"
+    "display": "SecurityXML",
+    "fix:tag": "507714"
   }
 }

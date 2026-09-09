@@ -18,6 +18,7 @@
     "description": "Number of legs for the underlying instrument",
     "display": "TradeCapLegUnderlyingsGrp",
     "fix:component": "tradecaplegunderlying",
-    "fix:counter": "1342"
+    "fix:counter": "1342",
+    "fix:tag": "346035"
   }
 }

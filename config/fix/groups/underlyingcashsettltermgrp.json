@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingCashSettlTerms(42041) > 0.",
     "display": "UnderlyingCashSettlTermGrp",
     "fix:component": "underlyingcashsettlterm",
-    "fix:counter": "42041"
+    "fix:counter": "42041",
+    "fix:tag": "445468"
   }
 }

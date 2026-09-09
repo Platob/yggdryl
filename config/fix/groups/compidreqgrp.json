@@ -18,6 +18,7 @@
     "description": "Used to restrict updates/request to a list of specific CompID/SubID/LocationID/DeskID combinations.",
     "display": "CompIDReqGrp",
     "fix:component": "compidreq",
-    "fix:counter": "936"
+    "fix:counter": "936",
+    "fix:tag": "605652"
   }
 }

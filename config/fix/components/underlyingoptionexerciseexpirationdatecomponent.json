@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingOptionExerciseExpirationDate"
+    "display": "UnderlyingOptionExerciseExpirationDate",
+    "fix:tag": "329558"
   }
 }

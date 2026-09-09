@@ -18,6 +18,7 @@
     "description": "Required if NoProtectionTermEventNewsSources(40951) > 0.",
     "display": "ProtectionTermEventNewsSourceGrp",
     "fix:component": "protectiontermeventnewssourcecomponent",
-    "fix:counter": "40951"
+    "fix:counter": "40951",
+    "fix:tag": "944505"
   }
 }

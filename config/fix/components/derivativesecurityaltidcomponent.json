@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeSecurityAltID"
+    "display": "DerivativeSecurityAltID",
+    "fix:tag": "1082056"
   }
 }

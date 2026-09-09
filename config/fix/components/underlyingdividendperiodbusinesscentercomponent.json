@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDividendPeriodBusinessCenter"
+    "display": "UnderlyingDividendPeriodBusinessCenter",
+    "fix:tag": "937319"
   }
 }

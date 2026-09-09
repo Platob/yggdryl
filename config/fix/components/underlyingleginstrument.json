@@ -177,6 +177,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingLegInstrument"
+    "display": "UnderlyingLegInstrument",
+    "fix:tag": "393121"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Required if NoUnderlyingStreamCommoditySettlBusinessCenters(41962) > 0.",
     "display": "UnderlyingStreamCommoditySettlBusinessCenterGrp",
     "fix:component": "underlyingstreamcommoditysettlbusinesscentercomponent",
-    "fix:counter": "41962"
+    "fix:counter": "41962",
+    "fix:tag": "712101"
   }
 }

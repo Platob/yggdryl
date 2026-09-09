@@ -159,6 +159,7 @@
   "metadata": {
     "description": "MsgType = CK",
     "display": "PartyDetailsListUpdateReport",
-    "fix:msgtype": "CK"
+    "fix:msgtype": "CK",
+    "fix:tag": "120288"
   }
 }

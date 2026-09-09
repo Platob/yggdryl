@@ -18,6 +18,7 @@
     "description": "Required if NoLegStipulations(683) > 0.",
     "display": "LegStipulations",
     "fix:component": "legstipulation",
-    "fix:counter": "683"
+    "fix:counter": "683",
+    "fix:tag": "924822"
   }
 }

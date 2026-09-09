@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlPtysSub"
+    "display": "SettlPtysSub",
+    "fix:tag": "647506"
   }
 }

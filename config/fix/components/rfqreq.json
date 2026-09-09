@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RFQReq"
+    "display": "RFQReq",
+    "fix:tag": "734647"
   }
 }

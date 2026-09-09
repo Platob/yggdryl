@@ -459,6 +459,7 @@
   "metadata": {
     "description": "MsgType = 6",
     "display": "IOI",
-    "fix:msgtype": "6"
+    "fix:msgtype": "6",
+    "fix:tag": "405524"
   }
 }

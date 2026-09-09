@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "ValueCheck"
+    "display": "ValueCheck",
+    "fix:tag": "685775"
   }
 }

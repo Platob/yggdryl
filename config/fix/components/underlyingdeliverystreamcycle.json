@@ -37,6 +37,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliveryStreamCycle"
+    "display": "UnderlyingDeliveryStreamCycle",
+    "fix:tag": "467286"
   }
 }

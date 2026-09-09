@@ -117,6 +117,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyEntitlementAck"
+    "display": "PartyEntitlementAck",
+    "fix:tag": "631943"
   }
 }

@@ -119,6 +119,7 @@
   "metadata": {
     "description": "MsgType = BI",
     "display": "TradingSessionListRequest",
-    "fix:msgtype": "BI"
+    "fix:msgtype": "BI",
+    "fix:tag": "352836"
   }
 }

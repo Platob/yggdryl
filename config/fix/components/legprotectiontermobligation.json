@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermObligation"
+    "display": "LegProtectionTermObligation",
+    "fix:tag": "723117"
   }
 }

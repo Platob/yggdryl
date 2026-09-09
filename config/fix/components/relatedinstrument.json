@@ -107,6 +107,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedInstrument"
+    "display": "RelatedInstrument",
+    "fix:tag": "591625"
   }
 }

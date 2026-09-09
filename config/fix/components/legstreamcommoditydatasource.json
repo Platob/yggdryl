@@ -27,6 +27,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommodityDataSource"
+    "display": "LegStreamCommodityDataSource",
+    "fix:tag": "113517"
   }
 }

@@ -18,6 +18,7 @@
     "description": "Number of quote size rules.",
     "display": "QuoteSizeRuleGrp",
     "fix:component": "quotesizerule",
-    "fix:counter": "2558"
+    "fix:counter": "2558",
+    "fix:tag": "178732"
   }
 }

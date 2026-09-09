@@ -18,6 +18,7 @@
     "description": "Required if NoLegComplexEventAveragingObservations(41363) > 0.",
     "display": "LegComplexEventAveragingObservationGrp",
     "fix:component": "legcomplexeventaveragingobservation",
-    "fix:counter": "41363"
+    "fix:counter": "41363",
+    "fix:tag": "222057"
   }
 }

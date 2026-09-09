@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = p (lowercase P)",
     "display": "RegistrationInstructionsResponse",
-    "fix:msgtype": "p"
+    "fix:msgtype": "p",
+    "fix:tag": "849606"
   }
 }

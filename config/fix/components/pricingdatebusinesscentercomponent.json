@@ -17,6 +17,7 @@
   },
   "nullable": false,
   "metadata": {
-    "display": "PricingDateBusinessCenter"
+    "display": "PricingDateBusinessCenter",
+    "fix:tag": "369026"
   }
 }
