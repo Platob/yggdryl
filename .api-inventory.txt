@@ -513,6 +513,9 @@ pub struct FixBranch(SmolStr)  (re-exported at the crate root beside FixAliases,
   pub struct FixId  (a tag i32 beside a branch digest i32, eight bytes)
   pub const USER_TAG_MIN: i32
   pub const USER_TAG_MAX: i32
+  pub const DEFINITION_TAG_MIN: i32  (the block a named definition's derived tag is taken from)
+  pub const DEFINITION_TAG_MAX: i32
+  pub const fn is_definition_tag(tag: i32) -> bool
   pub const fn standard(tag: i32) -> Self
   pub fn from_parts(branch: &FixBranch, tag: i32) -> Result<Self>
   pub fn from_str(text: &str) -> Result<Self>
