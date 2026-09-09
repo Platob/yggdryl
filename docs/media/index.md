@@ -6,13 +6,14 @@
 
 | Key | Value |
 | --- | --- |
-| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `handle`, `into_handle` |
-| Variants | `Ipc`, `Parquet`, `Avro`, `Text` |
+| Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `csv`, `handle`, `into_handle` |
+| Variants | `Ipc`, `Parquet`, `Avro`, `Text`, `Csv` |
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
 | Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |
 | Settings | one shared [`RecordOptions`](options.md) behind every encoding |
 | Plain text | `Media::Text`, retaining [`TextOptions`](text.md); any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md) |
+| Delimited text | `Media::Csv`, retaining [`CsvOptions`](csv.md) and adding positional row and cell access |
 | Content coding | the handle's business, not the encoding's |
 | Errors | an encoding with no implementation in this build is reported, never guessed |
 | Bindings | Rust: the enum; Python: `yggdryl.media.Media` with `Ipc`, `Parquet`, `Avro` under it and `Text` beside it; JavaScript: one `IOBase` class |
@@ -39,6 +40,7 @@ choice when the handle is built, so `type(handle)` names it; JavaScript has one
     assert!(matches!(Media::open(named("trades.arrows")?)?, Media::Ipc(_)));
     assert!(matches!(Media::open(named("trades.parquet")?)?, Media::Parquet(_)));
     assert!(matches!(Media::open(named("trades.log")?)?, Media::Text(_)));
+    assert!(matches!(Media::open(named("trades.csv")?)?, Media::Csv(_)));
     ```
 
 === "Python"
@@ -67,6 +69,7 @@ choice when the handle is built, so `type(handle)` names it; JavaScript has one
 | [Parquet footer](parquet-footer.md) | Footer metadata, statistics, and the caching `Parquet<H>` wrapper |
 | [Apache Avro](avro.md) | Avro as streamed Arrow batches, block options, schema resolution |
 | [Plain-text records](text.md) | `TextOptions`, the url/rownum/body schema, autotyping |
+| [Delimited-text records](csv.md) | `CsvOptions`, the header and cell schema, positional row and cell access |
 | [RecordOptions](options.md) | The declared root, `batch_row_size`, identity, shared by every encoding |
 | [Iceberg](iceberg/index.md) | Table anatomy: metadata, snapshots, manifests, partition specs |
 | [Iceberg schema](iceberg/schema.md) | Evolution, field ids, `SchemaUpdate`, the type mappings |
@@ -202,20 +205,20 @@ The error names the media type found and the ones that would have worked.
     use yggdryl::holder::Buffer;
     use yggdryl::Url;
 
-    let url = Url::from_str("file:///trades.csv")?;
+    let url = Url::from_str("file:///trades.orc")?;
     let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
 
     let message = Media::open(handle).unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
+    assert!(message.contains("orc"), "{message}");
     ```
 
 ## Edges
 
-- `text/csv` on `Media::open` -> error naming the found media type; no encoding is guessed.
+- An encoding with no implementation (`trades.orc`) on `Media::open` -> error naming the found media type; no encoding is guessed.
 - Encoding already known -> `Media::ipc` and `Media::parquet` name a variant directly.
 - Handle name not trustworthy -> `Media::open_as` takes an explicit `MimeType`.
-- Plain text -> `Media::Text`; any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md).
-- Python name with no implementation (`trades.csv`) -> nothing is composed and the handle stays a `Path`; only `Media::open` reports it.
+- Plain text -> `Media::Text`; delimited text -> `Media::Csv`; any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md).
+- Python name with no implementation (`trades.orc`) -> nothing is composed and the handle stays a `Path`; only `Media::open` reports it.
 - `--lib media::tests` -> the enum's own module only; `media::ipc::tests` needs its own filter.
 
 ## Commands

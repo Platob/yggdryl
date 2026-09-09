@@ -169,6 +169,7 @@ nav:
       - Parquet footer: media/parquet-footer.md
       - Avro: media/avro.md
       - Text records: media/text.md
+      - CSV records: media/csv.md
     - Iceberg:
       - media/iceberg/index.md
       - Reading: media/iceberg/read.md

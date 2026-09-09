@@ -762,6 +762,78 @@ pub fn into_single_object_vec(schema: &Schema, value: &Scalar) -> Result<Vec<u8>
   pub fn from_single_object_slice(input: &[u8], writer: &Schema) -> Result<Scalar>
   pub fn from_single_object_slice_with_limits( input: &[u8], writer: &Schema, limits: Limits, ) -> Result<Scalar>
 
+### yggdryl::media::csv::arrow  [rust\src\media\csv\arrow.rs]
+pub fn read_field(handle: &(impl IOBase + ?Sized), options: &CsvOptions) -> Result<Field>
+pub fn read_arrow_reader(handle: &(impl IOBase + ?Sized), options: &CsvOptions) -> Result<BatchReader>
+pub fn read_owned_arrow_reader<H: IOBase + 'static>(handle: H, options: &CsvOptions) -> Result<BatchReader>
+pub fn row_size(handle: &(impl IOBase + ?Sized), options: &CsvOptions) -> Result<u64>
+pub fn overwrite_arrow_reader(handle: &mut (impl IOBase + ?Sized), batches: BatchReader, options: &CsvOptions) -> Result<()>
+pub fn append_arrow_reader(handle: &mut (impl IOBase + ?Sized), batches: BatchReader, options: &CsvOptions) -> Result<()>
+
+### yggdryl::media::csv::handle  [rust\src\media\csv\handle.rs]
+pub struct Csv<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(self, options: CsvOptions) -> Self
+  pub fn with_field(self, field: Field) -> Self
+  pub const fn options(&self) -> &CsvOptions
+  pub fn options_mut(&mut self) -> &mut CsvOptions
+  pub const fn handle(&self) -> &H
+  pub fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+  pub fn into_csv(self) -> Self
+  pub fn into_csv_with(self, options: CsvOptions) -> Self
+  pub fn row_size(&self) -> Result<u64>
+  pub fn read_row_scalar(&self, row: u64) -> Result<Option<Scalar>>
+  pub fn read_cell_bytes(&self, row: u64, column: usize) -> Result<Option<Vec<u8>>>
+  pub fn read_cell_text(&self, row: u64, column: usize) -> Result<Option<String>>
+  pub fn read_cell_scalar(&self, row: u64, column: usize) -> Result<Option<Scalar>>
+  pub fn read_row_byte_range(&self, row: u64) -> Result<Option<Range<u64>>>
+  pub fn write_cell_bytes(&mut self, row: u64, column: usize, value: &[u8]) -> Result<()>
+  pub fn write_cell_text(&mut self, row: u64, column: usize, value: &str) -> Result<()>
+  pub fn write_cell_scalar(&mut self, row: u64, column: usize, value: &Scalar) -> Result<()>
+  pub fn write_row_scalar(&mut self, row: u64, value: &Scalar) -> Result<()>
+  pub fn append_row_scalar(&mut self, value: &Scalar) -> Result<()>
+  pub fn remove_row(&mut self, row: u64) -> Result<()>
+
+### yggdryl::media::csv::options  [rust\src\media\csv\options.rs]
+pub const DEFAULT_INFER_ROW_SIZE: usize = 1024;
+pub struct CsvOptions
+  pub fn new() -> Self
+  pub const fn separator(&self) -> u8
+  pub fn set_separator(&mut self, separator: u8) -> Result<()>
+  pub fn try_with_separator(self, separator: u8) -> Result<Self>
+  pub const fn quote(&self) -> Option<u8>
+  pub fn set_quote(&mut self, quote: Option<u8>) -> Result<()>
+  pub fn try_with_quote(self, quote: u8) -> Result<Self>
+  pub const fn escape(&self) -> Option<u8>
+  pub fn set_escape(&mut self, escape: Option<u8>) -> Result<()>
+  pub fn try_with_escape(self, escape: u8) -> Result<Self>
+  pub const fn comment(&self) -> Option<u8>
+  pub fn set_comment(&mut self, comment: Option<u8>) -> Result<()>
+  pub fn try_with_comment(self, comment: u8) -> Result<Self>
+  pub const fn linesep(&self) -> Option<&LineSep>
+  pub fn set_linesep(&mut self, linesep: Option<LineSep>) -> Result<()>
+  pub fn try_with_linesep(self, linesep: LineSep) -> Result<Self>
+  pub const fn header(&self) -> bool
+  pub const fn set_header(&mut self, header: bool)
+  pub const fn with_header(self, header: bool) -> Self
+  pub fn null(&self) -> &str
+  pub fn set_null(&mut self, null: impl Into<SmolStr>)
+  pub fn with_null(self, null: impl Into<SmolStr>) -> Self
+  pub const fn trim(&self) -> bool
+  pub const fn set_trim(&mut self, trim: bool)
+  pub const fn with_trim(self, trim: bool) -> Self
+  pub const fn autotype(&self) -> bool
+  pub const fn set_autotype(&mut self, autotype: bool)
+  pub const fn with_autotype(self, autotype: bool) -> Self
+  pub const fn infer_row_size(&self) -> Option<usize>
+  pub const fn set_infer_row_size(&mut self, infer_row_size: Option<usize>)
+  pub const fn with_infer_row_size(self, infer_row_size: usize) -> Self
+  pub const fn timezone(&self) -> Option<&Timezone>
+  pub fn set_timezone(&mut self, timezone: Option<Timezone>)
+  pub fn with_timezone(self, timezone: Timezone) -> Self
+  pub fn stable_hash(&self) -> u64
+
 ### yggdryl::media::iceberg::catalog  [rust\src\media\iceberg\catalog\catalogs.rs]
 pub struct Catalog<H: IOBase>
   pub const fn new(warehouse: H) -> Self
@@ -1082,6 +1154,7 @@ pub enum Media
   pub fn avro(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
+  pub fn csv(handle: Holder) -> Self
   pub const fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase

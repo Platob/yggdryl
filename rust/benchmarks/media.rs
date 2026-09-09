@@ -3,6 +3,8 @@ mod bench_profile;
 
 #[path = "media/avro.rs"]
 mod avro;
+#[path = "media/csv.rs"]
+mod csv;
 #[cfg(feature = "iceberg")]
 #[path = "media/iceberg.rs"]
 mod iceberg;
@@ -35,6 +37,10 @@ criterion_group!(
     avro::codecs::codec_benchmarks,
     avro::projection::projection_benchmarks,
     avro::resolution::resolution_benchmarks,
+    csv::read_benchmarks,
+    csv::inference_benchmarks,
+    csv::write_benchmarks,
+    csv::positional_benchmarks,
     io_benchmarks,
     iceberg_benchmarks,
 );
