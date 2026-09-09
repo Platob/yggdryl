@@ -23,8 +23,8 @@ class Order:
 order = Order(42, True, [Leg("ABC", 10)])
 
 assert dataclasses.is_dataclass(Order)
-order_field = Order.field()
-assert Order.field() is order_field
+order_field = Order.into_field()
+assert Order.into_field() is order_field
 assert field(Order) is order_field
 assert field(order) is order_field
 assert order_field.name == "Order"
@@ -39,12 +39,12 @@ assert order_field["note"].nullable
 
 `@scalar` forwards the standard `dataclasses.dataclass` options and compiles the
 class annotations into one non-null native Struct `Field`. The resolved value
-is cached once and returned by the `Class.field()` staticmethod. The
+is cached once and returned by the `Class.into_field()` staticmethod. The
 decorator does not add conversion, serialization, or Arrow methods to the
 dataclass.
 
-Use `Class.field()` for the cached Struct field and `field(value)` for general
-conversion.
+Use `Class.into_field()` for the cached Struct field and `field(value)` for
+general conversion.
 
 An undecorated subclass inherits its nearest decorated base's cached root.
 Apply `@scalar` to the subclass when its annotations should declare a distinct
@@ -108,7 +108,7 @@ class Quote:
     ]
 
 
-price = Quote.field()["price"]
+price = Quote.into_field()["price"]
 
 assert price.into_arrow().type == pa.decimal128(9, 0)
 assert price.parquet_field_id == 7
@@ -132,8 +132,8 @@ metric_field = Field.from_arrow_schema(
 )
 Metric = metric_field.into_dataclass()
 
-assert Metric.field() is metric_field
-assert Metric.field().into_arrow_schema().field("value").nullable
+assert Metric.into_field() is metric_field
+assert Metric.into_field().into_arrow_schema().field("value").nullable
 assert Metric(name="latency", value=1.25).value == 1.25
 ```
 

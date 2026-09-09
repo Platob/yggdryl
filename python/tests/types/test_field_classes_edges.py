@@ -38,7 +38,7 @@ def test_optional_is_the_only_nullable_signal() -> None:
 
 
 def test_unions_compile_to_dense_native_tags_at_every_depth() -> None:
-    root = VariantEnvelope.field()
+    root = VariantEnvelope.into_field()
     payload = root.dtype["payload"].dtype
     history = root.dtype["history"].dtype[0].dtype
 
@@ -82,7 +82,7 @@ def test_deep_union_keeps_terminal_variant_tags() -> None:
     class DeepVariant:
         payload: deep_hint  # type: ignore[valid-type]
 
-    dtype = DeepVariant.field().dtype["payload"].dtype
+    dtype = DeepVariant.into_field().dtype["payload"].dtype
     raw: object = "terminal"
     for _ in range(depth):
         assert dtype.id == "list"
@@ -107,4 +107,4 @@ def test_recursive_annotations_fail_without_unbounded_expansion() -> None:
         child: RecursiveField | None = None
 
     with pytest.raises((TypeError, ValueError), match="recurs|depth|cycle"):
-        RecursiveField.field()
+        RecursiveField.into_field()

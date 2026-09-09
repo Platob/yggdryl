@@ -49,17 +49,10 @@ _LIST_KINDS = frozenset(
     ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")
 )
 _DECIMAL_KINDS = frozenset(("decimal32", "decimal64", "decimal128", "decimal256"))
-_RESERVED_NAMES = frozenset(
-    {
-        "field",
-        "__dict__",
-        "__slots__",
-        "__weakref__",
-        "__yggdryl_class_schema__",
-        "__yggdryl_field_class__",
-        "__yggdryl_scalar_fields__",
-    }
-)
+#: The only ordinary name a generated class owns: every other name it carries -
+#: `__slots__`, the schema cache, the decoration markers - is dunder-shaped and
+#: is refused by the `__` rule beside this one.
+_RESERVED_NAMES = frozenset({"into_field"})
 
 
 def _valid_identifier(value: object) -> bool:
@@ -125,11 +118,7 @@ def _validate_column_names(fields: tuple[NativeField, ...]) -> None:
             raise TypeError(
                 f"Arrow column {name!r} must be a valid non-keyword Python identifier"
             )
-        if (
-            name in _RESERVED_NAMES
-            or name.startswith("__")
-            or name.startswith("__yggdryl_")
-        ):
+        if name in _RESERVED_NAMES or name.startswith("__"):
             raise TypeError(f"Arrow column {name!r} conflicts with the field-class API")
         if name in seen:
             raise TypeError(f"duplicate Arrow column name {name!r}")
@@ -440,7 +429,7 @@ def dataclass_from_field(
     name: str | None = None,
     module: str | None = None,
 ) -> type[Any]:
-    """Build a dataclass whose cached ``field()`` is exactly ``value``."""
+    """Build a dataclass whose cached ``into_field()`` is exactly ``value``."""
 
     if value.nullable or value.dtype.id != "struct":
         raise TypeError("into_dataclass requires a non-nullable Struct Field")

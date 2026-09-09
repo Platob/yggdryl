@@ -228,9 +228,9 @@ def test_default_pyhint_cache_ignores_nested_metadata_recursively(
     assert layouts[second].default_pyhint() is hint
 
     payload_hint = hint.__annotations__["payload"]
-    assert payload_hint.field().metadata.get("struct-owner") is None
+    assert payload_hint.into_field().metadata.get("struct-owner") is None
     assert (
-        payload_hint.field()
+        payload_hint.into_field()
         .dtype["count"]
         .metadata.get("leaf-owner")
         is None
@@ -277,8 +277,8 @@ def test_struct_field_metadata_never_reaches_the_cached_hint() -> None:
     # Name and metadata are not part of hint identity, so two Fields over one
     # layout share a single hint whose own Field carries neither of theirs.
     assert right.default_pyhint() is hint
-    assert hint.field().metadata.get("owner") is None
-    assert hint.field().name not in ("left", "right")
+    assert hint.into_field().metadata.get("owner") is None
+    assert hint.into_field().name not in ("left", "right")
 
 
 def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
@@ -301,7 +301,7 @@ def test_non_identifier_struct_names_use_typed_mapping_fallback() -> None:
     assert typing.is_typeddict(hint)
     assert tuple(hint.__annotations__) == ("a-b", "class", "1child")
     nested_hint = hint.__annotations__["1child"]
-    assert nested_hint.field().metadata.get("role") is None
+    assert nested_hint.into_field().metadata.get("role") is None
     # The fallback names the hint's keys only: the default stays positional.
     assert dtype.default_scalar().as_py() == [0, None, [""]]
     assert dtype.default_arrow_scalar().type.equals(arrow_type)
@@ -620,7 +620,7 @@ def test_struct_extension_default_keeps_its_storage_and_metadata_free_hint() -> 
         assert scalar.as_py() == {"count": 0}
         assert field.default_scalar().as_py() == [0]
         assert dataclasses.is_dataclass(hint)
-        assert hint.field().metadata.get("owner") is None
+        assert hint.into_field().metadata.get("owner") is None
     finally:
         pa.unregister_extension_type(extension.extension_name)
 

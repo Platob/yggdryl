@@ -31,7 +31,7 @@ def scalar(
 def scalar(
     cls: type[_T] | None = None, /, **options: Any
 ) -> type[_T] | Callable[[type[_T]], type[_T]]:
-    """Create a dataclass with one cached native ``field()`` staticmethod."""
+    """Create a dataclass with one cached native ``into_field()`` staticmethod."""
 
     def decorate(candidate: type[_T]) -> type[_T]:
         localns, token = _capture_context()

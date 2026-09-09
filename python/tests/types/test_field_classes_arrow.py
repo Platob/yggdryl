@@ -55,9 +55,9 @@ def test_native_field_materializes_plain_nested_dataclasses() -> None:
     assert dataclasses.is_dataclass(Event)
     assert Event.__name__ == "Event"
     assert Event.__module__ == __name__
-    assert isinstance(Event.__dict__["field"], staticmethod)
-    assert Event.field() is root
-    assert Event.field() is Event.field()
+    assert isinstance(Event.__dict__["into_field"], staticmethod)
+    assert Event.into_field() is root
+    assert Event.into_field() is Event.into_field()
 
     members = dataclasses.fields(Event)
     assert tuple(member.name for member in members) == (
@@ -67,8 +67,8 @@ def test_native_field_materializes_plain_nested_dataclasses() -> None:
     )
     Payload = members[1].type
     assert dataclasses.is_dataclass(Payload)
-    assert Payload.field() == root.dtype["payload"]
-    assert Payload.field() is Payload.field()
+    assert Payload.into_field() == root.dtype["payload"]
+    assert Payload.into_field() is Payload.into_field()
 
     value = Event(identifier=1, payload=Payload(label="ok"), tags=None)
     assert value.identifier == 1
@@ -95,14 +95,14 @@ def test_generated_class_preserves_narrow_and_nested_native_types() -> None:
     )
     Row = root.into_dataclass(name="Row")
 
-    assert Row.field() is root
-    assert Row.field().dtype["small"].dtype.id == "int8"
+    assert Row.into_field() is root
+    assert Row.into_field().dtype["small"].dtype.id == "int8"
     Nested = dataclasses.fields(Row)[1].type
-    assert Nested.field() == root.dtype["nested"]
-    assert Nested.field() is Nested.field()
-    assert Nested.field().metadata["role"] == "payload"
+    assert Nested.into_field() == root.dtype["nested"]
+    assert Nested.into_field() is Nested.into_field()
+    assert Nested.into_field().metadata["role"] == "payload"
     assert field(Row) is root
-    assert root.into_arrow_schema() == Row.field().into_arrow_schema()
+    assert root.into_arrow_schema() == Row.into_field().into_arrow_schema()
 
 
 def test_decorated_dataclass_round_trips_through_arrow_schema() -> None:
@@ -112,12 +112,12 @@ def test_decorated_dataclass_round_trips_through_arrow_schema() -> None:
         bid: float
         ask: float | None = None
 
-    schema = Quote.field().into_arrow_schema()
-    imported = Field.from_arrow_schema(schema, name=Quote.field().name)
+    schema = Quote.into_field().into_arrow_schema()
+    imported = Field.from_arrow_schema(schema, name=Quote.into_field().name)
     Restored = imported.into_dataclass(name="Restored")
 
-    assert imported == Quote.field()
-    assert Restored.field() is imported
+    assert imported == Quote.into_field()
+    assert Restored.into_field() is imported
     assert tuple(item.name for item in dataclasses.fields(Restored)) == (
         "symbol",
         "bid",
@@ -154,14 +154,42 @@ def test_invalid_python_root_name_is_refused() -> None:
         root.into_dataclass()
 
 
-def test_field_is_reserved_for_generated_classes() -> None:
+def test_into_field_is_reserved_for_generated_classes() -> None:
+    root = Field.from_arrow_schema(
+        pa.schema([pa.field("into_field", pa.int64(), nullable=False)]),
+        name="row",
+    )
+
+    with pytest.raises(TypeError, match="into_field"):
+        root.into_dataclass()
+
+
+@pytest.mark.parametrize(
+    "column", ["__dict__", "__slots__", "__weakref__", "__yggdryl_class_schema__"]
+)
+def test_a_dunder_column_is_reserved_for_generated_classes(column: str) -> None:
+    # A generated class carries its slots, its schema cache and its decoration
+    # markers under dunder names, so the whole shape is refused rather than
+    # each name listed.
+    root = Field.from_arrow_schema(
+        pa.schema([pa.field(column, pa.int64(), nullable=False)]),
+        name="row",
+    )
+
+    with pytest.raises(TypeError, match="conflicts with the field-class API"):
+        root.into_dataclass()
+
+
+def test_field_column_materializes_for_generated_classes() -> None:
     root = Field.from_arrow_schema(
         pa.schema([pa.field("field", pa.int64(), nullable=False)]),
         name="row",
     )
+    Row = root.into_dataclass(name="Row", module=__name__)
 
-    with pytest.raises(TypeError, match="field"):
-        root.into_dataclass()
+    assert Row.into_field() is root
+    assert tuple(member.name for member in dataclasses.fields(Row)) == ("field",)
+    assert Row(field=1).field == 1
 
 
 def test_arrow_schema_round_trip_preserves_sorted_map_layout() -> None:

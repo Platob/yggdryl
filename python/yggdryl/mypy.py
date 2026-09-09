@@ -14,7 +14,7 @@ _SCALAR_DECORATORS = {
 }
 
 
-def _add_field_accessor(context: ClassDefContext) -> None:
+def _add_into_field_accessor(context: ClassDefContext) -> None:
     """Teach mypy about the cached staticmethod installed at runtime."""
 
     string_type = context.api.named_type("builtins.str")
@@ -28,7 +28,7 @@ def _add_field_accessor(context: ClassDefContext) -> None:
     add_method_to_class(
         context.api,
         context.cls,
-        "field",
+        "into_field",
         args=[],
         return_type=struct_field,
         is_staticmethod=True,
@@ -42,7 +42,7 @@ class YggdrylPlugin(Plugin):
         self, fullname: str
     ) -> Callable[[ClassDefContext], None] | None:
         if fullname in _SCALAR_DECORATORS:
-            return _add_field_accessor
+            return _add_into_field_accessor
         return None
 
 

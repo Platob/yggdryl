@@ -85,7 +85,7 @@ def _cold_decorated_class() -> Field:
         symbol: str
         values: list[float]
 
-    return Reading.field()
+    return Reading.into_field()
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -102,7 +102,7 @@ def main() -> None:
     if args.iterations < 1:
         parser.error("--iterations must be positive")
 
-    assert GENERATED_CLASS.field() is NATIVE_FIELD
+    assert GENERATED_CLASS.into_field() is NATIVE_FIELD
     assert NATIVE_FIELD.into_arrow_schema() == ARROW_SCHEMA
     gc.disable()
     try:
@@ -110,8 +110,8 @@ def main() -> None:
         _measure("global field", _global_field, args.iterations)
         _measure("PyArrow schema export", _export_arrow_schema, args.iterations)
         _measure(
-            "cached static field",
-            Quote.field,
+            "cached static into_field",
+            Quote.into_field,
             args.iterations,
         )
         _measure(

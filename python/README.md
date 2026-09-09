@@ -136,7 +136,7 @@ class Order:
 order = Order(42, Decimal("12.50"))
 payload = toml.dumps(order)  # ordinary UTF-8 TOML bytes
 
-assert Order.field().name == "Order"
+assert Order.into_field().name == "Order"
 assert toml.loads(payload, cls=Order) == order
 ```
 
@@ -174,18 +174,18 @@ Trade = trade_field.into_dataclass()
 trade = Trade(trade_id=1, tags=["new"])
 
 assert field(Trade) is trade_field
-assert Trade.field() is trade_field
-assert Trade.field().into_arrow_schema().field("trade_id").type == pa.uint32()
+assert Trade.into_field() is trade_field
+assert Trade.into_field().into_arrow_schema().field("trade_id").type == pa.uint32()
 ```
 
 Arrow schemas import through the native `Field`, preserving exact physical
 widths, metadata, dictionary state, and nested layout. `into_dataclass()`
-builds a normal dataclass whose cached static `field()` result is that
+builds a normal dataclass whose cached static `into_field()` result is that
 native shape; it does not inject row conversion, codec, or Arrow methods into
 the class.
 
-Use cached `Class.field()` for decorated dataclasses and `field(value)` for the
-general conversion funnel.
+Use cached `Class.into_field()` for decorated dataclasses and `field(value)`
+for the general conversion funnel.
 
 `DataType.cast_arrow_array` and `Field.cast_arrow_array` use the native Arrow
 kernel plan; their `cast_arrow_batch` forms reconcile Struct columns by

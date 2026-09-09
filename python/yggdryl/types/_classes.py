@@ -49,7 +49,7 @@ else:
 _ErrorPolicy = Literal["raise", "default"]
 _NONE_TYPE = type(None)
 _MISSING_KEY = object()
-_MISSING_FIELD_DESCRIPTOR = object()
+_MISSING_INTO_FIELD_DESCRIPTOR = object()
 _UNION_ORIGINS = (typing.Union, types.UnionType)
 _SELF_HINTS = tuple(
     value
@@ -751,38 +751,38 @@ def _decorated_field_owner(cls: type[Any]) -> type[Any] | None:
     return None
 
 
-def _field_accessor(owner: type[Any]) -> Callable[[], StructField]:
+def _into_field_accessor(owner: type[Any]) -> Callable[[], StructField]:
     """Build the cached static accessor owned by one decorated dataclass."""
 
-    def field() -> StructField:
+    def into_field() -> StructField:
         return typing.cast(StructField, _ensure_schema(owner).root)
 
-    field.__name__ = "field"
-    field.__qualname__ = f"{owner.__qualname__}.field"
-    setattr(field, "__yggdryl_field_accessor__", True)
-    return field
+    into_field.__name__ = "into_field"
+    into_field.__qualname__ = f"{owner.__qualname__}.into_field"
+    setattr(into_field, "__yggdryl_into_field_accessor__", True)
+    return into_field
 
 
-def _install_field_staticmethod(cls: type[Any]) -> None:
+def _install_into_field_staticmethod(cls: type[Any]) -> None:
     """Install the owner-capturing schema accessor on a decorated dataclass."""
 
-    setattr(cls, "field", staticmethod(_field_accessor(cls)))
+    setattr(cls, "into_field", staticmethod(_into_field_accessor(cls)))
 
 
-def _resolved_field_descriptor(cls: type[Any]) -> object:
-    """Return the first ``field`` descriptor in one class's MRO."""
+def _resolved_into_field_descriptor(cls: type[Any]) -> object:
+    """Return the first ``into_field`` descriptor in one class's MRO."""
 
     for candidate in cls.__mro__:
-        if "field" in candidate.__dict__:
-            return typing.cast(object, candidate.__dict__["field"])
-    return _MISSING_FIELD_DESCRIPTOR
+        if "into_field" in candidate.__dict__:
+            return typing.cast(object, candidate.__dict__["into_field"])
+    return _MISSING_INTO_FIELD_DESCRIPTOR
 
 
-def _is_installed_field_descriptor(value: object) -> bool:
+def _is_installed_into_field_descriptor(value: object) -> bool:
     """Report whether ``value`` is a static accessor installed by ``@scalar``."""
 
     return isinstance(value, staticmethod) and bool(
-        getattr(value.__func__, "__yggdryl_field_accessor__", False)
+        getattr(value.__func__, "__yggdryl_into_field_accessor__", False)
     )
 
 
@@ -829,7 +829,7 @@ def _adopt_materialized_schema(
     )
     setattr(cls, "__yggdryl_class_schema__", schema)
     setattr(cls, "__yggdryl_field_class__", True)
-    _install_field_staticmethod(cls)
+    _install_into_field_staticmethod(cls)
     return schema
 
 
@@ -2827,7 +2827,7 @@ def _register_field_class(
 
     # A later sibling may satisfy a name captured by an earlier decorator.
     # Update only classes from the same lexical scope; actual schema building
-    # stays lazy until their cached ``field`` staticmethod is called.
+    # stays lazy until their cached ``into_field`` staticmethod is called.
     scope = _scope_key(cls)
     with _SCHEMA_LOCK:
         pending = tuple(_PENDING_SCHEMAS.items())
@@ -2866,7 +2866,7 @@ def _hide_private_annotations(
     # Python 3.14 defers annotations behind ``__annotate_func__``. Publishing
     # the non-evaluating string view keeps dataclasses from executing a later
     # sibling reference during decoration and leaves get_type_hints to resolve
-    # it lazily when ``field`` is first requested.
+    # it lazily when ``into_field`` is first requested.
     setattr(cls, "__annotations__", annotations)
 
 
@@ -2878,19 +2878,19 @@ def _decorate_field_class(
 ) -> type[_T]:
     annotations = _unevaluated_annotations(candidate)
     inherited_fields = getattr(candidate, "__dataclass_fields__", {})
-    resolved_accessor = _resolved_field_descriptor(candidate)
+    resolved_accessor = _resolved_into_field_descriptor(candidate)
     if (
-        "field" in candidate.__dict__
-        or "field" in annotations
-        or "field" in inherited_fields
+        "into_field" in candidate.__dict__
+        or "into_field" in annotations
+        or "into_field" in inherited_fields
         or (
-            resolved_accessor is not _MISSING_FIELD_DESCRIPTOR
-            and not _is_installed_field_descriptor(resolved_accessor)
+            resolved_accessor is not _MISSING_INTO_FIELD_DESCRIPTOR
+            and not _is_installed_into_field_descriptor(resolved_accessor)
         )
     ):
         raise TypeError(
             f"{candidate.__module__}.{candidate.__qualname__} reserves "
-            "field for its cached native Field staticmethod"
+            "into_field for its cached native Field staticmethod"
         )
     original_doc = candidate.__doc__
     _hide_private_annotations(candidate, annotations)
@@ -2900,7 +2900,7 @@ def _decorate_field_class(
     # are documentation, never generated constructor text.
     decorated.__doc__ = original_doc
     setattr(decorated, "__yggdryl_field_class__", True)
-    _install_field_staticmethod(decorated)
+    _install_into_field_staticmethod(decorated)
     _register_field_class(decorated, localns, token)
     return decorated
 
