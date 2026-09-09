@@ -31,7 +31,12 @@ enum SchemeValue {
     S3a,
     S3n,
     Gs,
+    Gcs,
     Az,
+    Abfs,
+    Abfss,
+    Wasb,
+    Wasbs,
     Spark,
     Polars,
     Pandas,
@@ -86,8 +91,18 @@ impl Scheme {
     pub const S3N: Self = Self(SchemeValue::S3n);
     /// The Google Cloud Storage protocol scheme.
     pub const GS: Self = Self(SchemeValue::Gs);
+    /// The `gcs` spelling of the same Google Cloud Storage protocol.
+    pub const GCS: Self = Self(SchemeValue::Gcs);
     /// The Azure Blob Storage protocol scheme.
     pub const AZ: Self = Self(SchemeValue::Az);
+    /// The Hadoop `abfs` spelling of the same Azure Blob Storage protocol.
+    pub const ABFS: Self = Self(SchemeValue::Abfs);
+    /// The Hadoop `abfss` spelling, which addresses the store over TLS.
+    pub const ABFSS: Self = Self(SchemeValue::Abfss);
+    /// The Hadoop `wasb` spelling of the same Azure Blob Storage protocol.
+    pub const WASB: Self = Self(SchemeValue::Wasb);
+    /// The Hadoop `wasbs` spelling, which addresses the store over TLS.
+    pub const WASBS: Self = Self(SchemeValue::Wasbs);
     /// The Apache Spark SQL interchange namespace.
     pub const SPARK: Self = Self(SchemeValue::Spark);
     /// The Polars interchange namespace.
@@ -137,7 +152,12 @@ impl Scheme {
             SchemeValue::S3a => "s3a",
             SchemeValue::S3n => "s3n",
             SchemeValue::Gs => "gs",
+            SchemeValue::Gcs => "gcs",
             SchemeValue::Az => "az",
+            SchemeValue::Abfs => "abfs",
+            SchemeValue::Abfss => "abfss",
+            SchemeValue::Wasb => "wasb",
+            SchemeValue::Wasbs => "wasbs",
             SchemeValue::Spark => "spark",
             SchemeValue::Polars => "polars",
             SchemeValue::Pandas => "pandas",
@@ -179,6 +199,41 @@ impl Scheme {
         )
     }
 
+    /// Return whether the scheme addresses Google Cloud Storage.
+    ///
+    /// `gs` and `gcs` name one protocol, for the reason [`Self::is_s3`] gives:
+    /// the second spelling is what some tools write, and every bucket and
+    /// object either addresses is the same.
+    pub const fn is_gs(&self) -> bool {
+        matches!(self.0, SchemeValue::Gs | SchemeValue::Gcs)
+    }
+
+    /// Return whether the scheme addresses Azure Blob Storage.
+    ///
+    /// `az` is this crate's spelling; `abfs`, `abfss`, `wasb`, and `wasbs` are
+    /// the Hadoop connectors' four, which differ in the driver that once read
+    /// them and in whether the endpoint they imply is TLS. Every container and
+    /// blob the five address is the same.
+    pub const fn is_az(&self) -> bool {
+        matches!(
+            self.0,
+            SchemeValue::Az
+                | SchemeValue::Abfs
+                | SchemeValue::Abfss
+                | SchemeValue::Wasb
+                | SchemeValue::Wasbs
+        )
+    }
+
+    /// Return whether the scheme addresses an object store.
+    ///
+    /// The three stores one backend serves, under every spelling each is
+    /// written as. This is what selects that backend, so a location written by
+    /// another tool reaches it rather than falling through to a filesystem.
+    pub const fn is_object_store(&self) -> bool {
+        self.is_s3() || self.is_gs() || self.is_az()
+    }
+
     /// Return whether the scheme addresses a byte-oriented storage location.
     ///
     /// These are the schemes a filesystem abstraction can open, as opposed to
@@ -193,7 +248,12 @@ impl Scheme {
                 | SchemeValue::S3a
                 | SchemeValue::S3n
                 | SchemeValue::Gs
+                | SchemeValue::Gcs
                 | SchemeValue::Az
+                | SchemeValue::Abfs
+                | SchemeValue::Abfss
+                | SchemeValue::Wasb
+                | SchemeValue::Wasbs
         )
     }
 
@@ -245,6 +305,11 @@ impl FromStr for Scheme {
             2 if value.eq_ignore_ascii_case("s3") => Some(Self::S3),
             2 if value.eq_ignore_ascii_case("gs") => Some(Self::GS),
             2 if value.eq_ignore_ascii_case("az") => Some(Self::AZ),
+            3 if value.eq_ignore_ascii_case("gcs") => Some(Self::GCS),
+            4 if value.eq_ignore_ascii_case("abfs") => Some(Self::ABFS),
+            4 if value.eq_ignore_ascii_case("wasb") => Some(Self::WASB),
+            5 if value.eq_ignore_ascii_case("abfss") => Some(Self::ABFSS),
+            5 if value.eq_ignore_ascii_case("wasbs") => Some(Self::WASBS),
             3 if value.eq_ignore_ascii_case("s3a") => Some(Self::S3A),
             3 if value.eq_ignore_ascii_case("s3n") => Some(Self::S3N),
             3 if value.eq_ignore_ascii_case("urn") => Some(Self::URN),

@@ -169,34 +169,42 @@ impl Url {
         self.0.password()
     }
 
-    /// Return the network hostname under the URI's S3-aware rules.
+    /// Return the network hostname under the URI's store-aware rules.
     pub fn hostname(&self) -> Option<&str> {
         self.0.hostname()
     }
 
-    /// Return the S3 endpoint host and explicit port, excluding a virtual bucket.
-    pub fn s3_endpoint(&self) -> Option<&str> {
-        self.0.s3_endpoint()
+    /// Return the store endpoint host and explicit port, excluding a virtual
+    /// container.
+    pub fn store_endpoint(&self) -> Option<&str> {
+        self.0.store_endpoint()
     }
 
-    /// Return the S3 bucket name when this is an `s3` URL.
+    /// Return the container name when this URL addresses an object store, per
+    /// [`Uri::bucket`].
     pub fn bucket(&self) -> Option<&str> {
         self.0.bucket()
     }
 
-    /// Return the S3 object key when this is an `s3` URL, per [`Uri::key`].
+    /// Return the Azure storage account this URL names, per [`Uri::account`].
+    pub fn account(&self) -> Option<&str> {
+        self.0.account()
+    }
+
+    /// Return the object key when this URL addresses an object store, per
+    /// [`Uri::key`].
     pub fn key(&self) -> Option<&str> {
         self.0.key()
     }
 
-    /// Infer an AWS region from a recognized S3 hostname.
+    /// Infer a region from a recognized store hostname.
     pub fn region(&self) -> Option<&str> {
         self.0.region()
     }
 
-    /// Return whether this S3 URL puts its bucket in the endpoint hostname.
-    pub fn is_s3_virtual(&self) -> bool {
-        self.0.is_s3_virtual()
+    /// Return whether this URL puts its container in the endpoint hostname.
+    pub fn is_virtual_hosted(&self) -> bool {
+        self.0.is_virtual_hosted()
     }
 
     /// Return the concrete URL path.

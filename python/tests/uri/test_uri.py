@@ -567,20 +567,29 @@ def test_the_scheme_and_the_authority_answer_what_they_alone_decide() -> None:
     assert Url("file:///lake").default_port is None
 
 
-def test_an_s3_location_names_its_endpoint_and_its_addressing() -> None:
+def test_a_store_location_names_its_endpoint_and_its_addressing() -> None:
     virtual = Uri("s3://bucket.s3.us-east-1.amazonaws.com/key")
-    assert virtual.is_s3_virtual()
-    assert virtual.s3_endpoint == "s3.us-east-1.amazonaws.com"
+    assert virtual.is_virtual_hosted()
+    assert virtual.store_endpoint == "s3.us-east-1.amazonaws.com"
     assert virtual.bucket == "bucket"
     assert virtual.region == "us-east-1"
 
     plain = Url("s3://bucket/key")
-    assert not plain.is_s3_virtual()
-    assert plain.s3_endpoint is None
+    assert not plain.is_virtual_hosted()
+    assert plain.store_endpoint is None
     assert plain.bucket == "bucket"
 
-    assert Uri("https://example.com/a").s3_endpoint is None
-    assert not Uri("https://example.com/a").is_s3_virtual()
+    google = Url("gs://bucket/key")
+    assert google.bucket == "bucket"
+    assert google.key == "key"
+
+    azure = Uri("abfss://lake@trades.dfs.core.windows.net/part")
+    assert azure.bucket == "lake"
+    assert azure.account == "trades"
+    assert azure.key == "part"
+
+    assert Uri("https://example.com/a").store_endpoint is None
+    assert not Uri("https://example.com/a").is_virtual_hosted()
 
 
 def test_a_uri_is_built_from_its_parts_and_validated_as_a_whole() -> None:

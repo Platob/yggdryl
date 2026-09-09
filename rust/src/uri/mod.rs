@@ -273,44 +273,58 @@ impl Uri {
 
     /// Return the network hostname, if this URI has one.
     ///
-    /// For `s3`, an authority or first path part ending in `.com` or `.io` is
-    /// a hostname, as is one carrying a port, spelled as an IP literal, or
-    /// named `localhost`; any other first part is a bucket name.
+    /// For an object store, an authority or first path part ending in `.com`,
+    /// `.io`, or `.net` is a hostname, as is one carrying a port, spelled as an
+    /// IP literal, or named `localhost`; any other first part is a container
+    /// name.
     pub fn hostname(&self) -> Option<&str> {
-        if let Some(location) = self.s3_location() {
+        if let Some(location) = self.store_location() {
             return location.hostname;
         }
         (!self.authority.is_empty()).then(|| self.authority.host())
     }
 
-    /// Return the S3 endpoint host and explicit port, excluding a virtual bucket.
-    pub fn s3_endpoint(&self) -> Option<&str> {
-        self.s3_location().and_then(|location| location.endpoint)
+    /// Return the store endpoint host and explicit port, excluding a virtual
+    /// container.
+    pub fn store_endpoint(&self) -> Option<&str> {
+        self.store_location().and_then(|location| location.endpoint)
     }
 
-    /// Return the S3 bucket name when this is an `s3` URI.
+    /// Return the container name when this URI addresses an object store.
+    ///
+    /// The bucket on Amazon S3 and Google Cloud Storage, the container on Azure
+    /// Blob Storage: one name, because it is one position in the location.
     pub fn bucket(&self) -> Option<&str> {
-        self.s3_location().and_then(|location| location.bucket)
+        self.store_location().and_then(|location| location.bucket)
     }
 
-    /// Infer an AWS region from a recognized S3 hostname.
+    /// Return the Azure storage account when the location names one.
+    ///
+    /// `abfss://data@trades.dfs.core.windows.net/lake` names `trades`; a bare
+    /// `az://data/lake` names none, and the client is configured with it.
+    pub fn account(&self) -> Option<&str> {
+        self.store_location().and_then(|location| location.account)
+    }
+
+    /// Infer a region from a recognized store hostname.
     ///
     /// This borrows the region from the URI and performs no network lookup.
+    /// Only AWS and Google's regional endpoints state one.
     pub fn region(&self) -> Option<&str> {
-        self.s3_location().and_then(|location| location.region)
+        self.store_location().and_then(|location| location.region)
     }
 
-    /// Return whether an S3 URI puts its bucket in the endpoint hostname.
-    pub fn is_s3_virtual(&self) -> bool {
-        self.s3_location()
+    /// Return whether a store URI puts its container in the endpoint hostname.
+    pub fn is_virtual_hosted(&self) -> bool {
+        self.store_location()
             .is_some_and(|location| location.virtual_addressing)
     }
 
-    /// Return the S3 object key when this is an `s3` URI.
+    /// Return the object key when this URI addresses an object store.
     ///
-    /// The key is the path below the bucket, spelled as the path spells it:
+    /// The key is the path below the container, spelled as the path spells it:
     /// percent escapes stay escaped and a trailing slash stays, so a prefix
-    /// reads as `lake/` and the bucket root as `""`. Decoding the escapes is
+    /// reads as `lake/` and the container root as `""`. Decoding the escapes is
     /// the storage client's business, because a key can hold what a URI path
     /// cannot.
     ///
@@ -319,18 +333,22 @@ impl Uri {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// assert_eq!(Uri::from_str("s3://trades/2026/part.parquet")?.key(), Some("2026/part.parquet"));
-    /// assert_eq!(Uri::from_str("s3://trades/2026/")?.key(), Some("2026/"));
+    /// assert_eq!(Uri::from_str("gs://trades/2026/")?.key(), Some("2026/"));
     /// assert_eq!(Uri::from_str("s3://trades/")?.key(), Some(""));
     /// assert_eq!(
     ///     Uri::from_str("s3://s3.eu-west-3.amazonaws.com/trades/part.parquet")?.key(),
     ///     Some("part.parquet")
+    /// );
+    /// assert_eq!(
+    ///     Uri::from_str("abfss://data@trades.dfs.core.windows.net/lake/part.parquet")?.key(),
+    ///     Some("lake/part.parquet")
     /// );
     /// assert_eq!(Uri::from_str("https://example.com/part.parquet")?.key(), None);
     /// # Ok(())
     /// # }
     /// ```
     pub fn key(&self) -> Option<&str> {
-        self.s3_location().map(|location| location.key)
+        self.store_location().map(|location| location.key)
     }
 
     /// Return whether canonical syntax contains an authority marker.

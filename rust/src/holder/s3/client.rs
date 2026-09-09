@@ -404,7 +404,7 @@ impl Client {
         // URL's own endpoint comes next, ahead of the environment, because it
         // is the location a caller handed over rather than a default.
         let explicit = options.endpoint().map(str::to_owned);
-        let from_url = url.s3_endpoint().map(str::to_owned);
+        let from_url = url.store_endpoint().map(str::to_owned);
         let (scheme, host, port) = match explicit.or(from_url).or(configured) {
             Some(endpoint) => Self::split_endpoint(&endpoint)?,
             None => {

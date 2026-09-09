@@ -54,7 +54,7 @@ fn authority_credentials_split_only_the_first_user_information_colon() {
 fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     let bucket = Uri::from_str("s3://market-data/year=2026/part.parquet").unwrap();
     assert_eq!(bucket.hostname(), None);
-    assert_eq!(bucket.s3_endpoint(), None);
+    assert_eq!(bucket.store_endpoint(), None);
     assert_eq!(bucket.bucket(), Some("market-data"));
     assert_eq!(bucket.region(), None);
 
@@ -62,7 +62,10 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
         Uri::from_str("s3://s3.eu-west-3.amazonaws.com/market-data/year=2026/part.parquet")
             .unwrap();
     assert_eq!(endpoint.hostname(), Some("s3.eu-west-3.amazonaws.com"));
-    assert_eq!(endpoint.s3_endpoint(), Some("s3.eu-west-3.amazonaws.com"));
+    assert_eq!(
+        endpoint.store_endpoint(),
+        Some("s3.eu-west-3.amazonaws.com")
+    );
     assert_eq!(endpoint.bucket(), Some("market-data"));
     assert_eq!(endpoint.region(), Some("eu-west-3"));
 
@@ -75,16 +78,16 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     assert_eq!(virtual_host.bucket(), Some("market-data"));
     assert_eq!(virtual_host.region(), Some("ap-south-1"));
     assert_eq!(
-        virtual_host.s3_endpoint(),
+        virtual_host.store_endpoint(),
         Some("s3.dualstack.ap-south-1.amazonaws.com")
     );
-    assert!(virtual_host.is_s3_virtual());
+    assert!(virtual_host.is_virtual_hosted());
 
     let port = Uri::from_str("s3://key:secret@minio:9000/archive/key").unwrap();
     assert_eq!(port.hostname(), Some("minio"));
-    assert_eq!(port.s3_endpoint(), Some("minio:9000"));
+    assert_eq!(port.store_endpoint(), Some("minio:9000"));
     assert_eq!(port.bucket(), Some("archive"));
-    assert!(!port.is_s3_virtual());
+    assert!(!port.is_virtual_hosted());
 
     let alternate = Uri::from_str("s3a://archive/key").unwrap();
     assert_eq!(alternate.bucket(), Some("archive"));
@@ -116,6 +119,87 @@ fn s3_locations_distinguish_buckets_from_hostnames_and_infer_regions() {
     assert_eq!(https.bucket(), None);
     assert_eq!(https.region(), None);
     assert_eq!(https.key(), None);
+}
+
+#[test]
+fn google_locations_read_buckets_endpoints_and_regional_hosts() {
+    let bucket = Uri::from_str("gs://market-data/year=2026/part.parquet").unwrap();
+    assert_eq!(bucket.hostname(), None);
+    assert_eq!(bucket.store_endpoint(), None);
+    assert_eq!(bucket.bucket(), Some("market-data"));
+    assert_eq!(bucket.key(), Some("year=2026/part.parquet"));
+    assert_eq!(bucket.account(), None);
+
+    // `gcs` is the other spelling of the same protocol.
+    assert_eq!(
+        Uri::from_str("gcs://market-data/key").unwrap().bucket(),
+        Some("market-data")
+    );
+
+    let endpoint = Uri::from_str("gs://storage.googleapis.com/market-data/key").unwrap();
+    assert_eq!(endpoint.store_endpoint(), Some("storage.googleapis.com"));
+    assert_eq!(endpoint.bucket(), Some("market-data"));
+    assert!(!endpoint.is_virtual_hosted());
+
+    let virtual_host = Url::from_str("gs://market-data.storage.googleapis.com/key").unwrap();
+    assert_eq!(virtual_host.bucket(), Some("market-data"));
+    assert_eq!(
+        virtual_host.store_endpoint(),
+        Some("storage.googleapis.com")
+    );
+    assert!(virtual_host.is_virtual_hosted());
+    assert_eq!(virtual_host.key(), Some("key"));
+
+    // A regional endpoint states its own region, the way an AWS host does.
+    let regional = Uri::from_str("gs://storage.europe-west4.rep.googleapis.com/lake/key").unwrap();
+    assert_eq!(regional.region(), Some("europe-west4"));
+    assert_eq!(regional.bucket(), Some("lake"));
+
+    // An emulator is named by its port, before any suffix rule runs.
+    let emulator = Uri::from_str("gs://localhost:4443/lake/key").unwrap();
+    assert_eq!(emulator.store_endpoint(), Some("localhost:4443"));
+    assert_eq!(emulator.bucket(), Some("lake"));
+    assert_eq!(emulator.key(), Some("key"));
+}
+
+#[test]
+fn azure_locations_read_containers_from_the_authority_and_accounts_from_the_host() {
+    // `az://container/blob`: the account is configuration, not location.
+    let container = Uri::from_str("az://lake/year=2026/part.parquet").unwrap();
+    assert_eq!(container.bucket(), Some("lake"));
+    assert_eq!(container.account(), None);
+    assert_eq!(container.key(), Some("year=2026/part.parquet"));
+
+    // The Hadoop spellings attach the container to the account host.
+    let abfss = Uri::from_str("abfss://lake@trades.dfs.core.windows.net/year=2026/part").unwrap();
+    assert_eq!(abfss.bucket(), Some("lake"));
+    assert_eq!(abfss.account(), Some("trades"));
+    assert_eq!(abfss.store_endpoint(), Some("trades.dfs.core.windows.net"));
+    assert_eq!(abfss.key(), Some("year=2026/part"));
+    assert!(!abfss.is_virtual_hosted());
+
+    let wasbs = Uri::from_str("wasbs://lake@trades.blob.core.windows.net/part").unwrap();
+    assert_eq!(wasbs.bucket(), Some("lake"));
+    assert_eq!(wasbs.account(), Some("trades"));
+    assert_eq!(wasbs.key(), Some("part"));
+
+    // A bare account host leaves the container to the first path part.
+    let hosted = Uri::from_str("az://trades.blob.core.windows.net/lake/part").unwrap();
+    assert_eq!(hosted.account(), Some("trades"));
+    assert_eq!(hosted.bucket(), Some("lake"));
+    assert_eq!(hosted.key(), Some("part"));
+
+    // A sovereign cloud is the same host shape under another suffix.
+    let china = Uri::from_str("az://trades.blob.core.chinacloudapi.cn/lake/part").unwrap();
+    assert_eq!(china.account(), Some("trades"));
+    assert_eq!(china.bucket(), Some("lake"));
+
+    // Azurite addresses the account in the path, below the port that named it.
+    let azurite = Uri::from_str("az://127.0.0.1:10000/devstoreaccount1/lake/part").unwrap();
+    assert_eq!(azurite.store_endpoint(), Some("127.0.0.1:10000"));
+    assert_eq!(azurite.account(), Some("devstoreaccount1"));
+    assert_eq!(azurite.bucket(), Some("lake"));
+    assert_eq!(azurite.key(), Some("part"));
 }
 
 #[test]

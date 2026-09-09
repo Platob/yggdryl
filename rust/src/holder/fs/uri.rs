@@ -242,7 +242,7 @@ fn resolve_s3(
         .cloned()
         .or_else(|| parsed.region().map(str::to_owned));
     let mut addressing_style = parse_addressing(&values)?;
-    let uri_endpoint = parsed.s3_endpoint();
+    let uri_endpoint = parsed.store_endpoint();
     if let Some(endpoint) = uri_endpoint {
         endpoint_override.get_or_insert_with(|| endpoint.to_owned());
     }
@@ -257,7 +257,7 @@ fn resolve_s3(
         }
         *endpoint = authority.host_port().to_owned();
     }
-    let (bucket, key) = if parsed.is_s3_virtual() {
+    let (bucket, key) = if parsed.is_virtual_hosted() {
         if addressing_style == S3AddressingStyle::Automatic {
             addressing_style = S3AddressingStyle::Virtual;
         }
