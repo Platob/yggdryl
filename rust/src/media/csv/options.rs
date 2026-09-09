@@ -57,6 +57,7 @@ pub struct CsvOptions {
     trim: bool,
     autotype: bool,
     infer_row_size: Option<usize>,
+    max_record_byte_size: Option<u64>,
     timezone: Option<Timezone>,
 }
 
@@ -87,6 +88,7 @@ impl CsvOptions {
             trim: false,
             autotype: true,
             infer_row_size: Some(DEFAULT_INFER_ROW_SIZE),
+            max_record_byte_size: None,
             timezone: None,
         }
     }
@@ -346,6 +348,30 @@ impl CsvOptions {
         self
     }
 
+    /// Return the bound on one record's decoded bytes; `None` is unbounded.
+    #[must_use]
+    pub const fn max_record_byte_size(&self) -> Option<u64> {
+        self.max_record_byte_size
+    }
+
+    /// Set or clear the bound on one record's decoded bytes.
+    ///
+    /// A record is held whole while its cells are split, so an unclosed quote
+    /// in an adversarial resource otherwise joins every line after it into one
+    /// value. Unlike a text body, a CSV record over the bound is refused rather
+    /// than truncated: a shortened record is a row with cells missing, which is
+    /// a different row, not a shorter value.
+    pub const fn set_max_record_byte_size(&mut self, size: Option<u64>) {
+        self.max_record_byte_size = size;
+    }
+
+    /// Return these options with a decoded-byte bound for each record.
+    #[must_use]
+    pub const fn with_max_record_byte_size(mut self, size: u64) -> Self {
+        self.set_max_record_byte_size(Some(size));
+        self
+    }
+
     /// Borrow the timezone applied to inferred offset-free timestamps.
     #[must_use]
     pub const fn timezone(&self) -> Option<&Timezone> {
@@ -380,6 +406,7 @@ impl CsvOptions {
             comment: self.comment,
             linesep: self.linesep.clone(),
             trim: self.trim,
+            max_record_byte_size: self.max_record_byte_size,
         }
     }
 

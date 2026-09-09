@@ -1037,7 +1037,13 @@ fn derived_field(
     while let Some(part) = parts.next() {
         let part = part?;
         let stored = match options {
-            RecordOptions::Text(_) => Some(crate::iobase::leaf_field(&part, options)?),
+            // A parsed leaf answers its shape only under the caller's own
+            // options - the line projection for text, the header and cells
+            // under the caller's dialect for CSV - so it is read rather than
+            // probed for a declaration it does not carry.
+            RecordOptions::Text(_) | RecordOptions::Csv(_) => {
+                Some(crate::iobase::leaf_field(&part, options)?)
+            }
             _ => crate::iobase::stored_field(&part, options)?,
         };
         let Some(stored) = stored else {

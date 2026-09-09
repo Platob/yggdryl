@@ -124,18 +124,26 @@ pub trait IOMedia: Send {
             // structured leaf and stops there. Text answers last: plain text
             // maps to the line projection, so a stray README or marker file
             // must not re-type a lake whose data files are a structured
-            // encoding.
+            // encoding. Delimited text answers last for the same reason - a
+            // `.csv` sidecar beside Parquet data files is a sidecar - and
+            // ahead of plain text, because a folder of `.csv` leaves is a
+            // table while a folder of `.log` leaves is a projection.
+            let mut delimited = None;
             let mut lines = None;
             for child in handle.children_where(&[], false)? {
                 if let Ok(options) = RecordOptions::for_media_type(child?.media_type()) {
-                    if matches!(options, RecordOptions::Text(_)) {
-                        lines.get_or_insert(options);
-                        continue;
+                    match options {
+                        RecordOptions::Text(_) => {
+                            lines.get_or_insert(options);
+                        }
+                        RecordOptions::Csv(_) => {
+                            delimited.get_or_insert(options);
+                        }
+                        options => return Ok(options),
                     }
-                    return Ok(options);
                 }
             }
-            if let Some(options) = lines {
+            if let Some(options) = delimited.or(lines) {
                 return Ok(options);
             }
         }

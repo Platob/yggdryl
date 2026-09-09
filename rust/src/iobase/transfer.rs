@@ -344,7 +344,7 @@ fn prepare_leaf_arrow_write(
 )> {
     use crate::media::IORecordOptions;
 
-    let stored = if matches!(options, RecordOptions::Text(_)) {
+    let stored = if parsed_leaf(options) {
         None
     } else {
         stored_field(handle, options)?
@@ -352,7 +352,7 @@ fn prepare_leaf_arrow_write(
     let (batches, delegated, _) = prepare_arrow_write_onto(batches, options, stored.as_ref())?;
     let target = match stored {
         Some(stored) => Some(stored),
-        None if matches!(options, RecordOptions::Text(_)) => None,
+        None if parsed_leaf(options) => None,
         None => Some(crate::arrow::field_from_arrow_schema(
             delegated.name(),
             batches.schema().as_ref(),
@@ -399,8 +399,10 @@ enum ArrowWriteTarget {
     Leaf { stored: crate::Field },
     /// A missing schema-bearing leaf before the input schema is shaped.
     EmptyLeaf,
-    /// Text lines have no stored field; append remains their native operation.
-    TextLeaf,
+    /// A leaf whose shape is a parse of its own bytes under the caller's own
+    /// options rather than a stored declaration. Nothing can probe it without
+    /// those options, so no target is resolved and append stays native.
+    Parsed,
     Folder {
         writer: Box<crate::media::partition::FolderWriter>,
     },
@@ -655,8 +657,8 @@ impl ArrowWriteSession {
             self.target = Some(ArrowWriteTarget::Folder {
                 writer: Box::new(writer),
             });
-        } else if matches!(self.delegated, RecordOptions::Text(_)) {
-            self.target = Some(ArrowWriteTarget::TextLeaf);
+        } else if parsed_leaf(&self.delegated) {
+            self.target = Some(ArrowWriteTarget::Parsed);
         } else {
             self.target = Some(match stored_field(handle, &self.delegated)? {
                 Some(stored) => ArrowWriteTarget::Leaf { stored },
@@ -670,7 +672,7 @@ impl ArrowWriteSession {
         match self.target.as_ref() {
             Some(ArrowWriteTarget::Leaf { stored }) => Some(stored),
             Some(ArrowWriteTarget::EmptyLeaf)
-            | Some(ArrowWriteTarget::TextLeaf)
+            | Some(ArrowWriteTarget::Parsed)
             | Some(ArrowWriteTarget::Folder { .. })
             | None => None,
             #[cfg(feature = "iceberg")]
@@ -776,7 +778,7 @@ impl ArrowWriteSession {
                     });
                 }
             },
-            ArrowWriteTarget::TextLeaf => match mode {
+            ArrowWriteTarget::Parsed => match mode {
                 crate::IOMode::Overwrite => {
                     handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
                 }
@@ -1038,6 +1040,18 @@ pub(crate) fn leaf_writer(
     Ok(())
 }
 
+/// Return whether an encoding's shape is a parse rather than a declaration.
+///
+/// Plain-text lines carry no shape at all, and delimited text carries one only
+/// under the caller's own dialect - a probe built from defaults would read a
+/// `;`-separated header as one column and write the rows into it. Neither can
+/// be asked what it stores without being told how to read it, so neither
+/// resolves a stored target and both append natively.
+#[cfg(feature = "arrow")]
+const fn parsed_leaf(options: &RecordOptions) -> bool {
+    matches!(options, RecordOptions::Text(_) | RecordOptions::Csv(_))
+}
+
 /// Read the root Field a leaf's own bytes declare, if it holds any.
 ///
 /// The declared schema is deliberately not consulted: this asks what is stored,
@@ -1053,9 +1067,7 @@ pub(crate) fn stored_field(
     if handle.is_empty() {
         return Ok(None);
     }
-    // Text lines store no record shape of their own: any row shape writes,
-    // rendered line by line, so there is nothing to complete a cast onto.
-    if matches!(options, RecordOptions::Text(_)) {
+    if parsed_leaf(options) {
         return Ok(None);
     }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;

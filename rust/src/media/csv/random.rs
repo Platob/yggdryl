@@ -119,13 +119,12 @@ fn shift_left(handle: &mut (impl IOBase + ?Sized), from: u64, to: u64, size: u64
         let want = usize::try_from(size - read_at)
             .unwrap_or(window.len())
             .min(window.len());
-        let read = handle.pread(read_at, &mut window[..want])?;
-        if read == 0 {
-            break;
-        }
-        handle.pwrite_all(write_at, &window[..read])?;
-        read_at += read as u64;
-        write_at += read as u64;
+        // The byte count is known exactly, so a short read is a failure and not
+        // an end: reading less and truncating anyway would drop the tail.
+        handle.pread_exact(read_at, &mut window[..want])?;
+        handle.pwrite_all(write_at, &window[..want])?;
+        read_at += want as u64;
+        write_at += want as u64;
     }
     Ok(())
 }

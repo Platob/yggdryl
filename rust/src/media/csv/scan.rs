@@ -14,7 +14,10 @@
 
 use std::borrow::Cow;
 
+use smol_str::{SmolStr, format_smolstr};
+
 use crate::media::text::LineSep;
+use crate::{Error, Result};
 
 /// The byte spelling one CSV resource uses.
 ///
@@ -36,6 +39,8 @@ pub(crate) struct Dialect {
     pub(crate) linesep: Option<LineSep>,
     /// Whether unquoted cells drop their edge ASCII whitespace.
     pub(crate) trim: bool,
+    /// The bound on one record's decoded bytes; `None` is unbounded.
+    pub(crate) max_record_byte_size: Option<u64>,
 }
 
 /// One cell's place in the record that holds it.
@@ -48,16 +53,38 @@ pub(crate) struct Span {
     pub(crate) start: usize,
     /// One past the cell's last byte, before the separator that ended it.
     pub(crate) end: usize,
-    /// One past the closing quote, or `start` when the cell is not quoted.
-    pub(crate) close: usize,
+    /// The quoted section's first content byte, just past the opening quote.
+    inner_start: usize,
+    /// One past the quoted section's last content byte. Equal to `end` when
+    /// the quote never closed, which is what a truncated resource leaves.
+    inner_end: usize,
+    /// Whether the cell opened with the dialect's quote byte.
+    quoted: bool,
     /// Whether the quoted section holds a doubled quote or an escape byte.
-    pub(crate) escaped: bool,
+    escaped: bool,
 }
 
 impl Span {
+    /// One plain cell, read exactly as its bytes stand.
+    const fn plain(start: usize, end: usize) -> Self {
+        Self {
+            start,
+            end,
+            inner_start: start,
+            inner_end: start,
+            quoted: false,
+            escaped: false,
+        }
+    }
+
     /// Return whether the cell opened with the dialect's quote byte.
     pub(crate) const fn is_quoted(self) -> bool {
-        self.close > self.start
+        self.quoted
+    }
+
+    /// Return whether the cell's quote closed before the record ended.
+    const fn is_closed(self) -> bool {
+        self.inner_end < self.end
     }
 }
 
@@ -70,17 +97,23 @@ pub(crate) fn split_cells(record: &[u8], dialect: &Dialect, spans: &mut Vec<Span
     spans.clear();
     let mut at = 0;
     loop {
-        let start = cell_start(record, at, dialect.trim);
+        let start = cell_start(record, at, dialect);
         let (span, next) = match dialect.quote {
             Some(quote) if record.get(start) == Some(&quote) => {
                 match quoted_cell(record, start, quote, dialect) {
                     Some(cell) => cell,
                     None => {
+                        // The quote never closed. The bytes are reported as the
+                        // quoted content they are, so a caller that has no more
+                        // input - a truncated resource - reads the value rather
+                        // than the quote that opened it.
                         spans.push(Span {
                             start,
                             end: record.len(),
-                            close: start,
-                            escaped: false,
+                            inner_start: (start + 1).min(record.len()),
+                            inner_end: record.len(),
+                            quoted: true,
+                            escaped: true,
                         });
                         return false;
                     }
@@ -109,9 +142,14 @@ pub(crate) fn cell_bytes<'record>(
         ));
     }
     // The quoted section excludes both quotes; anything between the closing
-    // quote and the separator is content a malformed row still carries.
-    let inner = &record[span.start + 1..span.close - 1];
-    let trailing = &record[span.close..span.end];
+    // quote and the separator is content a malformed row still carries, and is
+    // trimmed like a plain cell so quoting is symmetric at both edges.
+    let inner = &record[span.inner_start..span.inner_end];
+    let trailing = if span.is_closed() {
+        trailing_trimmed(&record[span.inner_end + 1..span.end], dialect.trim)
+    } else {
+        &[]
+    };
     if !span.escaped && trailing.is_empty() {
         return Cow::Borrowed(inner);
     }
@@ -126,14 +164,35 @@ pub(crate) fn cell_bytes<'record>(
 /// `force` quotes a cell whose bytes are legal but would read back as
 /// something else - the empty string under the default absence spelling, or a
 /// value that happens to spell absence itself.
-pub(crate) fn render_cell(value: &[u8], dialect: &Dialect, force: bool, output: &mut Vec<u8>) {
+///
+/// # Errors
+///
+/// Returns an error when the dialect has no quote byte and the value holds one
+/// the reader would split on. Writing it unquoted would produce a record this
+/// encoding cannot read back, which is the one outcome a write must not have.
+pub(crate) fn render_cell(
+    value: &[u8],
+    dialect: &Dialect,
+    force: bool,
+    output: &mut Vec<u8>,
+) -> Result<()> {
     let Some(quote) = dialect.quote else {
+        if let Some(byte) = unrepresentable(value, dialect) {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.quote"),
+                reason: format_smolstr!(
+                    "expected a value without {:?} to write with no quote byte, \
+                     got one the read would split on",
+                    char::from(byte)
+                ),
+            });
+        }
         output.extend_from_slice(value);
-        return;
+        return Ok(());
     };
     if !force && !needs_quoting(value, quote, dialect) {
         output.extend_from_slice(value);
-        return;
+        return Ok(());
     }
     output.push(quote);
     match dialect.escape {
@@ -155,6 +214,44 @@ pub(crate) fn render_cell(value: &[u8], dialect: &Dialect, force: bool, output: 
         }
     }
     output.push(quote);
+    Ok(())
+}
+
+/// Close a rendered record so it reads back as the record it is.
+///
+/// A record whose every cell rendered to nothing is a blank line, and a blank
+/// line carries no record: the row would be silently dropped, and every row
+/// after it would renumber. One quoted empty cell says what the row is.
+///
+/// # Errors
+///
+/// Returns an error when the dialect has no quote byte to say it with.
+pub(crate) fn close_record(dialect: &Dialect, terminator: &[u8], line: &mut Vec<u8>) -> Result<()> {
+    if line.is_empty() {
+        let quote = dialect.quote.ok_or_else(|| Error::InvalidRecord {
+            path: SmolStr::new_static("$.quote"),
+            reason: SmolStr::new_static(
+                "expected a quote byte to write a record whose cells are all empty, \
+                 got none - the record would read back as a blank line",
+            ),
+        })?;
+        line.push(quote);
+        line.push(quote);
+    }
+    line.extend_from_slice(terminator);
+    Ok(())
+}
+
+/// Name the byte an unquotable value carries that a read would split on.
+fn unrepresentable(value: &[u8], dialect: &Dialect) -> Option<u8> {
+    let terminator = dialect
+        .linesep
+        .as_ref()
+        .map_or(b"\n".as_slice(), LineSep::as_bytes);
+    if let Some(found) = memchr::memchr(dialect.separator, value) {
+        return Some(value[found]);
+    }
+    memchr::memmem::find(value, terminator).map(|found| value[found])
 }
 
 /// Return whether a rendered cell must be quoted to read back unchanged.
@@ -184,19 +281,23 @@ fn needs_quoting(value: &[u8], quote: u8, dialect: &Dialect) -> bool {
     if memchr::memchr(b'\r', value).is_some() {
         return true;
     }
-    terminator.len() > 1 && memchr::memmem::find(value, terminator).is_some()
+    // The configured terminator is checked whatever its width: a one-byte
+    // terminator that is neither LF nor CR - a NUL, a record separator, a
+    // pipe - is invisible to the checks above.
+    memchr::memmem::find(value, terminator).is_some()
 }
 
 /// Skip the edge whitespace an unquoted cell opens with.
-fn cell_start(record: &[u8], at: usize, trim: bool) -> usize {
-    if !trim {
+fn cell_start(record: &[u8], at: usize, dialect: &Dialect) -> usize {
+    if !dialect.trim {
         return at;
     }
     let mut start = at;
-    while record
-        .get(start)
-        .is_some_and(|byte| byte.is_ascii_whitespace() && *byte != b'\n' && *byte != b'\r')
-    {
+    while record.get(start).is_some_and(|byte| {
+        // A separator is never edge whitespace, whatever byte it is: skipping
+        // one would delete the empty cell it delimits.
+        byte.is_ascii_whitespace() && *byte != b'\n' && *byte != b'\r' && *byte != dialect.separator
+    }) {
         start += 1;
     }
     start
@@ -217,24 +318,8 @@ fn trailing_trimmed(value: &[u8], trim: bool) -> &[u8] {
 /// Scan one unquoted cell: a single search for the next separator.
 fn plain_cell(record: &[u8], start: usize, separator: u8) -> (Span, Option<usize>) {
     match memchr::memchr(separator, &record[start..]) {
-        Some(found) => (
-            Span {
-                start,
-                end: start + found,
-                close: start,
-                escaped: false,
-            },
-            Some(start + found + 1),
-        ),
-        None => (
-            Span {
-                start,
-                end: record.len(),
-                close: start,
-                escaped: false,
-            },
-            None,
-        ),
+        Some(found) => (Span::plain(start, start + found), Some(start + found + 1)),
+        None => (Span::plain(start, record.len()), None),
     }
 }
 
@@ -280,7 +365,9 @@ fn quoted_cell(
         Span {
             start,
             end,
-            close,
+            inner_start: start + 1,
+            inner_end: close - 1,
+            quoted: true,
             escaped,
         },
         next,
@@ -295,13 +382,15 @@ fn unescape_into(inner: &[u8], dialect: &Dialect, output: &mut Vec<u8>) {
     };
     let mut at = 0;
     match dialect.escape {
+        // A configured escape does not stop a doubled quote from spelling one
+        // quote: the scan accepts both, so both are collapsed here.
         Some(escape) if escape != quote => {
-            while let Some(found) = memchr::memchr(escape, &inner[at..]) {
+            while let Some(found) = memchr::memchr2(escape, quote, &inner[at..]) {
                 let found = at + found;
                 output.extend_from_slice(&inner[at..found]);
                 match inner.get(found + 1) {
                     Some(byte) => output.push(*byte),
-                    None => output.push(escape),
+                    None => output.push(inner[found]),
                 }
                 at = found + 2;
                 if at > inner.len() {
@@ -336,6 +425,7 @@ mod tests {
             comment: None,
             linesep: None,
             trim: false,
+            max_record_byte_size: None,
         }
     }
 
@@ -358,7 +448,7 @@ mod tests {
         ];
         for value in nasty {
             let mut line = Vec::new();
-            render_cell(value, &dialect, false, &mut line);
+            render_cell(value, &dialect, false, &mut line).expect("the default dialect quotes");
             let mut spans = Vec::new();
             assert!(
                 split_cells(&line, &dialect, &mut spans),

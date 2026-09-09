@@ -120,6 +120,10 @@ fn cell_dtype(cell: &[u8], quoted: bool, null: &str, timezone: Option<&Timezone>
     if text.eq_ignore_ascii_case("true") || text.eq_ignore_ascii_case("false") {
         return DataType::Boolean;
     }
+    if !quoted && text.eq_ignore_ascii_case("nan") {
+        // A double column may hold one; on its own it names nothing.
+        return DataType::Utf8;
+    }
     if let Some(numeric) = numeric_dtype(text) {
         return numeric;
     }
@@ -132,10 +136,10 @@ fn numeric_dtype(text: &str) -> Option<DataType> {
     if digits.is_empty() || !digits.starts_with(|first: char| first.is_ascii_digit()) {
         return None;
     }
-    if is_zero_padded(digits) {
-        return Some(DataType::Utf8);
-    }
     if digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        if is_zero_padded(digits) {
+            return Some(DataType::Utf8);
+        }
         // A whole number too wide for the column is text, because widening it
         // to a double would drop digits the file spelled out.
         return Some(
@@ -149,9 +153,13 @@ fn numeric_dtype(text: &str) -> Option<DataType> {
         .map(|_| DataType::Float64)
 }
 
-/// Return whether a numeric spelling carries meaning in its leading zeros.
+/// Return whether a whole number carries meaning in its leading zeros.
+///
+/// The rule governs whole numbers only. A reading that is not all digits -
+/// `09:30:00`, `0.5` - is not a padded identifier, and treating it as one
+/// would have turned every clock before ten o'clock into text.
 fn is_zero_padded(digits: &str) -> bool {
-    digits.len() > 1 && digits.starts_with('0') && !digits.starts_with("0.")
+    digits.len() > 1 && digits.starts_with('0')
 }
 
 /// Name a date, a clock, or an instant, whichever the reading spells.
@@ -179,4 +187,38 @@ fn temporal_dtype(text: &str, timezone: Option<&Timezone>) -> Option<DataType> {
         });
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cell_dtype;
+    use crate::{DataType, TimeUnit};
+
+    /// The ladder, narrowest reading first, on the spellings that decide it.
+    #[test]
+    fn each_spelling_names_the_datatype_it_is() {
+        let named = |text: &str| cell_dtype(text.as_bytes(), false, "", None);
+        assert_eq!(named("true"), DataType::Boolean);
+        assert_eq!(named("TRUE"), DataType::Boolean);
+        assert_eq!(named("7"), DataType::Int64);
+        assert_eq!(named("-7"), DataType::Int64);
+        assert_eq!(named("0"), DataType::Int64);
+        assert_eq!(named("0.5"), DataType::Float64);
+        assert_eq!(named("1e3"), DataType::Float64);
+        assert_eq!(named("2024-01-02"), DataType::Date32);
+        // A clock is a clock whatever hour it strikes: the padding rule reads
+        // whole numbers, and this is not one.
+        assert_eq!(named("09:30:00"), DataType::Time64(TimeUnit::Microsecond));
+        assert_eq!(named("23:30:00"), DataType::Time64(TimeUnit::Microsecond));
+        // A padded whole number is an identifier, and its padding is its value.
+        assert_eq!(named("007"), DataType::Utf8);
+        assert_eq!(named("00"), DataType::Utf8);
+        // Too wide for the column is text rather than a double that drops digits.
+        assert_eq!(named("123456789012345678901234567890"), DataType::Utf8);
+        assert_eq!(named("AAPL"), DataType::Utf8);
+        assert_eq!(named("NaN"), DataType::Utf8);
+        // Absence yields to whatever the column otherwise holds.
+        assert_eq!(named(""), DataType::Null);
+        assert_eq!(cell_dtype(b"", true, "", None), DataType::Utf8);
+    }
 }

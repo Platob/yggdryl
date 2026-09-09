@@ -122,6 +122,17 @@ pin an unsettled design by implementing a binding first.
   physical-line splitting, row-header capture, and body rendering. `Text<H>`
   only retains options and delegates ordinary `IOMedia`; never add a line
   value, custom iterator, schema builder, or line-only read/write method.
+- `rust/src/media/csv/` owns `Csv<H>`, the flat `CsvOptions`, the quote-aware
+  cell scan, logical-record joining, value-directed column typing, and the
+  positional row and cell surface. Record splitting is `media/text`'s physical
+  line splitter, unchanged: `linesep` terminates records and `separator`
+  delimits cells. `Csv<H>` is the one media wrapper that may add read and write
+  methods of its own, because a delimited row is addressable in the bytes that
+  store it; they name the type they answer - bytes, text, or `Scalar` - and add
+  no iterator, schema builder, or second options type.
+- `rust/src/media/stream.rs` owns the one decoded-leaf byte stream every text
+  encoding opens: the owned view of a borrowed handle, the fetch window, the
+  decoder stack, and the terminator suffix helpers. No encoding keeps a copy.
 - `rust/src/coding/{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`,
   `writer`, and an `IOBase` wrapper. `Codec` is the only dispatcher.
 - `rust/src/xxhash/` owns the xxHash protocol vocabulary: one-shot digests, the

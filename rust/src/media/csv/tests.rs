@@ -823,3 +823,405 @@ fn trimming_reaches_the_absence_spelling_too() {
         [None, Some("kept".to_owned())]
     );
 }
+
+#[test]
+fn a_write_reads_the_resource_with_the_dialect_it_was_given() {
+    // The stored resource is semicolon-separated. A write that probed it with
+    // default options would read its header as one column and put the rows in
+    // that one column instead.
+    let options = CsvOptions::new().try_with_separator(b';').unwrap();
+    let mut target = named("out.csv", b"symbol;quantity\nBRN;120\n");
+    let source = named("in.csv", b"symbol;quantity\nWTI;80\n");
+    let batches = collect(&source, &options);
+    target
+        .append_arrow_reader(
+            crate::arrow::batch_reader(batches[0].schema(), batches),
+            &options.clone().into(),
+        )
+        .unwrap();
+    assert_eq!(
+        target.read_all_bytes().unwrap(),
+        b"symbol;quantity\nBRN;120\nWTI;80\n"
+    );
+    assert_eq!(crate::media::csv::row_size(&target, &options).unwrap(), 2);
+}
+
+#[test]
+fn an_append_leaves_the_stored_records_exactly_as_they_were() {
+    // A comment line, CRLF terminators, and quoting the writer would not have
+    // chosen: an append that re-rendered the resource would lose all three.
+    let options = CsvOptions::new().try_with_comment(b'#').unwrap();
+    let stored = b"# a note\r\nsymbol,quantity\r\n\"BRN\",120\r\n";
+    let mut target = named("out.csv", stored);
+    let source = named("in.csv", b"symbol,quantity\nWTI,80\n");
+    let batches = collect(&source, &options);
+    target
+        .append_arrow_reader(
+            crate::arrow::batch_reader(batches[0].schema(), batches),
+            &options.clone().into(),
+        )
+        .unwrap();
+    let written = target.read_all_bytes().unwrap();
+    assert!(
+        written.starts_with(stored),
+        "{:?}",
+        String::from_utf8_lossy(&written)
+    );
+    assert_eq!(crate::media::csv::row_size(&target, &options).unwrap(), 2);
+}
+
+#[test]
+fn a_sidecar_does_not_retype_a_folder_of_data_files() {
+    let mut root = crate::holder::local::Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    root.push(format!("yggdryl-csv-sidecar-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    // The sidecar sorts first, so listing order alone would have it win.
+    std::fs::write(root.join("_manifest.csv"), b"name\npart-0\n").unwrap();
+
+    let field = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
+        .unwrap()
+        .required_field("row");
+    let mut leaf = crate::holder::Holder::folder(&root)
+        .unwrap()
+        .child_by_path("part-0.arrows")
+        .unwrap();
+    let ipc = RecordOptions::for_mime_type(&crate::MimeType::ARROW_STREAM)
+        .unwrap()
+        .with_field(field.clone());
+    leaf.overwrite_arrow_reader(
+        crate::arrow::batch_reader(field.clone().into_arrow_schema().unwrap(), []),
+        &ipc,
+    )
+    .unwrap();
+
+    let folder = crate::holder::Holder::folder(&root).unwrap();
+    assert!(matches!(
+        folder.record_options().unwrap(),
+        RecordOptions::Ipc(_)
+    ));
+
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_one_byte_terminator_is_quoted_like_any_other() {
+    for terminator in [LineSep::NUL, LineSep::RS, LineSep::new("|").unwrap()] {
+        let options = CsvOptions::new()
+            .try_with_linesep(terminator.clone())
+            .unwrap();
+        let mut stored = Vec::from(b"symbol".as_slice());
+        stored.extend_from_slice(terminator.as_bytes());
+        stored.extend_from_slice(b"BRN");
+        stored.extend_from_slice(terminator.as_bytes());
+        let mut media = Csv::new(named("t.csv", &stored)).with_options(options.clone());
+
+        let mut value = Vec::from(b"a".as_slice());
+        value.extend_from_slice(terminator.as_bytes());
+        value.extend_from_slice(b"b");
+        media.write_cell_bytes(0, 0, &value).unwrap();
+
+        assert_eq!(media.row_size().unwrap(), 1, "{terminator}");
+        assert_eq!(
+            media.read_cell_bytes(0, 0).unwrap().as_deref(),
+            Some(value.as_slice()),
+            "{terminator}"
+        );
+    }
+}
+
+#[test]
+fn a_value_the_dialect_cannot_spell_is_refused_rather_than_written() {
+    let mut options = CsvOptions::new();
+    options.set_quote(None).unwrap();
+    let mut media = Csv::new(named("t.csv", b"symbol\nBRN\n")).with_options(options);
+    let message = media
+        .write_cell_bytes(0, 0, b"a,b")
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(message.contains("no quote byte"), "{message}");
+    // The refusal is the whole outcome: nothing was written.
+    assert_eq!(media.handle().read_all_bytes().unwrap(), b"symbol\nBRN\n");
+}
+
+#[test]
+fn a_single_column_row_survives_being_empty_or_absent() {
+    let field = crate::DataType::from_fields([crate::DataType::Utf8.nullable_field("note")])
+        .unwrap()
+        .required_field("row");
+    let schema = field.clone().into_arrow_schema().unwrap();
+    let values: arrow_array::ArrayRef = std::sync::Arc::new(StringArray::from(vec![
+        Some("a"),
+        Some(""),
+        None,
+        Some("b"),
+    ]));
+    let batch = RecordBatch::try_new(schema.clone(), vec![values]).unwrap();
+
+    let mut target = named("out.csv", b"");
+    target
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(schema, [batch]),
+            &CsvOptions::new().into(),
+        )
+        .unwrap();
+    // Four rows in, four rows out: a blank line would have been two of them.
+    assert_eq!(
+        crate::media::csv::row_size(&target, &CsvOptions::new()).unwrap(),
+        4
+    );
+    // The one column has no room left to say which empty reading it holds, so
+    // absence reads back as the empty string. The row itself is never lost.
+    assert_eq!(
+        column_text(&collect(&target, &CsvOptions::new()), "note"),
+        [
+            Some("a".to_owned()),
+            Some(String::new()),
+            Some(String::new()),
+            Some("b".to_owned())
+        ]
+    );
+
+    // Naming the spelling gives the column that room back, and both round trip.
+    let named_null = CsvOptions::new().with_null("NULL");
+    let values: arrow_array::ArrayRef = std::sync::Arc::new(StringArray::from(vec![
+        Some("a"),
+        Some(""),
+        None,
+        Some("b"),
+    ]));
+    let schema = field.into_arrow_schema().unwrap();
+    let batch = RecordBatch::try_new(schema.clone(), vec![values]).unwrap();
+    let mut spelled = named("out.csv", b"");
+    spelled
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(schema, [batch]),
+            &named_null.clone().into(),
+        )
+        .unwrap();
+    assert_eq!(
+        spelled.read_all_bytes().unwrap(),
+        b"note\na\n\"\"\nNULL\nb\n"
+    );
+    assert_eq!(
+        column_text(&collect(&spelled, &named_null), "note"),
+        [
+            Some("a".to_owned()),
+            Some(String::new()),
+            None,
+            Some("b".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn a_truncated_quoted_cell_reads_as_the_value_it_was_carrying() {
+    // The resource ends inside a quoted cell: what is there is the value, not
+    // the quote that opened it, and its doubled quotes still spell one quote.
+    let source = named("t.csv", b"symbol,note\nBRN,\"said \"\"buy\"\" and");
+    let batches = collect(&source, &CsvOptions::new());
+    assert_eq!(
+        column_text(&batches, "note"),
+        [Some("said \"buy\" and".to_owned())]
+    );
+}
+
+#[test]
+fn a_configured_escape_still_reads_a_doubled_quote_as_one() {
+    let options = CsvOptions::new().try_with_escape(b'\\').unwrap();
+    let source = named("t.csv", b"note\n\"said \"\"buy\"\" then \\\"sold\\\"\"\n");
+    let batches = collect(&source, &options);
+    assert_eq!(
+        column_text(&batches, "note"),
+        [Some("said \"buy\" then \"sold\"".to_owned())]
+    );
+}
+
+#[test]
+fn trimming_never_eats_the_separator_or_one_edge_of_a_quoted_cell() {
+    // A whitespace separator with trimming on: the empty cells stay cells.
+    let spaced = CsvOptions::new()
+        .try_with_separator(b' ')
+        .unwrap()
+        .with_trim(true);
+    let source = named("t.csv", b"a b c\n1  3\n");
+    let batches = collect(&source, &spaced);
+    assert_eq!(column_text(&batches, "b"), [None]);
+
+    // And quoting is symmetric: whitespace on either side of a quoted cell is
+    // edge whitespace, not content on one side and not the other.
+    let options = CsvOptions::new().with_trim(true);
+    let source = named("t.csv", b"note,other\n  \"kept\"  ,x\n");
+    let batches = collect(&source, &options);
+    assert_eq!(column_text(&batches, "note"), [Some("kept".to_owned())]);
+}
+
+#[test]
+fn a_zoned_instant_is_written_by_the_reading_that_produced_it() {
+    // Inference answers a zoned column for a reading that carries an offset,
+    // and Arrow's formatter cannot name that zone without a zone database. The
+    // column is still writable, through this crate's own reading of it.
+    let source = named("t.csv", b"seen_at\n2024-01-02T03:04:05+02:00\n");
+    let options = CsvOptions::new();
+    assert!(matches!(
+        dtype(&source, &options, 0),
+        DataType::DateTime64 { .. }
+    ));
+    let batches = collect(&source, &options);
+    let mut target = named("out.csv", b"");
+    target
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(batches[0].schema(), batches),
+            &options.clone().into(),
+        )
+        .unwrap();
+    let written = target.read_all_bytes().unwrap();
+    assert!(
+        written.starts_with(b"seen_at\n2024-01-02T01:04:05"),
+        "{}",
+        String::from_utf8_lossy(&written)
+    );
+    // And it reads back as the same instant.
+    assert_eq!(collect(&target, &options)[0].num_rows(), 1);
+}
+
+#[test]
+fn a_clock_before_ten_is_a_clock_and_a_double_keeps_its_readings() {
+    let clocks = named("t.csv", b"at\n09:30:00\n11:45:00\n");
+    assert_eq!(
+        dtype(&clocks, &CsvOptions::new(), 0),
+        DataType::Time64(crate::TimeUnit::Microsecond)
+    );
+
+    // A double column round trips the readings a double has.
+    let field = crate::DataType::from_fields([crate::DataType::Float64.nullable_field("v")])
+        .unwrap()
+        .required_field("row");
+    let schema = field.into_arrow_schema().unwrap();
+    let values: arrow_array::ArrayRef = std::sync::Arc::new(arrow_array::Float64Array::from(vec![
+        1.5,
+        f64::NAN,
+        f64::INFINITY,
+    ]));
+    let batch = RecordBatch::try_new(schema.clone(), vec![values]).unwrap();
+    let mut target = named("out.csv", b"");
+    target
+        .overwrite_arrow_reader(
+            crate::arrow::batch_reader(schema, [batch]),
+            &CsvOptions::new().into(),
+        )
+        .unwrap();
+    let declared = crate::Field::from_str("row: struct<v: float64> not null").unwrap();
+    let mut typed = CsvOptions::new();
+    typed.set_field(declared);
+    let read = collect(&target, &typed);
+    let column = read[0]
+        .column(0)
+        .as_any()
+        .downcast_ref::<arrow_array::Float64Array>()
+        .unwrap();
+    assert_eq!(column.value(0), 1.5);
+    assert!(column.value(1).is_nan());
+    assert!(column.value(2).is_infinite());
+}
+
+#[test]
+fn a_repeated_header_name_is_made_unique_rather_than_refusing_the_resource() {
+    let source = named("t.csv", b"a,a,a\n1,2,3\n");
+    let field = crate::media::csv::read_field(&source, &CsvOptions::new()).unwrap();
+    assert_eq!(field.get_field(0).unwrap().name(), "a");
+    assert_eq!(field.get_field(1).unwrap().name(), "a_2");
+    assert_eq!(field.get_field(2).unwrap().name(), "a_3");
+    assert_eq!(
+        column_int(&collect(&source, &CsvOptions::new()), "a_3"),
+        [Some(3)]
+    );
+}
+
+#[test]
+fn a_declared_root_that_is_not_a_row_shape_is_refused_by_name() {
+    let mut options = CsvOptions::new();
+    options.set_dtype(Some(crate::DataType::Int64));
+    let source = named("t.csv", b"v\n1\n");
+    let message = crate::media::csv::read_field(&source, &options)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(message.contains("struct root datatype"), "{message}");
+}
+
+#[test]
+fn the_columns_are_discovered_even_when_no_row_is_sampled() {
+    let options = CsvOptions::new().with_header(false).with_infer_row_size(0);
+    let source = named("t.csv", b"BRN,120\n");
+    let field = crate::media::csv::read_field(&source, &options).unwrap();
+    assert_eq!(field.field_len(), 2);
+}
+
+#[test]
+fn the_positional_surface_answers_the_column_that_was_declared() {
+    let field =
+        crate::Field::from_str("row: struct<id: int64, px: decimal128(10, 2)> not null").unwrap();
+    let mut media = csv(b"id,px\n1,10.25\n2,11.50\n").with_field(field);
+
+    // Read: the declared column, not the text the cells were read as.
+    assert_eq!(
+        media.read_cell_scalar(0, 1).unwrap(),
+        Some(Scalar::d128(1_025, 2))
+    );
+
+    // Write: the caller's own declared value, rendered as that column spells it.
+    media
+        .write_cell_scalar(1, 1, &Scalar::d128(1_275, 2))
+        .unwrap();
+    assert_eq!(
+        media.handle().read_all_bytes().unwrap(),
+        b"id,px\n1,10.25\n2,12.75\n"
+    );
+    assert_eq!(
+        media.read_cell_scalar(1, 1).unwrap(),
+        Some(Scalar::d128(1_275, 2))
+    );
+}
+
+#[test]
+fn counting_rows_answers_the_same_wrapped_or_not() {
+    // A ragged resource: counting records is not typing them, so both answer.
+    let source = named("t.csv", b"a,b\n1,2\n3,4,5\n6,7\n");
+    let options = CsvOptions::new();
+    assert_eq!(crate::media::csv::row_size(&source, &options).unwrap(), 3);
+    assert_eq!(source.row_size().unwrap(), 3);
+    assert_eq!(Csv::new(source).row_size().unwrap(), 3);
+}
+
+#[test]
+fn a_row_is_not_added_where_a_header_belongs() {
+    let mut media = csv(b"");
+    let message = media
+        .append_row_scalar(&Scalar::from_sequence([Scalar::from("BRN")]))
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(message.contains("header"), "{message}");
+    assert_eq!(media.handle().size(), 0);
+}
+
+#[test]
+fn an_added_row_is_terminated_the_way_the_resource_already_is() {
+    let mut media = csv(b"symbol,quantity\r\nBRN,120\r\n");
+    media
+        .append_row_scalar(&Scalar::from_sequence([
+            Scalar::from("WTI"),
+            Scalar::from(80_i64),
+        ]))
+        .unwrap();
+    assert_eq!(
+        media.handle().read_all_bytes().unwrap(),
+        b"symbol,quantity\r\nBRN,120\r\nWTI,80\r\n"
+    );
+    assert_eq!(media.row_size().unwrap(), 2);
+}

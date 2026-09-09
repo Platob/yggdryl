@@ -7,9 +7,11 @@
 
 use std::io::Read;
 
-use crate::Result;
+use smol_str::format_smolstr;
+
 use crate::media::text::LineSep;
 use crate::media::text::reader::Lines;
+use crate::{Error, Result};
 
 use super::scan::{Dialect, Span, split_cells};
 
@@ -29,6 +31,10 @@ pub(crate) struct Record<'record> {
 pub(crate) struct Records<R> {
     lines: Lines<R>,
     dialect: Dialect,
+    /// The record being assembled. It grows only while a quote is open, and
+    /// only up to `max_record_byte_size`, which is the bound that keeps an
+    /// unclosed quote in an adversarial resource from joining the whole of it
+    /// into one value.
     bytes: Vec<u8>,
     spans: Vec<Span>,
     terminator: Vec<u8>,
@@ -97,6 +103,19 @@ impl<R: Read> Records<R> {
             // why the splitter reports the bytes it found rather than the ones
             // a write would have produced.
             while !split_cells(&self.bytes, &self.dialect, &mut self.spans) {
+                if let Some(bound) = self.dialect.max_record_byte_size {
+                    if self.bytes.len() as u64 > bound {
+                        self.done = true;
+                        return Some(Err(Error::InvalidRecord {
+                            path: format_smolstr!("$[{start}]"),
+                            reason: format_smolstr!(
+                                "expected a record within {bound} bytes, got one still open \
+                                 after {} from byte {start}",
+                                self.bytes.len()
+                            ),
+                        }));
+                    }
+                }
                 self.bytes.extend_from_slice(&self.terminator);
                 self.terminator.clear();
                 match read_line(

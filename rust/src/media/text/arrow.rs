@@ -675,10 +675,11 @@ pub(crate) fn parse_capture(
     };
     match dtype {
         DataType::Utf8 => Ok(Scalar::from(value)),
-        DataType::Boolean => value
-            .parse::<bool>()
-            .map(Scalar::from)
-            .map_err(|_| invalid()),
+        // Case is spelling, not meaning: a column typed boolean reads TRUE and
+        // True as readily as true, which is how real corpora write it.
+        DataType::Boolean if value.eq_ignore_ascii_case("true") => Ok(Scalar::from(true)),
+        DataType::Boolean if value.eq_ignore_ascii_case("false") => Ok(Scalar::from(false)),
+        DataType::Boolean => Err(invalid()),
         DataType::Int64 => value
             .parse::<i64>()
             .map(Scalar::from)
@@ -812,7 +813,7 @@ pub(crate) fn append_arrow_reader(
     if codec == Codec::Identity {
         let rendered = encoded_bodies(batches, options, codec, options.level())?;
         let mut offset = handle.size();
-        if offset > 0 && !ends_with(handle, terminator)? {
+        if offset > 0 && !crate::media::stream::ends_with(handle, terminator)? {
             handle.pwrite_all(offset, terminator)?;
             offset += terminator.len() as u64;
         }
@@ -833,7 +834,7 @@ pub(crate) fn append_arrow_reader(
                 if read == 0 {
                     break;
                 }
-                update_suffix(&mut suffix, &chunk[..read], terminator.len());
+                crate::media::stream::update_suffix(&mut suffix, &chunk[..read], terminator.len());
                 encoder.write_all(&chunk[..read])?;
             }
         }
@@ -947,28 +948,5 @@ impl BodyColumn {
             output.extend_from_slice(terminator);
         }
         Ok(())
-    }
-}
-
-fn ends_with(handle: &(impl IOBase + ?Sized), suffix: &[u8]) -> Result<bool> {
-    let size = handle.size();
-    if size < suffix.len() as u64 {
-        return Ok(false);
-    }
-    Ok(handle.read_range_bytes(size - suffix.len() as u64, suffix.len())? == suffix)
-}
-
-fn update_suffix(suffix: &mut Vec<u8>, bytes: &[u8], width: usize) {
-    if width == 0 {
-        return;
-    }
-    if bytes.len() >= width {
-        suffix.clear();
-        suffix.extend_from_slice(&bytes[bytes.len() - width..]);
-        return;
-    }
-    suffix.extend_from_slice(bytes);
-    if suffix.len() > width {
-        suffix.drain(..suffix.len() - width);
     }
 }

@@ -16,7 +16,8 @@ the positional row and cell access a delimited resource can answer.
 | `null` | the cell text that spells absence in an *unquoted* cell; default the empty cell |
 | `trim` | unquoted cells drop their edge ASCII whitespace; default `false` |
 | `autotype` | infer column datatypes from the cells; default `true`, `false` reads every column as `utf8` |
-| `infer_row_size` | rows inference reads; default `DEFAULT_INFER_ROW_SIZE` (1024), `None` reads every row |
+| `infer_row_size` | rows inference reads; default `DEFAULT_INFER_ROW_SIZE` (1024), `None` reads every row. One record is read whatever the bound says, because without a header its width is what names the columns |
+| `max_record_byte_size` | bound on one record's decoded bytes; unset is unbounded. A record over it is refused, not truncated: a shortened record is a row with cells missing |
 | `timezone` | zone applied to inferred offset-free timestamps |
 
 One byte cannot carry two roles: a separator, quote, escape, or comment marker
@@ -66,14 +67,20 @@ refusal.
 
 | cells | column |
 | --- | --- |
-| `true`, `FALSE` | `boolean` |
+| `true`, `FALSE` | `boolean`, read in whatever case it was written |
 | whole numbers fitting signed 64 bits | `int64` |
-| finite decimals or exponents | `float64` |
+| decimals or exponents | `float64` |
 | ISO dates | `date32` |
 | ISO clock readings | `time64(us)` |
 | ISO datetimes without an offset | `datetime64(us)` in `timezone`, naive unless one is set |
 | ISO timestamps with an offset | `datetime64(us, UTC)` unless `timezone` names another |
+| a whole number with leading zeros (`007`), or one too wide for signed 64 bits | `utf8` |
 | anything else, or two readings that do not meet | `utf8` |
+
+The padding rule reads whole numbers only, so `09:30:00` is a clock and `0.5` a
+double. A repeated header name takes the first free `name_N`, because a CSV
+header carries no uniqueness rule and refusing the resource would answer a
+question the file never asked.
 
 Every inferred column is nullable: the sample is a prefix, and an unsampled row
 may still spell absence. A declared `dtype` turns inference off. The header still
@@ -121,6 +128,12 @@ one positional read plus a bounded forward scan.
 A replacement of the same width is one positional write. Any other width splices:
 the tail moves in bounded windows, so nothing is held in memory.
 
+The index is what an opened handle holds. A closed one scans from the first data
+record on every ask, which is one pass rather than the map it would build and
+drop; `open` is what turns a positional read into an anchor plus a bounded scan.
+A declared column answers as declared here too: the cells are read as text where
+they cannot spell it, and the same cast the batch path applies finishes the row.
+
 === "Rust"
 
     ```rust
@@ -157,7 +170,7 @@ A cell is quoted only when its bytes need it.
 | write | behavior |
 | --- | --- |
 | overwrite | header, when `header` is set, then every row; the value is staged whole and published once, so a batch that fails to render leaves the resource as it was |
-| append | rows after the current final record, with no second header; a missing terminator is added first. A resource holding no records has no header either, so it is filled rather than appended to |
+| append | rows after the current final record, with no second header; a missing terminator is added first, spelled the way the resource already spells it. A resource holding no records has no header either, so it is filled rather than appended to |
 | append column order | the stored header decides it, so a batch naming the same columns in another order still lands in the columns it named |
 | merge | supported: a delimited row has identity, unlike a text line |
 | coded handle | the whole value is re-encoded, because a coding has no addressable tail |
@@ -174,7 +187,17 @@ A cell is quoted only when its bytes need it.
 - A quoted cell whose quote never closes before the resource ends -> read as content, so a truncated file still yields every complete row before it.
 - `infer_row_size` -> a bound, not a hint: a row past it never widens a column.
 - A positional write on a coded resource (`trades.csv.gz`) -> refused by name; a coding's output offset is not addressable in its input. Positional *reads* still work, by decoding the prefix.
+- A quoted cell whose quote never closes before the resource ends -> read as the value it was carrying, doubled quotes collapsed, without the quote that opened it.
+- A repeated header name -> the first free `name_N`; a header cell that is empty -> its positional name, made unique the same way.
+- A declared root that is not a Struct -> refused by name, at the option that declared it.
+- A value the dialect cannot spell - a separator or terminator in a cell with `quote` unset -> the write is refused rather than producing a record the read would split.
+- A record whose cells all render to nothing -> written as one quoted empty cell, because a blank line carries no record. In a one-column table under the default spelling, absence and the empty string are then the same cell: name a `null` spelling to tell them apart.
+- A double column -> keeps the readings a double has, `NaN` and infinities included.
+- An instant carrying an offset -> a zoned column, written through this crate's own reading of it when Arrow's formatter cannot name the zone.
+- A record still open past `max_record_byte_size` -> refused, naming the byte it started at.
+- `append_row_scalar` on an empty resource -> refused: there is no header to add a row under, and a row written where one belongs reads back as one.
 - `Media::open` on a `text/csv` name -> `Media::Csv`; `RecordOptions::for_media_type` answers `RecordOptions::Csv`.
+- A folder holding both `.csv` and a structured encoding -> the structured one names the folder; a `.csv` sidecar beside Parquet data files is a sidecar.
 
 ## Commands
 

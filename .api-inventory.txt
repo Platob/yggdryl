@@ -829,6 +829,9 @@ pub struct CsvOptions
   pub const fn infer_row_size(&self) -> Option<usize>
   pub const fn set_infer_row_size(&mut self, infer_row_size: Option<usize>)
   pub const fn with_infer_row_size(self, infer_row_size: usize) -> Self
+  pub const fn max_record_byte_size(&self) -> Option<u64>
+  pub const fn set_max_record_byte_size(&mut self, size: Option<u64>)
+  pub const fn with_max_record_byte_size(self, size: u64) -> Self
   pub const fn timezone(&self) -> Option<&Timezone>
   pub fn set_timezone(&mut self, timezone: Option<Timezone>)
   pub fn with_timezone(self, timezone: Timezone) -> Self

@@ -112,6 +112,34 @@ pub(crate) fn owned_decoded_reader<H: IOBase + 'static>(
     }
 }
 
+/// Return whether the stored value already ends with `suffix`.
+pub(crate) fn ends_with(handle: &(impl IOBase + ?Sized), suffix: &[u8]) -> Result<bool> {
+    let size = handle.size();
+    if size < suffix.len() as u64 {
+        return Ok(false);
+    }
+    Ok(handle.read_range_bytes(size - suffix.len() as u64, suffix.len())? == suffix)
+}
+
+/// Retain only the last `width` bytes seen, across chunk boundaries.
+///
+/// An append over a coding rewrites the whole value, so it learns whether the
+/// stored bytes ended with a terminator while streaming past them once.
+pub(crate) fn update_suffix(suffix: &mut Vec<u8>, bytes: &[u8], width: usize) {
+    if width == 0 {
+        return;
+    }
+    if bytes.len() >= width {
+        suffix.clear();
+        suffix.extend_from_slice(&bytes[bytes.len() - width..]);
+        return;
+    }
+    suffix.extend_from_slice(bytes);
+    if suffix.len() > width {
+        suffix.drain(..suffix.len() - width);
+    }
+}
+
 /// One lazily opened filesystem stream retained for the complete decode.
 struct BoundReader {
     bound: Option<crate::holder::fs::BoundLocation>,

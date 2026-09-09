@@ -23,7 +23,7 @@ use crate::{IOBase, IOMedia};
 use super::options::CsvOptions;
 
 #[cfg(feature = "arrow")]
-use super::arrow::{Layout, ends_with, read_layout, render_value, write_row};
+use super::arrow::{Layout, cast_row, read_layout, render_value, stored_terminator, write_row};
 #[cfg(feature = "arrow")]
 use super::index::RowIndex;
 #[cfg(feature = "arrow")]
@@ -137,14 +137,8 @@ impl<H: IOBase> Csv<H> {
     ///
     /// Returns a read or decoding failure.
     pub fn row_size(&self) -> Result<u64> {
-        if let Some(cached) = self.cached_index.get() {
-            return Ok(cached.rows());
-        }
-        if self.opened {
-            return Ok(self.index()?.rows());
-        }
-        // A closed count needs no map of where each row starts, so it streams
-        // rather than paying for one it would immediately drop.
+        // One counter, whatever this handle has cached: wrapping a resource
+        // must not change what counting its rows answers.
         super::arrow::row_size(&self.handle, &self.options)
     }
 
@@ -159,7 +153,7 @@ impl<H: IOBase> Csv<H> {
             return Ok(None);
         };
         let dtypes = layout
-            .field
+            .read
             .fields()
             .iter()
             .map(|column| column.dtype().clone())
@@ -170,7 +164,7 @@ impl<H: IOBase> Csv<H> {
             offset: record.offset,
             stride: record.stride,
         };
-        super::arrow::record_scalar(
+        let decoded = super::arrow::record_scalar(
             &borrowed,
             &self.options.dialect(),
             &dtypes,
@@ -178,8 +172,13 @@ impl<H: IOBase> Csv<H> {
             self.options.timezone(),
             row,
             self.handle.url(),
-        )
-        .map(Some)
+        )?;
+        if layout.is_exact() {
+            return Ok(Some(decoded));
+        }
+        // A declared column the cells cannot spell was read as text; the same
+        // cast the batch path applies makes it the column that was declared.
+        cast_row(&layout.read, &layout.field, &decoded, self.options.safe).map(Some)
     }
 
     /// Read one cell's exact bytes, unescaped, or `None` past the end.
@@ -266,7 +265,7 @@ impl<H: IOBase> Csv<H> {
             &dialect,
             value == self.options.null().as_bytes(),
             &mut rendered,
-        );
+        )?;
         self.invalidate();
         splice(&mut self.handle, start, end, &rendered)
     }
@@ -331,12 +330,23 @@ impl<H: IOBase> Csv<H> {
     /// Returns a coded-resource refusal, a value the columns refuse, or a read
     /// or write failure.
     pub fn append_row_scalar(&mut self, value: &Scalar) -> Result<()> {
+        if self.options.header() && self.handle.size() == 0 {
+            // There is no header to add a row under, and a row written where
+            // one belongs is read back as one.
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$"),
+                reason: SmolStr::new_static(
+                    "expected a resource with a header to add a row to, got an empty one - \
+                     write the rows so the header is written with them",
+                ),
+            });
+        }
         let layout = self.layout()?;
-        let terminator = self.options.output_linesep().to_vec();
+        let terminator = stored_terminator(&self.handle, &self.options)?;
         let mut line = Vec::new();
         write_row(&layout.field, value, &self.options, &terminator, &mut line)?;
         let size = self.handle.size();
-        if size > 0 && !ends_with(&self.handle, &terminator)? {
+        if size > 0 && !crate::media::stream::ends_with(&self.handle, &terminator)? {
             // The stored final record never got its terminator, so the added
             // row would otherwise continue it rather than follow it.
             let mut opened = terminator.clone();
@@ -374,7 +384,10 @@ impl<H: IOBase> Csv<H> {
                 Some(anchor) => anchor,
                 None => return Ok(None),
             },
-            false => (self.layout()?.data_start, row),
+            false => (
+                super::arrow::read_data_start(&self.handle, &self.options)?,
+                row,
+            ),
         };
         read_record(&self.handle, &self.options.dialect(), offset, skip)
     }
@@ -427,10 +440,14 @@ impl<H: IOBase> Csv<H> {
     }
 
     /// Return the row index, cached for an opened session.
+    ///
+    /// The index needs where the rows begin, not what they hold, so it does not
+    /// resolve the columns: reaching a row must not depend on an inference a
+    /// ragged resource can refuse.
     fn index(&self) -> Result<RowIndex> {
         let build = || {
-            let layout = self.layout()?;
-            RowIndex::build(&self.handle, &self.options.dialect(), layout.data_start)
+            let data_start = super::arrow::read_data_start(&self.handle, &self.options)?;
+            RowIndex::build(&self.handle, &self.options.dialect(), data_start)
         };
         if !self.opened {
             return build();

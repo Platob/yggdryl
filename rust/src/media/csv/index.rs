@@ -50,11 +50,6 @@ impl RowIndex {
         Ok(index)
     }
 
-    /// Return how many data records the resource holds.
-    pub(crate) const fn rows(&self) -> u64 {
-        self.rows
-    }
-
     /// Return the nearest anchor at or before `row`, and the rows to skip.
     ///
     /// `None` means the resource holds no such row.
