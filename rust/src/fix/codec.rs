@@ -936,7 +936,17 @@ impl FixCodec {
             // not a second arrival: it fills the row and records no entry,
             // so the arrival record and the wire it re-emits stay exact.
             let (declared, pairs) = self.ullink_pairs(row);
-            builder.begin_nested(declared);
+            // The row's own version, never the frame's: a `BeginString` states
+            // what the session speaks and a row inside a data field is
+            // routinely written to a later FIX than that. It states none of
+            // its own, so the inference lands on the dictionary's newest,
+            // which is the best reading of a row nothing dates.
+            let held: Vec<(&[u8], &[u8])> = pairs
+                .iter()
+                .map(|(key, value)| (key.as_ref(), *value))
+                .collect();
+            let dated = self.version.or_else(|| self.infer_version(&held, &branch));
+            builder.begin_nested(declared, dated);
             for (key, value) in pairs {
                 if self.is_absent(value) {
                     continue;

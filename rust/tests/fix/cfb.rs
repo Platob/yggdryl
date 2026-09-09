@@ -1399,6 +1399,40 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
             .is_none()
     );
 
+    // Each names the other's tag, so a reader holding either reaches the one
+    // the file said the same thing about.
+    assert_eq!(
+        registry.field_by_tag(44).unwrap().as_fix().tags().unwrap(),
+        vec![3044]
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(3044)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![44]
+    );
+
+    // Three tags sharing a spelling link none of each other: an alternate
+    // identifier names one field, and three would each claim the other two.
+    let crowded = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="float" />
+		<vocabulary-tag name="3044" alt="Price" type="float" />
+		<vocabulary-tag name="3045" alt="Price" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(crowded), Some(&branch())).expect("a readable CBlock");
+    for tag in [44, 3044, 3045] {
+        let field = registry.field_by_tag(tag).expect("a declared tag");
+        assert_eq!(field.name(), tag.to_string());
+        assert!(field.as_fix().tags().unwrap().is_empty(), "tag {tag}");
+    }
+
     // The vocabulary door reads the same file the same way.
     let fields =
         FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).expect("a readable CBlock");
@@ -1420,6 +1454,55 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
     assert_eq!(registry.field_by_tag(44).unwrap().name(), "44");
     assert_eq!(registry.field_by_tag(44).unwrap().display(), Some("3044"));
     assert_eq!(registry.field_by_tag(3044).unwrap().name(), "lastpx");
+
+    // Contended by the fold the dictionary hashes a name with, not by the
+    // spelling: a name that differs only by a separator is the same name
+    // there, so it contends here.
+    let separated = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Last_Px" type="float" />
+		<vocabulary-tag name="3044" alt="LastPx" type="float" />
+	</vocabulary>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(separated), Some(&branch())).expect("a readable CBlock");
+    assert_eq!(registry.field_by_tag(44).unwrap().name(), "44");
+    assert_eq!(
+        registry.field_by_tag(44).unwrap().display(),
+        Some("Last_Px")
+    );
+    assert_eq!(registry.field_by_tag(3044).unwrap().name(), "3044");
+    assert!(registry.get_field_by_name("LastPx", None).is_none());
+
+    // A map naming that spelling decodes neither: one code set and nothing
+    // in the file saying which of the two tags it belongs on.
+    let mapped = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary>
+		<vocabulary-tag name="44" alt="Price" type="string" />
+		<vocabulary-tag name="3044" alt="Price" type="string" />
+		<vocabulary-tag name="4" alt="AdvSide" type="char" />
+	</vocabulary>
+	<maps>
+		<map name="Price"><entries><entry key="1" value="one" /></entries></map>
+		<map name="AdvSide"><entries><entry key="B" value="buy" /></entries></map>
+	</maps>
+</cplugin-configuration>"#;
+    let (registry, _) =
+        FixRegistry::from_cfb_file(&handle(mapped), Some(&branch())).expect("a readable CBlock");
+    for tag in [44, 3044] {
+        assert_eq!(
+            registry.field_by_tag(tag).unwrap().as_fix().codes().count(),
+            0,
+            "tag {tag} keeps no code set from an ambiguous map",
+        );
+    }
+    assert_eq!(
+        registry.field_by_tag(4).unwrap().as_fix().codes().count(),
+        1,
+        "a map naming one tag still decodes it",
+    );
 
     // Two branches are two namespaces, so a venue's own spelling of a name
     // FIX already has is not contended by it.
@@ -1778,6 +1861,20 @@ const HEDGED: &str = r#"<?xml version="1.0" encoding="US-ASCII"?>
 			</grammar>
 		</grammar>
 	</grammar-binding>
+	<normalization-binding>
+		<normalization type="inbound">
+			<tag-normalization tag-name="HEDGE_CURRENCY" part="body">
+				<mapping-expression>
+					<expression value="$11025" />
+				</mapping-expression>
+			</tag-normalization>
+			<tag-normalization tag-name="FIXINGCENTER" part="body">
+				<mapping-expression>
+					<expression value="$11033" />
+				</mapping-expression>
+			</tag-normalization>
+		</normalization>
+	</normalization-binding>
 </cplugin-configuration>
 "#;
 
@@ -1802,6 +1899,43 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
             .get_field_by_name("HedgeCurrency", Some(&branch()))
             .is_none(),
         "a spelling two tags share names neither",
+    );
+    // Each carries the other's tag, so the pair the file made is recoverable
+    // from either half of it.
+    assert_eq!(
+        registry
+            .field_by_tag(11024)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![11025]
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(11025)
+            .unwrap()
+            .as_fix()
+            .tags()
+            .unwrap(),
+        vec![11024]
+    );
+
+    // A binding cannot spell a contended name back onto one of the two: the
+    // fold `HEDGE_CURRENCY` reaches is the one both tags claim, so it is a
+    // name for neither there too. A spelling one tag alone answers to is
+    // still added, which is what the pass is read for.
+    assert!(
+        registry
+            .get_field_by_name("HEDGE_CURRENCY", Some(&branch()))
+            .is_none(),
+        "a normalization does not undo what the vocabulary left unnamed",
+    );
+    assert_eq!(
+        registry
+            .get_field_by_name("FixingCenter", Some(&branch()))
+            .and_then(|held| held.as_fix().tag().ok().flatten()),
+        Some(11033),
     );
 
     // The message says which is which: the file bound one tag per constraint,

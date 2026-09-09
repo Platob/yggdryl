@@ -286,9 +286,9 @@ pub(super) struct Builder<'registry> {
     /// frame with no counter, which is most of them, so the fast path
     /// reads one empty vector.
     open: Vec<OpenGroup>,
-    /// The type the line's own frame stated, kept while a row nested inside
-    /// one of its data fields is read against its own.
-    framed: Option<&'registry super::MsgType>,
+    /// The type and the version the line's own frame stated, kept while a row
+    /// nested inside one of its data fields is read against its own.
+    framed: (Option<&'registry super::MsgType>, Option<Version>),
 }
 
 /// One repeating group a numeric frame has opened and not yet closed.
@@ -329,7 +329,7 @@ impl<'registry> Builder<'registry> {
             recorded: Vec::with_capacity(capacity),
             outer: None,
             open: Vec::new(),
-            framed: None,
+            framed: (None, None),
         }
     }
 
@@ -447,24 +447,34 @@ impl<'registry> Builder<'registry> {
     /// Opens the reading of a row nested inside one of the line's data
     /// fields: what follows fills the row and records nothing.
     ///
-    /// The row is a message of its own type, so it is read against that type
-    /// rather than against the frame's. A bridge writes a whole trade capture
-    /// into a `35=UL` frame's `XmlData`, and `UL` says nothing about the
-    /// groups that row nests or the spellings its dialect gave two tags. The
-    /// line's own type is restored by [`Builder::end_nested`], and a row that
-    /// declares none keeps it throughout.
-    pub(super) fn begin_nested(&mut self, message: Option<&'registry super::MsgType>) {
+    /// The row is a message of its own type at its own version, so it is read
+    /// against both rather than against the frame's. A bridge writes a whole
+    /// trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing
+    /// about the groups that row nests or the spellings its dialect gave two
+    /// tags; the frame's `BeginString` is the envelope's version and says
+    /// nothing about which FIX the row inside it was written to, which is
+    /// routinely a later one than the session speaks. The line's own type and
+    /// version are restored by [`Builder::end_nested`], so what the message
+    /// says it is stays what the frame said.
+    pub(super) fn begin_nested(
+        &mut self,
+        message: Option<&'registry super::MsgType>,
+        version: Option<Version>,
+    ) {
         self.outer = Some(self.slots.len());
-        self.framed = self.message;
+        self.framed = (self.message, self.version);
         if message.is_some() {
             self.message = message;
+        }
+        if version.is_some() {
+            self.version = version;
         }
     }
 
     /// Closes the nested reading.
     pub(super) fn end_nested(&mut self) {
         self.outer = None;
-        self.message = self.framed;
+        (self.message, self.version) = self.framed;
     }
 
     /// Whether the line itself already built a child of this name, which a
@@ -632,8 +642,7 @@ impl<'registry> Builder<'registry> {
         if let Some((known, tag)) = self.resolve(key) {
             return (stated(known), tag, true);
         }
-        if let Some(declared) = in_scope(scope, key) {
-            let tag = declared.as_fix().tag().ok().flatten().unwrap_or(0);
+        if let Some((declared, tag)) = in_scope(scope, key) {
             return (stated(declared), tag, true);
         }
         let name = folded_name(key);
@@ -1608,15 +1617,21 @@ fn stated(known: &Field) -> Field {
     field
 }
 
-/// The child of one declared level that a key names, when it names one.
+/// The child of one declared level that a key names, when it names one, and
+/// the tag that child carries.
 ///
 /// Folded exactly as the dictionary folds a name, so a key resolves the same
-/// way whichever of the two answered it. Only a scalar child answers: a
-/// nested level is addressed by its own located key and never by a leaf.
-fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<&'held Field> {
-    scope
-        .iter()
-        .find(|held| !held.dtype().is_nested() && crate::types::folds_equal(held.name(), key))
+/// way whichever of the two answered it. Only a scalar child carrying a tag
+/// answers: a nested level is addressed by its own located key and never by a
+/// leaf, and a child no tag identifies explains a key no better than the key
+/// explains itself.
+fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i32)> {
+    scope.iter().find_map(|held| {
+        if held.dtype().is_nested() || !crate::types::folds_equal(held.name(), key) {
+            return None;
+        }
+        Some((held, held.as_fix().tag().ok()??))
+    })
 }
 
 /// The members one repeating group declares, as a level a key resolves in.

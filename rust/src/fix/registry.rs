@@ -179,6 +179,17 @@ pub(super) fn name_digest(branch: &FixBranch, name: &str, domain: u64) -> u64 {
     state.finish()
 }
 
+/// The key one name is indexed under in one branch.
+///
+/// A dictionary holds one field per name per branch, and this is what decides
+/// which two spellings are one name: the crate's fold, seeded by the branch.
+/// [`super::cfb`] settles a CBlock's contended spellings against exactly this
+/// rather than against the spelling, so a file the parser leaves named is a
+/// file this dictionary accepts.
+pub(super) fn name_key(branch: &FixBranch, name: &str) -> u64 {
+    name_digest(branch, name, NAME_SEED)
+}
+
 enum Held<'a> {
     Id(&'a FixBranch, i32),
     AlternateId(&'a FixBranch, i32),

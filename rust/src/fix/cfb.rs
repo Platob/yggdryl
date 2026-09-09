@@ -84,9 +84,18 @@
 //! So it names neither. A tag whose `alt` another tag also declares, and a
 //! tag whose `alt` is another tag's own decimal, are named by their own
 //! decimal - the identity a tag declaring no `alt` already takes - and keep
-//! the declared spelling as their `display`. That leaves every tag named,
-//! always, and it is the same reading the normalization section below
-//! applies to a name that means a tag only sometimes.
+//! the declared spelling as their `display`. Contended by the key a
+//! dictionary indexes a name under rather than by the spelling, because that
+//! key folds case and drops `_`, `-` and space: `Hedge_Currency` beside
+//! `HedgeCurrency` is one name there and has to be one name here. That leaves
+//! every tag named, always, and it is the same reading the normalization
+//! section below applies to a name that means a tag only sometimes.
+//!
+//! The two keep each other. Each records the other's tag among its alternate
+//! tags, so a reader holding either half of the pair reaches the one the file
+//! said the same thing about; three tags sharing a spelling record nothing,
+//! because an alternate identifier names one field and three would each claim
+//! the other two.
 //!
 //! What restores the spelling is the message. A `tag-constraint` names one
 //! tag, so a message root, a component and a group each carry the spelling at
@@ -193,7 +202,6 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::types::normalized;
 use crate::{DataType, Error, Field, FixField, IOBase, Result, Url, Version};
 
 use super::{FixBranch, FixCode, FixId, FixRegistry, MSGTYPE_TAG};
@@ -580,32 +588,32 @@ impl<'doc> Parse<'doc> {
     /// spelling - which is exactly where a spelling two tags share is still
     /// unambiguous, because the file bound one tag per constraint.
     fn settle_names(&mut self) -> Result<()> {
-        // `None` where two tags claim one spelling: the ambiguity idiom this
-        // crate keeps for every scoped index.
-        let mut claimed: std::collections::HashMap<(bool, SmolStr), Option<i32>> =
+        // The tags each name claims, in declaration order and each once, keyed
+        // by what the dictionary indexes a name under rather than by the
+        // spelling: the fold drops `_`, `-` and space, so `Hedge_Currency`
+        // contends with `HedgeCurrency` there and has to contend here.
+        let mut claimed: std::collections::HashMap<u64, Vec<i32>> =
             std::collections::HashMap::new();
-        let mut decimals: std::collections::HashMap<(bool, SmolStr), i32> =
-            std::collections::HashMap::new();
+        let mut decimals: std::collections::HashMap<u64, i32> = std::collections::HashMap::new();
         for held in &self.vocabulary {
-            let venue = !self.owner(held.tag).is_standard();
-            claimed
-                .entry((venue, SmolStr::new(held.field.name())))
-                .and_modify(|held_tag| {
-                    if *held_tag != Some(held.tag) {
-                        *held_tag = None;
-                    }
-                })
-                .or_insert(Some(held.tag));
-            decimals.insert((venue, format_smolstr!("{}", held.tag)), held.tag);
+            let branch = self.owner(held.tag);
+            let tags = claimed
+                .entry(super::registry::name_key(&branch, held.field.name()))
+                .or_default();
+            if !tags.contains(&held.tag) {
+                tags.push(held.tag);
+            }
+            decimals.insert(
+                super::registry::name_key(&branch, &format_smolstr!("{}", held.tag)),
+                held.tag,
+            );
         }
         for at in 0..self.vocabulary.len() {
             let tag = self.vocabulary[at].tag;
-            let key = (
-                !self.owner(tag).is_standard(),
-                SmolStr::new(self.vocabulary[at].field.name()),
-            );
-            let contended = claimed.get(&key).is_some_and(Option::is_none)
-                || decimals.get(&key).is_some_and(|held| *held != tag);
+            let key = super::registry::name_key(&self.owner(tag), self.vocabulary[at].field.name());
+            let sharing = claimed.get(&key).cloned().unwrap_or_default();
+            let contended =
+                sharing.len() > 1 || decimals.get(&key).is_some_and(|held| *held != tag);
             if !contended {
                 continue;
             }
@@ -625,6 +633,20 @@ impl<'doc> Parse<'doc> {
                 })?;
             }
             field.set_name(named);
+            // Two tags sharing a spelling name each other, so a reader holding
+            // either reaches the other one the file said the same thing about.
+            // Three cannot: an alternate identifier names one field, and three
+            // would each claim the other two - so a spelling three tags share
+            // links none of them, exactly as it names none of them.
+            if sharing.len() == 2 {
+                let other = sharing[usize::from(sharing[0] == tag)];
+                field.as_fix_mut().set_tags(&[other]).map_err(|error| {
+                    refusal(
+                        position,
+                        format_smolstr!("tag {tag} beside tag {other}: {error}"),
+                    )
+                })?;
+            }
         }
         Ok(())
     }
@@ -1007,24 +1029,33 @@ impl<'doc> Parse<'doc> {
     /// the one it decodes; and where a file declares one tag twice, the last
     /// declaration is the entry the dictionary keeps.
     ///
+    /// A name two *tags* answer to decodes neither, for the reason
+    /// [`Parse::settle_names`] leaves them unnamed: a map is one code set and
+    /// the file does not say which of the two it belongs on, so taking the
+    /// last would put a venue's codes on a field at random.
+    ///
     /// The rule reads `alt` as the FIX spelling, which is what the corpus
     /// writes. A file spelling it the UlMessage way instead - `alt="SIDE"`
     /// under `<map name="SIDE">` - is read the FIX way and inverted, and
     /// nothing in the document separates that from a map that means it.
     fn decodes(&self, named: &str) -> Option<(usize, bool)> {
         let named = named.trim();
-        if let Some(at) = self
-            .vocabulary
-            .iter()
-            .rposition(|held| spelled(&held.field) == named)
-        {
+        if let Some(at) = self.decoded(|held| spelled(&held.field) == named) {
             return Some((at, true));
         }
-        let at = self
-            .vocabulary
-            .iter()
-            .rposition(|held| crate::types::folds_equal(held.field.name(), named))?;
+        let at = self.decoded(|held| crate::types::folds_equal(held.field.name(), named))?;
         Some((at, false))
+    }
+
+    /// The one declaration a probe reaches, taken from the end, or none where
+    /// it reaches two tags.
+    fn decoded(&self, probe: impl Fn(&Declared) -> bool) -> Option<usize> {
+        let at = self.vocabulary.iter().rposition(&probe)?;
+        let tag = self.vocabulary[at].tag;
+        self.vocabulary[..at]
+            .iter()
+            .all(|held| held.tag == tag || !probe(held))
+            .then_some(at)
     }
 
     /// Puts one code set on the vocabulary field its map decodes.
@@ -1427,17 +1458,29 @@ impl<'doc> Parse<'doc> {
         }
         // Indexed rather than scanned, for the reason the vocabulary is: a
         // real binding spells thousands of names against a vocabulary of
-        // thousands, and a scan per name is the parse squared.
-        let mut claimed: std::collections::HashMap<(bool, String), usize> =
+        // thousands, and a scan per name is the parse squared. Keyed by what
+        // the dictionary indexes a name under, and holding the tag beside the
+        // entry: a fold two *tags* already answer to is claimed by neither, so
+        // a binding cannot spell a contended name back onto one of them and
+        // undo what [`Parse::settle_names`] settled. A tag its file declares
+        // twice claims once, because that is one tag.
+        let mut claimed: std::collections::HashMap<u64, Option<(i32, usize)>> =
             std::collections::HashMap::new();
         for (at, held) in self.vocabulary.iter().enumerate() {
-            let venue = !self.owner(held.tag).is_standard();
+            let branch = self.owner(held.tag);
             let field = &held.field;
-            for spelling in [field.name(), spelled(field)] {
-                claimed.insert((venue, normalized(spelling)), at);
-            }
-            for alias in field.as_fix().aliases() {
-                claimed.insert((venue, normalized(alias)), at);
+            let spellings = [field.name(), spelled(field)]
+                .into_iter()
+                .chain(field.as_fix().aliases());
+            for spelling in spellings {
+                claimed
+                    .entry(super::registry::name_key(&branch, spelling))
+                    .and_modify(|prior| {
+                        if prior.is_some_and(|(claimant, _)| claimant != held.tag) {
+                            *prior = None;
+                        }
+                    })
+                    .or_insert(Some((held.tag, at)));
             }
         }
         for held in std::mem::take(&mut self.named) {
@@ -1452,9 +1495,11 @@ impl<'doc> Parse<'doc> {
             if name.contains(',') {
                 continue;
             }
-            let key = (!self.owner(tag).is_standard(), normalized(&name));
-            if claimed.get(&key).is_some_and(|held| *held != at) {
-                continue;
+            let key = super::registry::name_key(&self.owner(tag), &name);
+            match claimed.get(&key) {
+                Some(Some((claimant, _))) if *claimant != tag => continue,
+                Some(None) => continue,
+                _ => {}
             }
             let field = &mut self.vocabulary[at].field;
             if name.eq_ignore_ascii_case(field.name()) || name.eq_ignore_ascii_case(spelled(field))
@@ -1475,7 +1520,7 @@ impl<'doc> Parse<'doc> {
                     ),
                 )
             })?;
-            claimed.insert(key, at);
+            claimed.insert(key, Some((tag, at)));
         }
         Ok(())
     }
