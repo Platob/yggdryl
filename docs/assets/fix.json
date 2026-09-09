@@ -235684,7 +235684,7 @@
         "t": 65007,
         "n": "SenderSessionId",
         "y": "utf8",
-        "x": "The session a message came from, as the message states it."
+        "x": "The session a message came from: the message's own statement, else the session instance its bridge handled the line on."
       },
       {
         "c": "msgctxid",

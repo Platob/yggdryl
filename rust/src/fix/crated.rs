@@ -331,7 +331,8 @@ fn build() -> Result<Vec<Field>> {
             "SenderSessionId",
             SENDERSESSIONID_TAG,
             DataType::Utf8,
-            "The session a message came from: the message's own statement,              else the session instance its bridge handled the line on.",
+            "The session a message came from: the message's own statement, \
+             else the session instance its bridge handled the line on.",
             &["SessionId"],
         )?,
         // The message context a bridge handled the line in, from the bracket
