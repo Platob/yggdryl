@@ -204,10 +204,66 @@ impl Failures {
     }
 }
 
+/// The schemes the structured generator spells, one per shape it reaches.
+const SCHEMES: &[&str] = &["https", "file", "s3", "urn", "postgres", "a"];
+
 /// Build one piece of identifier text out of the hard fragments.
+///
+/// Flat soup finds what nobody would write; the structured shape finds what a
+/// caller does write, and is what keeps the `urn` and `s3` paths reached often
+/// enough for their properties to mean anything.
 fn generate(rng: &mut Rng) -> String {
-    let mut text = String::new();
-    for _ in 0..=rng.below(7) {
+    if rng.below(2) == 0 {
+        let mut text = String::new();
+        for _ in 0..=rng.below(7) {
+            text.push_str(rng.pick(ATOMS));
+        }
+        return text;
+    }
+
+    let scheme = rng.pick(SCHEMES);
+    let mut text = String::from(scheme);
+    text.push(':');
+    if scheme == "urn" {
+        // A URN is `nid:nss` with no authority, so spelling one at random
+        // reaches the namespace rules; anything else never gets past them.
+        text.push_str(rng.pick(&["example", "isbn", "uuid", "a-b", "x"]));
+        text.push(':');
+        for _ in 0..=rng.below(3) {
+            text.push_str(rng.pick(ATOMS));
+        }
+        if rng.below(3) == 0 {
+            text.push_str(rng.pick(&["?=", "?+"]));
+            text.push_str(rng.pick(ATOMS));
+        }
+        if rng.below(4) == 0 {
+            text.push('#');
+            text.push_str(rng.pick(ATOMS));
+        }
+        return text;
+    }
+    if rng.below(3) != 0 {
+        text.push_str("//");
+        for _ in 0..rng.below(3) {
+            text.push_str(rng.pick(ATOMS));
+        }
+    }
+    for _ in 0..rng.below(4) {
+        text.push('/');
+        text.push_str(rng.pick(ATOMS));
+    }
+    if rng.below(3) == 0 {
+        text.push('?');
+        for _ in 0..=rng.below(3) {
+            text.push_str(rng.pick(ATOMS));
+            text.push('=');
+            text.push_str(rng.pick(ATOMS));
+            text.push('&');
+        }
+        text.pop();
+    }
+    if rng.below(4) == 0 {
+        text.push('#');
         text.push_str(rng.pick(ATOMS));
     }
     text
@@ -471,12 +527,20 @@ fn generated_identifiers_hold_every_component_invariant() {
         }
     }
 
-    // The generator has to keep reaching every entry point, or the properties
-    // above are being checked against nothing.
-    for entry in ["uri", "path", "uri-path", "authority", "url", "urn"] {
+    // The generator has to keep reaching every entry point often enough for
+    // the properties above to mean something, so the floor is asserted rather
+    // than assumed: a shape that stops parsing takes its properties with it.
+    for (entry, floor) in [
+        ("uri", 5_000),
+        ("path", 5_000),
+        ("uri-path", 2_000),
+        ("authority", 500),
+        ("url", 500),
+        ("urn", 500),
+    ] {
         assert!(
-            parsed.get(entry).copied().unwrap_or_default() > 0,
-            "the generator stopped producing valid {entry} values: {parsed:?}"
+            parsed.get(entry).copied().unwrap_or_default() >= floor,
+            "the generator reached too few valid {entry} values: {parsed:?}"
         );
     }
 
