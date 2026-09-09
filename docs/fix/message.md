@@ -14,6 +14,7 @@
 | Bare key tier | this message's branch, then the standard branch, and no further |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
 | Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../text/json.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
+| Restated | `into_latest` re-expresses the row at the [registry's newest version](#restated-at-the-dictionarys-newest-version) from the dictionary alone; the entries never change |
 | Bindings | Rust, Python, JavaScript |
 
 ## Use
@@ -234,6 +235,181 @@ A bare tag or name resolves in two steps and no further:
 | `get_by_path` / `by_path` | the whole string as a name, then segment by segment: into a Struct child by name, into a List entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects |
 
+## Restated at the dictionary's newest version
+
+A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. `into_latest` restates the message once, from what the dictionary itself says: the registry's field for every tag, the aliases and lineage that reach it, and the [`fix:replacements`](registry.md#a-field-carries-what-replaced-it) each retired field or value carries. Nothing in Rust holds a table of rules, so a registry edit is a rule edit.
+
+| item | contract |
+| --- | --- |
+| Row only | the entries are what arrived and are carried through untouched, so `into_bytes` re-emits the received line byte for byte and `anomalies` answers the same; `BeginString(8)` stays what the message said of itself |
+| Canonicalizes | every child the registry knows - by its `fix:tag`, else its name or alias, else the decimal tag its name spells - is re-expressed under the registry's field: canonical name, datatype, tag, in the position it held; a child no dictionary knows stays exactly as it is |
+| Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
+| Restates | each child whose field carries `fix:replacements`, in ascending tag order, by the first entry whose `msgtypes`, `in` and `when` hold; a group fill makes or completes one occurrence and sets its counter |
+| All or nothing | every target an entry fills is computed and checked before any is written; one target that cannot take its value blocks the whole entry, and no later entry fills in for it |
+| Never overwrites | a stated current value: a target takes a value only when it is absent, null, already equal, or holds a code its set no longer declares at the registry's newest version; the source field itself is the one exception, because it is what is being restated |
+| Keeps | a removed field the specification named no replacement for, and the source of every rule that did not write it - the row says what was sent and what it means |
+| Levels | the root, then every occurrence of every repeating group to any depth, each canonicalized and restated in turn; `in` is compared with the occurrence's group, `msgtypes` with the root's `MsgType(35)` |
+| Stamps | the crate's `version` (65001) with `registry.newest()`, replacing a stated one or appending; a registry no field dates stamps nothing |
+| Idempotent | a second pass answers an equal message: what one pass wrote is what the next finds stated |
+| Batch | [`FixOptions::latest`](arrow.md#the-options-are-the-readers-arguments-per-stream) runs it per message after enrichment and before the lifecycle stamp; `FixMsg::from_record` honours the same option |
+| Bindings | Rust `into_latest`, Python `into_latest` and `parse_arrow_reader(latest=True)`, JavaScript `intoLatest` |
+
+A FIX 4.2 execution report, read as it was sent and then restated. The entries, the wire and the anomalies are the same before and after, and a second pass changes nothing.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::holder::local::Folder;
+    use yggdryl::types::State;
+    use yggdryl::{FixCodec, FixRegistry, Scalar};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let reader = FixCodec::new(Arc::clone(&registry));
+
+    // A cancelled partial fill (20=1, 150=1) of an agency order (47=A),
+    // naming its broker (76) and client (109), the fill as LastShares (32).
+    let line: &[u8] = b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|";
+    let read = reader.transform_line(line, false)?.next().expect("one frame")?;
+    assert_eq!(read.version().map(|version| version.to_string()), Some("4.2".to_owned()));
+    let partial = State::from_spelling("1").expect("a lifecycle code");
+    assert_eq!(read.by_tag(150)?.as_str(), Some(partial.as_str()), "read at 4.2");
+
+    let latest = read.clone().into_latest()?;
+
+    // ExecTransType Cancel wrote ExecType TradeCancel over the retired
+    // PartiallyFilled before ExecType's own rule read it; the source stays.
+    let cancel = State::from_spelling("H").expect("a lifecycle code");
+    assert_eq!(latest.by_tag(150)?.as_str(), Some(cancel.as_str()));
+    assert_eq!(latest.by_tag(20)?.as_str(), Some("1"));
+    // Rule80A A is an agency order.
+    assert_eq!(latest.by_tag(528)?.as_str(), Some("A"));
+    // ExecBroker and ClientID are two parties, in tag order, and the
+    // counter states the count.
+    assert_eq!(latest.by_tag(453)?.as_i128(), Some(2));
+    assert_eq!(latest.by_path("parties.0.partyid")?, &Scalar::from("BRKR"));
+    assert_eq!(latest.by_path("parties.0.partyrole")?, &Scalar::from(1));
+    assert_eq!(latest.by_path("parties.1.partyid")?, &Scalar::from("CLIENT1"));
+    assert_eq!(latest.by_path("parties.1.partyrole")?, &Scalar::from(3));
+    // LastShares is LastQty, reachable by either spelling.
+    assert_eq!(latest.by_tag(32)?, &Scalar::from(100.0_f64));
+    assert_eq!(latest.by_name("LastShares")?, latest.by_tag(32)?);
+
+    // The version is the dictionary's newest; what the message said of
+    // itself, the entries and the wire are untouched.
+    let newest = registry.newest().expect("a dated dictionary").version();
+    assert_eq!(latest.version(), Some(newest));
+    assert_eq!(latest.by_tag(8)?.as_str(), Some("FIX.4.2"));
+    assert_eq!(latest.entries(), read.entries());
+    assert_eq!(latest.into_bytes(b'|'), line);
+    assert_eq!(latest.clone().into_latest()?, latest, "a second pass changes nothing");
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    reader = FixCodec(registry)
+
+    # A cancelled partial fill (20=1, 150=1) of an agency order (47=A),
+    # naming its broker (76) and client (109), the fill as LastShares (32).
+    line = b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|"
+    read = next(reader.transform_line(line))
+    assert read.by_name("version").as_py() == "4.2"
+    assert read.by_tag(150).as_py() == "40PARTFILL", "read at 4.2"
+
+    latest = read.into_latest()
+
+    # ExecTransType Cancel wrote ExecType TradeCancel over the retired
+    # PartiallyFilled before ExecType's own rule read it; the source stays.
+    assert latest.by_tag(150).as_py() == "40TRDCXL"
+    assert latest.by_tag(20).as_py() == "1"
+    # Rule80A A is an agency order.
+    assert latest.by_tag(528).as_py() == "A"
+    # ExecBroker and ClientID are two parties, in tag order, and the
+    # counter states the count.
+    assert latest.by_tag(453).as_py() == 2
+    assert latest.by_path("parties.0.partyid").as_py() == "BRKR"
+    assert latest.by_path("parties.0.partyrole").as_py() == 1
+    assert latest.by_path("parties.1.partyid").as_py() == "CLIENT1"
+    assert latest.by_path("parties.1.partyrole").as_py() == 3
+    # LastShares is LastQty, reachable by either spelling.
+    assert latest.by_tag(32).as_py() == 100.0
+    assert latest.by_name("LastShares") == latest.by_tag(32)
+
+    # The version is the dictionary's newest; what the message said of
+    # itself, the entries and the wire are untouched.
+    assert latest.by_name("version").as_py() == "5.0.2"
+    assert latest.by_tag(8).as_py() == "FIX.4.2"
+    assert latest.entries() == read.entries()
+    assert latest.into_bytes(ord("|")) == line
+    assert latest.into_latest() == latest, "a second pass changes nothing"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const reader = new fix.FixCodec(registry)
+
+    // A cancelled partial fill (20=1, 150=1) of an agency order (47=A),
+    // naming its broker (76) and client (109), the fill as LastShares (32).
+    const line = '8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|'
+    const read = reader.transformLine(Buffer.from(line)).next().value
+    assert.equal(read.byName('version').toJSON(), '4.2')
+    assert.equal(read.byTag(150).toJSON(), '40PARTFILL', 'read at 4.2')
+
+    const latest = read.intoLatest()
+
+    // ExecTransType Cancel wrote ExecType TradeCancel over the retired
+    // PartiallyFilled before ExecType's own rule read it; the source stays.
+    assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
+    assert.equal(latest.byTag(20).toJSON(), '1')
+    // Rule80A A is an agency order.
+    assert.equal(latest.byTag(528).toJSON(), 'A')
+    // ExecBroker and ClientID are two parties, in tag order, and the
+    // counter states the count.
+    assert.equal(latest.byTag(453).toJSON(), 2)
+    assert.equal(latest.byPath('parties.0.partyid').toJSON(), 'BRKR')
+    assert.equal(latest.byPath('parties.0.partyrole').toJSON(), 1)
+    assert.equal(latest.byPath('parties.1.partyid').toJSON(), 'CLIENT1')
+    assert.equal(latest.byPath('parties.1.partyrole').toJSON(), 3)
+    // LastShares is LastQty, reachable by either spelling.
+    assert.equal(latest.byTag(32).toJSON(), 100)
+    assert.ok(latest.byName('LastShares').equals(latest.byTag(32)))
+
+    // The version is the dictionary's newest; what the message said of
+    // itself and the wire are untouched.
+    assert.equal(latest.byName('version').toJSON(), '5.0.2')
+    assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
+    assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
+    assert.ok(latest.intoLatest().equals(latest), 'a second pass changes nothing')
+    ```
+
+### What a held value is, to a rule
+
+A rule reads and writes wire text, because that is what the specification's appendices are written in; the row holds typed values. One reading joins them.
+
+| held value | reads as | so |
+| --- | --- | --- |
+| text, ASCII | itself | `when` equals it, or one of its space-separated tokens does - `ExecInst` `G T` meets a `when` of `T` |
+| boolean | `Y` / `N` | `OddLot` `Y` meets a `when` of `Y` |
+| integer, float, decimal | its decimal | an `int8` `MaturityDay` of `5` joins a month-year as `05` - a `join` spells an integer part with two digits |
+| temporal | its canonical rendering | `OnBehalfOfSendingTime` lands in `HopSendingTime` as the instant it is |
+| `state` | never rendered back to a code | `when` matches when `State::from_spelling(when)` is the state held, so `1` and `PartiallyFilled` both meet a `40PARTFILL` |
+
+A value written into a target is re-typed for the target's field through the codec's own text-to-typed reading: a constant `1` lands in `PartyRole(452)` as an integer, `F` in `ExecType(150)` as the `Trade` state, `A` in `OrderCapacity(528)` as the text it is. A value the target cannot hold blocks the entry rather than landing as null.
+
 ## Edges
 
 - A root whose `fix:branch` is malformed -> typed error at construction, never a silent miss later.
@@ -241,6 +417,17 @@ A bare tag or name resolves in two steps and no further:
 - A bare tag outside `[FixId::USER_TAG_MIN, FixId::USER_TAG_MAX)` on a non-standard message -> only the standard branch is tried.
 - `by_id` on a foreign branch -> a miss, because an identifier never tiers.
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the entry's index (`Parties.0.PartyID`).
+- `into_latest` on a message whose registry dates no field -> every rule still applies, nothing is stamped, and `version()` still reads `BeginString(8)`.
+- Two children reaching one field, both stated and different (`lastqty` `50` beside `LastShares` `100`) -> both kept as they arrived; equal once re-typed, or one null -> one child.
+- A child named by a tag's digits (`"32"`) that the registry knows -> re-expressed under the registry's field like any other; one it does not know (`"9999"`) -> kept exactly, name, datatype and value.
+- A List no `fix:counter` heads, and any nested value that is not a repeating group -> kept exactly; only group occurrences are levels.
+- A rule whose target holds a stated current code (`40=A|59=0`, a `TimeInForce` the message chose) -> blocked whole: `OrdType` stays `A` and no later entry answers for it; `59=7`, the rule's own value, is no obstacle.
+- A rule that rewrote the source's own value (`ExecInst` `T` -> `R`) -> the new value is restated in turn (`R` is a `PegPriceType`), so one pass reaches what a second would find; a chain is bounded by the rules the field states.
+- A `join` with a part unstated (`205=5` and no `200`) or a `from` whose tag is absent -> the entry fills nothing.
+- A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the counter unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
+- A rule scoped by `msgtypes` on a message stating no `MsgType(35)` -> does not apply; one scoped by `in` at the root -> does not apply.
+- A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and `get_field_at(4.4, 51)` still answers none.
+- `FixOptions::latest` -> per message, after `enrich` and before `lifecycle`, so an enriched value is a stated one to the rules and the lifecycle stamps the restated row.
 
 ## Commands
 
@@ -249,6 +436,9 @@ A bare tag or name resolves in two steps and no further:
     ```bash
     cargo test -p yggdryl --lib fix::tests::a_message
     cargo test -p yggdryl --test fix codec::a_message_re_emits_from_its_entries_and_reads_back_equal
+    cargo test -p yggdryl --test fix latest::
+    cargo test -p yggdryl --test fix latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
+    cargo bench -p yggdryl --bench fix -- fix/pipeline_stages/latest
     ```
 
 === "Python"
@@ -256,6 +446,7 @@ A bare tag or name resolves in two steps and no further:
     ```bash
     python/.venv/bin/python -m pytest python/tests/fix
     python/.venv/bin/python -m pytest python/tests/fix -k "message or scalar_value_and_field"
+    python/.venv/bin/python -m pytest python/tests/fix -k latest
     ```
 
 === "JavaScript"
@@ -263,4 +454,5 @@ A bare tag or name resolves in two steps and no further:
     ```bash
     node --test node/tests/fix/fix.test.js
     node --test --test-name-pattern="message" node/tests/fix/fix.test.js
+    node --test --test-name-pattern="latest" node/tests/fix/fix.test.js
     ```

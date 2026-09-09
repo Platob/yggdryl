@@ -1113,6 +1113,22 @@ impl JsFixMsg {
         Ok(Buffer::from(self.inner.into_bytes(separator)))
     }
 
+    /// This message restated at its registry's newest version.
+    ///
+    /// Every child lands under the dictionary's own field, a retired field or
+    /// value fills what stands in for it, and the crate `version` says which
+    /// version the row now speaks. Only the row is restated: the arrival
+    /// record is left alone, so `intoBytes` re-emits the received line either
+    /// way, and a second pass answers an equal message.
+    #[napi]
+    pub fn into_latest(&self) -> Result<JsFixMsg> {
+        self.inner
+            .clone()
+            .into_latest()
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
     /// Whether two messages carry the same schema, value and dictionary.
     #[napi]
     pub fn equals(&self, other: &JsFixMsg) -> bool {

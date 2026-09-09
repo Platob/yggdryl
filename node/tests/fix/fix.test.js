@@ -981,12 +981,14 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(reader.transformPairs([['55', 'AAPL']]).byTag(55).toJSON(), 'AAPL')
   assert.ok(reader.registry.equals(registry))
 
-  // Two children every built message has, whatever its line carried: it
+  // Three children every built message has, whatever its line carried: it
   // opens with `beginstring` - the wire's own, else the version it was read
-  // at - and closes with the crate's `timestamp`. Neither is an entry unless
-  // the line carried it, so the wire re-emits byte for byte.
+  // at - states the `version` the read used, and closes with the crate's
+  // `timestamp`. None is an entry unless the line carried it, so the wire
+  // re-emits byte for byte.
   const pairs = new fix.FixCodec(registry, { version: '4.2' }).transformPairs([['55', 'AAPL']])
-  assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'timestamp'])
+  assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'version', 'timestamp'])
+  assert.equal(pairs.byTag(65001).toJSON(), '4.2')
   assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
   assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
@@ -1066,6 +1068,48 @@ test('a reader fills what the line implied and leaves the wire alone', () => {
   const opaque = reader.transformLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|'), true).next().value
   assert.equal(opaque.getByTag(22), null)
   assert.equal(opaque.getByTag(65013), null)
+})
+
+test('a message restates at the dictionary\'s newest version', () => {
+  // A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
+  // capacity and two identities the specification later moved into `Parties`.
+  const line =
+    '8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|'
+  const read = new fix.FixCodec(seed()).transformLine(Buffer.from(line)).next().value
+  assert.equal(read.byTag(65001).toJSON(), '4.2')
+  assert.equal(read.byTag(150).toJSON(), '40PARTFILL')
+  assert.equal(read.getByTag(528), null)
+  assert.equal(read.getByTag(453), null)
+
+  // Restatement is a method; the rules are the dictionary's.
+  const latest = read.intoLatest()
+  // ExecTransType Cancel wrote ExecType TradeCancel over the retired
+  // PartiallyFilled, and the source stays.
+  assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
+  assert.equal(latest.byTag(20).toJSON(), '1')
+  // Rule80A A is an agency order.
+  assert.equal(latest.byTag(528).toJSON(), 'A')
+  assert.equal(latest.byTag(47).toJSON(), 'A')
+  // ExecBroker and ClientID are two parties, in tag order, counted.
+  assert.equal(latest.byTag(453).asJs(), 2)
+  assert.equal(latest.byPath('parties.0.partyid').asJs(), 'BRKR')
+  assert.equal(latest.byPath('parties.0.partyrole').asJs(), 1)
+  assert.equal(latest.byPath('parties.1.partyid').asJs(), 'CLIENT1')
+  assert.equal(latest.byPath('parties.1.partyrole').asJs(), 3)
+  // The fill under its newest spelling, reachable by the old one too.
+  assert.equal(latest.byTag(32).asJs(), 100)
+  assert.equal(latest.byName('LastShares').asJs(), 100)
+  // The row speaks the dictionary's newest version; the wire still says 4.2.
+  assert.equal(latest.byTag(65001).toJSON(), '5.0.2')
+  assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
+
+  // Only the row was restated: the wire comes back byte for byte, the
+  // arrival record and the anomalies are the same, and a second pass
+  // changes nothing.
+  assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
+  assert.deepEqual(latest.arrivals(), read.arrivals())
+  assert.deepEqual(latest.anomalies(), read.anomalies())
+  assert.ok(latest.intoLatest().equals(latest))
 })
 
 // The messages of one order's life, as a venue and its client tell it.

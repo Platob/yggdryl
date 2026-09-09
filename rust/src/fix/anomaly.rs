@@ -396,15 +396,25 @@ impl<'msg> FixAnomalies<'msg> {
         // A counter the frame states twice at one level lands in a List of the
         // counts it stated, so the typed reading is looked for through the
         // column's own occurrences as well as in the column itself.
+        //
+        // The count compared is the column's typed reading, which is the
+        // entry's own as the codec read it and the re-count where a pass
+        // appended an occurrence the wire never stated - a message restated
+        // at the newest version says of itself what it said before. Only the
+        // twice-stated counter falls back to the entry's text.
         let counter = group.counter?;
-        if counter.as_integer().is_none()
+        let typed = counter.as_i128().and_then(|held| i64::try_from(held).ok());
+        if typed.is_none()
             && !counter
                 .as_sequence()
                 .is_some_and(|stated| stated.iter().any(|held| held.as_integer().is_some()))
         {
             return None;
         }
-        let stated = entry.value().parse::<i64>().ok()?;
+        let stated = match typed {
+            Some(held) => held,
+            None => entry.value().parse::<i64>().ok()?,
+        };
         let held = group.occurrences;
         let column = group.field;
         let (DataType::List(item) | DataType::LargeList(item)) = column.dtype() else {

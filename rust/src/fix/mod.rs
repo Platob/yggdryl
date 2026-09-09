@@ -153,6 +153,7 @@ mod entry;
 mod field;
 mod global;
 mod group_plan;
+mod latest;
 mod lifecycle;
 mod lift;
 mod lineage;

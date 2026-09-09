@@ -14,7 +14,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: tiered resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees and the branch manifest under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
-| [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON |
+| [Message](message.md) | `FixMsg`: root Struct plus row and registry, derived branch, accessors, JSON, `into_latest` restating a message at the dictionary's newest version |
 | [Arrow](arrow.md) | `FixBatchReader`, `FixOptions`, `classify_arrow_array`: a capture already in Arrow, streamed through a dictionary |
 | [Capture](capture.md) | `FixCodec`, `fix_schema`, `FixMsg::into_row`: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: the instrument, the message and the order chain, stamped across a stream |
@@ -181,7 +181,8 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `fix:field` | name | scalar field reference in a definition |
 | `group` | `fix:group` | name | group reference in a definition |
 | `msgtype` | `fix:msgtype` | text | complete case-sensitive wire code on a message Struct |
-| `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
+| `lineage` | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version, and where the specification deprecated or removed it; see [Registry](registry.md#versions-are-a-filter-on-the-read) |
+| `replacements` | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take; see [Registry](registry.md#a-field-carries-what-replaced-it) |
 
 ## Identity is a branch and a tag
 

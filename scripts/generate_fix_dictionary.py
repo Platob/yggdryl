@@ -265,7 +265,7 @@ def parse_orchestra(data: bytes, protocol_version: str | None = None) -> dict[st
                     "name": code.get("name", ""),
                     "since": version_of(code.get("added")),
                     "ep": extension_pack(code.get("addedEP")),
-                    "deprecated": version_of(code.get("deprecated")),
+                    "deprecated": deprecated_version_of(code.get("deprecated"), version),
                     "sort": int(code.get("sort")) if code.get("sort") else None,
                     "group": code.get("group"),
                     "doc": orchestra_documentation(code),
@@ -591,7 +591,17 @@ def fold_legacy_codes(
     """
     held = [dict(code) for code in codes]
     by_value = {code["value"]: code for code in held}
-    spelled = {folded(code["name"]) for code in held}
+    # Latest's own names claim the namespace first, current codes before
+    # deprecated ones: two codes whose names fold together - `EURIBOR` beside
+    # the `Euribor` it replaced - cannot both be reached by one spelling, so
+    # the deprecated one takes the suffix, as a legacy code would.
+    spelled: set[str] = set()
+    for code in sorted(held, key=lambda code: code.get("deprecated") is not None):
+        if folded(code["name"]) in spelled and code.get("deprecated"):
+            code["name"] += "Legacy"
+        if folded(code["name"]) in spelled:
+            raise ValueError(f"tag {tag}: two current codes are spelled {code['name']!r}")
+        spelled.add(folded(code["name"]))
     spelled.update(folded(alias) for code in held for alias in code.get("aliases") or [])
     legacy: dict[str, dict[str, Any]] = {}
     for version, listed in listings:
@@ -1124,6 +1134,12 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         if code_set_name in latest["code_sets"]:
             held = latest["code_sets"][code_set_name]
             codes = coded(tag, held["type"], held["codes"])
+            if codes is not None:
+                metadata["fix:codes"] = codes
+        elif listings.get(tag):
+            # Latest declares no set, so every value an older version listed
+            # is a legacy code: the set is what those versions said.
+            codes = coded(tag, field["type"], [])
             if codes is not None:
                 metadata["fix:codes"] = codes
 

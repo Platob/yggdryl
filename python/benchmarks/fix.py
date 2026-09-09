@@ -190,6 +190,10 @@ def _message_branch() -> object:
     return MESSAGE.branch
 
 
+def _message_into_latest() -> object:
+    return MESSAGE.into_latest()
+
+
 def _infer_fixml_protocol() -> object:
     return MimeType.infer_bytes(FIXML_LINE)
 
@@ -315,6 +319,7 @@ def main() -> None:
         _measure("message get_by_name", _message_get_by_name, args.iterations)
         _measure("message get_by_path", _message_get_by_path, args.iterations)
         _measure("message branch", _message_branch, args.iterations)
+        _measure("message into_latest", _message_into_latest, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
         for category in ("fields", "components", "groups", "messages"):

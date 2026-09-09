@@ -8,6 +8,7 @@
     "metadata": {
       "description": "Execution destination as defined by institution when order is entered.",
       "display": "ExDestination",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"4.0\",\"deprecated\":\"4.1\"},{\"value\":\"4\",\"name\":\"Posit\",\"since\":\"4.0\",\"deprecated\":\"4.1\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"exdestination\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.2\",\"name\":\"exdestination\",\"type\":{\"type\":\"mic\"}}]}",
       "fix:tag": "100"
     }
@@ -795,7 +796,7 @@
     "metadata": {
       "description": "Indicates mode used for Settlement Instructions message. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
       "display": "SettlInstMode",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Default\",\"since\":\"4.1\",\"sort\":1,\"doc\":\"Default (Replaced)\"},{\"value\":\"1\",\"name\":\"StandingInstructionsProvided\",\"since\":\"4.1\",\"sort\":2,\"doc\":\"Standing Instructions Provided\"},{\"value\":\"2\",\"name\":\"SpecificAllocationAccountOverriding\",\"since\":\"4.1\",\"sort\":3,\"doc\":\"Specific Allocation Account Overriding (Replaced)\"},{\"value\":\"3\",\"name\":\"SpecificAllocationAccountStanding\",\"since\":\"4.1\",\"sort\":4,\"doc\":\"Specific Allocation Account Standing (Replaced)\"},{\"value\":\"4\",\"name\":\"SpecificOrderForASingleAccount\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Specific Order for a single account (for CIV)\"},{\"value\":\"5\",\"name\":\"RequestReject\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Request reject\"}]}",
+      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Default\",\"since\":\"4.1\",\"deprecated\":\"5.0.2\",\"sort\":1,\"doc\":\"Default (Replaced)\"},{\"value\":\"1\",\"name\":\"StandingInstructionsProvided\",\"since\":\"4.1\",\"sort\":2,\"doc\":\"Standing Instructions Provided\"},{\"value\":\"2\",\"name\":\"SpecificAllocationAccountOverriding\",\"since\":\"4.1\",\"deprecated\":\"5.0.2\",\"sort\":3,\"doc\":\"Specific Allocation Account Overriding (Replaced)\"},{\"value\":\"3\",\"name\":\"SpecificAllocationAccountStanding\",\"since\":\"4.1\",\"deprecated\":\"5.0.2\",\"sort\":4,\"doc\":\"Specific Allocation Account Standing (Replaced)\"},{\"value\":\"4\",\"name\":\"SpecificOrderForASingleAccount\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Specific Order for a single account (for CIV)\"},{\"value\":\"5\",\"name\":\"RequestReject\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Request reject\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"settlinstmode\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "160"
     }

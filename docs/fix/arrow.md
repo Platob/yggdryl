@@ -145,11 +145,12 @@ Where a line was read from is what a monitor orders and joins on, so the source'
 | `direction` | `with_direction` | `SENT` | the direction a line that states none of its own took — no verb in front of its payload, and no [document saying which half it is](registry.md#a-direction-is-the-verb-in-front-of-the-payload) |
 | `dedup` | `with_dedup` | `false` | whether an adjacent republication is dropped |
 | `enrich` | `with_enrich` | `false` | whether each message is [filled with what it implies](capture.md) before it lands |
+| `latest` | `with_latest` | `false` | whether each message is [restated at the dictionary's newest version](message.md#restated-at-the-dictionarys-newest-version) before it lands: after enrichment, so a derived value is a stated one to the rules, and before the lifecycle stamp, so the chain reads the restated row |
 | `lifecycle` | `with_lifecycle` | `false` | whether each message is stamped with the [identities the stream implies](lifecycle.md): one `FixLifecycle` runs over the whole read, so a row's `persistentid` depends on the rows before it |
 
 `name` names the root, and is `fix` unless it is set.
 
-Python spells them as keywords on `parse_arrow_reader`, under the same names - `dedup`, `enrich` and `lifecycle` as booleans - with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
+Python spells them as keywords on `parse_arrow_reader`, under the same names - `dedup`, `enrich`, `latest` and `lifecycle` as booleans - with the payload column as the third positional argument and `separator` as the byte's integer value. A `registry` of `None` links the [process-wide default](registry.md#one-default-registry-per-process), and `direction` takes `"sent"`, `"recv"` or `"unknown"`.
 
 ## A column is the caller speaking per row
 
@@ -380,7 +381,7 @@ The classifying stage and the parsing one therefore cannot disagree: they are th
 
 The text stage is a fifth of the whole and the codec two fifths; the rest is the row landing in Arrow. Reading every body through `transform_line` and then batching costs twice what classifying and the codec cost together, which is the batch reader's whole reason to exist: it reads the text reader's batches straight into fixed rows and never builds a message it then has to place.
 
-`fix/pipeline_stages` splits the batch path over the same messages, so where a row's cost goes is a number rather than an argument. Every row pays the first four; a row pays for enrichment and the lifecycle only when the [options](#the-options-are-the-readers-arguments-per-stream) ask for them.
+`fix/pipeline_stages` splits the batch path over the same messages, so where a row's cost goes is a number rather than an argument. Every row pays the first four; a row pays for enrichment, the restatement (the `latest` stage, beside `enrich` in the same group) and the lifecycle only when the [options](#the-options-are-the-readers-arguments-per-stream) ask for them.
 
 | stage | median | per message |
 | --- | --- | --- |

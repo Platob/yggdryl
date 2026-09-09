@@ -621,6 +621,11 @@ pub struct FixCodec
   pub fn enrich_fixmsg(&self, message: FixMsg) -> Result<FixMsg>
   pub fn enrich_fixmsgs<'codec, I>(&'codec self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + 'codec where I: IntoIterator<Item = FixMsg>, I::IntoIter: 'codec
 
+### yggdryl::fix::batch  [rust\src\fix\batch.rs]
+impl FixOptions
+  pub latest: bool  (default false; applied per message after enrichment and before the lifecycle stamp)
+  pub const fn with_latest(mut self, latest: bool) -> Self
+
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
   impl Iterator for FixMessages  (Item = Result<FixMsg>; fused after exhaustion or the first error; no collection of ULconfig results)
@@ -654,6 +659,7 @@ pub struct FixMsg
   pub fn by_path(&self, path: &str) -> Result<&Scalar>
   pub fn get<'key>(&self, key: impl Into<FixKey<'key>>) -> Option<&Scalar>
   pub fn value<'key>(&self, key: impl Into<FixKey<'key>>) -> Result<&Scalar>
+  pub fn into_latest(self) -> Result<Self>  (the row restated at the registry's newest version; entries untouched, idempotent)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
 ### yggdryl::fix::entry  [rust\src\fix\entry.rs]

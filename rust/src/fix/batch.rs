@@ -138,6 +138,13 @@ pub struct FixOptions {
     /// once it is in the row, so filling has to be asked for. See
     /// [`FixCodec::enrich_fixmsg`](super::FixCodec::enrich_fixmsg).
     pub enrich: bool,
+    /// Whether each message is restated at the dictionary's newest version.
+    ///
+    /// Off by default, and applied after enrichment and before the lifecycle
+    /// stamp, so a capture already in Arrow lands at the newest version with
+    /// every retired field filling its replacement. See
+    /// [`FixMsg::into_latest`].
+    pub latest: bool,
     /// Whether each message is stamped with the identities the stream implies.
     ///
     /// Off by default, and stateful when on: one
@@ -191,6 +198,7 @@ impl Default for FixOptions {
             direction: Some(MsgDirection::SENT),
             dedup: false,
             enrich: false,
+            latest: false,
             lifecycle: false,
         }
     }
@@ -258,6 +266,14 @@ impl FixOptions {
     #[must_use]
     pub const fn with_enrich(mut self, enrich: bool) -> Self {
         self.enrich = enrich;
+        self
+    }
+
+    /// Sets whether each message is restated at the dictionary's newest
+    /// version.
+    #[must_use]
+    pub const fn with_latest(mut self, latest: bool) -> Self {
+        self.latest = latest;
         self
     }
 
@@ -351,6 +367,7 @@ impl FixBatchReader {
             };
             messages.map(move |message| message.map(|message| (message, direction, Vec::new())))
         });
+        let messages = restated(messages, options.latest);
         let messages = lifecycled(messages, &registry, options.lifecycle);
         Self::stream(field, messages, &options)
     }
@@ -414,6 +431,7 @@ impl FixBatchReader {
             };
             messages.map(move |message| message.map(|message| (message, direction, front.clone())))
         });
+        let rows = restated(rows, options.latest);
         let rows = lifecycled(rows, &registry, options.lifecycle);
         Self::stream(field, rows, options)
     }
@@ -843,6 +861,27 @@ impl Iterator for Rows {
     }
 }
 
+/// The stream with each message restated at the dictionary's newest
+/// version, where asked.
+///
+/// After enrichment, which the codec applied as it built each message, and
+/// before the lifecycle stamp: the stamp reads identities off the restated
+/// row, so a chain is keyed by the fields as the newest version names them.
+fn restated<I>(
+    messages: I,
+    on: bool,
+) -> impl Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static
+where
+    I: Iterator<Item = Result<(FixMsg, Option<&'static str>, Vec<Scalar>)>> + Send + 'static,
+{
+    messages.map(move |held| match held {
+        Ok((message, direction, front)) if on => message
+            .into_latest()
+            .map(|message| (message, direction, front)),
+        other => other,
+    })
+}
+
 /// The stream with each message stamped by one lifecycle, where asked.
 ///
 /// One state for the whole read, carried by the closure: the chains alive
@@ -966,6 +1005,9 @@ impl FixMsg {
                 path: options.payload_column.clone(),
                 reason: "expected exactly one FIX message, got multiple messages".into(),
             });
+        }
+        if options.latest {
+            return message.into_latest();
         }
         Ok(message)
     }

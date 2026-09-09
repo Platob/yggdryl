@@ -187,6 +187,7 @@ try {
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('Parties.0.PartyID'))
   benchmark('fix/message_branch', () => message.branch)
+  benchmark('fix/message_into_latest', () => message.intoLatest())
   benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
   benchmark('fix/infer_ullink_msgtype', () => fix.FixCodec.inferMsgtypeText(ULLINK_LINE))
   for (const category of ['fields', 'components', 'groups', 'messages']) {

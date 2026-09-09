@@ -607,19 +607,7 @@ impl<'registry> Builder<'registry> {
 
     /// A group's own field, under the same tier a member resolves by.
     fn by_group(&self, group: &str) -> Option<&'registry Field> {
-        self.registry
-            .get_definition(crate::FixCategory::Groups, group, Some(&self.branch))
-            .or_else(|| {
-                (!self.branch.is_standard())
-                    .then(|| {
-                        self.registry.get_definition(
-                            crate::FixCategory::Groups,
-                            group,
-                            Some(&FixBranch::STANDARD),
-                        )
-                    })
-                    .flatten()
-            })
+        self.registry.known_group(group, &self.branch)
     }
 
     /// The field a key builds under, as the dictionary declares it.
@@ -681,11 +669,6 @@ impl<'registry> Builder<'registry> {
         if view.is_null_value(text) {
             return Scalar::Null;
         }
-        let translated = match self.version {
-            Some(at) => view.code_value_at(at, text),
-            None => view.code_value(text),
-        };
-        let spelling = translated.unwrap_or(text);
         // A `data` field's value is bytes, and the row is where they live:
         // the entry holds a lossy decode of them and this does not.
         if is_binary(field.dtype()) {
@@ -693,38 +676,7 @@ impl<'registry> Builder<'registry> {
                 .scalar(Scalar::from(raw.to_vec()))
                 .unwrap_or(Scalar::Null);
         }
-        // A state is read through the name the field gives its code before
-        // the code itself, because two fields share a letter and not a
-        // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
-        // an `OrdStatus`. The code answers where the dictionary names none.
-        if matches!(field.dtype(), DataType::State) {
-            let named = match self.version {
-                Some(at) => view.code_name_at(at, spelling),
-                None => view.code_name(spelling),
-            };
-            if let Some(state) = named.and_then(State::from_spelling) {
-                return Scalar::Ascii(AsciiFamily::State(state));
-            }
-        }
-        // Every wire value is text, and the generic value contract does not
-        // read text as a number, an instant or a flag. Two of those it can
-        // learn from the field alone, which is the crate's own coercion; the
-        // third is a FIX *spelling* and stays here, because the generic
-        // contract must not learn one.
-        // A FIX spelling is rewritten into the one the crate's coercion reads,
-        // and then coerced like any other text: `20240102-10:15:30` is a
-        // timestamp only after both steps, and the value contract reads
-        // neither a separator-free instant nor a bare `Y`.
-        let candidate =
-            wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
-        // The text contract reads the spelling and hands the value through
-        // the field's own contract, so what it answers is already the stored
-        // form and is not checked a second time. A spelling it refuses is
-        // offered to the field as it stands, which is where a raw payload
-        // that is not a spelling of anything still lands.
-        crate::text::prepare_text(candidate, field)
-            .or_else(|_| field.scalar(Scalar::from(spelling)))
-            .unwrap_or(Scalar::Null)
+        typed_spelling(field, text, self.version)
     }
 
     /// One flat child, appended in arrival order.
@@ -1633,11 +1585,59 @@ fn zoned(text: &str) -> (&str, Option<&str>) {
     }
 }
 
+/// Types one wire spelling under one field, translating its code first.
+///
+/// The half of a typed read that needs no bytes: what a value's text says
+/// under the field it lands in, at the version the read is pinned to - or
+/// at every version, where `at` is `None`, which is how a value is re-typed
+/// for a field it did not arrive under. A spelling that will not type is
+/// null rather than a failure, for the reason the builder's read is.
+pub(super) fn typed_spelling(field: &Field, text: &str, at: Option<Version>) -> Scalar {
+    let view = field.as_fix();
+    let translated = match at {
+        Some(at) => view.code_value_at(at, text),
+        None => view.code_value(text),
+    };
+    let spelling = translated.unwrap_or(text);
+    // A state is read through the name the field gives its code before
+    // the code itself, because two fields share a letter and not a
+    // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
+    // an `OrdStatus`. The code answers where the dictionary names none.
+    if matches!(field.dtype(), DataType::State) {
+        let named = match at {
+            Some(at) => view.code_name_at(at, spelling),
+            None => view.code_name(spelling),
+        };
+        if let Some(state) = named.and_then(State::from_spelling) {
+            return Scalar::Ascii(AsciiFamily::State(state));
+        }
+    }
+    // Every wire value is text, and the generic value contract does not
+    // read text as a number, an instant or a flag. Two of those it can
+    // learn from the field alone, which is the crate's own coercion; the
+    // third is a FIX *spelling* and stays here, because the generic
+    // contract must not learn one.
+    // A FIX spelling is rewritten into the one the crate's coercion reads,
+    // and then coerced like any other text: `20240102-10:15:30` is a
+    // timestamp only after both steps, and the value contract reads
+    // neither a separator-free instant nor a bare `Y`.
+    let candidate =
+        wire_spelling(field.dtype(), spelling).unwrap_or_else(|| Scalar::from(spelling));
+    // The text contract reads the spelling and hands the value through
+    // the field's own contract, so what it answers is already the stored
+    // form and is not checked a second time. A spelling it refuses is
+    // offered to the field as it stands, which is where a raw payload
+    // that is not a spelling of anything still lands.
+    crate::text::prepare_text(candidate, field)
+        .or_else(|_| field.scalar(Scalar::from(spelling)))
+        .unwrap_or(Scalar::Null)
+}
+
 /// One registry field as this message carried it.
 ///
 /// The dictionary's field says what a tag is; only the nullability is this
 /// message's own, and it is false because the value is there.
-fn stated(known: &Field) -> Field {
+pub(super) fn stated(known: &Field) -> Field {
     let mut field = known.clone();
     field.set_nullable(false);
     field

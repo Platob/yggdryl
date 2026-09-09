@@ -10,7 +10,7 @@ use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
 use crate::fix::{
-    FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
+    FixCodes, FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
 };
 use crate::holder::local::Folder;
 use crate::{
@@ -4659,15 +4659,22 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
     }
 }
 
-/// One stored document with every `since` value spelled as `Version` spells it.
+/// One stored document with every `since` and `deprecated` value spelled as
+/// `Version` spells it.
 ///
 /// The generator writes the source file's spelling, the crate writes its own,
 /// and the two parse to one version. Nothing else in the document is touched.
 fn canonical_versions(document: &str) -> String {
     let mut out = String::with_capacity(document.len());
     let mut rest = document;
-    while let Some(at) = rest.find(r#""since":""#) {
-        let (head, tail) = rest.split_at(at + r#""since":""#.len());
+    let next_key = |rest: &str| {
+        [r#""since":""#, r#""deprecated":""#]
+            .into_iter()
+            .filter_map(|key| rest.find(key).map(|at| (at, key)))
+            .min()
+    };
+    while let Some((at, key)) = next_key(rest) {
+        let (head, tail) = rest.split_at(at + key.len());
         out.push_str(head);
         let end = tail.find('"').expect("a closed version");
         let (spelling, tail) = tail.split_at(end);
@@ -4724,9 +4731,12 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
 
         // Every stored type resolves: the generator writes the crate's own
         // serialized datatype, so nothing here is an unresolvable spelling.
+        // An entry stating no type is a deprecation or a removal, a dated
+        // point about the field that has no type to state.
         for entry in &held {
+            let dtype = entry.parse_dtype().expect("a resolvable type");
             assert!(
-                entry.parse_dtype().expect("a resolvable type").is_some(),
+                dtype.is_some() || entry.is_deprecated() || entry.is_removed(),
                 "{} at {}",
                 field.name(),
                 entry.since()
@@ -4766,14 +4776,14 @@ fn every_committed_lineage_is_the_document_the_rust_writer_renders() {
             );
         }
     }
-    assert_eq!(lineages, 1_564, "fields carrying a lineage");
+    assert_eq!(lineages, 1_603, "fields carrying a lineage");
     // 1,926 before these two phases: 268 entries stated nothing their
     // predecessor did not once types were resolved and the temporal ones
     // adopted backward, and one more was a second statement about one dated
     // point. Two more since: `OrdStatus` and `ExecType` retyped to the crate's
     // `state`, which each lineage records, less the one the generic MsgType
     // datatype's removal collapses back.
-    assert_eq!(entries, 1_670, "lineage entries");
+    assert_eq!(entries, 1_803, "lineage entries");
 }
 
 /// Every tag and group one owned fill names is one the dictionary has.
@@ -4805,6 +4815,40 @@ fn assert_fills_resolve(registry: &FixRegistry, fills: &[FixFill], owner: &str) 
             }
         }
     }
+}
+
+#[test]
+fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
+    let registry = committed();
+    let mut sets = 0_usize;
+    let mut codes = 0_usize;
+    for field in every_committed_field(&registry) {
+        let Some(stored) = field.as_metadata().get("fix:codes") else {
+            continue;
+        };
+        sets += 1;
+        let held: Vec<FixCode> = field
+            .as_fix()
+            .codes()
+            .map(|code| FixCode::from(code.expect("a readable code")))
+            .collect();
+        assert!(!held.is_empty(), "{} declares a code", field.name());
+        codes += held.len();
+
+        // The cross-host assertion, as for the lineage: the generator wrote
+        // this set in Python, and the Rust writer must reproduce it byte for
+        // byte - key order, sort order, escaping, the legacy codes' dates
+        // and aliases - versions canonicalized for the reason the lineage
+        // assertion states.
+        assert_eq!(
+            FixCodes::render(&held).expect("the codes render"),
+            canonical_versions(stored),
+            "{}",
+            field.name()
+        );
+    }
+    assert_eq!(sets, 2_026, "fields carrying a code set");
+    assert_eq!(codes, 27_209, "code records");
 }
 
 #[test]

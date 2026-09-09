@@ -232,6 +232,7 @@ const fromFrame: FixMsg = reader.transformFixLine(Buffer.from('8=FIX.4.4'), 1)
 const fromBridge: FixMsg = reader.transformUllinkLine(Buffer.from('#SYMBOL=TTF'))
 const fromPairs: FixMsg = reader.transformPairs([['55', 'AAPL']])
 const enriched: FixMsg = reader.enrichFixmsg(fromText)
+const restated: FixMsg = fromText.intoLatest()
 const readerCopy: FixCodec = reader.clone()
 
 // The lifecycle is a class over one dictionary, or over the process default,
@@ -246,6 +247,7 @@ life.clear()
 const stream: FixMsg[] = reader.lifecycle([fromText, stamped])
 
 void enriched
+void restated
 void lifeClass
 void defaultLife
 void alive

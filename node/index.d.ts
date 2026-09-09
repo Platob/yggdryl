@@ -1394,6 +1394,16 @@ export declare class FixMsg {
   intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
   intoBytes(separator?: number | undefined | null): Buffer
+  /**
+   * This message restated at its registry's newest version.
+   *
+   * Every child lands under the dictionary's own field, a retired field or
+   * value fills what stands in for it, and the crate `version` says which
+   * version the row now speaks. Only the row is restated: the arrival
+   * record is left alone, so `intoBytes` re-emits the received line either
+   * way, and a second pass answers an equal message.
+   */
+  intoLatest(): FixMsg
   /** Whether two messages carry the same schema, value and dictionary. */
   equals(other: FixMsg): boolean
   /** Deterministic hash bits over the schema and the value. */

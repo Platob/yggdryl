@@ -251,10 +251,11 @@ pub fn stages(criterion: &mut Criterion) {
                 .fold(0_u128, |folded, digest| folded ^ digest)
         });
     });
-    // The two passes that read a message after it is built: the rules that
-    // fill what it implies, and the stamp that joins it to its order's life.
-    // Each takes the message by value, so the clone is set up outside the
-    // measured routine and the number is the pass alone.
+    // The three passes that read a message after it is built: the rules that
+    // fill what it implies, the restatement at the dictionary's newest
+    // version, and the stamp that joins it to its order's life. Each takes
+    // the message by value, so the clone is set up outside the measured
+    // routine and the number is the pass alone.
     group.bench_function("enrich", |bencher| {
         bencher.iter_batched(
             || messages.clone(),
@@ -267,6 +268,17 @@ pub fn stages(criterion: &mut Criterion) {
                             .entries()
                             .len()
                     })
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    group.bench_function("latest", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                held.into_iter()
+                    .map(|message| message.into_latest().expect("restated").entries().len())
                     .sum::<usize>()
             },
             BatchSize::LargeInput,

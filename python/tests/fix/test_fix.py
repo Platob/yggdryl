@@ -1393,6 +1393,52 @@ def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     assert opaque.get_by_tag(65013) is None
 
 
+# A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
+# capacity and two identities the specification later moved into `Parties`.
+REPORT = (
+    b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|"
+    b"14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|"
+)
+
+
+def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry) -> None:
+    """Restatement is a method; the rules are the dictionary's."""
+    read = next(FixCodec(seed).transform_line(REPORT))
+    assert read.by_tag(65001).as_py() == "4.2"
+    assert read.by_tag(150).as_py() == "40PARTFILL"
+    assert read.get_by_tag(528) is None
+    assert read.get_by_tag(453) is None
+
+    latest = read.into_latest()
+    # ExecTransType Cancel wrote ExecType TradeCancel over the retired
+    # PartiallyFilled, and the source stays.
+    assert latest.by_tag(150).as_py() == "40TRDCXL"
+    assert latest.by_tag(20).as_py() == "1"
+    # Rule80A A is an agency order.
+    assert latest.by_tag(528).as_py() == "A"
+    assert latest.by_tag(47).as_py() == "A"
+    # ExecBroker and ClientID are two parties, in tag order, counted.
+    assert latest.by_tag(453).as_py() == 2
+    assert latest.by_path("parties.0.partyid").as_py() == "BRKR"
+    assert latest.by_path("parties.0.partyrole").as_py() == 1
+    assert latest.by_path("parties.1.partyid").as_py() == "CLIENT1"
+    assert latest.by_path("parties.1.partyrole").as_py() == 3
+    # The fill under its newest spelling, reachable by the old one too.
+    assert latest.by_tag(32).as_py() == 100.0
+    assert latest.by_name("LastShares").as_py() == 100.0
+    # The row speaks the dictionary's newest version; the wire still says 4.2.
+    assert latest.by_tag(65001).as_py() == "5.0.2"
+    assert latest.by_tag(8).as_py() == "FIX.4.2"
+
+    # Only the row was restated: the wire comes back byte for byte, the
+    # arrival record and the anomalies are the same, and a second pass
+    # changes nothing.
+    assert latest.into_bytes(ord("|")) == REPORT
+    assert latest.entries() == read.entries()
+    assert latest.anomalies() == read.anomalies()
+    assert latest.into_latest() == latest
+
+
 # A Jolokia answer as a log line writes it: a timestamp and a reader in front
 # of the document, the duration the call took behind it. Both are prose.
 LOGGED = (
@@ -1793,13 +1839,15 @@ def test_every_built_message_carries_its_version_and_its_clock(
     reader = FixCodec(seed)
 
     # The header in rank order whatever the input order, the body, the
-    # trailer, and the crate's own `timestamp` closing the message.
+    # version the read used, the trailer, and the crate's own `timestamp`
+    # closing the message.
     message = next(reader.transform_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|"))
     assert _root_names(message) == [
         "beginstring",
         "bodylength",
         "msgtype",
         "symbol",
+        "version",
         "checksum",
         "timestamp",
     ]
@@ -1807,7 +1855,8 @@ def test_every_built_message_carries_its_version_and_its_clock(
     assert [name for name, _ in pairs] == _root_names(message)
     assert pairs[0] == ("beginstring", "FIX.4.4")
     assert pairs[-1][0] == "timestamp"
-    assert len(message) == 6
+    assert len(message) == 7
+    assert message.by_tag(65001).as_py() == "4.4"
     assert message.by_tag(8).as_py() == "FIX.4.4"
     assert message.by_id("65003:") == message.by_name("timestamp")
     assert message.by_tag(65003) == message.by_name("timestamp")
@@ -2234,3 +2283,18 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
     both = parse_arrow_reader(source, seed, "body", enrich=True, lifecycle=True).read_all()
     assert both.column("persistentid").to_pylist() == chains
     assert both.column("state").to_pylist()[1].rstrip(b"\0") == b"20NEW"
+
+
+def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) -> None:
+    """`latest` is the per-stream form of `FixMsg.into_latest`."""
+    source = pa.table({"body": pa.array([REPORT], pa.binary())})
+    restated = parse_arrow_reader(source, seed, "body", latest=True).read_all()
+    assert restated.column("version").to_pylist() == ["5.0.2"]
+    assert restated.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40TRDCXL"
+    assert restated.column("nopartyids").to_pylist() == [2]
+    assert restated.column("parties").to_pylist()[0][0]["partyid"] == "BRKR"
+    # Off by default: the row speaks the version it was read at.
+    read = parse_arrow_reader(source, seed, "body").read_all()
+    assert read.column("version").to_pylist() == ["4.2"]
+    assert read.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40PARTFILL"
+    assert read.column("nopartyids").to_pylist() == [None]

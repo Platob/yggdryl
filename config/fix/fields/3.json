@@ -652,6 +652,7 @@
     "metadata": {
       "description": "Type of message encoding (non-ASCII (non-English) characters) used in a message's \"Encoded\" fields.",
       "display": "MessageEncoding",
+      "fix:codes": "{\"codes\":[{\"value\":\"EUC-JP\",\"name\":\"Eucjp\",\"since\":\"4.2\",\"deprecated\":\"5.0\"},{\"value\":\"ISO-2022-JP\",\"name\":\"Iso2022Jp\",\"since\":\"4.2\",\"deprecated\":\"5.0\"},{\"value\":\"Shift_JIS\",\"name\":\"ShiftJis\",\"since\":\"4.2\",\"deprecated\":\"5.0\"},{\"value\":\"UTF-8\",\"name\":\"Utf8\",\"since\":\"4.2\",\"deprecated\":\"5.0\"}]}",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.2\",\"name\":\"messageencoding\",\"type\":{\"type\":\"utf8\"}}]}",
       "fix:tag": "347"
     }

@@ -1486,6 +1486,23 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.into_bytes(separator))
     }
 
+    /// This message restated at its registry's newest version.
+    ///
+    /// Every child lands under the dictionary's own field, a retired field or
+    /// value fills what stands in for it, and the crate `version` says which
+    /// version the row now speaks. Only the row is restated: the arrival
+    /// record is what the wire carried and is left alone, so `into_bytes`
+    /// re-emits the received line either way, and a second pass answers an
+    /// equal message.
+    #[allow(clippy::wrong_self_convention)]
+    fn into_latest(&self) -> PyResult<Self> {
+        self.inner
+            .clone()
+            .into_latest()
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
     fn __copy__(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -1846,8 +1863,9 @@ pub(crate) fn fix_schema_carrying(
 /// and any other column named after a field fills it where the frame did not
 /// state it - never as an entry. A column whose folded name a fixed column
 /// takes lands there rather than being carried in front. `enrich` fills what
-/// each line implies; `lifecycle` runs one `FixLifecycle` over the whole read,
-/// so a row's `persistentid` depends on the rows before it.
+/// each line implies; `latest` restates each message at the dictionary's
+/// newest version once it is filled; `lifecycle` runs one `FixLifecycle` over
+/// the whole read, so a row's `persistentid` depends on the rows before it.
 #[pyfunction]
 #[pyo3(
     name = "fix_parse_arrow_reader",
@@ -1864,12 +1882,15 @@ pub(crate) fn fix_schema_carrying(
         null_values = None,
         dedup = false,
         enrich = false,
+        latest = false,
         lifecycle = false,
         batch_row_size = None,
         batch_byte_size = None,
     )
 )]
-#[allow(clippy::too_many_arguments)]
+// Each flag is a keyword the Python signature spells, so an enum here would be
+// binding-side vocabulary the core never speaks.
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 pub(crate) fn fix_parse_arrow_reader<'py>(
     py: Python<'py>,
     source: &Bound<'_, PyAny>,
@@ -1883,6 +1904,7 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     null_values: Option<Vec<String>>,
     dedup: bool,
     enrich: bool,
+    latest: bool,
     lifecycle: bool,
     batch_row_size: Option<usize>,
     batch_byte_size: Option<u64>,
@@ -1894,6 +1916,7 @@ pub(crate) fn fix_parse_arrow_reader<'py>(
     let mut options = CoreFixOptions::new()
         .with_dedup(dedup)
         .with_enrich(enrich)
+        .with_latest(latest)
         .with_lifecycle(lifecycle);
     options.name = name.into();
     if let Some(branch) = branch {

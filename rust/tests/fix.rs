@@ -22,6 +22,8 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/latest.rs"]
+mod latest;
 #[path = "fix/lifecycle.rs"]
 mod lifecycle;
 #[path = "fix/lift.rs"]
